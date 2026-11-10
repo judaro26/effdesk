@@ -25,6 +25,7 @@ import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './cs
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
+import { SUPPORT_READ, getAccess, setAccess, recentEntries, customerDetail, countApiCall } from './support.js';
 import { listFields, saveField, deleteField } from './fields.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
@@ -94,7 +95,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
-  const orgId = String(b.orgId || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  const orgId = String(b.orgId || ''); let role = orgId && await roleIn(pool, s.user.id, orgId), support = false;
+  // the platform owner may look in, read-only, while the customer has switched support access on
+  if (!role && orgId && s.user.emailVerified && platformAdmins().includes(String(s.user.email).toLowerCase()) && (await getAccess(pool, orgId)).active) {
+    if (!SUPPORT_READ.has(String(b.action))) return json(403, { error: 'This is the read-only support view. Nothing can be changed here.', support: true });
+    role = 'admin'; support = true;
+  }
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
   if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
@@ -104,11 +110,14 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
   let r, g;
   switch (b.action) {
+    case 'support-enter': if (!support) return json(403, { error: 'Only the platform owner can do that.' }); await audit(pool, orgId, actor.id, 'support.entered', actor.email, {}); r = { ok: true }; break;
+    case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, ...(await getAccess(pool, orgId)), entries: await recentEntries(pool, orgId) }; break;
+    case 'support-access-set': { if ((g = adminOnly())) return g; const rr = await setAccess(pool, orgId, actor.email, Number(b.hours) || 0); if (!rr.ok) return json(rr.status, { error: rr.error }); await audit(pool, orgId, actor.id, rr.active ? 'support.access-granted' : 'support.access-revoked', actor.email, { hours: Number(b.hours) || 0 }); r = { ...rr, entries: await recentEntries(pool, orgId) }; break; }
     case 'init': {
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, support, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
@@ -408,7 +417,7 @@ export const _json = json;
 export async function apiV1(req, { pool, mailer, env = process.env }) {
   const who = await authenticate(pool, req.headers.get('authorization')).catch(() => null);
   if (!who) return json(401, { error: 'Send a valid API token: Authorization: Bearer effk.…' });
-  const orgId = who.orgId, ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'api')) return json(402, { error: 'The API is part of the Suite plan.', upgrade: true });
+  const orgId = who.orgId; countApiCall(pool, orgId); const ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'api')) return json(402, { error: 'The API is part of the Suite plan.', upgrade: true });
   const actor = { id: null, name: 'API: ' + who.name, email: '' }, u = new URL(req.url), parts = u.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean), m = req.method;
   let b = {}; if (m === 'POST' || m === 'PATCH') { const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' }); try { b = raw ? JSON.parse(raw) : {}; } catch { return json(400, { error: 'The body must be JSON.' }); } }
   const out = r => r.ok ? json(r.status === 201 ? 201 : 200, r.body || r) : json(r.status || 400, { error: r.error });
@@ -440,4 +449,13 @@ export async function platformList(req, { pool, auth }) {
   const r = await platformCustomers(pool);
   if (new URL(req.url).searchParams.get('format') === 'csv') return new Response(customersCsv(r.customers), { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="effdesk-customers.csv"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
   return json(200, r);
+}
+
+// one customer in detail for the platform owner: team and access, billing, 30 days of usage, flags. Never ticket content.
+export async function platformCustomer(req, { pool, auth }) {
+  if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  if (!s.user.emailVerified || !platformAdmins().includes(String(s.user.email).toLowerCase())) return json(403, { error: 'Only the platform owner can do that.' });
+  const r = await customerDetail(pool, new URL(req.url).searchParams.get('slug'));
+  return r.ok ? json(200, r) : json(r.status, { error: r.error });
 }

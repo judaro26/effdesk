@@ -2,5 +2,6 @@
 import { context } from '../../src/context.js';
 import { runTimed } from '../../src/triggers.js';
 import { runSlaAlerts } from '../../src/sla-alerts.js';
-export default async () => { const { pool, mailer, env } = context(); const r = await runTimed(pool, mailer, env || process.env); console.log('timed rules ran:', r.ran); const a = await runSlaAlerts(pool, mailer, env || process.env); console.log('sla alerts sent:', a.sent); };
+import { runUsage, runUsageAlerts } from '../../src/support.js';
+export default async () => { const { pool, mailer, env } = context(); const r = await runTimed(pool, mailer, env || process.env); console.log('timed rules ran:', r.ran); const a = await runSlaAlerts(pool, mailer, env || process.env); console.log('sla alerts sent:', a.sent); const u = await runUsage(pool); console.log('usage rows:', u.rows); const ua = await runUsageAlerts(pool, mailer, env || process.env); console.log('usage alerts sent:', ua.sent); };
 export const config = { schedule: '@hourly' };

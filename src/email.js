@@ -38,6 +38,7 @@ export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process
       return mail(to, `${what}: #${number} ${subject}`, { preheader: summary || what, heading: what, paragraphs: [`#${number} ${subject} (${orgName})`, ...(summary ? [summary] : [])], button: 'Open the ticket', url, foot: 'You get this because you follow the ticket, own it, or it was assigned to you. You can switch these emails off under Profile and themes on your desk.' });
     },
     csat: (to, { orgName, number, subject, name, good, bad }) => mail(to, `How did we do? #${number} ${subject}`, { preheader: 'One click and an optional comment.', heading: name ? `${name}, how did we do?` : 'How did we do?', paragraphs: [`Your request "${subject}" (#${number}) with ${orgName} was marked solved. Was the support you got good or bad?`], button: 'Good', url: good, button2: 'Bad', url2: bad, foot: `You get this once, when a request is solved. If you are not happy, rating it bad lets ${orgName} know.` }),
+    platformNotice: async ({ to, subject, text }) => { for (const t of [].concat(to)) await mail(t, subject, { preheader: subject, heading: 'Customer alert', paragraphs: String(text).split('\n').filter(Boolean) }); },
     ticketMail: msg => send(msg),                       // a ticket reply: own From, Reply-To and threading headers
   };
 }

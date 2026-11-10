@@ -3,7 +3,7 @@
   'use strict';
   var BATCH = 100;
   function start(doc, fetchFn) {
-    var main = doc.getElementById('main'), log = null, people = null, filt = 'all', q = '';
+    var main = doc.getElementById('main'), log = null, people = null, detail = null, filt = 'all', q = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var call = function (method, path, body) { return fetchFn(path, { method: method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: body ? JSON.stringify(body) : undefined }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
     var say = function (t, bad) { if (!log) return; log.textContent = t; log.className = 'msg' + (bad ? ' err' : ''); };
@@ -46,6 +46,7 @@
       return box;
     }
     function customersCard() {
+      if (detail) return detailCard();
       var box = el('div', { 'data-customers': '1' }, el('h2', {}, 'Customers'));
       if (!people) { box.appendChild(el('p', { class: 'm' }, 'Loading…')); return box; }
       if (people.error) { box.appendChild(el('p', { class: 'msg err', role: 'alert' }, people.error)); return box; }
@@ -57,13 +58,34 @@
       box.appendChild(el('div', { class: 'bar' }, fs, ' ', qb, ' ', el('a', { class: 'btn l', href: '/api/admin/customers?format=csv', 'data-customers-csv': '1' }, 'Download CSV')));
       box.appendChild(el('div', { id: 'custlist', class: 'tablewrap' })); return box;
     }
+    function openCustomer(slug) { call('GET', '/api/admin/customer?slug=' + encodeURIComponent(slug)).then(function (r) { if (!r.ok) return say(r.body.error || 'That customer could not be loaded.', true); detail = r.body; draw(); show('customers'); }); }
+    function chart(usage, key, label) {
+      var max = Math.max.apply(null, usage.map(function (u) { return u[key]; }).concat([1]));
+      return el('div', { class: 'chart', role: 'img', 'aria-label': label + ' per day for the last 30 days' }, usage.map(function (u) { return el('span', { class: 'bar1', style: 'height:' + Math.max(2, Math.round(u[key] / max * 100)) + '%', title: u.day + ': ' + u[key] }); }));
+    }
+    function detailCard() {
+      var d = detail, b = d.billing, box = el('div', { 'data-detail': d.customer.slug });
+      box.appendChild(el('button', { type: 'button', class: 'btn l', 'data-detail-back': '1', onclick: function () { detail = null; draw(); show('customers'); } }, '← All customers'));
+      box.appendChild(el('h2', { style: 'margin-top:14px' }, d.customer.name, ' ', el('span', { class: 'm' }, d.customer.slug)));
+      if (d.flags.length) box.appendChild(el('ul', { class: 't', 'data-flags': '1' }, d.flags.map(function (f) { return el('li', { class: 'msg err' }, f.text); })));
+      box.appendChild(el('div', { class: 'tiles' }, tile('Plan', b.plan + (b.status !== 'none' && b.status !== 'licence' ? ' (' + b.status + ')' : '')), tile('Seats used', b.seatsUsed + (b.seatLimit ? ' of ' + b.seatLimit : ' (no limit)')), tile('Tickets, 30 days', d.totals.tickets), tile('Replies, 30 days', d.totals.replies), tile('API calls, 30 days', d.totals.apiCalls)));
+      box.appendChild(el('p', { class: 'm' }, 'Billing: ' + (b.interval ? 'billed per ' + b.interval + ', ' : '') + (b.seatsPaid ? b.seatsPaid + ' seats paid, ' : '') + (b.renews ? 'renews ' + new Date(b.renews).toLocaleDateString() : 'no renewal date')));
+      box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Usage, last 30 days'));
+      box.appendChild(d.usage.length ? el('div', { class: 'charts' }, el('div', {}, el('div', { class: 'm' }, 'Tickets'), chart(d.usage, 'tickets', 'Tickets')), el('div', {}, el('div', { class: 'm' }, 'Replies'), chart(d.usage, 'replies', 'Replies')), el('div', {}, el('div', { class: 'm' }, 'API calls'), chart(d.usage, 'api_calls', 'API calls'))) : el('p', { class: 'm' }, 'No usage recorded yet. It is summarised every hour.'));
+      box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Who has access'));
+      box.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable', 'data-people': '1' }, el('thead', {}, el('tr', {}, ['Name', 'Email', 'Role', 'Last active'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.people.map(function (p) { return el('tr', {}, el('td', {}, p.name || ''), el('td', {}, p.email), el('td', {}, p.role), el('td', {}, ago(p.lastActive))); })))));
+      box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Support access'));
+      box.appendChild(d.access.active ? el('p', {}, el('a', { class: 'btn', href: '/desk.html?org=' + encodeURIComponent(d.customer.id) + '&support=1', 'data-open-support': '1' }, 'Open support view (read-only)'), ' ', el('span', { class: 'm' }, 'Allowed until ' + new Date(d.access.expiresAt).toLocaleString() + ' by ' + d.access.grantedBy)) : el('p', { class: 'm', 'data-no-access': '1' }, 'This customer has not allowed support access. An owner or admin can switch it on in Manage, Support access.'));
+      if (d.entries.length) box.appendChild(el('ul', { class: 't' }, d.entries.map(function (e) { return el('li', { class: 'm' }, new Date(e.at).toLocaleString() + ' · ' + e.action.replace('support.', '').replace('-', ' ') + ' · ' + (e.who || '')); })));
+      return box;
+    }
     function syncTabs() { [].slice.call(doc.querySelectorAll('[data-subtab]')).forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-subtab') === filt ? 'true' : 'false'); }); }
     function drawList() {
       var host = doc.getElementById('custlist'); if (!host || !people) return; while (host.firstChild) host.removeChild(host.firstChild);
       var rows = people.customers.filter(function (c) { var h = c.health; return (filt === 'all' || (filt === 'paying' ? c.plan !== 'free' && c.status !== 'canceled' && c.status !== 'none' : filt === 'free' ? c.plan === 'free' : filt === 'attention' ? needsAttention(c) : h === filt)) && (!q || (c.name + ' ' + c.slug + ' ' + (c.owner || '')).toLowerCase().indexOf(q.toLowerCase()) >= 0); });
       var th = function (x) { return el('th', { scope: 'col' }, x); }, td = function (x) { return el('td', {}, x); };
       var tb = el('table', { class: 'adtable' }, el('thead', {}, el('tr', {}, ['Customer', 'Owner', 'Plan', 'Agents', 'Tickets 30d', 'Total', 'Last active', 'Health'].map(th))),
-        el('tbody', {}, rows.map(function (c) { return el('tr', { 'data-org': c.slug }, td(el('span', {}, el('strong', {}, c.name), ' ', el('span', { class: 'm' }, c.slug))), td(c.owner || ''), td(c.plan + (c.status && c.status !== 'none' && c.status !== 'licence' ? ' (' + c.status + ')' : '') + (c.seatsPaid ? ' · ' + c.seatsPaid + ' seats' : '')), td(String(c.agents) + (c.invites ? ' (+' + c.invites + ' invited)' : '')), td(String(c.tickets.last30)), td(String(c.tickets.total)), td(ago(c.lastActive)), td(el('span', { class: 'pill ' + c.health }, HEALTH[c.health] || c.health))); })));
+        el('tbody', {}, rows.map(function (c) { return el('tr', { 'data-org': c.slug }, td(el('span', {}, el('button', { type: 'button', class: 'linkbtn', 'data-open-customer': c.slug, onclick: function () { openCustomer(c.slug); } }, c.name), ' ', el('span', { class: 'm' }, c.slug))), td(c.owner || ''), td(c.plan + (c.status && c.status !== 'none' && c.status !== 'licence' ? ' (' + c.status + ')' : '') + (c.seatsPaid ? ' · ' + c.seatsPaid + ' seats' : '')), td(String(c.agents) + (c.invites ? ' (+' + c.invites + ' invited)' : '')), td(String(c.tickets.last30)), td(String(c.tickets.total)), td(ago(c.lastActive)), td(el('span', { class: 'pill ' + c.health }, HEALTH[c.health] || c.health))); })));
       host.appendChild(rows.length ? tb : el('p', { class: 'm' }, 'No customers match.'));
     }
     function draw() {

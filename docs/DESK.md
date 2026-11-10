@@ -54,3 +54,10 @@ Set the Netlify variable `OWNER_WORKSPACES=mdv:you@yourcompany.com` (several all
 ## Custom ticket fields (Suite plan)
 
 Admins add extra fields under Manage > Fields: text, number, dropdown, yes/no and date (up to 20). Agents fill them in on each ticket; values are stored in `tickets.custom`, changes are logged on the ticket, and they appear in webhooks and the REST API (`custom`). A field's type and key cannot change once made.
+
+## Support access, customer detail and usage (platform owner)
+
+- **Customer consent.** Under Manage > Support access an owner or admin allows EffDesk support to look in for 24 hours, 3 days or 7 days. It ends by itself and can be turned off at once. Every visit and every change of the switch is in the customer's audit log and listed on that tab.
+- **Support view.** On the admin page, open a customer and, while access is on, choose "Open support view". The desk opens as an admin would see it with a yellow banner, and it is read-only: only reading actions are accepted (`SUPPORT_READ` in src/support.js). Replies, edits, team changes and the access switch itself are refused.
+- **Customer detail.** The admin page shows plan and billing, seats used, who has access (names, roles, last sign-in), 30 days of tickets, replies and API calls, and flags (payment failed, seats nearly full, no sign-in for 14 days, very heavy API use). Never ticket content.
+- **Usage history.** The hourly `automations` function writes one `usage_daily` row per organization per day; each API request adds to `api_calls`. Alerts for the flags are emailed to `PLATFORM_ADMIN_EMAILS` at most once a week per customer and problem.
