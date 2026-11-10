@@ -3,7 +3,7 @@
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
   function start(doc, fetchFn, nav) {
-    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', pending = [];
+    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
     var api = function (action, extra) { return post('/api/tickets', Object.assign({ orgId: orgId, action: action }, extra || {})); };
@@ -16,7 +16,7 @@
         orgs = r.body.organizations; doc.getElementById('who').textContent = r.body.user.email;
         var want = new URLSearchParams(nav.search || '').get('org'); var o = orgs.filter(function (x) { return x.id === want; })[0] || orgs[0];
         if (!o) { main.textContent = ''; main.appendChild(el('p', {}, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
-        orgId = o.id; role = o.role; return Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); });
+        orgId = o.id; role = o.role; slug = o.slug; return Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); });
       });
     }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
@@ -74,13 +74,33 @@
         el('div', { class: 'bar' }, f.fromName), f.sig,
         ro ? el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-mail-save': '1', onclick: function () { api('mail-save', { inbox: f.inbox.value, replyMode: m.replyMode, replyTo: f.replyTo.value, fromName: f.fromName.value, signature: f.sig.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); settings = r.body; say('Email settings saved.'); }); } }, 'Save'), el('button', { class: 'btn l', type: 'button', onclick: function () { settings = null; draw(); } }, 'Close')) : el('p', { class: 'm' }, 'Only an owner or an admin can change these.'));
     }
+    function articlesPane() {
+      if (editing) {
+        var e = editing, isNew = !e.id, f = {};
+        f.title = el('input', { 'aria-label': 'Title', placeholder: 'Title', maxlength: '200', value: e.title || '' });
+        f.lang = sel('Language', e.lang || 'en', [['en', 'English'], ['es', 'Español']], function (v) { e.lang = v; });
+        if (!isNew) f.lang.setAttribute('disabled', 'disabled');
+        var others = articles.filter(function (a) { return a.id !== e.id; });
+        f.tr = isNew ? sel('Translation of', e.translationOf || '', [['', 'A new article (not a translation)']].concat(others.map(function (a) { return [a.id, 'Translation of: ' + a.title + ' (' + a.lang + ')']; })), function (v) { e.translationOf = v; }) : null;
+        f.body = el('textarea', { 'aria-label': 'Article text', placeholder: 'Write the article. # Heading, **bold**, - list, [link](https://…)', rows: '12' }); f.body.value = e.body || '';
+        f.pub = el('input', { type: 'checkbox', 'aria-label': 'Published' }); if (e.status === 'published') f.pub.checked = true;
+        return el('div', { class: 'card' }, el('h2', {}, isNew ? 'New article' : 'Edit article'), f.title, el('div', { class: 'bar' }, f.lang, f.tr), f.body,
+          el('label', { class: 'bar' }, f.pub, ' Published (visible to customers)'),
+          el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-article-save': '1', onclick: function () { api('article-save', { id: e.id, title: f.title.value, body: f.body.value, lang: e.lang || 'en', translationOf: e.translationOf || undefined, status: f.pub.checked ? 'published' : 'draft' }).then(function (r) { if (!r.ok) return say(r.body.error, true); editing = null; note = 'Article saved.'; bad = false; return loadArticles(); }); } }, 'Save'),
+            !isNew ? el('button', { class: 'btn l', type: 'button', 'data-article-delete': '1', onclick: function () { api('article-delete', { id: e.id }).then(function () { editing = null; return loadArticles(); }); } }, 'Delete') : null,
+            el('button', { class: 'btn l', type: 'button', onclick: function () { editing = null; draw(); } }, 'Cancel')));
+      }
+      return el('div', { class: 'card' }, el('h2', {}, 'Help center'), el('p', { class: 'm' }, 'Public address: /help/' + slug), el('div', { class: 'bar' }, el('a', { class: 'btn l', href: '/help/' + encodeURIComponent(slug), target: '_blank', rel: 'noopener', 'data-view-help': '1' }, 'View the help center'), el('button', { class: 'btn', type: 'button', 'data-article-new': '1', onclick: function () { editing = { lang: 'en' }; draw(); } }, 'New article'), el('button', { class: 'btn l', type: 'button', onclick: function () { articles = null; draw(); } }, 'Close')),
+        articles.length ? articles.map(function (a) { return el('button', { class: 'row', type: 'button', 'data-article': a.id, onclick: function () { api('article-get', { id: a.id }).then(function (r) { if (!r.ok) return say(r.body.error, true); editing = r.body.article; draw(); }); } }, el('b', {}, a.title), el('span', { class: 'm' }, (a.status === 'published' ? 'Published' : 'Draft') + ' · ' + (a.lang === 'es' ? 'Español' : 'English') + ' · ' + a.views + ' views · ' + a.helpful_yes + ' helpful, ' + a.helpful_no + ' not')); }) : el('p', { class: 'm' }, 'No articles yet.'));
+    }
+    function loadArticles() { return api('article-list').then(function (r) { if (!r.ok) return say(r.body.error, true); articles = r.body.articles; current = null; creating = false; settings = null; draw(); }); }
     function draw() {
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg' + (bad ? ' err' : ''), role: 'status' }, note));
       var orgSel = orgs.length > 1 ? sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; current = null; Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); }); }) : null;
       main.appendChild(el('h1', {}, 'Tickets')); if (orgSel) main.appendChild(orgSel);
-      main.appendChild(el('p', {}, el('button', { class: 'btn l', type: 'button', 'data-mail': '1', onclick: function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); settings = r.body; current = null; creating = false; draw(); }); } }, 'Email settings')));
-      main.appendChild(el('div', { class: 'desk' }, listPane(), settings ? mailPane() : creating ? newPane() : current ? ticketPane() : el('div', { class: 'card' }, el('p', { class: 'm' }, 'Pick a ticket, or create a new one.'))));
+      main.appendChild(el('p', {}, el('button', { class: 'btn l', type: 'button', 'data-mail': '1', onclick: function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); settings = r.body; current = null; creating = false; draw(); }); } }, 'Email settings'), ' ', el('button', { class: 'btn l', type: 'button', 'data-help': '1', onclick: loadArticles }, 'Help center')));
+      main.appendChild(el('div', { class: 'desk' }, listPane(), articles ? articlesPane() : settings ? mailPane() : creating ? newPane() : current ? ticketPane() : el('div', { class: 'card' }, el('p', { class: 'm' }, 'Pick a ticket, or create a new one.'))));
     }
     return boot();
   }

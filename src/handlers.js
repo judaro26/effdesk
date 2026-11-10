@@ -5,6 +5,9 @@ import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
 import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress } from './ticket-mail.js';
 import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, MAX_UPLOAD, cleanName } from './attachments.js';
+import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publishedList, publicArticle, countView, vote as voteArticle, searchArticles, renderBody, LANGS } from './help.js';
+import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
+import * as pages from './help-pages.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -87,6 +90,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'delete-file': if (!store || !(await deleteFile(pool, store, orgId, b.id))) return json(404, { error: 'No such file.' }); r = { ok: true }; break;
+    case 'article-list': r = await listArticles(pool, orgId); break;
+    case 'article-get': r = await getArticle(pool, orgId, b.id); break;
+    case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
+    case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
@@ -137,5 +144,61 @@ export async function attachmentDownload(req, { pool, auth, store }) {
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const f = await readFile(pool, store, orgId, u.pathname.split('/').pop()); if (!f) return json(404, { error: 'No such file.' });
   return new Response(f.bytes, { status: 200, headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });
+}
+
+// THE PUBLIC HELP CENTER AND CUSTOMER PORTAL: /help/<organization>/… (server-rendered pages, no script)
+const html = (status, body, extra) => new Response(body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Language', ...(extra || {}) } });
+const redirect = (to, extra) => new Response(null, { status: 303, headers: { Location: to, 'Cache-Control': 'no-store', ...(extra || {}) } });
+const cookieOf = (req, name) => { const m = String(req.headers.get('cookie') || '').split(/;\s*/).map(x => x.split('=')).find(x => x[0] === name); return m ? m.slice(1).join('=') : ''; };
+const pickLang = (req, u) => { const q = u.searchParams.get('lang'); if (LANGS.includes(q)) return q; const a = String(req.headers.get('accept-language') || '').toLowerCase(); const best = a.split(',').map(x => x.trim().slice(0, 2)).find(x => LANGS.includes(x)); return best || 'en'; };
+export async function helpCenter(req, { pool, mailer, env = process.env, now = Date.now() }) {
+  const u = new URL(req.url), parts = u.pathname.replace(/^\/help\/?/, '').split('/').filter(Boolean).map(x => { try { return decodeURIComponent(x); } catch { return ''; } });
+  const org = parts[0] ? await orgBySlug(pool, parts[0]) : null, lang = pickLang(req, u), post = req.method === 'POST';
+  if (req.method !== 'GET' && !post) return json(405, { error: 'Method not allowed.' });
+  if (!org) return html(404, pages.notFoundPage({ org: { name: 'Help center' }, lang, base: '/help' }));
+  const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:';
+  const form = async () => { const t = await req.text(); if (t.length > 40000) return new URLSearchParams(); return new URLSearchParams(t); };
+  if (post) { const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' }); }
+  const cookie = cookieOf(req, COOKIE), sess = readSession(env, cookie, org.id, now);
+  const setCookie = v => `${COOKIE}=${v}; Path=/help; HttpOnly; SameSite=Lax; Max-Age=${v ? SESSION_SECONDS : 0}${secure ? '; Secure' : ''}`;
+  const notFound = () => html(404, pages.notFoundPage({ org, lang, base }), {});
+  // help center
+  if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, articles: await publishedList(pool, org.id, lang) }));
+  if (rest[0] === 'search' && !post) { const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, q, results: await searchArticles(pool, org.id, q, lang) })); }
+  if (rest[0] === 'a' && rest[1]) {
+    const found = await publicArticle(pool, org.id, rest[1], lang); if (!found) return notFound();
+    const a = found.article;
+    if (post && rest[2] === 'vote') { const f = await form(); const seen = cookieOf(req, 'eff_hv').split('.').includes(a.id.slice(0, 8)); if (!seen && (f.get('v') === 'yes' || f.get('v') === 'no')) await voteArticle(pool, org.id, a.id, f.get('v') === 'yes'); return redirect(`${base}/a/${a.slug}?lang=${a.lang}&voted=1`, { 'Set-Cookie': `eff_hv=${[...cookieOf(req, 'eff_hv').split('.').filter(Boolean), a.id.slice(0, 8)].slice(-30).join('.')}; Path=/help; Max-Age=2592000; SameSite=Lax${secure ? '; Secure' : ''}` }); }
+    if (post) return json(405, { error: 'Method not allowed.' });
+    if (found.better) return redirect(`${base}/a/${found.better.slug}?lang=${found.better.lang}`);
+    await countView(pool, org.id, a.id);
+    return html(200, pages.articlePage({ org, lang, base, a, html: renderBody(a.body), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
+  }
+  // customer portal
+  if (rest[0] === 'tickets') {
+    if (!rest[1] && !post) return sess ? html(200, pages.ticketsPage({ org, lang, base, email: sess.email, tickets: await myTickets(pool, org.id, sess.email) })) : html(200, pages.signinPage({ org, lang, base, sent: false, bad: u.searchParams.get('bad') === '1' }));
+    if (rest[1] === 'login' && post) {
+      const f = await form(), link = await requestLink(pool, org.id, f.get('email'), now);
+      if (link && mailer) { try { await mailer.portalLink(link.email, `${PRODUCT.appUrl}${base}/tickets/verify?t=${encodeURIComponent(link.token)}&lang=${lang}`, org.name, lang); } catch (e) { console.warn('portal link not sent:', e.message); } }
+      return html(200, pages.signinPage({ org, lang, base, sent: true, bad: false }));
+    }
+    if (rest[1] === 'verify') {
+      if (!post) return html(200, pages.confirmPage({ org, lang, base, token: String(u.searchParams.get('t') || '').slice(0, 100) }));     // opening the link only shows a button: mail scanners that open links cannot use it up
+      const email = await consumeLink(pool, org.id, (await form()).get('t')); if (!email) return redirect(`${base}/tickets?bad=1&lang=${lang}`);
+      return redirect(`${base}/tickets?lang=${lang}`, { 'Set-Cookie': setCookie(sessionCookie(env, org.id, email, now)) });
+    }
+    if (rest[1] === 'logout' && post) return redirect(`${base}/tickets?lang=${lang}`, { 'Set-Cookie': setCookie('') });
+    if (!sess) return redirect(`${base}/tickets?lang=${lang}`);
+    const n = /^\d{1,9}$/.test(rest[1] || '') ? Number(rest[1]) : 0; if (!n) return notFound();
+    if (!post) { const data = await myTicket(pool, org.id, sess.email, n); return data ? html(200, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: u.searchParams.get('sent') ? pages.T[lang].sent : '' })) : notFound(); }
+    if (rest[2] === 'reply') {
+      const f = await form(); if (!csrfOk(env, cookie, f.get('csrf'))) return json(403, { error: 'Bad request.' });
+      const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
+      if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
+      const r = await myReply(pool, org.id, sess.email, n, body, '');
+      return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
+    }
+  }
+  return notFound();
 }
 export const _json = json;

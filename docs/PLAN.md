@@ -11,7 +11,7 @@ Postgres schema for tickets, messages, attachments (object storage), queues, lab
 ## Phase 2: email in and out (first slice done, see docs/EMAIL.md: inbound webhook, threading, three reply modes, limits; attachments done; still to come: an organization's own sending domain, bounce handling)
 A per-organization reply address and inbound email webhook (Resend inbound or Postmark), outbound ticket notifications from the organization's own name, bounce and abuse handling, rate limits per plan. Exit: a customer writes to support@theirdomain and the agent answers from EffDesk.
 
-## Phase 3: help center and customer portal
+## Phase 3: help center and customer portal (first slice done, see docs/HELP.md: articles in two languages with translations, search, votes, public pages, sign-in-by-email portal with replies; still to come: portal new requests and files, custom domain and branding, categories, agent notifications)
 Bilingual articles, search, related articles, per-organization branding and custom domain, customer sign-in (magic link), "my tickets".
 
 ## Phase 4: service levels, translation, AI, reports

@@ -11,6 +11,9 @@ export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process
   return {
     verify: (to, url) => mail(to, `Confirm your email for ${PRODUCT.name}`, 'Confirm your email address to finish creating your account.', url, 'Confirm email'),
     reset: (to, url) => mail(to, `Reset your ${PRODUCT.name} password`, 'Someone asked to reset the password for this account. If it was you, use the link below. If not, ignore this email.', url, 'Choose a new password'),
+    portalLink: (to, url, orgName, lang) => lang === 'es'
+      ? mail(to, `Tu enlace de acceso a ${orgName}`, `Usa este enlace para ver tus solicitudes en ${orgName}. Sirve una vez durante 30 minutos. Si no lo pediste, ignora este correo.`, url, 'Ver mis solicitudes')
+      : mail(to, `Your sign-in link for ${orgName}`, `Use this link to see your requests with ${orgName}. It works once for 30 minutes. If you did not ask for it, ignore this email.`, url, 'See my requests'),
     ticketMail: msg => send(msg),                       // a ticket reply: own From, Reply-To and threading headers
     invite: (to, url, who, org) => mail(to, `${who} invited you to ${org} on ${PRODUCT.name}`, `${who} invited you to join ${org} as an agent.`, url, 'Accept the invitation'),
   };

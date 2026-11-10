@@ -1,0 +1,6 @@
+header .brand span{font-weight:400;color:var(--muted)}
+.doc h1{font-size:30px}.doc article{line-height:1.7}.doc article pre{overflow:auto;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}.doc article code{font-family:ui-monospace,Menlo,Consolas,monospace}
+.search{display:flex;gap:8px;margin:16px 0}.search input{flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--card);color:var(--ink)}
+ul.list{list-style:none;padding:0}ul.list li{padding:12px 0;border-bottom:1px solid var(--line)}ul.list li a{font-weight:600;display:block}
+form.inline{display:inline}form.wide{max-width:none;margin:24px 0}form.wide textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--card);color:var(--ink)}
+.msg-b{white-space:pre-wrap;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:8px}.msg-b.agent{border-left:4px solid var(--accent)}
