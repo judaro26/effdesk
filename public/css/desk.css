@@ -151,3 +151,12 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .chk{display:flex;align-items:center;gap:6px;font-size:14px}.chk input{width:auto}
 @media(max-width:800px){.newgrid{grid-template-columns:1fr}.newside{position:static}}
 .snip{background:var(--d-in);border:1px solid var(--d-line);border-radius:6px;padding:8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+/* new ticket form: use the whole screen */
+.deskapp .page.newt{max-width:none;width:100%;padding:16px 24px}
+.deskapp .newgrid{grid-template-columns:300px minmax(0,1fr);gap:28px}
+.deskapp .newmain .newsubj{font-size:26px;padding:12px 14px}
+.deskapp .newmain .ed-area{min-height:340px;font-size:15px}
+.deskapp .ed-bar select{width:auto;min-width:110px;padding:2px 6px}
+.deskapp .ed-bar{padding:6px 8px}
+.deskapp .newsubmit select{width:auto;min-width:110px}
+.deskapp .newsubmit{justify-content:flex-end}
