@@ -232,3 +232,96 @@ tr.row.kb-on{outline:2px solid var(--accent);outline-offset:-2px}
 .dlv.failed { color: #b3261e; font-weight: 600; }
 ol.steps { margin: 8px 0 12px; padding-left: 20px; color: var(--muted, #68737d); }
 ol.steps li { margin: 4px 0; }
+
+/* ===== PHONES AND SMALL TABLETS =====
+   The side rail becomes a bottom tab bar, the top bar becomes two rows, the ticket list becomes cards, the conversation comes before the ticket's properties, and Manage is a list of settings with a way back. Taps are at least 44px tall and fields are 16px so iOS does not zoom in. */
+html{-webkit-text-size-adjust:100%}
+.deskapp button,.deskapp a,.deskapp select,.deskapp input,.deskapp label{touch-action:manipulation}
+.mback{display:none}
+@media (max-width:800px){
+  .mgrid:not(.m-detail) .mmain{display:none}
+  .mgrid.m-detail .mnav{display:none}
+  .mnav{flex-direction:column;flex-wrap:nowrap;gap:0}
+  .mgroup{display:block;margin-bottom:10px}.mgh{display:flex;width:100%;min-height:44px}
+  .mnav-i{width:100%;min-height:48px;display:flex;align-items:center;justify-content:space-between;font-size:16px;border-bottom:1px solid var(--d-line);border-radius:0;text-align:left}
+  .mback{display:inline-flex;align-items:center;min-height:44px;border:0;background:transparent;color:var(--accent-d);font:inherit;font-size:16px;font-weight:600;padding:0;margin:0 0 4px;cursor:pointer}
+  .mmain{min-width:0}.mmain pre,.mmain table{max-width:100%;overflow-x:auto;display:block}
+}
+@media (max-width:700px){
+  .shell{display:block;min-height:100vh;min-height:100dvh;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;height:calc(60px + env(safe-area-inset-bottom));flex-direction:row;justify-content:space-around;align-items:flex-start;padding:4px 6px env(safe-area-inset-bottom);gap:0;z-index:40;box-shadow:0 -2px 14px rgba(0,0,0,.22)}
+  .rail .logo{display:none}
+  .rail .ri{flex:1 1 0;width:auto;max-width:84px;height:52px;border-radius:10px}
+  .rail .ri[aria-current="true"]::before{left:26%;right:26%;top:-4px;bottom:auto;width:auto;height:3px}
+  .work{display:block;min-width:0}
+  .top{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:8px 12px calc(8px);min-height:0;align-items:center;padding-top:calc(8px + env(safe-area-inset-top))}
+  .top .grow{display:none}
+  .top .tabs{grid-column:1/-1;margin:0 -12px;padding:0 12px}
+  .top #orgsel{grid-column:1/-1}.top #orgsel:empty{display:none}.top #orgsel select{width:100%}
+  .top #q{width:100%;margin:0;min-width:0}.top #newbtn{margin:0;white-space:nowrap}.usermenu{margin:0}
+  .top .tab{padding:10px 14px;min-height:44px}
+  .menu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(72px + env(safe-area-inset-bottom));min-width:0;max-height:70vh;overflow:auto}
+  .deskapp input,.deskapp select,.deskapp textarea{font-size:16px}
+  .deskapp .btn,.deskapp select,.deskapp input:not([type=checkbox]):not([type=radio]):not([type=color]){min-height:44px}
+  .deskapp .btn.sm{min-height:40px}
+  .deskapp input[type=checkbox],.deskapp input[type=radio]{width:22px;height:22px}
+  .deskapp .pad,.page{padding:14px 12px}
+  .deskapp .msg{padding:10px 12px}
+  .deskapp .msg.toast{left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));max-width:none}
+
+  /* the ticket list: filters become a row of chips and each ticket a card */
+  .views{display:block;height:auto}
+  .views .side{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:8px;padding:10px 12px;border-right:0;border-bottom:1px solid var(--d-line);scrollbar-width:none;align-items:center;position:sticky;top:0}
+  .views .side::-webkit-scrollbar{display:none}
+  .views .side .btn,.views .side .vrow{flex:none;white-space:nowrap}.views .side .btn{min-height:40px}
+  .views .side .flt[aria-pressed="true"] .n{color:inherit;opacity:.85}
+  .views .side h3{display:none}.views .side>div[role=group]{display:contents}
+  .views .side .flt{flex:none;width:auto;min-height:40px;border:1px solid var(--d-line);border-radius:999px;padding:6px 14px;gap:8px;white-space:nowrap}
+  .views .side .flt[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .views .tbl{overflow:visible}
+  .views table,.views tbody{display:block;width:100%}.views thead{display:none}
+  .views tr.row{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:12px 14px;border-bottom:1px solid var(--d-line);min-height:64px}
+  .views tr.row td{display:block;padding:0;border:0;font-size:13px;color:var(--d-muted)}
+  .views tr.row td.pick{order:-5;margin-right:2px}.views tr.row td.num{order:-4;font-weight:600;color:var(--d-ink)}.views tr.row td.c-status{order:-3}
+  .views tr.row td.subj{order:-2;flex:1 1 100%;max-width:none;white-space:normal;overflow:visible;font-size:15px;color:var(--d-ink);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .views tr.row td.subj .tagline{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .views tr.row td.c-req{font-weight:500}
+  .views tr.row td:not(.pick):not(.num):not(.c-status):not(.subj):not(:empty)+td:not(:empty)::before{content:"\00b7";margin-right:10px}
+  .bulkbar,.views .bulk{position:sticky;top:0;z-index:5;flex-wrap:wrap}
+
+  /* a ticket: the conversation first, the reply box stays within reach, properties and customer details below */
+  .ticket{display:flex;flex-direction:column;height:auto}
+  .ticket>.conv{order:1}.ticket>.props{order:2}.ticket>.info{order:3}
+  .conv .ch{padding:12px 12px 10px}.conv .ch h2{font-size:18px}
+  .thread{padding:12px 10px}.msg-b{max-width:92%;padding:10px 12px}
+  .msg-row{gap:6px}.msg-row .av{width:26px;height:26px}
+  .msg-b .mh{flex-wrap:wrap;row-gap:2px}.msg-b .mh .edit{min-height:32px;padding:4px 6px}
+  .msg-b pre,.msg-b table{max-width:100%;overflow-x:auto;display:block}
+  .conv .compose{padding:10px 12px 14px}
+  .conv .compose textarea{min-height:96px;max-height:40vh}
+  .chtools{position:static!important;display:flex;gap:8px;overflow-x:auto;margin:0 0 8px;padding:0;scrollbar-width:none}.chtools>*{flex:none}.chtools .btn,.chtools button,.chtools select{min-height:44px}
+  .ed-bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.ed-bar::-webkit-scrollbar{display:none}.ed-bar>*{flex:none}.ed-btn{min-width:44px;height:44px}.ed-bar select{height:44px}
+  .ed-area{min-height:120px;max-height:40vh}
+  .compose .bar .m{display:none}
+  .compose .modes{overflow-x:auto;white-space:nowrap;scrollbar-width:none}.compose .modes button,.compose .modes select{flex:none;min-height:40px}
+  .compose .bar{display:flex;flex-wrap:wrap;gap:8px}.compose .bar .btn,.compose .split{flex:1 1 auto}.compose .split{display:flex}.compose .split .btn{flex:1}
+  .conflict,.collide{margin:8px 12px;flex-wrap:wrap}
+  .conflict .btn{margin-top:6px}.conflict input,.conflict select{width:100%;margin-top:6px}
+  .ctools{padding:8px 12px;flex-wrap:wrap}.ctools label{white-space:normal;min-height:44px;display:flex;align-items:center;gap:8px}
+  .props,.info{padding:14px 12px}
+  .khelp{width:calc(100vw - 24px);max-height:80vh;overflow:auto}.khelp-bg{padding:12px}
+  .qpop{position:fixed;left:8px;right:8px;top:auto;width:auto;max-height:50vh;overflow:auto}
+  .conv .ch .ctools-hint,.khelp-hint{display:none}
+
+  /* dashboard, new ticket, forms */
+  .home-stats,.stats{grid-template-columns:1fr 1fr}
+  .newgrid>*,.page,.conv,.ticket>*{min-width:0;max-width:100%}
+  .modes select,.compose .modes select,.deskapp .newt select{max-width:62vw}
+  .deskapp .attach input[type=file]{width:1px!important;height:1px!important;min-height:0!important;max-width:1px!important}
+  .ed-link{flex-wrap:wrap}.ed-link[hidden]{display:none}.ed-link input,.deskapp .newt .ed-link input{min-width:0;width:100%;flex:1 1 100%}
+  .newmain .modes{overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}
+  .newgrid{display:flex;flex-direction:column}.newgrid>.newmain{order:1}.newgrid>.newside{order:2;position:static}
+  .mmain{padding:10px 16px 18px}.mnav{padding:6px 16px 12px}
+  .prop,.pp{margin-bottom:10px}
+}
+@media (max-width:700px) and (prefers-reduced-motion:no-preference){.rail .ri{transition:background .15s}}

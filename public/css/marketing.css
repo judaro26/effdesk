@@ -75,3 +75,4 @@ body.mk{margin:0;font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvet
 .pl .pr small{display:block;margin-top:6px}.pl li.sn::before{border:0;width:8px;height:8px;border-radius:50%;background:var(--amber);transform:none;top:.62em;left:3px}.qa article{align-content:start}.qa .q{align-self:start}
 
 .brand{display:inline-flex;align-items:center;gap:10px}.brand img{border-radius:8px}
+.dev code,.dev p,.dev li{overflow-wrap:anywhere}.dev pre{max-width:100%;overflow-x:auto}

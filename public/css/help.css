@@ -4,3 +4,14 @@ header .brand span{font-weight:400;color:var(--muted)}
 ul.list{list-style:none;padding:0}ul.list li{padding:12px 0;border-bottom:1px solid var(--line)}ul.list li a{font-weight:600;display:block}
 form.inline{display:inline}form.wide{max-width:none;margin:24px 0}form.wide textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--card);color:var(--ink)}
 .msg-b{white-space:pre-wrap;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:8px}.msg-b.agent{border-left:4px solid var(--accent)}
+/* phones: nothing may be wider than the screen, taps are 44px, fields are 16px so iOS does not zoom */
+.search input{min-width:0;font-size:16px;min-height:44px}.search .btn,.search button{flex:none;min-height:44px}
+form.wide textarea{font-size:16px}
+.doc{overflow-wrap:anywhere}.doc article img,.doc article video{max-width:100%;height:auto}.doc article table{display:block;max-width:100%;overflow-x:auto}.doc article pre{max-width:100%}
+@media (max-width:600px){
+  header .in{height:auto;min-height:56px;padding-top:8px;padding-bottom:8px;gap:12px;flex-wrap:wrap}
+  header .brand{font-size:18px;flex:1 1 auto;min-width:0}header nav{margin-left:auto;display:flex;align-items:center;gap:10px;white-space:nowrap}header nav a,header nav .btn{display:inline-flex;align-items:center;min-height:44px}
+  .doc h1{font-size:26px}ul.list li a{padding:4px 0;min-height:44px}
+  .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  footer{margin-top:40px}
+}
