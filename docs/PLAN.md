@@ -5,7 +5,7 @@ The portal screens of mdv's support desk (tickets, help center, SLA, translation
 ## Phase 0: foundation (done in this repository)
 Own repo, own Neon database, own sign-in (Better Auth), organizations and invitations, seat limits, plans and prices, Paddle webhooks and checkout details, lifetime licence for mdv, row-level security, landing and pricing, account page, draft legal documents. Tests on a real Postgres.
 
-## Phase 1: tickets core
+## Phase 1: tickets core (first slice done: tickets, messages and notes, per-organization numbering, filters and search, assignment, tags, the agent desk page at /desk.html; still to come: attachments, queues, macros, saved views, plan gating)
 Postgres schema for tickets, messages, attachments (object storage), queues, labels, macros, views; a repository layer with every query scoped by `org_id`; the agent portal screens; plan gating (`has(entitlements, 'sla')` and so on). Exit: an agent in a free organization can create and answer tickets in the browser.
 
 ## Phase 2: email in and out

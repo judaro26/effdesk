@@ -3,9 +3,10 @@ import { PRODUCT, platformAdmins } from './config.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
+import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
-const readJson = async req => { try { const t = await req.text(); if (t.length > 10000) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const session = async (auth, req) => { try { return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
 const roleIn = async (pool, userId, orgId) => (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [userId, orgId])).rows[0]?.role || '';
 const audit = (pool, orgId, actorId, action, target, meta) => withOrg(pool, orgId, c => c.query('insert into audit_log (org_id, actor_id, action, target, meta) values ($1,$2,$3,$4,$5)', [orgId, actorId, action, target || null, JSON.stringify(meta || {})]));
@@ -58,5 +59,27 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
   if (!r.ok) { console.warn('paddle event not applied:', r.why, ev && ev.event_id); return json(r.why === 'malformed' ? 400 : 200, { ok: false, why: r.why }); }          // an event we cannot use is acknowledged (200) so Paddle does not retry it forever
   if (r.orgId && r.why === 'applied') await audit(pool, r.orgId, null, 'plan-changed', r.orgId, { plan: r.plan, seats: r.seats, status: r.status });
   return json(200, { ok: true, why: r.why });
+}
+
+// the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
+export async function tickets(req, { pool, auth }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
+  const orgId = String(b.orgId || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  if (!role) return json(403, { error: 'You are not part of that organization.' });
+  const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
+  let r;
+  switch (b.action) {
+    case 'list': r = await listTickets(pool, orgId, actor, b); break;
+    case 'get': r = await getTicket(pool, orgId, actor, b.number); break;
+    case 'create': r = await createTicket(pool, orgId, actor, b); break;
+    case 'reply': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status }); break;
+    case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
+    case 'update': r = await updateTicket(pool, orgId, actor, b.number, b.patch || {}); break;
+    case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
+    default: return json(400, { error: 'Unknown action.' });
+  }
+  return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }
 export const _json = json;
