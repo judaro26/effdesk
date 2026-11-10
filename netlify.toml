@@ -16,3 +16,65 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.paddle.com; frame-src https://buy.paddle.com https://sandbox-buy.paddle.com; connect-src 'self' https://checkout-service.paddle.com https://sandbox-checkout-service.paddle.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+# Sign-in, the account page, the desk and invitations belong to the app host (the session cookie is for that host only). The marketing site links to them, and these redirects carry the visitor over.
+[[redirects]]
+  from = "https://effdesk.com/auth.html"
+  to = "https://app.effdesk.com/auth.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/app.html"
+  to = "https://app.effdesk.com/app.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/desk.html"
+  to = "https://app.effdesk.com/desk.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/accept-invitation"
+  to = "https://app.effdesk.com/accept-invitation"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/accept-invitation.html"
+  to = "https://app.effdesk.com/accept-invitation.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/auth.html"
+  to = "https://app.effdesk.com/auth.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/app.html"
+  to = "https://app.effdesk.com/app.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/desk.html"
+  to = "https://app.effdesk.com/desk.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/accept-invitation"
+  to = "https://app.effdesk.com/accept-invitation"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/accept-invitation.html"
+  to = "https://app.effdesk.com/accept-invitation.html"
+  status = 301
+  force = true
+
