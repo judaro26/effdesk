@@ -2,10 +2,10 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
-  var ICONS = { tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
-    { id: 'classic', name: 'Classic', blurb: 'Follows your device: light by day, dark by night.', sw: ['#14181b', '#f4f5f7', '#ffffff', '#e8890c'] },
+    { id: 'classic', name: 'Classic', blurb: 'The familiar help-desk look: teal rail, blue accents. Follows your device light or dark setting.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
     { id: 'midnight', name: 'Midnight', blurb: 'Always dark and easy on the eyes.', sw: ['#090c10', '#0f1318', '#171c23', '#f4a030'], },
     { id: 'aurora', name: 'Aurora', pro: true, blurb: 'Deep indigo with a violet and cyan glow.', sw: ['#3a22a0', '#0c0a1d', '#1a1640', '#8b7bff'] },
     { id: 'sunset', name: 'Sunset', pro: true, blurb: 'Warm cream, coral and plum.', sw: ['#ec4a6c', '#fff4ec', '#fffdfb', '#ec4a6c'] },
@@ -17,7 +17,7 @@
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -34,7 +34,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -44,7 +44,7 @@
         orgs = r.body.organizations; me = r.body.user.email; meId = r.body.user.id; meName = r.body.user.name || me; doc.getElementById('who').textContent = me; doc.getElementById('av').textContent = initial(me);
         var want = new URLSearchParams(nav.search || '').get('org'); var o = orgs.filter(function (x) { return x.id === want; })[0] || orgs[0];
         if (!o) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
-        orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')); return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); });
+        orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')); return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); return goHome(); });
       });
     }
     function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
@@ -59,6 +59,7 @@
       });
     }
     function goViews() { closePanes(); draw(); }
+    function goHome() { closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
     function search() { filter.q = qBox.value.trim(); closePanes(); refresh(); }
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
     newBtn.addEventListener('click', function () { closePanes(); creating = true; draw(); });
@@ -79,10 +80,11 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
-      rail.appendChild(el('a', { class: 'logo', href: '/', 'aria-label': 'EffDesk home', title: 'EffDesk' }, 'E'));
+      rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, 'E'));
+      rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'Tickets', 'data-nav', goViews));
       rail.appendChild(item('manage', 'Manage queues, clients and macros', 'data-manage', function () { closePanes(); manage = 'queues'; mEdit = null; draw(); }));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
@@ -91,7 +93,8 @@
       rail.appendChild(el('span', { class: 'grow' }));
       rail.appendChild(el('a', { class: 'ri', href: '/app.html', 'aria-label': 'Account', title: 'Account and billing' }, icon('account')));
       while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
-      var onViews = !current && !creating && !settings && !articles && !manage && !profile && !report;
+      var onViews = !home && !current && !creating && !settings && !articles && !manage && !profile && !report;
+      tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-home-tab': '1', 'aria-selected': String(home), onclick: goHome }, 'Home'));
       tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-views': '1', 'aria-selected': String(onViews), onclick: goViews }, 'Views'));
       openTabs.forEach(function (t) {
         var on = !!current && current.ticket.number === t.number;
@@ -256,6 +259,27 @@
     // reports
     function loadReport() { return api('report', { days: reportDays }).then(function (r) { if (r.status === 402) { closePanes(); report = { locked: true }; return draw(); } if (!r.ok) return say(r.body.error, true); closePanes(); report = r.body; draw(); }); }
     function hlist(title, rows) { var max = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.n; }))); return el('div', { class: 'rcard' }, el('h3', {}, title), rows.length ? rows.map(function (r) { return el('div', { class: 'hbar' }, el('span', { class: 'hn' }, cap(r.name)), el('span', { class: 'ht' }, el('span', { class: 'hf', style: 'width:' + Math.max(2, Math.round(100 * r.n / max)) + '%' })), el('span', { class: 'hv' }, String(r.n))); }) : el('p', { class: 'm' }, 'Nothing yet.')); }
+    function homePane() {
+      if (!dash) return el('div', { class: 'page wide' }, el('h2', {}, 'Dashboard'), el('p', { class: 'm' }, 'Loading…'));
+      var c = dash.counts, first = (meName || '').split(' ')[0] || 'there', hr = new Date().getHours(), hello = (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + ', ' + first;
+      var go = function (f) { return function () { closePanes(); filter = f; refresh(); }; };
+      var stat = function (label, value, f, data) { var b = el('button', { type: 'button', class: 'stat link', onclick: go(f) }, el('div', { class: 'sv' }, String(value)), el('div', { class: 'sl' }, label)); b.setAttribute(data, '1'); return b; };
+      var cards = [stat('Open', c.open, { status: 'open', assignee: '', q: '' }, 'data-stat-open'), stat('Pending', c.pending, { status: 'pending', assignee: '', q: '' }, 'data-stat-pending'), stat('Unassigned', c.unassigned, { status: 'active', assignee: 'none', q: '' }, 'data-stat-unassigned'), stat('Assigned to me', c.mine, { status: 'active', assignee: 'me', q: '' }, 'data-stat-mine'),
+        el('div', { class: 'stat' }, el('div', { class: 'sv' }, String(c.newToday)), el('div', { class: 'sl' }, 'New today')), el('div', { class: 'stat' }, el('div', { class: 'sv' }, String(c.solvedToday)), el('div', { class: 'sl' }, 'Solved today'), el('div', { class: 'm' }, c.solvedWeek + ' this week'))];
+      if (c.breached !== null && c.breached !== undefined) cards.push(stat('SLA breached', c.breached, { status: '', assignee: '', q: '', sla: 'breached' }, 'data-stat-breached'));
+      var list = function (title, rows, empty, data) {
+        var box = el('div', { class: 'pcard' }, el('h3', {}, title)); box.setAttribute(data, '1');
+        if (!rows.length) box.appendChild(el('p', { class: 'm' }, empty));
+        rows.forEach(function (t) { box.appendChild(el('button', { type: 'button', class: 'hrow', 'data-open': String(t.number), onclick: function () { open(t.number); } }, el('span', { class: 'grow' }, '#' + t.number + ' ' + t.subject), el('span', { class: 'm' }, t.requester + ' · ' + ago(t.updatedAt)))); });
+        return box;
+      };
+      var st = dash.setup, steps = [[st.inbox, 'Set up your support email address', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }], [st.articles, 'Write your first help article', loadArticles], [st.team, 'Invite a teammate', function () { location_go('/app.html'); }], [st.firstTicket, 'Create a test ticket', function () { closePanes(); creating = true; draw(); }]];
+      var todo = steps.filter(function (x) { return !x[0]; }), setup = null;
+      if (todo.length) { setup = el('div', { class: 'pcard', 'data-setup': '1' }, el('h3', {}, 'Finish setting up (' + (steps.length - todo.length) + ' of ' + steps.length + ' done)')); todo.forEach(function (x) { setup.appendChild(el('button', { type: 'button', class: 'hrow', onclick: x[2] }, el('span', { class: 'grow' }, x[1]), el('span', { class: 'm' }, 'Go →'))); }); }
+      return el('div', { class: 'page wide' }, el('div', { class: 'bar' }, el('h2', {}, hello), el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn', 'data-new-home': '1', onclick: function () { closePanes(); creating = true; draw(); } }, 'New ticket')),
+        el('div', { class: 'stats' }, cards), setup, el('div', { class: 'rgrid' }, list('Assigned to you', dash.mine, 'Nothing is waiting on you.', 'data-list-mine'), list('Needs an owner', dash.unassigned, 'Every active ticket has an owner.', 'data-list-unassigned')));
+    }
+    function location_go(u) { nav.go(u); }
     function reportPane() {
       if (report.locked) return el('div', { class: 'page' }, el('h2', {}, 'Reports'), el('div', { class: 'pcard' }, el('p', {}, 'See volume, response times, who solved what and SLA results, and download the tickets as a spreadsheet.'), lock('reports')));
       var r = report, top = Math.max.apply(null, [1].concat(r.perDay.map(function (d) { return Math.max(d.created, d.solved); })));
@@ -358,7 +382,7 @@
       drawChrome(); drawMenu();
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg' + (bad ? ' err' : ''), role: 'status' }, note));
-      main.appendChild(el('div', { class: 'desk' }, profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }

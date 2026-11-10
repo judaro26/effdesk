@@ -21,3 +21,6 @@ The plan of each feature is set in one place, `src/plans.js` (`BASE`, `TEAM`, `S
 - **Macros** fill the reply (`{{name}}` = requester's first name, `{{agent}}` = you) and can set status, priority and labels when sent. Only owners and admins create them.
 - **Themes** are saved per person (`desk_prefs`) and cached in the browser so the page does not flash. A premium theme saved before a plan ended falls back to Classic. The three lists (server `src/themes.js`, picker colours in `desk.js`, styles in `desk.css`) are kept in step by a test.
 - Not built yet: emailing followers when the customer replies, and translating messages.
+
+## Dashboard (home)
+The desk opens on a dashboard (action `dashboard`, `src/dashboard.js`): open / pending / unassigned / mine / new and solved today, SLA breached (plans with SLA), your tickets, tickets that need an owner, and a setup checklist (support email, first article, a teammate, a first ticket). The numbers link to the matching ticket list. The top-left logo and the Home tab go to this page, not the marketing site.

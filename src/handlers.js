@@ -15,6 +15,7 @@ import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAge
 import * as desk from './desk.js';
 import { getSla, saveSla, slaOf } from './sla.js';
 import { report as buildReport, reportCsv } from './reports.js';
+import { dashboard } from './dashboard.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
@@ -102,6 +103,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       await pool.query('insert into desk_prefs (user_id, theme, notify) values ($1, coalesce($2, \'classic\'), coalesce($3, true)) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null]);
       r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}) }; break;
     }
+    case 'dashboard': r = await dashboard(pool, orgId, actor, { sla: planHas(ent, 'sla'), agents: (await listAgents(pool, orgId)).length }); break;
     case 'sla-get': if ((g = need('sla'))) return g; r = await getSla(pool, orgId); break;
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
