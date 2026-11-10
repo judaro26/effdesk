@@ -37,7 +37,7 @@ export async function removeMember(pool, orgId, actor, actorRole, memberId, reas
     return n;
   });
   await pool.query('delete from member where "organizationId" = $1 and id = $2', [orgId, m.id]);
-  return { ok: true, email: m.email, reassigned: moved, to };
+  return { ok: true, email: m.email, userId: m.user_id, reassigned: moved, to };
 }
 export async function cancelInvite(pool, orgId, inviteId) {
   const r = await pool.query("update invitation set status = 'canceled' where \"organizationId\" = $1 and id = $2 and status = 'pending'", [orgId, String(inviteId || '')]);

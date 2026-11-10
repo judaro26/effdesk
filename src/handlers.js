@@ -28,6 +28,8 @@ import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
+import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
+import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
 import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
 import { SUPPORT_READ, recentEntries, customerDetail, countApiCall } from './support.js';
@@ -96,6 +98,8 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
+// changes that go into the audit log without further ado (team and plan changes write their own entries)
+const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -111,6 +115,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
   if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
   const isAdmin = role === 'owner' || role === 'admin', ent = await getEntitlements(pool, orgId);
+  // a custom role limits what a full agent may change
+  const cr = role === 'member' && !support ? await customRoleOf(pool, orgId, s.user.id) : null, perm = permFor(String(b.action));
+  if (cr && perm && !cr.permissions.includes(perm)) return json(403, { error: `Your role (${cr.name}) does not allow this. Ask an admin.` });
   // a feature of a higher plan: refuse with the name of the plan that has it
   const need = f => planHas(ent, f) ? null : json(402, { error: `This is part of the ${PLANS[Object.keys(PLANS).find(k => PLANS[k].features.includes(f))].name} plan. Upgrade to use it.`, upgrade: true });
   const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
@@ -122,7 +129,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, support, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
@@ -139,9 +146,18 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'tokens-list': if ((g = adminOnly() || need('api'))) return g; r = await listTokens(pool, orgId); break;
     case 'token-create': if ((g = adminOnly() || need('api'))) return g; r = await createToken(pool, orgId, actor.id, b.name); break;
     case 'token-delete': if ((g = adminOnly() || need('api'))) return g; if (!(await deleteToken(pool, orgId, b.id))) return json(404, { error: 'No such token.' }); r = { ok: true }; break;
+    case 'roles-list': if ((g = adminOnly() || need('custom_roles'))) return g; r = await listRoles(pool, orgId); break;
+    case 'role-save': if ((g = adminOnly() || need('custom_roles'))) return g; r = await saveRole(pool, orgId, b); break;
+    case 'role-delete': if ((g = adminOnly() || need('custom_roles'))) return g; if (!(await deleteRole(pool, orgId, b.id))) return json(404, { error: 'No such role.' }); r = { ok: true }; break;
+    case 'role-assign': if ((g = adminOnly() || need('custom_roles'))) return g; r = await assignRole(pool, orgId, b.userId, b.roleId); break;
+    case 'audit-list': if ((g = adminOnly() || need('audit_log'))) return g; r = await listAudit(pool, orgId, b); break;
+    case 'audit-csv': if ((g = adminOnly() || need('audit_log'))) return g; r = await auditCsv(pool, orgId, b); break;
+    case 'export-info': if ((g = adminOnly() || need('data_export'))) return g; r = await exportInfo(pool, orgId); break;
+    case 'export-data': if ((g = adminOnly() || need('data_export'))) return g; r = await exportData(pool, orgId, b.part); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'part ' + r.part, { tickets: r.tickets }); break;
+    case 'export-tickets-csv': if ((g = adminOnly() || need('data_export'))) return g; r = await ticketsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'tickets csv', {}); break;
     case 'team-list': if ((g = adminOnly())) return g; r = await listTeam(pool, orgId, ent); break;
     case 'team-role': if ((g = adminOnly() || (b.role === 'light' ? need('light_agents') : null))) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
-    case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;
+    case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await clearAssignment(pool, orgId, r.userId || ''); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;
     case 'team-invite': {
       if ((g = adminOnly())) return g; const em = String(b.email || '').trim().toLowerCase(), rl = b.role === 'admin' ? 'admin' : 'member';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return json(400, { error: 'Enter a valid email address.' });
@@ -303,6 +319,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
     default: return json(400, { error: 'Unknown action.' });
   }
+  if (r.ok && AUDITED.has(String(b.action)) && !support) await audit(pool, orgId, actor.id, String(b.action), String(b.id ?? b.userId ?? b.number ?? b.name ?? b.key ?? '').slice(0, 120) || null, {}).catch(() => {});
   return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }
 
