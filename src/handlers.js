@@ -20,6 +20,7 @@ import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
+import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
@@ -130,6 +131,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'get': {
       r = await getTicket(pool, orgId, actor, b.number);
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
+      if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
       if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies) };
       break;
     }
@@ -160,6 +162,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
         const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
       }
+      if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok) await emitHook(pool, orgId, 'message.agent', b.number, { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
@@ -168,7 +171,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'article-get': r = await getArticle(pool, orgId, b.id); break;
     case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
-    case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
+    case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;
+    case 'csat-set': if ((g = adminOnly())) return g; await setCsatOn(pool, orgId, b.on === true); r = { ok: true, csatOn: b.on === true }; break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true });
@@ -185,6 +189,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const was = pt.assigneeId ? (await pool.query('select assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(b.number) || 0])).rows[0]?.assignee_id : null;
       r = await updateTicket(pool, orgId, actor, b.number, pt);
       if (r.ok) await emitHook(pool, orgId, 'ticket.updated', b.number, { changes: Object.keys(pt) });
+      if (r.ok && pt.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok && pt.assigneeId && pt.assigneeId !== was && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
       break;
     }
@@ -274,6 +279,14 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     if (found.better) return redirect(`${base}/a/${found.better.slug}?lang=${found.better.lang}`);
     await countView(pool, org.id, a.id);
     return html(200, pages.articlePage({ org, lang, base, a, html: renderBody(a.body), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
+  }
+  // the rating page from the survey email
+  if (rest[0] === 'csat' && /^\d{1,9}$/.test(rest[1] || '')) {
+    const n = Number(rest[1]);
+    if (!post) { const t = u.searchParams.get('t') || ''; if (!tokenOk(env, org.id, n, t)) return notFound(); return html(200, pages.csatPage({ org, lang, base, number: n, token: t, pre: u.searchParams.get('r') })); }
+    const f = await form(); if (!tokenOk(env, org.id, n, f.get('t'))) return notFound();
+    const ok = await rate(pool, org.id, n, f.get('r'), f.get('comment')); if (!ok) return notFound();
+    return html(200, pages.csatPage({ org, lang, base, number: n, token: '', done: true }));
   }
   // customer portal
   if (rest[0] === 'tickets') {

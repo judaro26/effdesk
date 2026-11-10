@@ -3,7 +3,7 @@ import { PRODUCT } from './config.js';
 const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // THE LOOK OF EVERY EMAIL THE PRODUCT SENDS: a card with the EffDesk name, a clear heading, one button, and the plain link below it (for mail programs that hide buttons). Inline styles only: mail programs ignore style sheets.
-export function emailLayout({ preheader = '', heading, paragraphs = [], button, url, foot = '' }) {
+export function emailLayout({ preheader = '', heading, paragraphs = [], button, url, button2, url2, foot = '' }) {
   const ink = '#1d2428', muted = '#68737d', accent = '#e8890c';
   const p = t => `<p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:${ink}">${esc(t)}</p>`;
   return `<!doctype html><html><body style="margin:0;padding:0;background:#f4f1ea"><span style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(preheader)}</span>
@@ -11,7 +11,7 @@ export function emailLayout({ preheader = '', heading, paragraphs = [], button, 
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;border:1px solid #e6e1d6;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
 <tr><td style="padding:28px 32px 8px"><span style="font-size:22px;font-weight:800;color:${ink}">Eff<span style="color:${accent}">Desk</span></span></td></tr>
 <tr><td style="padding:8px 32px 0"><h1 style="margin:0 0 16px;font-size:24px;line-height:1.25;color:${ink}">${esc(heading)}</h1>${paragraphs.map(p).join('')}</td></tr>
-${button && url ? `<tr><td style="padding:4px 32px 8px"><a href="${esc(url)}" style="display:inline-block;background:${accent};color:#1d1100;font-weight:700;font-size:16px;text-decoration:none;padding:13px 26px;border-radius:9px">${esc(button)}</a></td></tr>
+${button && url ? `<tr><td style="padding:4px 32px 8px"><a href="${esc(url)}" style="display:inline-block;background:${accent};color:#1d1100;font-weight:700;font-size:16px;text-decoration:none;padding:13px 26px;border-radius:9px">${esc(button)}</a>${button2 && url2 ? ` <a href="${esc(url2)}" style="display:inline-block;background:#ffffff;color:${ink};border:1px solid #cfc8b8;font-weight:700;font-size:16px;text-decoration:none;padding:12px 24px;border-radius:9px;margin-left:8px">${esc(button2)}</a>` : ''}</td></tr>
 <tr><td style="padding:16px 32px 0"><p style="margin:0;font-size:13px;line-height:1.5;color:${muted}">Button not working? Copy this link into your browser:<br><a href="${esc(url)}" style="color:${muted};word-break:break-all">${esc(url)}</a></p></td></tr>` : ''}
 <tr><td style="padding:24px 32px 28px"><p style="margin:0;font-size:13px;line-height:1.5;color:${muted}">${esc(foot)}</p></td></tr>
 </table><p style="margin:16px 0 0;font-size:12px;color:${muted};font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">${esc(PRODUCT.name)}, a simple and affordable help desk.</p>
@@ -37,6 +37,7 @@ export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process
       const what = kind === 'assigned' ? 'A ticket was assigned to you' : kind === 'mention' ? 'You were mentioned in an internal note' : kind === 'side' ? 'New reply in a side conversation' : 'The customer replied';
       return mail(to, `${what}: #${number} ${subject}`, { preheader: summary || what, heading: what, paragraphs: [`#${number} ${subject} (${orgName})`, ...(summary ? [summary] : [])], button: 'Open the ticket', url, foot: 'You get this because you follow the ticket, own it, or it was assigned to you. You can switch these emails off under Profile and themes on your desk.' });
     },
+    csat: (to, { orgName, number, subject, name, good, bad }) => mail(to, `How did we do? #${number} ${subject}`, { preheader: 'One click and an optional comment.', heading: name ? `${name}, how did we do?` : 'How did we do?', paragraphs: [`Your request "${subject}" (#${number}) with ${orgName} was marked solved. Was the support you got good or bad?`], button: 'Good', url: good, button2: 'Bad', url2: bad, foot: `You get this once, when a request is solved. If you are not happy, rating it bad lets ${orgName} know.` }),
     ticketMail: msg => send(msg),                       // a ticket reply: own From, Reply-To and threading headers
   };
 }
