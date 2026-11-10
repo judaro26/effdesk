@@ -102,9 +102,9 @@
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, 'E'));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'Tickets', 'data-nav', goViews));
-      rail.appendChild(item('manage', 'Manage queues, clients and macros', 'data-manage', function () { closePanes(); manage = 'queues'; mEdit = null; draw(); }));
+      if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
-      rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
+      if (isAdmin || support) rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
       rail.appendChild(item('help', 'Help center', 'data-help', loadArticles));
       rail.appendChild(el('span', { class: 'grow' }));
       rail.appendChild(el('a', { class: 'ri', href: '/app.html', 'aria-label': 'Account', title: 'Account and billing' }, icon('account')));
@@ -439,9 +439,23 @@
         el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-save': '1', onclick: function () { api('rule-save', rd).then(function (r) { if (!r.ok) return say(r.body.error, true); rd = null; rules = null; say('Automation saved.'); }); } }, 'Save automation'), el('button', { type: 'button', class: 'btn l', onclick: function () { rd = null; again(); } }, 'Cancel'))));
     }
     function managePane() {
-      var tabs = [['team', 'Team'], ['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations'], ['api', 'API'], ['fields', 'Fields'], ['chat', 'Live chat'], ['sso', 'Single sign-on'], ['support', 'Support visits']];
-      if (support) tabs = tabs.filter(function (t) { return t[0] !== 'support'; });
-      var head = el('div', { class: 'mtabs', role: 'tablist' }, tabs.map(function (t) { return el('button', { type: 'button', role: 'tab', 'data-manage-tab': t[0], 'aria-selected': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, t[1]); }));
+      // the settings are grouped by what they are for; each entry: id, name, what it does, the plan feature it needs (if any)
+      var groups = [
+        ['People and access', [['team', 'Team', 'Invite agents and set who can do what.'], ['sso', 'Single sign-on', 'Let people sign in with your company identity provider.', 'sso'], ['support', 'Support visits', 'See when EffDesk support looked at this workspace.']]],
+        ['Tickets', [['queues', 'Queues', 'Split work between teams and send tickets to the right one.', 'queues'], ['fields', 'Ticket fields', 'Add your own fields to every ticket.', 'custom_fields'], ['macros', 'Macros', 'Saved replies that also set status, priority and labels.'], ['triggers', 'Automations', 'Rules that act on tickets by themselves.', 'triggers'], ['sla', 'SLA and hours', 'Reply and solve targets, and business hours.', 'sla']]],
+        ['Customers', [['clients', 'Clients', 'Group requesters by company.', 'clients']]],
+        ['Channels', [['chat', 'Live chat', 'A chat button for your website.', 'live_chat']]],
+        ['Developers', [['integrations', 'Integrations', 'Slack, Microsoft Teams and webhooks.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
+      ];
+      var flat = []; groups.forEach(function (g) { g[1].forEach(function (t) { if (!(support && t[0] === 'support')) flat.push(t); }); });
+      var cur = flat.filter(function (t) { return t[0] === manage; })[0] || flat[0];
+      var head = el('nav', { class: 'mnav', 'aria-label': 'Manage' }, groups.map(function (g) {
+        var items = g[1].filter(function (t) { return !(support && t[0] === 'support'); }); if (!items.length) return null;
+        return el('div', { class: 'mgroup' }, el('div', { class: 'mgh' }, g[0]), items.map(function (t) {
+          var locked = t[3] && !has(t[3]);
+          return el('button', { type: 'button', class: 'mnav-i', 'data-manage-tab': t[0], 'aria-current': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, el('span', {}, t[1]), locked ? el('span', { class: 'mplan' }, PLAN_OF[t[3]] || 'Upgrade') : null);
+        }));
+      }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
       var guardAdmin = !isAdmin ? el('p', { class: 'm' }, 'Only an owner or an admin can change these.') : null;
       if (manage === 'queues') {
@@ -570,7 +584,7 @@
         body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'A macro is a canned reply. Pick it in the reply box; it can also set the status, priority and labels when you send.'), macros.map(function (y) { return el('div', { class: 'mitem', 'data-macro-item': String(y.id) }, el('span', { class: 't' }, y.name), isAdmin ? el('span', { class: 'acts' }, el('button', { type: 'button', class: 'btn l sm', onclick: function () { mEdit = y; draw(); } }, 'Edit'), el('button', { type: 'button', class: 'btn l sm', 'data-macro-delete': String(y.id), onclick: function () { api('macro-delete', { id: y.id }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Macro deleted.'); }); } }, 'Delete')) : null); }),
           guardAdmin || el('div', { class: 'page', style: 'padding:12px 0' }, mn, mb, ms, mp, mt, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-macro-save': '1', onclick: function () { api('macro-save', { id: m.id, name: mn.value, body: mb.value, status: ms.value, priority: mp.value, addTags: mt.value }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Macro saved.'); }); } }, m.id ? 'Save macro' : 'Add macro'), m.id ? el('button', { type: 'button', class: 'btn l', onclick: function () { mEdit = null; draw(); } }, 'Cancel') : null)));
       }
-      return el('div', { class: 'page' }, el('h2', {}, 'Manage'), head, body);
+      return el('div', { class: 'page mgr' }, el('h2', {}, 'Manage'), el('div', { class: 'mgrid' }, head, el('section', { class: 'mmain', 'aria-label': cur[1] }, el('h3', { class: 'mtitle' }, cur[1]), el('p', { class: 'm mdesc' }, cur[2]), body)));
     }
 
     // ── profile and themes ──
