@@ -190,3 +190,5 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .conv .ch{position:relative}.chtools{position:absolute;top:12px;right:16px;display:flex;gap:6px;align-items:center}
 .chtools .ib{width:34px;height:34px;border:1px solid var(--d-line);border-radius:8px;background:var(--d-panel);color:var(--d-ink);font-size:16px;cursor:pointer;line-height:1}.chtools .ib:hover{background:var(--d-hover)}.chtools .ib[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .chtools select{width:auto;font-size:13px;height:34px}
+
+.perms{display:grid;gap:6px;margin:8px 0}.perms .chk{display:flex;gap:8px;align-items:center;font-size:14px}
