@@ -1,6 +1,6 @@
 // scripts/test-portal-worker.js: <slug>.effdesk.com. The worker's rewrites, and the app trusting the public address only with the shared secret.
 import { check, done } from './lib/check.js';
-import { slugOf, stripBase, fixLocation, fixCookie, handle } from '../cloudflare/portal-worker.js';
+import { isDeskPath, slugOf, stripBase, fixLocation, fixCookie, handle } from '../cloudflare/portal-worker.js';
 import { portalOrigin } from '../src/handlers.js';
 const ENVW = { PORTAL_DOMAIN: 'effdesk.com', ORIGIN_HOST: 'effdesk.netlify.app', PORTAL_PROXY_SECRET: 's3cret-value' };
 check('a customer name is read from the host, nothing else is', slugOf('rooster.effdesk.com', 'effdesk.com') === 'rooster' && slugOf('Rooster.EffDesk.com:443', 'effdesk.com') === 'rooster' && slugOf('effdesk.com', 'effdesk.com') === null && slugOf('a.b.effdesk.com', 'effdesk.com') === null && slugOf('rooster.evil.com', 'effdesk.com') === null && slugOf('-x.effdesk.com', 'effdesk.com') === null);
@@ -18,4 +18,9 @@ check('app.effdesk.com is not touched', passed);
 check('an unconfigured worker says so instead of guessing', (await handle(new Request('https://rooster.effdesk.com/'), { PORTAL_DOMAIN: 'effdesk.com' }, origin)).status === 503);
 const req = (h) => new Request('https://effdesk.netlify.app/help/rooster', { headers: h }), E = { PORTAL_PROXY_SECRET: 's3cret-value' };
 check('the app trusts the public address only with the secret, only for that organization, only over https', portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === 'https://rooster.effdesk.com' && portalOrigin(req({ 'x-effdesk-secret': 'nope-nope-nope', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://other.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'http://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), {}, 'rooster') === '');
+let dseen; const dorigin = async (u, init) => { dseen = { u, init }; return new Response('ok', { status: 302, headers: { location: 'https://effdesk.netlify.app/agent/1/tickets', 'set-cookie': 'better-auth.session_token=abc; Path=/; HttpOnly; Secure' } }); };
+const dr = await handle(new Request('https://mdv.effdesk.com/api/auth/sign-in/email', { method: 'POST', body: '{}', headers: { origin: 'https://mdv.effdesk.com' } }), ENVW, dorigin);
+check('the desk paths go to the app untouched, with the app host as origin', dseen.u === 'https://effdesk.netlify.app/api/auth/sign-in/email' && dseen.init.headers.get('origin') === 'https://effdesk.netlify.app' && dseen.init.headers.get('x-forwarded-host') === 'mdv.effdesk.com' && !dseen.init.headers.get('x-effdesk-secret'));
+check('their redirects stay on the workspace address and the sign-in cookie is host-only', dr.headers.get('location') === 'https://mdv.effdesk.com/agent/1/tickets' && !/Domain=/i.test(dr.headers.get('set-cookie')));
+check('desk paths are listed, the help center is everything else', ['/agent/12/tickets', '/desk.html', '/api/tickets', '/js/desk.js'].every(isDeskPath) && !['/', '/a/x', '/search', '/tickets'].some(isDeskPath));
 done();

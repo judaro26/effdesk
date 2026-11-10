@@ -21,7 +21,7 @@ export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SEC
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     advanced: { useSecureCookies: /^https:/.test(baseURL), defaultCookieAttributes: { sameSite: 'lax', httpOnly: true }, ...(cookieDomain ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } : {}) },
     // with a cookie domain set (for example .effdesk.com) every workspace address (acme.effdesk.com) shares the one sign-in
-    trustedOrigins: cookieDomain ? ['https://*' + cookieDomain] : [],
+    trustedOrigins: [...(cookieDomain ? ['https://*' + cookieDomain] : []), ...(process.env.ORIGIN_HOST ? ['https://' + process.env.ORIGIN_HOST] : [])],
     rateLimit: { enabled: true, window: 60, max: 60, storage: 'database', customRules: { '/sign-in/email': { window: 60, max: 8 }, '/sign-up/email': { window: 60, max: 5 }, '/request-password-reset': { window: 300, max: 5 } } },
     plugins: [
       ssoPlugin({ pool, env: { BETTER_AUTH_SECRET: secret }, baseURL }),

@@ -63,7 +63,10 @@ Admins add extra fields under Manage > Fields: text, number, dropdown, yes/no an
 - **Usage history.** The hourly `automations` function writes one `usage_daily` row per organization per day; each API request adds to `api_calls`. Alerts for the flags are emailed to `PLATFORM_ADMIN_EMAILS` at most once a week per customer and problem.
 - **Formatting.** Messages show pasted spreadsheet tables, ``` code blocks, --- lines, `inline code`, **bold** and links (public/js/format.js); the same formatter, escaping first, makes the HTML of emails and the portal.
 
-## Workspace addresses
-`<slug>.effdesk.com` is already the customer-facing help center and portal (see docs/SUBDOMAINS.md and cloudflare/portal-worker.js). The agent desk stays on `app.effdesk.com/w/<slug>/agent/<number>/tickets/<n>`, so agent sign-in cookies are never on the same host as customer-facing pages.
-
-Experimental, not recommended: setting `COOKIE_DOMAIN=.effdesk.com` and `DESK_BASE_DOMAIN=effdesk.com` makes the desk redirect to `<slug>.effdesk.com/agent/...`. That needs the Worker to pass `/agent`, `/api`, `/js` and `/css` through untouched on those hosts, and it puts the agent session cookie on the same hosts as the portal. Leave both variables unset.
+## Workspace addresses (mdv.effdesk.com)
+`<slug>.effdesk.com` is served by the Cloudflare Worker (cloudflare/portal-worker.js). Customer pages (the help center and portal) are everything except the desk paths; `/agent/...`, `/desk.html`, `/auth.html`, `/api/...`, `/js`, `/css` go to the app untouched, so agents use `https://mdv.effdesk.com/agent/10001/tickets`.
+- Sign-in cookies have no Domain, so each workspace address has its own sign-in (agents sign in once per address). Do NOT set `COOKIE_DOMAIN`.
+- Set `DESK_BASE_DOMAIN=effdesk.com` in Netlify so `app.effdesk.com/desk.html` sends people to their workspace address. Remove it to go back to `app.effdesk.com/w/<slug>/...`.
+- Set `ORIGIN_HOST=effdesk.netlify.app` in Netlify too (the app then accepts the Worker's sign-in requests).
+- Trade-off: the help center and the desk now share one address per workspace, so they share cookies. Page content is escaped and the CSP is strict, but this is weaker isolation than keeping the desk on app.effdesk.com.
+- One-time setup is the same as docs/SUBDOMAINS.md: proxied wildcard record, GitHub secrets, run "Deploy portal worker". Not verified live.
