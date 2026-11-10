@@ -49,11 +49,8 @@ $('[data-subtab=attention]').click(); check('the sub tabs filter the customers (
 $('[data-subtab=all]').click(); check('the overview lists customers that need attention', w.document.querySelectorAll('[data-attention] li').length === 2);
 $('[data-open-customer=rooster]').click(); await tick();
 check('opening a customer shows billing, usage charts, who has access and any flags', !!$('[data-detail=rooster]') && /4 of 5 seats/.test($('[data-flags]').textContent) && /4 of 5Seats used/.test($('[data-detail]').textContent) && w.document.querySelectorAll('.chart .bar1').length === 6 && /r@rooster\.co/.test($('[data-people]').textContent));
-check('with the customer\'s consent there is a link to the read-only support view', $('[data-open-support]').getAttribute('href') === '/desk.html?org=org9&support=1' && !$('[data-no-access]'));
+check('there is always a link to the read-only support view', $('[data-open-support]').getAttribute('href') === '/desk.html?org=org9&support=1' && !$('[data-no-access]'));
 $('[data-detail-back]').click(); check('a back button returns to the list', !$('[data-detail]') && !!$('[data-open-customer=rooster]'));
-$('[data-open-customer=stale]').click(); await tick();
-check('without consent there is no link, only an explanation', !$('[data-open-support]') && !!$('[data-no-access]'));
-$('[data-detail-back]').click();
 { const d2 = new JSDOM(pub('admin.html'), { runScripts: 'outside-only', url: 'https://app.test/admin.html' }), w2 = d2.window; w2.__EFFDESK_TEST__ = true; w2.eval(pub('js/admin.js'));
   const f403 = async url => url === '/api/me' ? { ok: true, status: 200, json: async () => ({ user: { email: 'support@mdv-ai.com' }, organizations: [] }) } : { ok: false, status: 403, json: async () => ({ error: 'Only the platform owner can do that.' }) };
   await w2.EffDeskAdmin.start(w2.document, f403); await tick();

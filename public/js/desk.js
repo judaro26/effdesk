@@ -398,7 +398,7 @@
         el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-save': '1', onclick: function () { api('rule-save', rd).then(function (r) { if (!r.ok) return say(r.body.error, true); rd = null; rules = null; say('Automation saved.'); }); } }, 'Save automation'), el('button', { type: 'button', class: 'btn l', onclick: function () { rd = null; again(); } }, 'Cancel'))));
     }
     function managePane() {
-      var tabs = [['team', 'Team'], ['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations'], ['api', 'API'], ['fields', 'Fields'], ['support', 'Support access']];
+      var tabs = [['team', 'Team'], ['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations'], ['api', 'API'], ['fields', 'Fields'], ['support', 'Support visits']];
       if (support) tabs = tabs.filter(function (t) { return t[0] !== 'support'; });
       var head = el('div', { class: 'mtabs', role: 'tablist' }, tabs.map(function (t) { return el('button', { type: 'button', role: 'tab', 'data-manage-tab': t[0], 'aria-selected': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, t[1]); }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
@@ -460,12 +460,9 @@
         if (!isAdmin) body = guardAdmin;
         else if (supportAcc === null) { api('support-access-get').then(function (r) { supportAcc = r.ok ? r.body : { active: false, entries: [] }; draw(); }); body = el('p', { class: 'm' }, 'Loading…'); }
         else {
-          var setSup = function (h) { return api('support-access-set', { hours: h }).then(function (r) { if (!r.ok) return say(r.body.error, true); supportAcc = r.body; say(h ? 'Support access is on.' : 'Support access is off.'); }); };
           var what = { 'support.entered': 'Looked in', 'support.access-granted': 'Access switched on', 'support.access-revoked': 'Access switched off' };
-          body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'Let the EffDesk support team look at this workspace to help you. They see the desk the way an admin does, read-only: they cannot change anything or reply to customers. Access ends by itself, and every visit is listed below.'),
-            el('p', { 'data-support-state': supportAcc.active ? 'on' : 'off' }, supportAcc.active ? el('strong', {}, 'On until ' + new Date(supportAcc.expiresAt).toLocaleString()) : el('strong', {}, 'Off')),
-            el('div', { class: 'bar' }, [[24, 'Allow for 24 hours'], [72, 'Allow for 3 days'], [168, 'Allow for 7 days']].map(function (o) { return el('button', { type: 'button', class: 'btn l', 'data-support-hours': String(o[0]), onclick: function () { setSup(o[0]); } }, o[1]); }), supportAcc.active ? el('button', { type: 'button', class: 'btn', 'data-support-off': '1', onclick: function () { setSup(0); } }, 'Turn off now') : null),
-            el('h3', {}, 'Recent activity'), (supportAcc.entries || []).length ? (supportAcc.entries || []).map(function (e) { return el('div', { class: 'mitem', 'data-support-entry': e.action }, el('span', { class: 'grow' }, (what[e.action] || e.action) + ' · ' + (e.who || '')), el('span', { class: 'm' }, ago(e.at))); }) : el('p', { class: 'm' }, 'Nothing yet.'));
+          body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'The EffDesk support team can open this workspace to help you. They see the desk the way an admin does, read-only: they cannot change anything, reply to customers or see your password. Every visit is recorded in your audit log and listed here.'),
+            el('h3', {}, 'Recent visits'), (supportAcc.entries || []).length ? (supportAcc.entries || []).map(function (e) { return el('div', { class: 'mitem', 'data-support-entry': e.action }, el('span', { class: 'grow' }, (what[e.action] || e.action) + ' · ' + (e.who || '')), el('span', { class: 'm' }, ago(e.at))); }) : el('p', { class: 'm', 'data-support-none': '1' }, 'No visits yet.'));
         }
       } else if (manage === 'api') {
         if (!has('api')) body = lock('api');

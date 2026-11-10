@@ -1,21 +1,11 @@
 // src/support.js: SUPPORT ACCESS, PER-CUSTOMER DETAIL AND USAGE HISTORY FOR THE PLATFORM OWNER.
-// Entering a customer's desk needs the customer's own consent: an owner or admin turns on "Allow EffDesk support" for a limited time. The view is read-only and every entry is written to the customer's audit log.
+// The platform owner may open any customer's desk read-only (nothing can be changed there); every entry is written to the customer's audit log, which the customer can see.
 import { withOrg } from './db.js';
 import { getEntitlements } from './billing.js';
-export const GRANT_HOURS = [24, 72, 168];
+// EffDesk support may always look in, read-only. Every visit is written to the customer's audit log and listed to them under Manage > Support access.
 // the only desk actions the support view may call: all of them only read
 export const SUPPORT_READ = new Set(['init', 'list', 'get', 'dashboard', 'agents', 'labels', 'fields-list', 'team-list', 'sla-get', 'sla-hours-get', 'report', 'article-list', 'article-get', 'mail-get', 'rules-list', 'webhooks-list', 'support-enter']);
-export async function getAccess(pool, orgId, now = Date.now()) {
-  const r = (await pool.query('select granted_by, granted_at, expires_at from support_access where org_id = $1', [orgId])).rows[0];
-  const active = !!r && new Date(r.expires_at).getTime() > now;
-  return { active, grantedBy: r ? r.granted_by : null, grantedAt: r ? r.granted_at : null, expiresAt: active ? r.expires_at : null };
-}
-export async function setAccess(pool, orgId, actorEmail, hours) {
-  if (!hours) { await pool.query('delete from support_access where org_id = $1', [orgId]); return { ok: true, active: false }; }
-  if (!GRANT_HOURS.includes(Number(hours))) return { ok: false, status: 400, error: 'Choose 24 hours, 3 days or 7 days.' };
-  await pool.query(`insert into support_access (org_id, granted_by, granted_at, expires_at) values ($1,$2,now(), now() + ($3 || ' hours')::interval) on conflict (org_id) do update set granted_by = excluded.granted_by, granted_at = now(), expires_at = excluded.expires_at`, [orgId, actorEmail, String(Number(hours))]);
-  return { ok: true, ...(await getAccess(pool, orgId)) };
-}
+export const getAccess = async () => ({ active: true, always: true });
 export const recentEntries = async (pool, orgId) => withOrg(pool, orgId, async c => (await c.query(`select at, target as who, action from audit_log where org_id = $1 and action like 'support.%' order by at desc limit 10`, [orgId])).rows);
 
 const dayStr = ms => new Date(ms).toISOString().slice(0, 10);

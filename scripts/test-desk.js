@@ -34,7 +34,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'bulk') return ok({ ok: true, done: b.numbers.length, failed: 0 });
   if (b.action === 'fields-list') return ok({ ok: true, fields: [{ id: 1, key: 'order_number', label: 'Order number', type: 'text', options: [] }], types: [] });
   if (b.action === 'field-save' || b.action === 'field-delete') return ok({ ok: true, id: 2, key: 'x' });
-  if (b.action === 'support-access-get') return ok({ ok: true, active: false, entries: [] });
+  if (b.action === 'support-access-get') return ok({ ok: true, active: true, always: true, entries: [{ action: 'support.entered', who: 'root@effdesk.test', at: new Date().toISOString() }] });
   if (b.action === 'support-access-set') return ok({ ok: true, active: !!b.hours, expiresAt: new Date(Date.now() + 86400000).toISOString(), entries: [{ action: 'support.access-granted', who: 'o@x.co', at: new Date().toISOString() }] });
   if (b.action === 'support-enter') return ok({ ok: true });
   if (b.action === 'tokens-list') return ok({ ok: true, tokens: [{ id: 2, name: 'Zapier', prefix: 'abc123', created_at: new Date().toISOString(), last_used_at: null }] });
@@ -251,10 +251,7 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   X('[data-token-create]').click(); await tick(); check('a token needs a name', /Give the token a name/.test(X('.msg').textContent));
   X('input[aria-label="Token name"]').value = 'CRM'; X('[data-token-create]').click(); await tick(20); check('a new token is shown once', /effk\.o1\.secretsecret/.test(X('[data-token]').textContent) && calls.some(c => c[1] && c[1].action === 'token-create' && c[1].name === 'CRM'));
   X('[data-manage-tab=support]').click(); await tick(20);
-  check('the Support access tab says access is off, with ways to allow it for a limited time', X('[data-support-state]').getAttribute('data-support-state') === 'off' && [...xw.document.querySelectorAll('[data-support-hours]')].map(x => x.getAttribute('data-support-hours')).join() === '24,72,168');
-  X('[data-support-hours="72"]').click(); await tick(20);
-  check('allowing it sends the number of hours, shows when it ends, and lists the activity', calls.some(c => c[1] && c[1].action === 'support-access-set' && c[1].hours === 72) && X('[data-support-state]').getAttribute('data-support-state') === 'on' && /until/.test(X('[data-support-state]').textContent) && !!X('[data-support-entry]'));
-  X('[data-support-off]').click(); await tick(20); check('it can be turned off at once', calls.some(c => c[1] && c[1].action === 'support-access-set' && c[1].hours === 0));
+  check('the Support visits tab explains that support can look in read-only, with no switch to turn it off, and lists visits', /read-only/.test(X('.mlist').textContent) && !X('[data-support-hours]') && !X('[data-support-off]') && /Looked in|Nothing|No visits/.test(X('.mlist').textContent));
   X('[data-manage-tab=fields]').click(); await tick(20);
   check('the Fields tab lists the fields with their type', /Order number/.test(X('[data-field-row]').textContent) && /text/.test(X('[data-field-row]').textContent));
   X('input[aria-label="Field name"]').value = 'Plan'; X('[data-field-save]').click(); await tick(20);

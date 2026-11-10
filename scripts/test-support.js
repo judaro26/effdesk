@@ -1,4 +1,4 @@
-// scripts/test-support.js: SUPPORT ACCESS (CUSTOMER CONSENT, READ-ONLY), USAGE HISTORY, CUSTOMER DETAIL AND USAGE ALERTS ON A REAL POSTGRES.
+// scripts/test-support.js: SUPPORT ACCESS (ALWAYS ALLOWED FOR THE PLATFORM OWNER, READ-ONLY AND LOGGED), USAGE HISTORY, CUSTOMER DETAIL AND USAGE ALERTS ON A REAL POSTGRES.
 import crypto from 'crypto';
 import { check, done } from './lib/check.js';
 import { freshDb } from './lib/pg-temp.js';
@@ -26,7 +26,7 @@ await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organiza
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
 const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 const A = (who, action, extra = {}) => call(who, { orgId: acme.id, action, ...extra }), B = (who, action, extra = {}) => call(who, { orgId: beta.id, action, ...extra });
-import { getAccess, runUsage, runUsageAlerts, usageHistory, countApiCall, customerDetail } from '../src/support.js';
+import { runUsage, runUsageAlerts, usageHistory, countApiCall, customerDetail } from '../src/support.js';
 process.env.PLATFORM_ADMIN_EMAILS = 'root@effdesk.test';
 const root = await signUp('root@effdesk.test', 'Root'); await pool.query(`update "user" set "emailVerified" = true where email = 'root@effdesk.test'`);
 const rs = await auth.api.signInEmail({ body: { email: 'root@effdesk.test', password: PW }, returnHeaders: true }), root2 = { cookie: rs.headers.get('set-cookie').split(/,(?=[^;]+=)/).map(c => c.split(';')[0]).join('; ') };      // a fresh sign in now that the email is verified
@@ -34,21 +34,14 @@ await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 const mk = async s => (await A(olivia, 'create', { subject: s, body: 'x', requesterEmail: 'c@x.co' })).body.ticket;
 const t1 = await mk('One'); await A(olivia, 'reply', { number: t1.number, body: 'hello' });
 const R = (action, extra = {}) => call(root2, { orgId: acme.id, action, ...extra });
-check('without the customer\'s consent the platform owner cannot enter', (await R('init')).status === 403 && (await R('list')).status === 403);
-check('a plain member cannot switch support access on', (await A(ann, 'support-access-set', { hours: 24 })).status === 403);
-check('only 24 hours, 3 days or 7 days are accepted', (await A(olivia, 'support-access-set', { hours: 5 })).status === 400);
-const gr = await A(olivia, 'support-access-set', { hours: 24 });
-check('an owner can allow support for 24 hours', gr.status === 200 && gr.body.active === true && new Date(gr.body.expiresAt) > new Date());
 const ri = await R('init'); check('then the platform owner can look in, and the desk is told it is the support view', ri.status === 200 && ri.body.support === true && (await R('list')).status === 200 && (await R('get', { number: t1.number })).status === 200);
 check('the support view is read-only: changes, replies, creating and team edits are refused', (await R('update', { number: t1.number, patch: { priority: 'high' } })).status === 403 && (await R('reply', { number: t1.number, body: 'hi' })).status === 403 && (await R('create', { subject: 's', body: 'b', requesterEmail: 'a@b.co' })).status === 403 && (await R('team-role', { memberId: 'x', role: 'admin' })).status === 403 && (await R('support-access-set', { hours: 168 })).status === 403 && (await R('prefs-save', { theme: 'classic' })).status === 403);
 check('nothing changed on the ticket', (await A(olivia, 'get', { number: t1.number })).body.ticket.priority === 'normal');
 await R('support-enter');
-const acc = await A(olivia, 'support-access-get'); check('every entry is in the customer\'s audit log and shown to the customer', acc.body.entries.some(e => e.action === 'support.entered' && e.who === 'root@effdesk.test') && acc.body.entries.some(e => e.action === 'support.access-granted'));
-check('an ordinary signed in user is not let in even with consent on', (await call(otto, { orgId: acme.id, action: 'init' })).status === 403);
-await pool.query(`update support_access set expires_at = now() - interval '1 minute' where org_id = $1`, [acme.id]);
-check('access ends by itself when the time is up', (await R('init')).status === 403 && (await getAccess(pool, acme.id)).active === false);
-await A(olivia, 'support-access-set', { hours: 72 }); check('it can be switched on again', (await R('init')).status === 200);
-await A(olivia, 'support-access-set', { hours: 0 }); check('and switched off at any time', (await R('init')).status === 403);
+const acc = await A(olivia, 'support-access-get'); check('every visit is in the customer\'s audit log and shown to the customer', acc.body.entries.some(e => e.action === 'support.entered' && e.who === 'root@effdesk.test') && acc.body.always === true);
+check('a plain member cannot read the visit list, and cannot enter', (await A(ann, 'support-access-get')).status === 403);
+check('an ordinary signed in user is not let in', (await call(otto, { orgId: acme.id, action: 'init' })).status === 403);
+check('the platform owner can look in at any time, read-only', (await R('init')).status === 200 && (await R('list')).status === 200);
 // usage
 await runUsage(pool); await runUsage(pool);
 const h = await usageHistory(pool, acme.id, 30), today = h[h.length - 1];

@@ -25,7 +25,7 @@ import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './cs
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
-import { SUPPORT_READ, getAccess, setAccess, recentEntries, customerDetail, countApiCall } from './support.js';
+import { SUPPORT_READ, recentEntries, customerDetail, countApiCall } from './support.js';
 import { listFields, saveField, deleteField } from './fields.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
@@ -96,8 +96,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
   const orgId = String(b.orgId || ''); let role = orgId && await roleIn(pool, s.user.id, orgId), support = false;
-  // the platform owner may look in, read-only, while the customer has switched support access on
-  if (!role && orgId && s.user.emailVerified && platformAdmins().includes(String(s.user.email).toLowerCase()) && (await getAccess(pool, orgId)).active) {
+  // the platform owner may look in, read-only; every visit is logged for the customer (support-enter)
+  if (!role && orgId && s.user.emailVerified && platformAdmins().includes(String(s.user.email).toLowerCase())) {
     if (!SUPPORT_READ.has(String(b.action))) return json(403, { error: 'This is the read-only support view. Nothing can be changed here.', support: true });
     role = 'admin'; support = true;
   }
@@ -111,8 +111,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   let r, g;
   switch (b.action) {
     case 'support-enter': if (!support) return json(403, { error: 'Only the platform owner can do that.' }); await audit(pool, orgId, actor.id, 'support.entered', actor.email, {}); r = { ok: true }; break;
-    case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, ...(await getAccess(pool, orgId)), entries: await recentEntries(pool, orgId) }; break;
-    case 'support-access-set': { if ((g = adminOnly())) return g; const rr = await setAccess(pool, orgId, actor.email, Number(b.hours) || 0); if (!rr.ok) return json(rr.status, { error: rr.error }); await audit(pool, orgId, actor.id, rr.active ? 'support.access-granted' : 'support.access-revoked', actor.email, { hours: Number(b.hours) || 0 }); r = { ...rr, entries: await recentEntries(pool, orgId) }; break; }
+    case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, active: true, always: true, entries: await recentEntries(pool, orgId) }; break;
     case 'init': {
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
