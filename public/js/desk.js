@@ -176,19 +176,14 @@
       };
     }
     // a message as page elements (never as HTML): tables, ``` code, --- lines, `code`, **bold** and links. Without the formatter it is plain text.
-    function inlineEls(text) {
-      return root.EffFormat ? root.EffFormat.inline(text).map(function (p) { return p.t === 'code' ? el('code', {}, p.v) : p.t === 'b' ? el('strong', {}, p.v) : p.t === 'a' ? el('a', { href: p.href, target: '_blank', rel: 'noopener noreferrer' }, p.v) : p.v; }) : [text];
-    }
     function renderBody(text) {
       if (!root.EffFormat) return el('div', { class: 'mt' }, text);
-      var cell = function (tag, r, i, width) { return el(tag, r.length === 1 && width > 1 ? { colspan: String(width), class: 'span' } : {}, inlineEls(r[i] || '')); };
-      var tr = function (r, width, th) { if (r.length === 1 && width > 1) return el('tr', {}, cell(th ? 'th' : 'td', r, 0, width)); var cs = []; for (var i = 0; i < width; i++) cs.push(cell(th ? 'th' : 'td', r, i, width)); return el('tr', {}, cs); };
-      return el('div', { class: 'mt rich' }, root.EffFormat.parse(text).map(function (b) {
-        if (b.t === 'hr') return el('hr', { 'data-rule': '1' });
-        if (b.t === 'code') return el('pre', { 'data-code': '1' }, el('code', {}, b.text));
-        if (b.t === 'table') return el('div', { class: 'tblwrap' }, el('table', { class: 'mtable', 'data-table': '1' }, el('thead', {}, b.head.map(function (r) { return tr(r, b.width, true); })), el('tbody', {}, b.body.map(function (r) { return tr(r, b.width, false); }))));
-        return el('p', {}, inlineEls(b.text));
-      }));
+      return root.EffFormat.toDom(doc, text, el('div', { class: 'mt rich' }));
+    }
+    // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
+    function editor(ta, t) {
+      if (!root.EffEditor) return ta;
+      try { return root.EffEditor.enhance(doc, ta, { onImages: function (files) { uploadFiles(t, files); } }); } catch (e) { return ta; }
     }
     function picker(t) {
       var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' });
@@ -201,7 +196,7 @@
     // ── a ticket in three columns ──
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
-      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
+      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t)); var bodyBox = editor(body, t);
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -247,11 +242,11 @@
         prop('Merge', mergeArmed ? el('div', {}, el('div', { class: 'm' }, 'Merge #' + t.number + ' into #' + mergeArmed + '? The messages move over and this ticket is closed. This cannot be undone.'), el('button', { type: 'button', class: 'btn sm', 'data-merge-confirm': '1', onclick: function () { var into = mergeArmed; act('merge', { into: into }, 'Merged into #' + into + '.'); } }, 'Yes, merge'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { mergeArmed = false; draw(); } }, 'Cancel')) : el('div', {}, mergeBox, el('button', { type: 'button', class: 'btn l sm', 'data-merge': '1', onclick: function () { var v = Number(String(mergeBox.value).replace('#', '')); if (!v || v === t.number) return say('Enter the number of another ticket.', true); mergeArmed = v; draw(); } }, 'Merge into…'))));
       var msgs = current.messages.map(function (m) {
         if (m.kind === 'system') return el('div', { class: 'msg-row sys' }, el('span', { class: 'sysmsg', 'data-kind': 'system' }, m.body));
-        var side = m.kind === 'requester' ? 'in' : 'out', mine = (m.kind === 'agent' || m.kind === 'note') && m.author_id === meId, editing1 = editMsg === m.id, ed = null;
-        if (editing1) { ed = el('textarea', { 'aria-label': 'Edit message' }); ed.value = m.body; }
+        var side = m.kind === 'requester' ? 'in' : 'out', mine = (m.kind === 'agent' || m.kind === 'note') && m.author_id === meId, editing1 = editMsg === m.id, ed = null, edBox = null;
+        if (editing1) { ed = el('textarea', { 'aria-label': 'Edit message' }); ed.value = m.body; edBox = editor(ed, t); }
         return el('div', { class: 'msg-row ' + side }, avatarEl(m.kind, m.author_name, avatarOf(m.author_id)),
           el('div', { class: 'msg-b ' + m.kind, 'data-kind': m.kind }, el('div', { class: 'mh' }, el('strong', {}, m.author_name || (m.kind === 'requester' ? t.requester_email : 'Agent')), el('span', { class: 'm' }, (m.kind === 'note' ? ' · Internal note · ' : ' · ') + when(m.created_at) + (m.edited_at ? ' · edited' : '')), mine && !editing1 ? el('button', { type: 'button', class: 'edit', 'data-edit': String(m.id), onclick: function () { editMsg = m.id; draw(); } }, 'Edit') : null),
-            editing1 ? el('div', {}, ed, el('button', { type: 'button', class: 'btn sm', 'data-edit-save': '1', onclick: function () { api('edit-message', { number: t.number, messageId: m.id, body: ed.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); editMsg = null; return after(); }); } }, 'Save'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { editMsg = null; draw(); } }, 'Cancel')) : renderBody(m.body),
+            editing1 ? el('div', {}, edBox, el('button', { type: 'button', class: 'btn sm', 'data-edit-save': '1', onclick: function () { api('edit-message', { number: t.number, messageId: m.id, body: ed.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); editMsg = null; return after(); }); } }, 'Save'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { editMsg = null; draw(); } }, 'Cancel')) : renderBody(m.body),
             translated[m.id] ? el('div', { class: 'tr', 'data-translated': String(m.id) }, el('div', { class: 'm' }, translated[m.id].note), translated[m.id].text ? el('div', { class: 'mt' }, translated[m.id].text) : null) : null,
             m.kind === 'requester' && has('translation') && !translated[m.id] ? el('button', { type: 'button', class: 'edit', 'data-translate': String(m.id), onclick: function () { translate(m); } }, 'Translate') : null,
             (m.attachments || []).length ? el('div', { class: 'files' }, m.attachments.map(function (a) { var u = '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), pic = /^image\/(png|jpeg|gif|webp)$/.test(a.content_type || a.contentType || ''); return el('span', { class: 'file1' }, pic ? el('a', { href: u, target: '_blank', rel: 'noopener', 'data-thumb': a.id }, el('img', { src: u, alt: a.filename, class: 'thumb', loading: 'lazy' })) : null, el('a', { href: u, 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')')); })) : null));
@@ -263,7 +258,7 @@
       var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Send reply'), statusSel);
       var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, el('h2', {}, '#' + t.number + ' ' + t.subject), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
         el('div', { class: 'thread' }, msgs),
-        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), body, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
+        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), bodyBox, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard' }, el('div', { class: 'row1' }, el('span', { class: 'av in', 'aria-hidden': 'true' }, initial(who)), el('div', {}, el('strong', {}, who), el('div', { class: 'm' }, t.requester_email))), el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
       cards.push(el('h3', {}, 'About this client'));
@@ -347,9 +342,9 @@
     function newPane() {
       var f = {}; [['subject', 'Subject'], ['requesterName', 'Requester name'], ['requesterEmail', 'Requester email']].forEach(function (x) { var i = field(x[0], x[1]); i.value = newf[x[0]]; i.addEventListener('input', function () { newf[x[0]] = i.value; }); f[x[0]] = i; });
       var body = el('textarea', { 'aria-label': 'First message', placeholder: 'What is the request? You can paste a picture here or attach files.' }); body.value = newf.body;
-      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null));
+      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null)); var bodyBox = editor(body, null);
       var reset = function () { newf = { subject: '', requesterName: '', requesterEmail: '', body: '' }; pending = []; };
-      return el('div', { class: 'page' }, el('h2', {}, 'New ticket'), f.subject, f.requesterName, f.requesterEmail, body, picker(null), el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: function () { api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; reset(); return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]); }); } }, 'Create ticket'), el('button', { class: 'btn l', type: 'button', onclick: function () { pending.forEach(function (p) { api('delete-file', { id: p.id }); }); reset(); creating = false; draw(); } }, 'Cancel')));
+      return el('div', { class: 'page' }, el('h2', {}, 'New ticket'), f.subject, f.requesterName, f.requesterEmail, bodyBox, picker(null), el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: function () { api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; reset(); return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]); }); } }, 'Create ticket'), el('button', { class: 'btn l', type: 'button', onclick: function () { pending.forEach(function (p) { api('delete-file', { id: p.id }); }); reset(); creating = false; draw(); } }, 'Cancel')));
     }
 
     // ── Manage: queues, clients and macros ──

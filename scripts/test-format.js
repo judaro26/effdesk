@@ -1,5 +1,6 @@
 // scripts/test-format.js: HOW MESSAGES ARE FORMATTED: tables pasted from a spreadsheet, markdown tables, code blocks, lines, inline styles; and that the HTML for emails and the portal is escaped.
 import { check, done } from './lib/check.js';
+import { JSDOM } from 'jsdom';
 import '../public/js/format.js';
 const F = globalThis.EffFormat, kinds = t => F.parse(t).map(b => b.t).join();
 const sheet = 'Condo renovation material takeoff\t\t\t\t\nAll quantities are formulas.\t\t\t\t\nCategory\tItem\tNeeded (exact)\tUnit\tOrder qty\nLighting\t\t\t\t\nLighting\tLED strip run\t165.9\tft\t166\nLighting\tLED strip rolls\t11.1\trolls\t12\t10';
@@ -13,7 +14,12 @@ check('``` makes a code block that keeps its lines, spaces and language', F.pars
 check('an unclosed ``` runs to the end instead of losing text', F.parse('```\nline1\nline2')[0].text === 'line1\nline2');
 check('--- *** ___ and - - - are lines, but -- and a dash in a sentence are not', kinds('a\n---\nb') === 'p,hr,p' && kinds('***') === 'hr' && kinds('___') === 'hr' && kinds('- - -') === 'hr' && kinds('--') === 'p' && kinds('well -- maybe') === 'p');
 check('plain paragraphs keep their line breaks and a blank line starts a new one', F.parse('a\nb\n\nc').map(b => b.text).join('|') === 'a\nb|c');
-check('inline `code`, **bold** and links are found; trailing punctuation stays outside the link', JSON.stringify(F.inline('x `a` **b** https://e.com/p?q=1.').map(p => p.t + ':' + p.v)) === JSON.stringify(['text:x ', 'code:a', 'text: ', 'b:b', 'text: ', 'a:https://e.com/p?q=1', 'text:.']));
+const inl = F.inline('x `a` **b** https://e.com/p?q=1.'); check('inline `code`, **bold** and links are found; trailing punctuation stays outside the link', inl.map(p => p.t).join(',') === 'text,code,text,b,text,a,text' && inl[3].c[0].v === 'b' && inl[5].href === 'https://e.com/p?q=1' && inl[6].v === '.');
+const nest = F.inline('**a _b_ ++c++** ~~d~~'); check('styles nest: bold containing italic and underline, and strike', nest[0].t === 'b' && nest[0].c.map(x => x.t).join(',') === 'text,i,text,u' && nest[2].t === 's');
+const rt = s => F.fromDom(F.toDom(new JSDOM('').window.document, s));
+const samples = ['hello **bold** and _it_ ++un++ ~~st~~', '# Title\n\nbody `c` [x](https://a.com)', '- a\n- b\n  - c\n\n1. x\n2. y', '> quoted\n> more', '```\ncode here\n```', 'a\n\n---\n\nb', '| a | b |\n| --- | --- |\n| 1 | 2 |', 'literal \\*stars\\*', '\\# not a heading'];
+check('text -> page elements -> text comes back the same', samples.every(x => rt(x) === x) || (console.log(samples.map(x => [x, rt(x)]).filter(([a, b]) => a !== b)), false));
+check('plain() gives readable text', F.plain('**a** [l](https://x.com)\n\n- i') === 'a l (https://x.com)\n\n- i');
 check('only http and https are links', !F.inline('javascript:alert(1) and data:text/html,x').some(p => p.t === 'a'));
 const h = F.html('<script>alert(1)</script> **<b>x</b>**\n```\n<img src=x onerror=alert(1)>\n```\n| <i> | b |\n|---|---|\n| \"q\" | & |');
 check('the HTML for emails and the portal escapes everything first', !/<script|<img|<i>|<b>/.test(h) && /&lt;script&gt;/.test(h) && /&lt;img src=x/.test(h) && /&quot;q&quot;/.test(h) && /&amp;/.test(h) && /<table/.test(h) && /<pre /.test(h));
