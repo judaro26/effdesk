@@ -25,24 +25,45 @@
     }
     var ago = function (v) { if (!v) return 'never'; var d = Math.round((Date.now() - new Date(v).getTime()) / 86400000); return d < 1 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; };
     var HEALTH = { healthy: 'Healthy', free: 'Free', heavy: 'Heavy use', stalled: 'Stalled', past_due: 'Past due', canceled: 'Canceled' };
-    function customersCard() {
-      var box = el('div', { class: 'card', style: 'margin:16px 0', 'data-customers': '1' }, el('h3', {}, 'Customers'));
-      if (!people) { box.appendChild(el('p', { class: 'm' }, 'Loading…')); return box; }
-      if (people.error) { box.appendChild(el('p', { class: 'msg err', role: 'alert', 'data-customers-error': '1' }, people.error)); return box; }
-      var t = people.totals;
-      box.appendChild(el('p', { class: 'm', 'data-totals': '1' }, t.organizations + ' organizations · ' + t.paying + ' paying · ' + t.agents + ' agents · ' + t.tickets30 + ' tickets in the last 30 days · ' + t.pastDue + ' past due · ' + t.stalled + ' stalled · ' + t.heavy + ' heavy'));
-      var fs = el('select', { 'aria-label': 'Show' }, [['all', 'All'], ['paying', 'Paying'], ['free', 'Free'], ['past_due', 'Past due'], ['stalled', 'Stalled'], ['heavy', 'Heavy use'], ['canceled', 'Canceled']].map(function (o) { var op = el('option', { value: o[0] }, o[1]); if (o[0] === filt) op.setAttribute('selected', ''); return op; }));
-      fs.addEventListener('change', function () { filt = fs.value; drawList(); });
-      var qb = el('input', { 'aria-label': 'Search customers', placeholder: 'Search name, address or owner', value: q }); qb.addEventListener('input', function () { q = qb.value; drawList(); });
-      box.appendChild(el('div', { class: 'bar' }, fs, ' ', qb, ' ', el('a', { class: 'btn l', href: '/api/admin/customers?format=csv', 'data-customers-csv': '1' }, 'Download CSV')));
-      box.appendChild(el('div', { id: 'custlist', style: 'overflow:auto' })); return box;
+    var SECTIONS = [['Monitor', [['overview', 'Overview'], ['customers', 'Customers']]], ['Manage', [['licence', 'Lifetime licences']]], ['Data', [['import', 'Import old desk']]]], section = 'overview';
+    var ids = []; SECTIONS.forEach(function (g) { g[1].forEach(function (x) { ids.push(x[0]); }); });
+    var fromHash = function () { var h = String(root.location && root.location.hash || '').replace('#', ''); return ids.indexOf(h) >= 0 ? h : 'overview'; };
+    var needsAttention = function (c) { return c.health === 'past_due' || c.health === 'stalled'; };
+    function show(id) {
+      section = id; [].slice.call(doc.querySelectorAll('[data-panel]')).forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== id; });
+      [].slice.call(doc.querySelectorAll('[data-nav]')).forEach(function (a) { if (a.getAttribute('data-nav') === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     }
+    function tile(label, value, tone) { return el('div', { class: 'tile' + (tone ? ' ' + tone : '') }, el('div', { class: 'tv' }, String(value)), el('div', { class: 'tl' }, label)); }
+    function overviewPanel() {
+      var box = el('div', {}, el('h2', {}, 'Overview'));
+      if (!people) return box.appendChild(el('p', { class: 'm' }, 'Loading…')), box;
+      if (people.error) return box.appendChild(el('p', { class: 'msg err', role: 'alert', 'data-customers-error': '1' }, people.error)), box;
+      var t = people.totals;
+      box.appendChild(el('div', { class: 'tiles', 'data-totals': '1' }, tile('Organizations', t.organizations), tile('Paying', t.paying), tile('Agents', t.agents), tile('Tickets, last 30 days', t.tickets30), tile('Past due', t.pastDue, t.pastDue ? 'warn' : ''), tile('Stalled', t.stalled, t.stalled ? 'warn' : ''), tile('Heavy use', t.heavy)));
+      var att = people.customers.filter(needsAttention);
+      box.appendChild(el('h3', { style: 'margin-top:24px' }, 'Needs attention'));
+      box.appendChild(att.length ? el('ul', { class: 't', 'data-attention': '1' }, att.map(function (c) { return el('li', {}, el('strong', {}, c.name), ' ', el('span', { class: 'm' }, c.slug + ' · ' + (HEALTH[c.health] || c.health) + ' · last active ' + ago(c.lastActive))); })) : el('p', { class: 'm' }, 'Nothing needs attention right now.'));
+      return box;
+    }
+    function customersCard() {
+      var box = el('div', { 'data-customers': '1' }, el('h2', {}, 'Customers'));
+      if (!people) { box.appendChild(el('p', { class: 'm' }, 'Loading…')); return box; }
+      if (people.error) { box.appendChild(el('p', { class: 'msg err', role: 'alert' }, people.error)); return box; }
+      var fs = el('select', { 'aria-label': 'Show' }, [['all', 'All'], ['paying', 'Paying'], ['free', 'Free'], ['attention', 'Needs attention'], ['past_due', 'Past due'], ['stalled', 'Stalled'], ['heavy', 'Heavy use'], ['canceled', 'Canceled']].map(function (o) { var op = el('option', { value: o[0] }, o[1]); if (o[0] === filt) op.selected = true; return op; }));
+      fs.addEventListener('change', function () { filt = fs.value; drawList(); syncTabs(); });
+      var tabs = el('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Customer groups' }, [['all', 'All'], ['paying', 'Paying'], ['free', 'Free'], ['attention', 'Needs attention']].map(function (o) { return el('button', { type: 'button', role: 'tab', class: 'subtab', 'data-subtab': o[0], onclick: function () { filt = o[0]; fs.value = o[0]; drawList(); syncTabs(); } }, o[1]); }));
+      var qb = el('input', { 'aria-label': 'Search customers', placeholder: 'Search name, address or owner', value: q }); qb.addEventListener('input', function () { q = qb.value; drawList(); });
+      box.appendChild(tabs);
+      box.appendChild(el('div', { class: 'bar' }, fs, ' ', qb, ' ', el('a', { class: 'btn l', href: '/api/admin/customers?format=csv', 'data-customers-csv': '1' }, 'Download CSV')));
+      box.appendChild(el('div', { id: 'custlist', class: 'tablewrap' })); return box;
+    }
+    function syncTabs() { [].slice.call(doc.querySelectorAll('[data-subtab]')).forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-subtab') === filt ? 'true' : 'false'); }); }
     function drawList() {
       var host = doc.getElementById('custlist'); if (!host || !people) return; while (host.firstChild) host.removeChild(host.firstChild);
-      var rows = people.customers.filter(function (c) { var h = c.health; return (filt === 'all' || (filt === 'paying' ? c.plan !== 'free' && c.status !== 'canceled' && c.status !== 'none' : filt === 'free' ? c.plan === 'free' : h === filt)) && (!q || (c.name + ' ' + c.slug + ' ' + (c.owner || '')).toLowerCase().indexOf(q.toLowerCase()) >= 0); });
-      var th = function (x) { return el('th', { style: 'text-align:left;padding:6px 8px' }, x); }, td = function (x) { return el('td', { style: 'padding:6px 8px;border-top:1px solid #e6e1d6' }, x); };
-      var tb = el('table', { style: 'width:100%;border-collapse:collapse;font-size:14px' }, el('thead', {}, el('tr', {}, ['Customer', 'Owner', 'Plan', 'Agents', 'Tickets 30d', 'Total', 'Last active', 'Health'].map(th))),
-        el('tbody', {}, rows.map(function (c) { return el('tr', { 'data-org': c.slug }, td(el('span', {}, el('strong', {}, c.name), ' ', el('span', { class: 'm' }, c.slug))), td(c.owner || ''), td(c.plan + (c.status && c.status !== 'none' && c.status !== 'licence' ? ' (' + c.status + ')' : '') + (c.seatsPaid ? ' · ' + c.seatsPaid + ' seats' : '')), td(String(c.agents) + (c.invites ? ' (+' + c.invites + ' invited)' : '')), td(String(c.tickets.last30)), td(String(c.tickets.total)), td(ago(c.lastActive)), td(HEALTH[c.health] || c.health)); })));
+      var rows = people.customers.filter(function (c) { var h = c.health; return (filt === 'all' || (filt === 'paying' ? c.plan !== 'free' && c.status !== 'canceled' && c.status !== 'none' : filt === 'free' ? c.plan === 'free' : filt === 'attention' ? needsAttention(c) : h === filt)) && (!q || (c.name + ' ' + c.slug + ' ' + (c.owner || '')).toLowerCase().indexOf(q.toLowerCase()) >= 0); });
+      var th = function (x) { return el('th', { scope: 'col' }, x); }, td = function (x) { return el('td', {}, x); };
+      var tb = el('table', { class: 'adtable' }, el('thead', {}, el('tr', {}, ['Customer', 'Owner', 'Plan', 'Agents', 'Tickets 30d', 'Total', 'Last active', 'Health'].map(th))),
+        el('tbody', {}, rows.map(function (c) { return el('tr', { 'data-org': c.slug }, td(el('span', {}, el('strong', {}, c.name), ' ', el('span', { class: 'm' }, c.slug))), td(c.owner || ''), td(c.plan + (c.status && c.status !== 'none' && c.status !== 'licence' ? ' (' + c.status + ')' : '') + (c.seatsPaid ? ' · ' + c.seatsPaid + ' seats' : '')), td(String(c.agents) + (c.invites ? ' (+' + c.invites + ' invited)' : '')), td(String(c.tickets.last30)), td(String(c.tickets.total)), td(ago(c.lastActive)), td(el('span', { class: 'pill ' + c.health }, HEALTH[c.health] || c.health))); })));
       host.appendChild(rows.length ? tb : el('p', { class: 'm' }, 'No customers match.'));
     }
     function draw() {
@@ -52,15 +73,19 @@
       log = el('p', { class: 'msg', role: 'status' });
       var done = function (dry) { return function (t) { say((dry ? 'Check finished (nothing was written). ' : 'Import finished. ') + t.t + ' tickets ' + (dry ? 'would be added' : 'added') + ', ' + t.te + ' already there, ' + t.ts + ' skipped; ' + t.m + ' messages; ' + t.a + ' articles ' + (dry ? 'would be added' : 'added') + ', ' + t.ae + ' already there, ' + t.as + ' skipped; ' + t.f + ' files not copied.' + (t.w.length ? ' Notes: ' + t.w.slice(0, 5).join(' ') : '')); }; };
       var go = function (dry) { return function () { if (!islug.value.trim() || !file.files || !file.files[0]) return say('Choose the organization and the export file first.', true); runImport(islug.value.trim().toLowerCase(), file.files[0], dry).then(done(dry), function (e) { say(e.message, true); }); }; };
-      main.appendChild(el('h1', {}, 'Platform admin'));
-      main.appendChild(customersCard()); drawList();
-      main.appendChild(el('div', { class: 'card', style: 'margin:16px 0' }, el('h3', {}, 'Lifetime licence'), el('p', { class: 'm' }, 'Unlimited agents and every feature, for ever, without paying. Subscriptions and Paddle events never change it.'), slug, ' ', note, ' ',
+      var nav = el('nav', { class: 'admnav', 'aria-label': 'Admin sections' }, SECTIONS.map(function (g) { return el('div', { class: 'navgroup' }, el('div', { class: 'navhead' }, g[0]), g[1].map(function (x) { return el('a', { href: '#' + x[0], 'data-nav': x[0], onclick: function () { show(x[0]); } }, x[1]); })); }));
+      var licence = el('div', {}, el('h2', {}, 'Lifetime licences'), el('div', { class: 'card' }, el('p', { class: 'm' }, 'Unlimited agents and every feature, for ever, without paying. Subscriptions and Paddle events never change it. Use the address (slug) of the organization.'), slug, ' ', note, ' ',
         el('button', { class: 'btn', type: 'button', 'data-grant': '1', onclick: function () { call('POST', '/api/license', { slug: slug.value.trim().toLowerCase(), note: note.value }).then(function (r) { say(r.ok ? 'Licence granted to ' + slug.value.trim() + '.' : r.body.error || 'That did not work.', !r.ok); }); } }, 'Grant'), ' ',
         el('button', { class: 'btn l', type: 'button', 'data-revoke': '1', onclick: function () { call('DELETE', '/api/license', { slug: slug.value.trim().toLowerCase() }).then(function (r) { say(r.ok ? 'Licence removed.' : r.body.error || 'That did not work.', !r.ok); }); } }, 'Remove')));
-      main.appendChild(el('div', { class: 'card', style: 'margin:16px 0' }, el('h3', {}, 'Import the old desk (mdv)'), el('p', { class: 'm' }, 'Choose the file you downloaded from the mdv console (Settings → Export for EffDesk). “Check first” writes nothing. Importing again never duplicates anything.'), islug, ' ', file, ' ',
+      var imp = el('div', {}, el('h2', {}, 'Import the old desk (mdv)'), el('div', { class: 'card' }, el('p', { class: 'm' }, 'Choose the file you downloaded from the mdv console (Settings → Export for EffDesk). “Check first” writes nothing. Importing again never duplicates anything.'), islug, ' ', file, ' ',
         el('button', { class: 'btn l', type: 'button', 'data-check': '1', onclick: go(true) }, 'Check first'), ' ', el('button', { class: 'btn', type: 'button', 'data-import': '1', onclick: go(false) }, 'Import')));
-      main.appendChild(log);
+      var panel = function (id, child) { return el('section', { 'data-panel': id, hidden: 'hidden' }, child); };
+      main.appendChild(el('h1', {}, 'Platform admin'));
+      main.appendChild(el('div', { class: 'adm' }, nav, el('div', { class: 'admbody' }, panel('overview', overviewPanel()), panel('customers', customersCard()), panel('licence', licence), panel('import', imp), log)));
+      drawList(); syncTabs(); show(section);
     }
+    if (root.addEventListener) root.addEventListener('hashchange', function () { show(fromHash()); });
+    section = fromHash();
     return call('GET', '/api/me').then(function (r) { if (r.status === 401) return root.location.assign('/auth.html?mode=signin'); draw(); return call('GET', '/api/admin/customers').then(function (c) { people = c.ok ? c.body : { error: c.status === 403 ? 'You are signed in as ' + (r.body.user && r.body.user.email || 'this account') + ', which is not on the platform owner list. Add this email to PLATFORM_ADMIN_EMAILS in Netlify, redeploy, and reload.' : (c.body.error || 'The customer list could not be loaded.'), customers: [], totals: { organizations: 0, paying: 0, agents: 0, tickets30: 0, pastDue: 0, stalled: 0, heavy: 0 } }; draw(); }); });
   }
   root.EffDeskAdmin = { start: start };

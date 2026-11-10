@@ -18,7 +18,7 @@ const dom = new JSDOM(pub('admin.html'), { runScripts: 'outside-only', url: 'htt
 await w.EffDeskAdmin.start(w.document, fetchFn); await tick();
 const $ = s => w.document.querySelector(s), setFile = obj => { const f = $('[data-file]'); Object.defineProperty(f, 'files', { value: [new w.File([JSON.stringify(obj)], 'export.json', { type: 'application/json' })], configurable: true }); };
 const fill = (label, v) => { $(`input[aria-label="${label}"]`).value = v; };
-check('the customer list shows totals and one row per organization', /3 organizations/.test($('[data-totals]').textContent) && w.document.querySelectorAll('[data-org]').length === 3 && /team \(active\) · 5 seats/.test($('[data-org=rooster]').textContent) && /4 \(\+1 invited\)/.test($('[data-org=rooster]').textContent));
+check('the customer list shows totals and one row per organization', /3Organizations/.test($('[data-totals]').textContent) && w.document.querySelectorAll('[data-org]').length === 3 && /team \(active\) · 5 seats/.test($('[data-org=rooster]').textContent) && /4 \(\+1 invited\)/.test($('[data-org=rooster]').textContent));
 { const f = $('select[aria-label="Show"]'); f.value = 'stalled'; f.dispatchEvent(new w.Event('change')); check('the list can show only stalled customers', w.document.querySelectorAll('[data-org]').length === 1 && !!$('[data-org=stale]'));
   f.value = 'all'; f.dispatchEvent(new w.Event('change')); const sb = $('input[aria-label="Search customers"]'); sb.value = 'late.co'; sb.dispatchEvent(new w.Event('input')); check('and be searched by name, address or owner', w.document.querySelectorAll('[data-org]').length === 1 && !!$('[data-org=late]')); sb.value = ''; sb.dispatchEvent(new w.Event('input')); }
 check('the list can be downloaded as a spreadsheet', $('[data-customers-csv]').getAttribute('href') === '/api/admin/customers?format=csv');
@@ -41,6 +41,11 @@ failAt = 2; calls.length = 0; $('[data-import]').click(); await tick(200); failA
 check('if a batch fails the import stops and says so', calls.filter(c => c[1] === '/api/import').length === 2 && /Boom/.test($('.msg').textContent));
 Object.defineProperty($('[data-file]'), 'files', { value: [new w.File(['not json'], 'x.json')], configurable: true }); $('[data-import]').click(); await tick(100);
 check('a file that is not JSON is explained', /not valid JSON/.test($('.msg').textContent));
+check('the page has a side menu in groups with a section for each task', [...w.document.querySelectorAll('.admnav [data-nav]')].map(a => a.getAttribute('data-nav')).join() === 'overview,customers,licence,import' && w.document.querySelectorAll('.navhead').length === 3);
+check('only the chosen section shows, and the menu marks it', !$('[data-panel=overview]').hidden && $('[data-panel=customers]').hidden && $('[data-nav=overview]').getAttribute('aria-current') === 'page');
+$('[data-nav=customers]').click(); check('choosing a menu item switches the section', $('[data-panel=overview]').hidden && !$('[data-panel=customers]').hidden && $('[data-nav=customers]').getAttribute('aria-current') === 'page' && !$('[data-nav=overview]').hasAttribute('aria-current'));
+$('[data-subtab=attention]').click(); check('the sub tabs filter the customers (needs attention = past due or stalled)', w.document.querySelectorAll('[data-org]').length === 2 && $('[data-subtab=attention]').getAttribute('aria-selected') === 'true');
+$('[data-subtab=all]').click(); check('the overview lists customers that need attention', w.document.querySelectorAll('[data-attention] li').length === 2);
 { const d2 = new JSDOM(pub('admin.html'), { runScripts: 'outside-only', url: 'https://app.test/admin.html' }), w2 = d2.window; w2.__EFFDESK_TEST__ = true; w2.eval(pub('js/admin.js'));
   const f403 = async url => url === '/api/me' ? { ok: true, status: 200, json: async () => ({ user: { email: 'support@mdv-ai.com' }, organizations: [] }) } : { ok: false, status: 403, json: async () => ({ error: 'Only the platform owner can do that.' }) };
   await w2.EffDeskAdmin.start(w2.document, f403); await tick();
