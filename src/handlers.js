@@ -87,6 +87,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
+const LIGHT_OK = new Set(['init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
@@ -94,6 +95,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const orgId = String(b.orgId || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
+  if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
   const isAdmin = role === 'owner' || role === 'admin', ent = await getEntitlements(pool, orgId);
   // a feature of a higher plan: refuse with the name of the plan that has it
   const need = f => planHas(ent, f) ? null : json(402, { error: `This is part of the ${PLANS[Object.keys(PLANS).find(k => PLANS[k].features.includes(f))].name} plan. Upgrade to use it.`, upgrade: true });
@@ -121,7 +123,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'token-create': if ((g = adminOnly() || need('api'))) return g; r = await createToken(pool, orgId, actor.id, b.name); break;
     case 'token-delete': if ((g = adminOnly() || need('api'))) return g; if (!(await deleteToken(pool, orgId, b.id))) return json(404, { error: 'No such token.' }); r = { ok: true }; break;
     case 'team-list': if ((g = adminOnly())) return g; r = await listTeam(pool, orgId, ent); break;
-    case 'team-role': if ((g = adminOnly())) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
+    case 'team-role': if ((g = adminOnly() || (b.role === 'light' ? need('light_agents') : null))) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
     case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;
     case 'team-invite': {
       if ((g = adminOnly())) return g; const em = String(b.email || '').trim().toLowerCase(), rl = b.role === 'admin' ? 'admin' : 'member';
@@ -209,6 +211,18 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (r.ok && pt.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok && pt.assigneeId && pt.assigneeId !== was && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
       break;
+    }
+    case 'bulk': {
+      if ((g = need('bulk_actions'))) return g;
+      const nums = [...new Set((Array.isArray(b.numbers) ? b.numbers : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, 100), p = b.patch || {}; if (!nums.length) return json(400, { error: 'Choose some tickets first.' });
+      const patch = {}; for (const k of ['status', 'priority', 'assigneeId']) if (p[k] !== undefined) patch[k] = p[k];
+      if (!Object.keys(patch).length && !p.addTag) return json(400, { error: 'Choose what to change.' });
+      let done = 0, failed = 0, firstError = '';
+      for (const n of nums) {
+        const one = { ...patch }; if (p.addTag) { const cur = (await pool.query('select tags from tickets where org_id = $1 and number = $2', [orgId, n])).rows[0]; if (cur) one.tags = [...new Set([...(cur.tags || []), String(p.addTag).toLowerCase()])]; }
+        const res = await updateTicket(pool, orgId, actor, n, one); if (res.ok) { done++; if (patch.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, n); } else { failed++; firstError = firstError || res.error; }
+      }
+      r = { ok: true, done, failed, ...(firstError ? { error: firstError } : {}) }; break;
     }
     case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
     default: return json(400, { error: 'Unknown action.' });

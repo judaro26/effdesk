@@ -3,7 +3,7 @@
 import { withOrg } from './db.js';
 import { seatsUsed } from './billing.js';
 import { PRODUCT } from './config.js';
-export const ROLES = ['owner', 'admin', 'member'];
+export const ROLES = ['owner', 'admin', 'member', 'light'];          // light: free, can read tickets and add internal notes (no replies, no changes); not counted as a seat
 const fail = (error, status = 400) => ({ ok: false, status, error });
 export async function listTeam(pool, orgId, ent) {
   const people = (await pool.query(`select m.id as member_id, u.id as user_id, u.name, u.email, m.role, m."createdAt" as joined,

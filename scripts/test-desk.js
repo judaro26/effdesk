@@ -5,7 +5,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub 
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
-const calls = []; const ALLF = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api']; let FEATURES = ALLF.slice();
+const calls = []; const ALLF = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
@@ -29,6 +29,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'team-list') return ok({ ok: true, roles: ['owner', 'admin', 'member'], seats: { used: 2, allowed: 2, plan: 'free' }, people: [{ memberId: 'm1', userId: 'u1', name: 'Ann', email: 'ann@acme.test', role: 'owner', openTickets: 1, lastActive: new Date().toISOString() }, { memberId: 'm2', userId: 'u2', name: 'Bo', email: 'bo@acme.test', role: 'member', openTickets: 3, lastActive: null }], invites: [{ id: 'i1', email: 'new@acme.test', role: 'admin', expires_at: new Date(Date.now() + 86400000).toISOString() }] });
   if (b.action === 'team-role' || b.action === 'team-remove' || b.action === 'team-invite-resend' || b.action === 'team-invite-cancel') return ok({ ok: true });
   if (b.action === 'team-invite') return /@/.test(b.email) ? ok({ ok: true, email: b.email }) : { ok: false, status: 400, json: async () => ({ error: 'Enter a valid email address.' }) };
+  if (b.action === 'bulk') return ok({ ok: true, done: b.numbers.length, failed: 0 });
   if (b.action === 'tokens-list') return ok({ ok: true, tokens: [{ id: 2, name: 'Zapier', prefix: 'abc123', created_at: new Date().toISOString(), last_used_at: null }] });
   if (b.action === 'token-create') return b.name ? ok({ ok: true, id: 3, token: 'effk.o1.secretsecret' }) : { ok: false, status: 400, json: async () => ({ error: 'Give the token a name' }) };
   if (b.action === 'token-delete') return ok({ ok: true });
@@ -212,7 +213,12 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   const fi = X('[data-avatar-file]'); Object.defineProperty(fi, 'files', { value: [new xw.File(['x'], 'me.jpg', { type: 'image/jpeg' })], configurable: true }); fi.dispatchEvent(new xw.Event('change')); await tick(20);
   check('choosing a picture shrinks it on the device and saves it', calls.some(c => c[1] && c[1].action === 'prefs-save' && /^data:image\/jpeg/.test(c[1].avatar)));
   X('[data-avatar-remove]').click(); await tick(); check('a picture can be removed', calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].avatar === null));
-  X('[data-nav]').click(); await tick(); X('.row').click(); await tick(); X('[data-mode=note]').click(); await tick();
+  X('[data-nav]').click(); await tick();
+  check('with bulk actions each ticket has a checkbox, and nothing shows until one is ticked', !!X('[data-pick="7"]') && !!X('[data-pick-all]') && !X('[data-bulk]'));
+  X('[data-pick="7"]').click(); await tick(); check('ticking a ticket shows the bulk bar with the count', /1 selected/.test(X('[data-bulk]').textContent));
+  const bs = X('select[aria-label="Set priority for the selected tickets"]'); bs.value = 'urgent'; bs.dispatchEvent(new xw.Event('change')); await tick(20);
+  check('a bulk change sends the chosen tickets and the change, then clears the choice', calls.some(c => c[1] && c[1].action === 'bulk' && c[1].numbers[0] === 7 && c[1].patch.priority === 'urgent') && !X('[data-bulk]') && /1 ticket\(s\) updated/.test(X('.msg').textContent));
+  X('.row').click(); await tick(); X('[data-mode=note]').click(); await tick();
   const ms = X('select[aria-label="Mention a teammate"]'); check('in a note there is a list of teammates to mention, without myself', !!ms && [...ms.options].some(o => o.value === 'bo') && ![...ms.options].some(o => o.value === 'ann'));
   ms.value = 'bo'; ms.dispatchEvent(new xw.Event('change')); await tick(); check('picking a teammate puts @bo in the note', /@bo /.test(X('textarea').value));
   X('[data-manage]').click(); await tick(); X('[data-manage-tab=triggers]').click(); await tick(20);
