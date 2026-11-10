@@ -23,13 +23,15 @@ export async function createTicket(pool, orgId, actor, input) {
   if (!body) return fail('Write the first message.');
   if (!isEmail(email)) return fail('Enter the requester\'s email address.');
   const priority = PRIORITIES.includes(input.priority) ? input.priority : 'normal';
+  const kind = actor && (input.firstKind === 'agent' || input.firstKind === 'note') ? input.firstKind : 'requester';   // an agent can open a ticket with a public reply or a note
   return withOrg(pool, orgId, async c => {
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
     let custom = {}; if (input.custom && Object.keys(input.custom).length) { const cv = cleanValues(await defsOf(c, orgId), input.custom); if (cv.error) return fail(cv.error); custom = cv.set; }
     const domain = email.split('@')[1], client = (await c.query("select id from clients where org_id = $1 and domain <> '' and domain = $2", [orgId, domain])).rows[0];
     const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom)])).rows[0];
     await logEvent(c, orgId, t.id, actor ? who(actor) : clean(input.requesterName, 100) || email, 'created', 'Ticket created' + (input.channel === 'email' ? ' by email' : ''));
-    const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body, input.messageId ? clean(input.messageId, 300) : null])).rows[0].id;
+    const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, kind, kind === 'requester' ? null : actor.id, kind === 'requester' ? clean(input.requesterName, 100) || email : who(actor), body, input.messageId ? clean(input.messageId, 300) : null])).rows[0].id;
+    if (kind === 'agent') { await c.query('update tickets set first_response_at = now() where id = $1', [t.id]); t.first_response_at = new Date().toISOString(); }
     return { ok: true, ticket: t, messageRowId: mid };
   });
 }

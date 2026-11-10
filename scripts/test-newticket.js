@@ -1,0 +1,43 @@
+// scripts/test-newticket.js: THE NEW TICKET FORM'S SERVER SIDE ON A REAL POSTGRES: an agent can open a ticket with a public reply (emailed), an internal note, or a customer message, and set its properties in the same step.
+import crypto from 'crypto';
+import { check, done } from './lib/check.js';
+import { freshDb } from './lib/pg-temp.js';
+import { migrate } from './migrate.js';
+import { makePool } from '../src/db.js';
+import { makeAuth } from '../src/auth.js';
+import { makeMailer } from '../src/email.js';
+import { tickets } from '../src/handlers.js';
+import { grantLicense } from '../src/license.js';
+
+const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
+const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
+const { url } = await freshDb('newticket'); await migrate(url);
+const pool = makePool(url), outbox = [];
+const mailer = makeMailer({ transport: async m => { outbox.push(m); } });
+const auth = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'http://localhost:8888', requireVerified: false });
+const signUp = async (email, name) => { await auth.api.signUpEmail({ body: { email, password: PW, name } }); const r = await auth.api.signInEmail({ body: { email, password: PW }, returnHeaders: true }); const cookie = r.headers.getSetCookie().map(c => c.split(';')[0]).join('; '); return { cookie, user: r.response.user, headers: new Headers({ cookie }) }; };
+const olivia = await signUp('olivia@acme.test', 'Olivia'), ann = await signUp('ann@acme.test', 'Ann');
+const acme = await auth.api.createOrganization({ body: { name: 'Acme', slug: 'acme' }, headers: olivia.headers });
+await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
+await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
+const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const msgs = async n => (await A(olivia, 'get', { number: n })).body.messages;
+
+await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket', fromName: 'Acme' });
+let r = await A(olivia, 'create', { subject: 'Welcome', body: 'Hi Tina, **welcome**.', requesterEmail: 'tina@example.com', requesterName: 'Tina', firstKind: 'agent', patch: { assigneeId: ann.user.id, type: 'task', priority: 'high', status: 'pending', cc: 'boss@example.com' }, follow: true });
+const n1 = r.body.ticket && r.body.ticket.number, m1 = await msgs(n1), t1 = (await A(olivia, 'get', { number: n1 })).body.ticket;
+check('a public reply opens the ticket with an agent message from the author', r.status === 200 && m1.length >= 1 && m1[0].kind === 'agent' && m1[0].author_name === 'Olivia' && t1.first_response_at);
+check('the requester is emailed the message', outbox.some(m => [].concat(m.to).join().includes('tina@example.com')));
+check('the properties from the form are saved', t1.assignee_id === ann.user.id && t1.type === 'task' && t1.priority === 'high' && t1.status === 'pending' && (t1.cc || []).includes('boss@example.com'));
+check('following was set', (await A(olivia, 'get', { number: n1 })).body.extras.following === true);
+outbox.length = 0;
+r = await A(olivia, 'create', { subject: 'Internal', body: 'Check with finance', requesterEmail: 'tom@example.com', firstKind: 'note' });
+const m2 = await msgs(r.body.ticket.number);
+check('an internal note opens the ticket without emailing anyone', m2[0].kind === 'note' && !outbox.some(m => [].concat(m.to).join().includes('tom@example.com')) && !(await A(olivia, 'get', { number: r.body.ticket.number })).body.ticket.first_response_at);
+r = await A(olivia, 'create', { subject: 'From phone', body: 'My heater broke', requesterEmail: 'sam@example.com', requesterName: 'Sam' });
+check('a customer message (the default) is the requester speaking', (await msgs(r.body.ticket.number))[0].kind === 'requester');
+r = await A(olivia, 'create', { subject: 'Solved at once', body: 'Done for you.', requesterEmail: 'sol@example.com', firstKind: 'agent', patch: { status: 'solved' } });
+check('it can be submitted as solved', (await A(olivia, 'get', { number: r.body.ticket.number })).body.ticket.status === 'solved');
+r = await A(olivia, 'create', { subject: 'Bad patch', body: 'x', requesterEmail: 'b@x.co', firstKind: 'agent', patch: { priority: 'nope' } });
+check('a bad property does not lose the ticket, and says what was not saved', r.status === 200 && !!r.body.warning && !!r.body.ticket.number);
+await pool.end(); done();

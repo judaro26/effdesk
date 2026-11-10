@@ -142,3 +142,11 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .ed-area blockquote{margin:0 0 .6em;padding-left:12px;border-left:3px solid #c2c8cc}.ed-area table{border-collapse:collapse}.ed-area td,.ed-area th{border:1px solid #c2c8cc;padding:3px 8px;min-width:48px}
 .ed-area hr{border:0;border-top:1px solid #c2c8cc;margin:10px 0}.ed-area code{background:rgba(127,127,127,.18);padding:0 4px;border-radius:3px}
 .ed-link{display:flex;gap:6px;padding:6px;border-bottom:1px solid var(--line,#d8dcde)}.ed-link input{flex:1}
+
+/* new ticket form */
+.newgrid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;align-items:start}
+.newside{position:sticky;top:8px}.newsubj{width:100%;font-size:22px;font-weight:600;padding:8px 10px;margin-bottom:12px;box-sizing:border-box}
+.newmain .compose{border:1px solid var(--line,#d8dcde);border-radius:8px;padding:8px}.newmain .modes{margin-bottom:8px}
+.newsubmit{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px}
+.chk{display:flex;align-items:center;gap:6px;font-size:14px}.chk input{width:auto}
+@media(max-width:800px){.newgrid{grid-template-columns:1fr}.newside{position:static}}

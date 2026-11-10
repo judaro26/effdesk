@@ -190,7 +190,31 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'fields-list': r = planHas(ent, 'custom_fields') ? await listFields(pool, orgId) : { ok: true, fields: [], types: [] }; break;
     case 'field-save': if ((g = adminOnly() || need('custom_fields'))) return g; r = await saveField(pool, orgId, b); break;
     case 'field-delete': if ((g = adminOnly() || need('custom_fields'))) return g; if (!(await deleteField(pool, orgId, b.id))) return json(404, { error: 'No such field.' }); r = { ok: true }; break;
-    case 'create': if (b.custom && (g = need('custom_fields'))) return g; r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, r.ticket.number, r.messageRowId, b.attachmentIds); if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
+    case 'create': {
+      if (b.custom && (g = need('custom_fields'))) return g;
+      r = await createTicket(pool, orgId, actor, b);
+      if (!r.ok) break;
+      const num = r.ticket.number, first = b.firstKind === 'agent' || b.firstKind === 'note' ? b.firstKind : 'requester';
+      if (store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, num, r.messageRowId, b.attachmentIds);
+      if (b.patch && typeof b.patch === 'object') {                      // the properties set on the form: assignee, queue, type, tags, cc, status
+        const pt = b.patch; if (pt.custom !== undefined && (g = need('custom_fields'))) return g; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
+        const u = await updateTicket(pool, orgId, actor, num, pt); if (!u.ok) r.warning = u.error; else {
+          if (u.ticket) r.ticket = u.ticket;
+          if (pt.assigneeId && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, num, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
+        }
+      }
+      if (b.follow) await desk.follow(pool, orgId, actor, num, true);
+      if (first === 'agent' && mailer) {
+        const rows = store ? await filesOfMessage(pool, orgId, r.messageRowId) : [], files = [];
+        for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
+        const d = await sendTicketReply(pool, mailer, env, orgId, num, r.messageRowId, files); r.email = d.delivery; r.emailWhy = d.why;
+      }
+      if (planHas(ent, 'triggers') && first === 'requester') await runTriggers(pool, mailer, env, orgId, 'created', num, String(b.body || ''));
+      if (b.patch && b.patch.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, num);
+      await emitHook(pool, orgId, 'ticket.created', num);
+      if (first === 'agent') await emitHook(pool, orgId, 'message.agent', num, { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
+      break;
+    }
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
