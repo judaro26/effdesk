@@ -184,3 +184,5 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .aibar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}.aibar select{width:auto;font-size:13px}.aibar .btn{font-size:13px}
 .aisum{border:1px solid var(--d-line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;margin-bottom:10px;background:var(--d-in)}
 @media print{.rail,.props,.ctools,.compose,.aibar,.topbar{display:none!important}}
+
+.deskapp .rail .logo{background:none!important;box-shadow:none!important;padding:0}.deskapp .rail .logo img{display:block;border-radius:9px}
