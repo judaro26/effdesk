@@ -76,9 +76,11 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const text = `${m.body}${sig}${foot}`;
     const html = `${fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
-    try { await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
+    let providerId; try { providerId = await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
-    await mark('sent', mid); return { delivery: 'sent' };
+    await mark('sent', mid);
+    if (providerId) { try { await pool.query('insert into email_receipts (provider_id, org_id, message_id) values ($1,$2,$3) on conflict do nothing', [String(providerId), orgId, messageRowId]); await withOrg(pool, orgId, c => c.query("update ticket_messages set delivery_status = 'sent' where org_id = $1 and id = $2", [orgId, messageRowId])); } catch (e) { console.warn('email receipt not kept:', e.message); } }
+    return { delivery: 'sent' };
   } catch (e) { console.warn('ticket mail error:', e.message); return { delivery: 'failed' }; }
 }
 
@@ -150,4 +152,24 @@ export function verifySvix(raw, headers, secret, now = Date.now()) {
     const key = Buffer.from(String(secret).replace(/^whsec_/, ''), 'base64'), want = crypto.createHmac('sha256', key).update(`${id}.${ts}.${raw}`).digest();
     return sigs.split(' ').some(p => { const [v, s] = p.split(','); if (v !== 'v1' || !s) return false; const got = Buffer.from(s, 'base64'); return got.length === want.length && crypto.timingSafeEqual(got, want); });
   } catch { return false; }
+}
+
+// Resend's delivery reports for emails we sent (email.delivered, email.delivery_delayed, email.bounced, email.complained)
+const RECEIPT = { 'email.delivered': 'delivered', 'email.delivery_delayed': 'delayed', 'email.bounced': 'bounced', 'email.complained': 'complained' }, RANK = { sent: 1, delayed: 2, delivered: 3, bounced: 9, complained: 9 };
+export const isReceiptEvent = type => type in RECEIPT;
+export async function applyReceipt(pool, ev) {
+  const st = RECEIPT[ev.type], pid = ev.data && ev.data.email_id; if (!st || !pid) return { ok: false };
+  const row = (await pool.query('select org_id, message_id from email_receipts where provider_id = $1', [String(pid)])).rows[0]; if (!row) return { ok: false, unknown: true };
+  const why = st === 'bounced' ? clean((ev.data.bounce && (ev.data.bounce.message || ev.data.bounce.type)) || 'The address did not accept the email.', 300) : st === 'complained' ? 'The customer marked it as spam.' : null;
+  await withOrg(pool, row.org_id, async c => {
+    const cur = (await c.query('select delivery_status from ticket_messages where org_id = $1 and id = $2', [row.org_id, row.message_id])).rows[0]; if (!cur) return;
+    if ((RANK[cur.delivery_status] || 0) >= 9 && RANK[st] < 9) return;                 // a bounce stays a bounce
+    if ((RANK[cur.delivery_status] || 0) > RANK[st] && RANK[st] < 9) return;           // a late "delayed" never replaces "delivered"
+    await c.query('update ticket_messages set delivery_status = $3, delivery_error = $4 where org_id = $1 and id = $2', [row.org_id, row.message_id, st, why]);
+  });
+  return { ok: true, orgId: row.org_id };
+}
+// what happened to each agent email of a ticket, for the conversation view: [{ message_id, status, error }]
+export async function emailDeliveryOf(pool, orgId, number) {
+  return withOrg(pool, orgId, async c => (await c.query("select m.id as message_id, coalesce(m.delivery_status, case m.delivery when 'sent' then 'sent' when 'failed' then 'failed' end) as status, m.delivery_error as error from ticket_messages m join tickets t on t.id = m.ticket_id and t.org_id = m.org_id where m.org_id = $1 and t.number = $2 and m.kind = 'agent' and m.delivery in ('sent','failed')", [orgId, Number(number) || 0])).rows);
 }

@@ -65,3 +65,14 @@ export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumbe
   if (skipped.length) await withOrg(pool, orgId, c => c.query("insert into ticket_messages (org_id, ticket_id, kind, body) select $1, id, 'system', $3 from tickets where org_id = $1 and number = $2", [orgId, ticketNumber, `Not stored: ${skipped.join(', ')}.`]));
   return skipped;
 }
+
+// one file that arrived with a customer's message by some route other than email (WhatsApp media): same size and storage rules as email attachments; returns { ok, id } or { ok: false, why }
+export async function storeBytes(pool, store, orgId, ticketNumber, messageRowId, { filename, contentType, bytes }) {
+  const name = cleanName(filename);
+  if (bytes.length > MAX_INBOUND_FILE) return { ok: false, why: `${name} (too large)` };
+  const ent = await getEntitlements(pool, orgId); if (await storageUsed(pool, orgId) + bytes.length > limitFor(ent)) return { ok: false, why: `${name} (storage full)` };
+  const ticket = await withOrg(pool, orgId, async c => (await c.query('select id from tickets where org_id = $1 and number = $2', [orgId, ticketNumber])).rows[0]); if (!ticket) return { ok: false, why: 'no ticket' };
+  const id = crypto.randomUUID(); await store.set(`${orgId}/${id}`, bytes);
+  await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size) values ($1,$2,$3,$4,$5,$6,$7)', [id, orgId, ticket.id, messageRowId, name, cleanType(contentType), bytes.length]));
+  return { ok: true, id };
+}

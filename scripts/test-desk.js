@@ -30,7 +30,10 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'agent-detail') return ok({ ok: true, person: { userId: b.userId, name: 'Ann', email: 'ann@acme.test', role: 'member' }, can: { level: 'custom', text: 'Custom role: Tier 1', perms: ['reply'] }, counts: { open: 2, pending: 1, solved30: 9 }, week: { replies: 4, notes: 1 }, tickets: [{ number: 7, subject: 'Leak', status: 'open' }], activity: [{ number: 7, kind: 'agent', at: new Date().toISOString(), snippet: 'On our way' }], changes: [] });
   if (b.action === 'forms-list') return ok({ ok: true, forms: [{ id: 3, name: 'Billing question', description: 'Charges', subject_hint: '', queue_id: null, type: 'question', priority: 'normal', tags: ['money'], field_keys: [], active: true, tickets: 4 }] });
   if (b.action === 'presence') return ok({ ok: true, others: [{ userId: 'u9', name: 'Bo', typing: true }] });
+  if (b.action === 'reply' && /^window/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'WhatsApp only lets you reply within 24 hours.', window: true }) };
   if (b.action === 'reply' && /^conflict/.test(b.body) && !b.force) return { ok: false, status: 409, json: async () => ({ error: 'Sam wrote on this ticket since you opened it.', conflict: true }) };
+  if (b.action === 'whatsapp-templates') return ok({ ok: true, templates: [{ name: 'order_update', language: 'en_US', body: 'Hi {{1}}, your visit is {{2}}.', slots: 2 }] });
+  if (b.action === 'whatsapp-template-send') return ok({ ok: true, whatsapp: 'sent', message: { id: 99 } });
   if (b.action === 'whatsapp-get') return ok({ ok: true, settings: { enabled: true, phoneNumberId: '111', displayPhone: '+1 555 0100', verifyToken: 'vt123456789012345678', hasToken: true, webhookUrl: 'https://x.test/api/webhooks/whatsapp' } });
   if (b.action === 'whatsapp-save') return ok({ ok: true, settings: { enabled: !!b.enabled, phoneNumberId: b.phoneNumberId, displayPhone: b.displayPhone, verifyToken: 'vt123456789012345678', hasToken: true, webhookUrl: 'https://x.test/api/webhooks/whatsapp' } });
   if (b.action === 'routing-get') return ok({ ok: true, settings: { enabled: true, strategy: 'round_robin', max_open: 5 } });
@@ -147,6 +150,10 @@ $('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('tex
 check('if the email could not be sent the agent is told, and the reply is kept', /email could not be sent/.test($('.msg').textContent));
 $('textarea').value = 'limit now'; $('[data-reply]').click(); await tick();
 check('if the daily email limit is reached the agent is told why', /email limit/.test($('.msg').textContent));
+$('textarea').value = 'window closed'; $('[data-reply]').click(); await tick(); await tick();
+check('when the WhatsApp window has closed the agent is offered the approved templates and keeps the text', !!$('[data-wa-window]') && !!$('[data-wa-tpl]') && $('textarea').value === 'window closed' && /your visit is/.test($('[data-wa-tpl-body]').textContent) && $$('[data-wa-var]').length === 2);
+$('[data-wa-var="1"]').value = 'Carla'; $('[data-wa-var="1"]').dispatchEvent(new w.Event('input')); $('[data-wa-var="2"]').value = 'at 9'; $('[data-wa-var="2"]').dispatchEvent(new w.Event('input')); $('[data-wa-tpl-send]').click(); await tick(); await tick();
+check('sending the template posts its name, language and variables and closes the bar', calls.some(c => c[1] && c[1].action === 'whatsapp-template-send' && c[1].name === 'order_update' && c[1].language === 'en_US' && JSON.stringify(c[1].params) === '["Carla","at 9"]') && !$('[data-wa-window]'));
 { const n0 = calls.filter(c => c[1] && c[1].action === 'reply').length;
   $('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('textarea').value = 'double click'; const rb = $('[data-reply]'); rb.click(); rb.click(); w.document.querySelector('textarea') && w.document.querySelector('textarea').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
   const locked = $('[data-reply]') && $('[data-reply]').hasAttribute('disabled'); await tick();

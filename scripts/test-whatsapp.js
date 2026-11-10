@@ -11,7 +11,7 @@ import { createTicket } from '../src/tickets.js';
 import { grantLicense } from '../src/license.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
-const sent = [], ENV = { __waFetch: async (u, o) => { const b = JSON.parse(o.body); sent.push({ u, auth: o.headers.Authorization, b }); if (/FAIL/.test(b.text.body)) return { ok: false, status: 400, json: async () => ({ error: { message: 'Recipient not on WhatsApp' } }) }; return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.OUT' + sent.length }] }) }; }, INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
+const sent = [], ENV = { __waFetch: async (u, o) => { if (!o || !o.body) { if (/\/MEDIA1$/.test(u)) return { ok: true, status: 200, json: async () => ({ url: 'https://lookaside.test/m1', mime_type: 'image/jpeg', file_size: 4 }) }; if (u === 'https://lookaside.test/m1') return { ok: true, status: 200, arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer }; return { ok: false, status: 404, json: async () => ({}) }; } const b = JSON.parse(o.body); sent.push({ u, auth: o.headers.Authorization, b }); if (b.text && /FAIL/.test(b.text.body)) return { ok: false, status: 400, json: async () => ({ error: { message: 'Recipient not on WhatsApp' } }) }; return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid.OUT' + sent.length }] }) }; }, INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
 const ENV2 = { ...ENV };
 const { url } = await freshDb('ai'); await migrate(url);
 const pool = makePool(url), outbox = [];
@@ -32,7 +32,8 @@ check('saving returns the webhook address and a verify token, never the secrets'
 const enc = (await pool.query('select access_token_enc, app_secret_enc from whatsapp_accounts')).rows[0];
 check('the token is stored encrypted', !enc.access_token_enc.includes(TOKEN) && !enc.app_secret_enc.includes(APP));
 const vt = sv.body.settings.verifyToken;
-const hook = (method, raw, sig, qs = '') => whatsappWebhook(new Request('http://x/api/webhooks/whatsapp' + qs, { method, headers: sig ? { 'x-hub-signature-256': sig } : {}, body: method === 'POST' ? raw : undefined }), { pool, mailer, env: ENV });
+const blobs = new Map(), store = { set: async (k, v) => { blobs.set(k, v); }, get: async k => blobs.get(k), delete: async k => { blobs.delete(k); } };
+const hook = (method, raw, sig, qs = '') => whatsappWebhook(new Request('http://x/api/webhooks/whatsapp' + qs, { method, headers: sig ? { 'x-hub-signature-256': sig } : {}, body: method === 'POST' ? raw : undefined }), { pool, mailer, store, env: ENV });
 const sign = raw => 'sha256=' + crypto.createHmac('sha256', APP).update(raw).digest('hex');
 const ok = await hook('GET', null, null, `?hub.mode=subscribe&hub.verify_token=${vt}&hub.challenge=4242`);
 check('Meta\'s address check is answered with the challenge', ok.status === 200 && await ok.text() === '4242');
@@ -68,9 +69,50 @@ check('after 24 hours of silence a reply is refused before anything is saved or 
 check('an internal note is still fine', (await A(olivia, 'note', { number: n, body: 'called her' })).status === 200);
 const m3 = payload([{ from: '15559990000', id: 'wamid.IN3', type: 'image', image: { id: 'x' } }]); await hook('POST', m3, sign(m3));
 check('a photo shows up as a message that says so, and reopens the window', (await A(olivia, 'reply', { number: n, body: 'Thanks, got it' })).body.whatsapp === 'sent');
+
+// ---- inbound media ----
+const mm = payload([{ from: '15559990000', id: 'wamid.IN5', type: 'image', image: { id: 'MEDIA1', mime_type: 'image/jpeg', caption: 'Broken pipe' } }]); await hook('POST', mm, sign(mm));
+const att = (await pool.query('select * from attachments')).rows;
+check('a photo is kept as an attachment on the customer\'s message, with its caption as the text', att.length === 1 && att[0].content_type === 'image/jpeg' && att[0].size === 4 && /\.jpg$/.test(att[0].filename) && blobs.size === 1 && (await pool.query("select 1 from ticket_messages where body = 'Broken pipe'")).rowCount === 1);
+const mb = payload([{ from: '15559990000', id: 'wamid.IN6', type: 'audio', audio: { id: 'GONE', mime_type: 'audio/ogg' } }]); await hook('POST', mb, sign(mb));
+check('media that cannot be fetched is noted on the ticket instead of vanishing', (await pool.query("select 1 from ticket_messages where kind = 'system' and body like 'The voice message could not be saved here%'")).rowCount === 1 && (await pool.query("select 1 from ticket_messages where body = '[Voice message]'")).rowCount === 1);
+
+// ---- templates ----
+await pool.query("update ticket_messages set created_at = now() - interval '25 hours' where kind = 'requester'");
+check('only admins manage templates', (await A(ann, 'whatsapp-template-save', { name: 'x', body: 'y' })).status === 403);
+check('a template name must match Meta\'s rules', (await A(olivia, 'whatsapp-template-save', { name: 'Order Update!', body: 'Hi' })).status === 400 && (await A(olivia, 'whatsapp-template-save', { name: 'order_update', language: 'english please', body: 'Hi' })).status === 400);
+const ts = await A(olivia, 'whatsapp-template-save', { name: 'order_update', language: 'en_US', body: 'Hi {{1}}, your visit is {{2}}.' });
+check('a template is saved with its number of variables', ts.status === 200 && ts.body.templates.length === 1 && ts.body.templates[0].slots === 2);
+check('agents can list templates', (await A(ann, 'whatsapp-templates')).body.templates.length === 1);
+check('a reply is still refused after 24 hours, which is when templates are needed', (await A(olivia, 'reply', { number: n, body: 'free text' })).status === 409);
+check('every variable must be filled in', (await A(olivia, 'whatsapp-template-send', { number: n, name: 'order_update', language: 'en_US', params: ['Carla'] })).status === 400);
+check('an unknown template is refused', (await A(olivia, 'whatsapp-template-send', { number: n, name: 'nope', language: 'en_US', params: [] })).status === 404);
+const tb = sent.length, tsend = await A(olivia, 'whatsapp-template-send', { number: n, name: 'order_update', language: 'en_US', params: ['Carla', 'tomorrow at 9'] });
+const tw = sent[sent.length - 1];
+check('a template goes out in WhatsApp\'s template format with the variables, even after 24 hours', tsend.status === 200 && tsend.body.whatsapp === 'sent' && sent.length === tb + 1 && tw.b.type === 'template' && tw.b.template.name === 'order_update' && tw.b.template.language.code === 'en_US' && JSON.stringify(tw.b.template.components[0].parameters) === JSON.stringify([{ type: 'text', text: 'Carla' }, { type: 'text', text: 'tomorrow at 9' }]));
+check('the filled-in text is saved as the agent\'s message with its delivery status', (await pool.query("select 1 from ticket_messages where kind = 'agent' and body = 'Hi Carla, your visit is tomorrow at 9.'")).rowCount === 1 && (await A(olivia, 'get', { number: n })).body.delivery.some(d => d.status === 'sent'));
+const dt = await A(olivia, 'whatsapp-template-delete', { name: 'order_update', language: 'en_US' }); check('a template can be deleted', dt.status === 200 && dt.body.templates.length === 0);
+
+// ---- email delivery receipts from Resend ----
+const WH = 'whsec_' + Buffer.from('resend-secret').toString('base64'), ENVR = { ...ENV, RESEND_WEBHOOK_SECRET: WH };
+const et = (await createTicket(pool, acme.id, null, { subject: 'Mail', body: 'hello', requesterEmail: 'zed@x.co', channel: 'email' })).ticket;
+const { addMessage } = await import('../src/tickets.js');
+const em = (await addMessage(pool, acme.id, { id: olivia.user.id, name: 'Olivia', email: 'olivia@acme.test' }, et.number, { body: 'Here you go', internal: false })).message;
+await pool.query("update ticket_messages set delivery = 'sent', delivery_status = 'sent' where id = $1", [em.id]);
+await pool.query("insert into email_receipts (provider_id, org_id, message_id) values ('re_abc', $1, $2)", [acme.id, em.id]);
+const { inboundEmail } = await import('../src/handlers.js');
+let evn = 0; const resend = async (type, extra = {}) => { const raw = JSON.stringify({ type, data: { email_id: 're_abc', ...extra } }), id = 'msg_' + (++evn), ts = String(Math.floor(Date.now() / 1000)), sig = crypto.createHmac('sha256', Buffer.from('resend-secret')).update(`${id}.${ts}.${raw}`).digest('base64'); return inboundEmail(new Request('http://x/api/webhooks/email', { method: 'POST', headers: { 'svix-id': id, 'svix-timestamp': ts, 'svix-signature': 'v1,' + sig }, body: raw }), { pool, mailer, store, env: ENVR }); };
+const stOf = async () => (await A(olivia, 'get', { number: et.number })).body.delivery.find(d => String(d.message_id) === String(em.id));
+check('an unsigned receipt is refused', (await inboundEmail(new Request('http://x/api/webhooks/email', { method: 'POST', body: JSON.stringify({ type: 'email.delivered', data: { email_id: 're_abc' } }) }), { pool, mailer, store, env: ENVR })).status === 401);
+check('"delayed" is shown', (await resend('email.delivery_delayed')).status === 200 && (await stOf()).status === 'delayed');
+await resend('email.delivered'); check('"delivered" replaces "delayed"', (await stOf()).status === 'delivered');
+await resend('email.delivery_delayed'); check('a late "delayed" does not replace "delivered"', (await stOf()).status === 'delivered');
+await resend('email.bounced', { bounce: { message: 'Mailbox does not exist' } }); const bd = await stOf(); check('a bounce shows the reason', bd.status === 'bounced' && /Mailbox does not exist/.test(bd.error));
+await resend('email.delivered'); check('a bounce stays a bounce', (await stOf()).status === 'bounced');
+check('a report for an email we do not know is accepted and ignored', (await (await resend('email.delivered', { email_id: 're_unknown' })).json()).receipt === true);
 await A(olivia, 'whatsapp-save', { phoneNumberId: '111', enabled: false });
 const m4 = payload([{ from: '15551110000', id: 'wamid.IN4', type: 'text', text: { body: 'hello' } }]); await hook('POST', m4, sign(m4));
-check('when WhatsApp is switched off, messages are ignored', (await pool.query('select 1 from tickets')).rowCount === 1);
+check('when WhatsApp is switched off, messages are ignored', (await pool.query("select 1 from tickets where requester_phone = '15551110000'")).rowCount === 0);
 const otto = await signUp('otto@beta.test', 'Otto'), beta = await auth.api.createOrganization({ body: { name: 'Beta', slug: 'beta' }, headers: otto.headers });
 const rb = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: otto.cookie }, body: JSON.stringify({ orgId: beta.id, action: 'whatsapp-save', phoneNumberId: '222', accessToken: 't', appSecret: 's' }) }), { pool, auth, mailer, env: ENV });
 check('a workspace on a plan without WhatsApp is told to upgrade', rb.status === 402);

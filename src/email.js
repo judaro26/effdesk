@@ -25,6 +25,7 @@ export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process
     if (!apiKey) { console.warn('RESEND_API_KEY is not set: mail not sent:', msg.subject); return; }
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: msg.from || from, to: msg.to, ...(msg.cc && msg.cc.length ? { cc: msg.cc } : {}), subject: msg.subject, html: msg.html, text: msg.text, ...(msg.replyTo ? { reply_to: msg.replyTo } : {}), ...(msg.headers ? { headers: msg.headers } : {}), ...(msg.attachments ? { attachments: msg.attachments } : {}) }) });
     if (!r.ok) throw new Error(`mail provider answered ${r.status}`);
+    const j = await r.json().catch(() => null); return j && j.id ? String(j.id) : undefined;   // the provider's id for this email, kept so its delivery reports can be matched
   });
   const send = async msg => { if (/@whatsapp\.invalid\b/i.test(String(msg.to || ''))) return;   // WhatsApp customers have no email address: their tickets carry a placeholder that never receives mail
     const t0 = Date.now(); try { const r = await send0(msg); logInfo('email', { ok: true, ms: Date.now() - t0, to_domain: String(msg.to || '').split('@')[1] }); return r; } catch (err) { logError('email', { ok: false, ms: Date.now() - t0, error: err }); throw err; } };

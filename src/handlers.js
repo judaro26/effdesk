@@ -5,7 +5,7 @@ import { signupContext } from './auth.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
-import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress } from './ticket-mail.js';
+import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
 import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, MAX_UPLOAD, cleanName } from './attachments.js';
 import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publishedList, publicArticle, countView, vote as voteArticle, searchArticles, renderBody, LANGS } from './help.js';
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
@@ -106,7 +106,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -205,7 +205,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       r = await getTicket(pool, orgId, actor, b.number);
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
       if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
-      if (r.ok && r.ticket.channel === 'whatsapp') r.delivery = await wa.deliveryOf(pool, orgId, b.number);
+      if (r.ok) r.delivery = r.ticket.channel === 'whatsapp' ? await wa.deliveryOf(pool, orgId, b.number) : await emailDeliveryOf(pool, orgId, b.number);
       if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies, Date.now(), await calendarOf(pool, orgId)) };
       break;
     }
@@ -306,6 +306,15 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'whatsapp-get': if ((g = adminOnly())) return g; if ((g = need('whatsapp'))) return g; r = { ok: true, settings: await wa.getSettings(pool, env, orgId, siteBase(req, env)) }; break;
     case 'whatsapp-save': if ((g = adminOnly())) return g; if ((g = need('whatsapp'))) return g; r = await wa.saveSettings(pool, env, orgId, b, siteBase(req, env)); break;
     case 'whatsapp-delete': if ((g = adminOnly())) return g; r = await wa.deleteAccount(pool, orgId); break;
+    case 'whatsapp-templates': if ((g = need('whatsapp'))) return g; r = { ok: true, templates: await wa.listTemplates(pool, orgId) }; break;
+    case 'whatsapp-template-save': if ((g = adminOnly())) return g; if ((g = need('whatsapp'))) return g; r = await wa.saveTemplate(pool, orgId, b); break;
+    case 'whatsapp-template-delete': if ((g = adminOnly())) return g; r = await wa.deleteTemplate(pool, orgId, b.name, b.language); break;
+    case 'whatsapp-template-send': {
+      if ((g = need('whatsapp'))) return g;
+      r = await wa.sendTemplate(pool, env, orgId, actor, b.number, b, env.__waFetch || fetch);
+      if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
+      break;
+    }
     case 'chat-get': if ((g = need('live_chat'))) return g; r = { ok: true, settings: await chatSettings(pool, orgId) }; break;
     case 'chat-save': if ((g = adminOnly())) return g; if ((g = need('live_chat'))) return g; r = await saveChatSettings(pool, orgId, b); break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;
@@ -355,6 +364,7 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' });
   if (!verifySvix(raw, req.headers, env.RESEND_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
   let ev; try { ev = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
+  if (ev && isReceiptEvent(ev.type)) { await applyReceipt(pool, ev); return json(200, { ok: true, receipt: true }); }
   if (!ev || ev.type !== 'email.received' || !ev.data || !ev.data.email_id) return json(200, { ok: true, ignored: true });
   const evId = req.headers.get('svix-id');
   if ((await pool.query("select 1 from webhook_events where id = $1 and provider = 'resend'", [evId])).rowCount) return json(200, { ok: true, duplicate: true });
@@ -593,10 +603,10 @@ export async function platformCustomer(req, { pool, auth }) {
 
 const siteBase = (req, env) => { try { return env.APP_URL ? String(env.APP_URL).replace(/\/+$/, '') : new URL(req.url).origin; } catch { return ''; } };
 // Meta's WhatsApp webhook: GET answers the one-time address check, POST carries messages and delivery reports
-export async function whatsappWebhook(req, { pool, mailer, env = process.env }) {
+export async function whatsappWebhook(req, { pool, mailer, store, env = process.env, fetchFn = env.__waFetch || fetch }) {
   if (req.method === 'GET') { const c = await wa.verifyChallenge(pool, new URL(req.url).searchParams); return c === null ? new Response('Forbidden', { status: 403 }) : new Response(c, { status: 200, headers: { 'content-type': 'text/plain' } }); }
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const raw = await req.text(); if (raw.length > 200000) return json(413, { error: 'Too large.' });
-  const r = await wa.handleWebhook(pool, env, raw, req.headers.get('x-hub-signature-256'), mailer);
+  const r = await wa.handleWebhook(pool, env, raw, req.headers.get('x-hub-signature-256'), mailer, { store, fetchFn });
   return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
 }
