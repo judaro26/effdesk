@@ -160,3 +160,4 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .deskapp .ed-bar{padding:6px 8px}
 .deskapp .newsubmit select{width:auto;min-width:110px}
 .deskapp .newsubmit{justify-content:flex-end}
+.deskapp .newt .newgrid{width:100%}.deskapp .newt input:not([type=checkbox]),.deskapp .newt select{max-width:none}.deskapp .newt .newsubmit select{max-width:160px}.deskapp .newt .ed-bar select{max-width:140px}.deskapp .newt .ed-link input{max-width:none}
