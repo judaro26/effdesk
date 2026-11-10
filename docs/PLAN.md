@@ -27,6 +27,6 @@ Export mdv's Firestore support collections, load them into Postgres under the md
 Lawyer-approved documents, Paddle live, status page, backup and restore drill, breach runbook, support mailbox, first outside customers.
 
 ## Open decisions
-- Free seats on paid plans: today paid seats are priced for **every** agent and the 2 free seats do not stack on top. The alternative ("2 free plus paid extras") is friendlier but gives away more.
+- Free seats on paid plans: DECIDED. The 2 free agents belong to the free (freemium) plan only; a paid plan is priced for every agent and the free seats do not stack on top.
 - Light agents (read and note only) are not built; every member uses a seat.
 - Data region: one region at first; EU hosting later if customers ask.
