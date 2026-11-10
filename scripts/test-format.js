@@ -1,0 +1,23 @@
+// scripts/test-format.js: HOW MESSAGES ARE FORMATTED: tables pasted from a spreadsheet, markdown tables, code blocks, lines, inline styles; and that the HTML for emails and the portal is escaped.
+import { check, done } from './lib/check.js';
+import '../public/js/format.js';
+const F = globalThis.EffFormat, kinds = t => F.parse(t).map(b => b.t).join();
+const sheet = 'Condo renovation material takeoff\t\t\t\t\nAll quantities are formulas.\t\t\t\t\nCategory\tItem\tNeeded (exact)\tUnit\tOrder qty\nLighting\t\t\t\t\nLighting\tLED strip run\t165.9\tft\t166\nLighting\tLED strip rolls\t11.1\trolls\t12\t10';
+const tb = F.parse(sheet)[0];
+check('text copied from a spreadsheet (tab separated) becomes one table', kinds(sheet) === 'table' && tb.width === 6 && tb.head.length === 3 && tb.body.length === 3);
+check('the title lines and the header row go in the header; the category line spans the row', tb.head[0].length === 1 && tb.head[2][0] === 'Category' && tb.body[0].length === 1);
+check('a line with one tab is not a table', kinds('Name:\tJuan') === 'p');
+const md = '| Name | Qty |\n|------|-----|\n| Bolt | 4 |\n| Nut | 9 |';
+const mt = F.parse(md)[0]; check('a table written with | bars becomes a table with its header', kinds(md) === 'table' && mt.head[0].join() === 'Name,Qty' && mt.body.length === 2 && mt.body[1][1] === '9');
+check('``` makes a code block that keeps its lines, spaces and language', F.parse('before\n```js\n  a < b\n\nc\n```\nafter').map(b => b.t).join() === 'p,code,p' && F.parse('```js\n  a < b\n\nc\n```')[0].text === '  a < b\n\nc' && F.parse('```js\nx\n```')[0].lang === 'js');
+check('an unclosed ``` runs to the end instead of losing text', F.parse('```\nline1\nline2')[0].text === 'line1\nline2');
+check('--- *** ___ and - - - are lines, but -- and a dash in a sentence are not', kinds('a\n---\nb') === 'p,hr,p' && kinds('***') === 'hr' && kinds('___') === 'hr' && kinds('- - -') === 'hr' && kinds('--') === 'p' && kinds('well -- maybe') === 'p');
+check('plain paragraphs keep their line breaks and a blank line starts a new one', F.parse('a\nb\n\nc').map(b => b.text).join('|') === 'a\nb|c');
+check('inline `code`, **bold** and links are found; trailing punctuation stays outside the link', JSON.stringify(F.inline('x `a` **b** https://e.com/p?q=1.').map(p => p.t + ':' + p.v)) === JSON.stringify(['text:x ', 'code:a', 'text: ', 'b:b', 'text: ', 'a:https://e.com/p?q=1', 'text:.']));
+check('only http and https are links', !F.inline('javascript:alert(1) and data:text/html,x').some(p => p.t === 'a'));
+const h = F.html('<script>alert(1)</script> **<b>x</b>**\n```\n<img src=x onerror=alert(1)>\n```\n| <i> | b |\n|---|---|\n| \"q\" | & |');
+check('the HTML for emails and the portal escapes everything first', !/<script|<img|<i>|<b>/.test(h) && /&lt;script&gt;/.test(h) && /&lt;img src=x/.test(h) && /&quot;q&quot;/.test(h) && /&amp;/.test(h) && /<table/.test(h) && /<pre /.test(h));
+check('and has inline styles, because mail programs drop style sheets', /<table style=/.test(h) && /<pre style=/.test(h));
+check('empty and odd input is safe', F.html('') === '' && F.html(null) === '' && F.parse(undefined).length === 0 && F.html('\t\t').length >= 0);
+const big = ['a\tb'].concat(Array.from({ length: 3000 }, (_, i) => i + '\t' + i)).join('\n'); const t0 = Date.now(); F.html(big); check('a large pasted table is formatted quickly', Date.now() - t0 < 1500);
+done();

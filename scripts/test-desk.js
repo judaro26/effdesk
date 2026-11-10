@@ -4,7 +4,7 @@ import { check, done } from './lib/check.js';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub = f => fs.readFileSync(path.join(root, 'public', f), 'utf8'), tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
-const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
+const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }, { id: 99, kind: 'requester', author_name: 'Tina', body: 'Takeoff\t\t\nCategory\tItem\tQty\nLighting\t\t\nLighting\tLED strip\t12\n---\n```\nnpm test <b>\n```\nAlso `x` and **bold** at https://ex.org/a', created_at: '2026-11-01T12:00:00Z', attachments: [] }];
 const calls = []; const ALLF = ['custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
@@ -44,7 +44,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'webhook-save') return /^https:/.test(b.url) ? ok({ ok: true, id: 4, secret: 'whsec_abc' }) : { ok: false, status: 400, json: async () => ({ error: 'Use a public https address' }) };
   if (b.action === 'webhook-delete') return ok({ ok: true });
   if (b.action === 'note') return ok({ ok: true, message: { id: 99 }, mentioned: 0 });
-  if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
+  if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|mint|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
   if (b.action === 'list') return ok({ tickets: [T], counts: { open: 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
@@ -52,7 +52,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'create') return ok({ ticket: { ...T, number: 8, subject: b.subject } });
   return ok({ ok: true });
 };
-const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/desk.js'));
+const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/desk.js'));
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), $$ = s => [...w.document.querySelectorAll(s)];
@@ -66,7 +66,11 @@ $('[data-home-tab]').click(); await tick(); $('a.logo').click(); await tick(); $
 check('the desk lists the organization\'s tickets with the signed-in email shown', $$('tr.row').length === 1 && /#7/.test($('.row').textContent) && /Heater/.test($('.row').textContent) && w.document.getElementById('who').textContent === 'ann@acme.test');
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
 $('.row').click(); await tick();
-check('opening a ticket shows its messages in order, with the note marked', $$('.msg-b').length === 2 && $$('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($$('.msg-b')[1].textContent));
+check('opening a ticket shows its messages in order, with the note marked', $$('.msg-b').length === 3 && $$('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($$('.msg-b')[1].textContent));
+{ const rb = $$('.msg-b')[2]; check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
+  check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb.querySelector('hr[data-rule]') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
+  check('inline code, bold and links are formatted, and links open safely in a new tab', !!rb.querySelector('p code') && !!rb.querySelector('p strong') && rb.querySelector('p a').getAttribute('rel') === 'noopener noreferrer' && rb.querySelector('p a').getAttribute('href') === 'https://ex.org/a');
+  check('a message with markup in it is still shown as text, never run', !$$('.msg-b')[0].querySelector('img')); }
 check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b').textContent) && /<b>broken<\/b>/.test($('h2').textContent));
 check('a message shows its files as download links for this organization', $$('.msg-b')[0].querySelector('a[data-file=f1]').getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\.jpg \(2 KB\)/.test($('a[data-file=f1]').textContent));
 check('the opened ticket has its own tab beside Views, three columns, and the rail marks Tickets', !!$('[data-tab="7"]') && /#7 Heater/.test($('[data-tab="7"]').textContent) && !!$('.ticket .props') && !!$('.ticket .conv') && !!$('.ticket .info') && $('[data-nav]').getAttribute('aria-current') === 'true');
@@ -98,6 +102,12 @@ check('a server error is shown to the person', /requester/.test($('.msg').textCo
 const inp = $$('.desk input[aria-label]'); const by = n => inp.find(i => i.getAttribute('aria-label') === n);
 by('subject').value = 'Leak'; by('requesterEmail').value = 'a@b.co'; $('textarea').value = 'It drips'; $('[data-create]').click(); await tick();
 check('a created ticket opens straight away', calls.some(c => c[1] && c[1].action === 'create' && c[1].subject === 'Leak') && /#8/.test($('h2').textContent));
+$('#newbtn').click(); await tick();
+{ const na = $('input[data-attach]'); Object.defineProperty(na, 'files', { value: [new w.File(['abc'], 'shot.png', { type: 'image/png' })], configurable: true }); na.dispatchEvent(new w.Event('change')); await tick(40); }
+check('a new ticket can have a file attached before the ticket exists (the upload names no ticket)', calls.some(c => /^\/api\/attachments\?org=o1&name=shot\.png/.test(c[0])) && $$('[data-pending]').length === 1);
+{ const ta = $('textarea'), ev = new w.Event('paste', { bubbles: true, cancelable: true }); Object.defineProperty(ev, 'clipboardData', { value: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => new w.File(['x'], 'image.png', { type: 'image/png' }) }] } }); ta.dispatchEvent(ev); await tick(40); check('pasting a picture into the message attaches it, and the browser does not also paste it', ev.defaultPrevented === true && calls.some(c => /name=pasted-image-\d+\.png/.test(c[0])) && $$('[data-pending]').length === 2); }
+{ const i2 = $$('.desk input[aria-label]'), by2 = n => i2.find(i => i.getAttribute('aria-label') === n); by2('subject').value = 'Pic'; by2('subject').dispatchEvent(new w.Event('input')); by2('requesterEmail').value = 'p@q.co'; by2('requesterEmail').dispatchEvent(new w.Event('input')); $('textarea').value = 'see picture'; $('textarea').dispatchEvent(new w.Event('input')); $('[data-create]').click(); await tick(); }
+check('creating sends the waiting files with the ticket', calls.some(c => c[1] && c[1].action === 'create' && c[1].subject === 'Pic' && c[1].attachmentIds && c[1].attachmentIds.length === 2));
 $('[data-mail]').click(); await tick();
 check('Email settings shows the address to give customers, with the suggestion from the organization name', !!$('[data-mail-save]') && /acme@in\.effdesk\.test/.test($('.desk').textContent) && $('input[aria-label="Support address"]').value === 'acme');
 const modeSel = $('select[aria-label=Replies]'); modeSel.value = 'custom'; modeSel.dispatchEvent(new w.Event('change')); await tick();
@@ -166,7 +176,7 @@ check('a client is saved with its domain', calls.some(c => c[1] && c[1].action =
 // profile menu and themes
 check('the profile chip is a button that opens a menu, and Escape closes it', $('#userbtn').tagName === 'BUTTON' && $('#usermenu').hidden === true && ($('#userbtn').click(), $('#usermenu').hidden === false && $('#userbtn').getAttribute('aria-expanded') === 'true' && !!$('[data-signout]') && $('[data-account]').getAttribute('href') === '/app.html' && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' })), $('#usermenu').hidden === true)));
 $('#userbtn').click(); $('[data-profile]').click(); await tick();
-check('"Profile and themes" shows all seven themes with the current one marked, and the menu closes', $$('.theme').length === 7 && $('[data-theme-id=classic]').getAttribute('aria-pressed') === 'true' && $('#usermenu').hidden === true && $$('.theme .pro').length === 5);
+check('"Profile and themes" shows all ten themes with the current one marked, and the menu closes', $$('.theme').length === 10 && $('[data-theme-id=classic]').getAttribute('aria-pressed') === 'true' && $('#usermenu').hidden === true && $$('.theme .pro').length === 7);
 $('[data-theme-id=aurora]').click(); await tick();
 check('choosing a theme applies it at once, saves it, and remembers it for the next visit', w.document.documentElement.getAttribute('data-theme') === 'aurora' && calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].theme === 'aurora') && w.localStorage.getItem('eff_theme') === 'aurora');
 FEATURES = FEATURES.filter(f => f !== 'themes'); $('[data-nav]').click(); await tick(); $('[data-queue="5"]');

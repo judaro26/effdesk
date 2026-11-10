@@ -7,6 +7,8 @@ import { getEntitlements } from './billing.js';
 import { mailLimit } from './plans.js';
 import { createTicket, addRequesterMessage, ticketByMessageId, messageSeen } from './tickets.js';
 import { sideTokenOk, sideReplyIn } from './desk.js';
+import '../public/js/format.js';
+const fmtHtml = t => globalThis.EffFormat.html(t);          // tables, ``` code, --- lines and links, with everything escaped first
 
 export const MODES = ['ticket', 'custom', 'none'];
 const RESERVED = new Set(['admin', 'administrator', 'postmaster', 'abuse', 'no-reply', 'noreply', 'mailer-daemon', 'root', 'webmaster', 'hostmaster', 'security', 'support', 'help', 'info', 'billing', 'sales', 'effdesk', 'www', 'mail', 'test']);
@@ -72,7 +74,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const replyTo = mode === 'ticket' ? `${inbox}+${t.number}.${ticketToken(env, orgId, t.number)}@${domain}` : mode === 'custom' ? settings.reply_to : undefined;
     const sig = settings?.signature ? `\n\n-- \n${settings.signature}` : '', foot = mode === 'none' ? '\n\n(This address does not receive replies.)' : '';
     const text = `${m.body}${sig}${foot}`;
-    const html = `<div style="white-space:pre-wrap">${esc(m.body)}</div>${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+    const html = `${fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
     try { await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }

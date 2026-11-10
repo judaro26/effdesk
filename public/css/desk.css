@@ -105,3 +105,24 @@ html[data-theme] .deskapp .rail .logo{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .av{overflow:hidden}.av img{width:100%;height:100%;object-fit:cover;display:block}#av img{width:100%;height:100%;object-fit:cover;border-radius:50%}code{word-break:break-all;display:block;padding:6px 8px;background:var(--d-in);border-radius:6px;margin:6px 0;font-size:13px}
 
 .supportbar{background:#fff4d6;color:#4a3500;border-bottom:1px solid #e8c766;padding:8px 16px;font-size:14px;text-align:center;position:sticky;top:0;z-index:50}.supportbar a{color:#4a3500;font-weight:700}
+
+/* Mint (free): fresh and light */
+html[data-theme="mint"] .deskapp{--accent:#0f9d7a;--accent-d:#0a7a5f;--accent-ink:#fff;--d-bg:#f0f8f5;--d-panel:#ffffff;--d-line:#d5e8e1;--d-ink:#10302a;--d-muted:#5a7a72;--d-rail:#0b3d36;--d-rail-ink:#b6e3d7;--d-top:#ffffff;--d-hover:#e3f2ed;--d-in:#e6f3ee;--d-out:#d4efe6;--d-note:#fff3bf;--d-note-line:#e3c35a;--d-badge:#dcece6;--d-radius:10px;--d-logo:linear-gradient(135deg,#7be0c3,#0f9d7a);color-scheme:light}
+html[data-theme="mint"] .deskapp .logo{color:#06362d}
+/* Obsidian (paid): near-black glass, emerald glow, a faint grid */
+html[data-theme="obsidian"] .deskapp{--accent:#2ee6a6;--accent-d:#6ff2c4;--accent-ink:#00251a;--d-bg:#07090b;--d-panel:rgba(16,20,22,.92);--d-line:#1f2b2b;--d-ink:#e8f1ee;--d-muted:#8aa09a;--d-rail:linear-gradient(180deg,#0f1f1b 0%,#070b0a 100%);--d-rail-ink:#8fe9cb;--d-top:linear-gradient(90deg,#0b1311,#090d0d);--d-hover:#141e1c;--d-in:#131b19;--d-out:linear-gradient(135deg,#0f3f31,#0a2b35);--d-note:#3a3410;--d-note-line:#8a7a24;--d-badge:#1c2826;--d-radius:12px;--d-shadow:6px 0 34px rgba(46,230,166,.14);--d-logo:linear-gradient(135deg,#2ee6a6,#d4ff5e);color-scheme:dark}
+html[data-theme="obsidian"] .deskapp{background:radial-gradient(900px 520px at 90% -12%,rgba(46,230,166,.2),transparent 60%),radial-gradient(700px 420px at -5% 110%,rgba(120,255,90,.08),transparent 60%),linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px) 0 0/32px 32px,linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px) 0 0/32px 32px,#07090b}
+html[data-theme="obsidian"] .deskapp .btn:not(.l){background:linear-gradient(135deg,#2ee6a6,#b6f23a);border-color:transparent;box-shadow:0 4px 18px rgba(46,230,166,.35)}
+html[data-theme="obsidian"] .deskapp .conv,html[data-theme="obsidian"] .deskapp .views .tbl{background:transparent}
+/* Champagne (paid): ivory and brushed gold with an espresso rail */
+html[data-theme="champagne"] .deskapp{--accent:#b8862b;--accent-d:#8a6212;--accent-ink:#2a1b00;--d-bg:#faf6ee;--d-panel:#fffdf9;--d-line:#eadfc7;--d-ink:#2a2118;--d-muted:#86765e;--d-rail:linear-gradient(180deg,#2e231a 0%,#150e07 100%);--d-rail-ink:#e6d3aa;--d-top:linear-gradient(90deg,#fffdf9,#f6ecd6);--d-hover:#f3e9d3;--d-in:#f4ecdb;--d-out:linear-gradient(135deg,#f6e7bf,#ecd6a0);--d-note:#fff1c2;--d-note-line:#e0c070;--d-badge:#efe3c8;--d-radius:12px;--d-shadow:6px 0 26px rgba(43,33,24,.28);--d-logo:linear-gradient(135deg,#f6dc94,#b8862b);color-scheme:light}
+html[data-theme="champagne"] .deskapp{background:radial-gradient(900px 480px at 100% -10%,rgba(214,170,70,.22),transparent 60%),#faf6ee}
+html[data-theme="champagne"] .deskapp .btn:not(.l){background:linear-gradient(135deg,#e6bf5a,#c4902c);border-color:transparent;box-shadow:0 4px 14px rgba(184,134,43,.35)}
+html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champagne"] .deskapp .conv,html[data-theme="champagne"] .deskapp .views .tbl{background:transparent}
+
+.file1{display:inline-flex;flex-direction:column;gap:4px;margin:4px 10px 4px 0}.thumb{display:block;max-width:260px;max-height:180px;border-radius:8px;border:1px solid var(--d-line)}
+
+.mt.rich p{margin:0 0 8px;white-space:pre-wrap}.mt.rich hr{border:0;border-top:1px solid var(--d-line);margin:12px 0}.mt.rich code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:var(--d-badge);padding:1px 5px;border-radius:4px}
+.mt.rich pre{background:var(--d-badge);border:1px solid var(--d-line);border-radius:8px;padding:10px 12px;overflow:auto;margin:8px 0;white-space:pre}.mt.rich pre code{background:none;padding:0}
+.tblwrap{overflow:auto;max-width:100%;margin:8px 0}.mtable{border-collapse:collapse;font-size:13px}.mtable th,.mtable td{border:1px solid var(--d-line);padding:4px 8px;text-align:left;vertical-align:top}.mtable th{background:var(--d-badge);font-weight:700}.mtable .span{font-weight:700}
+.msg-b .mt.rich{white-space:normal}

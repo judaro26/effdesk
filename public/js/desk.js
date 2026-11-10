@@ -7,11 +7,14 @@
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
     { id: 'midnight', name: 'Midnight', blurb: 'Always dark and easy on the eyes.', sw: ['#090c10', '#0f1318', '#171c23', '#f4a030'], },
+    { id: 'mint', name: 'Mint', blurb: 'Fresh and light: soft mint, deep green and a clean teal accent.', sw: ['#0b3d36', '#f0f8f5', '#ffffff', '#0f9d7a'] },
     { id: 'aurora', name: 'Aurora', pro: true, blurb: 'Deep indigo with a violet and cyan glow.', sw: ['#3a22a0', '#0c0a1d', '#1a1640', '#8b7bff'] },
     { id: 'sunset', name: 'Sunset', pro: true, blurb: 'Warm cream, coral and plum.', sw: ['#ec4a6c', '#fff4ec', '#fffdfb', '#ec4a6c'] },
     { id: 'forest', name: 'Forest', pro: true, blurb: 'Calm greens with a touch of gold.', sw: ['#245c43', '#eef3ea', '#fbfdf8', '#d4a72c'] },
     { id: 'ocean', name: 'Ocean', pro: true, blurb: 'Crisp blues and clear aqua.', sw: ['#0f4cc0', '#ecf4fb', '#ffffff', '#0aa8cc'] },
-    { id: 'orchid', name: 'Orchid', pro: true, blurb: 'Rich plum with pink and violet.', sw: ['#6a1f8c', '#190f20', '#28172f', '#ff6ec7'] }
+    { id: 'orchid', name: 'Orchid', pro: true, blurb: 'Rich plum with pink and violet.', sw: ['#6a1f8c', '#190f20', '#28172f', '#ff6ec7'] },
+    { id: 'obsidian', name: 'Obsidian', pro: true, blurb: 'Near-black glass with an electric emerald glow.', sw: ['#0e1a17', '#07090b', '#101416', '#2ee6a6'] },
+    { id: 'champagne', name: 'Champagne', pro: true, blurb: 'Warm ivory, espresso and brushed gold. Quietly luxurious.', sw: ['#2b2118', '#faf6ee', '#fffdf9', '#c4902c'] }
   ];
   var PLAN_OF = { custom_fields: 'Suite', light_agents: 'Team', bulk_actions: 'Team', queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team', api: 'Suite' };
   function start(doc, fetchFn, nav) {
@@ -69,7 +72,7 @@
     function goHome() { closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
     function search() { filter.q = qBox.value.trim(); closePanes(); refresh(); }
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
-    newBtn.addEventListener('click', function () { closePanes(); creating = true; draw(); });
+    newBtn.addEventListener('click', function () { closePanes(); creating = true; newf = { subject: '', requesterName: '', requesterEmail: '', body: '' }; pending = []; draw(); });
 
     // ── the profile menu ──
     function setMenu(on) { menuOpen = on; userBtn.setAttribute('aria-expanded', String(on)); drawMenu(); }
@@ -155,16 +158,41 @@
       return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {}, (has('bulk_actions') ? [''] : []).concat(['Status', 'Ticket', 'Subject', 'Requester', 'Priority', 'Assignee'].concat(has('sla') ? ['SLA'] : [], ['Updated'])).map(function (h, i) { if (has('bulk_actions') && i === 0) { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return el('th', {}, all); } return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
     }
 
+    // upload files for a ticket (t) or, while writing a new ticket, before it exists (t = null); they wait as chips until the message is sent
+    function uploadFiles(t, list) {
+      var files = [].slice.call(list || []).slice(0, Math.max(0, 5 - pending.length)), next = Promise.resolve();
+      files.forEach(function (f) { next = next.then(function () {
+        if (f.size > 5 * 1024 * 1024) return say((f.name || 'That file') + ' is over 5 MB.', true);
+        return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + (t ? '&ticket=' + t.number : '') + '&name=' + encodeURIComponent(f.name || 'file') + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); }); });
+      }); });
+      return next.then(function () { draw(); });
+    }
+    // pasting a picture (a screenshot, a copied image) into a message attaches it
+    function pasteFiles(t) {
+      return function (e) {
+        var items = (e.clipboardData && e.clipboardData.items) || [], files = [];
+        [].slice.call(items).forEach(function (it) { if (it.kind === 'file' && /^image\//.test(it.type)) { var f = it.getAsFile(); if (f) { var ext = (it.type.split('/')[1] || 'png').replace('jpeg', 'jpg'); files.push(new root.File([f], f.name && f.name !== 'image.png' ? f.name : 'pasted-image-' + Date.now() + '.' + ext, { type: it.type })); } } });
+        if (!files.length) return; e.preventDefault(); uploadFiles(t, files);
+      };
+    }
+    // a message as page elements (never as HTML): tables, ``` code, --- lines, `code`, **bold** and links. Without the formatter it is plain text.
+    function inlineEls(text) {
+      return root.EffFormat ? root.EffFormat.inline(text).map(function (p) { return p.t === 'code' ? el('code', {}, p.v) : p.t === 'b' ? el('strong', {}, p.v) : p.t === 'a' ? el('a', { href: p.href, target: '_blank', rel: 'noopener noreferrer' }, p.v) : p.v; }) : [text];
+    }
+    function renderBody(text) {
+      if (!root.EffFormat) return el('div', { class: 'mt' }, text);
+      var cell = function (tag, r, i, width) { return el(tag, r.length === 1 && width > 1 ? { colspan: String(width), class: 'span' } : {}, inlineEls(r[i] || '')); };
+      var tr = function (r, width, th) { if (r.length === 1 && width > 1) return el('tr', {}, cell(th ? 'th' : 'td', r, 0, width)); var cs = []; for (var i = 0; i < width; i++) cs.push(cell(th ? 'th' : 'td', r, i, width)); return el('tr', {}, cs); };
+      return el('div', { class: 'mt rich' }, root.EffFormat.parse(text).map(function (b) {
+        if (b.t === 'hr') return el('hr', { 'data-rule': '1' });
+        if (b.t === 'code') return el('pre', { 'data-code': '1' }, el('code', {}, b.text));
+        if (b.t === 'table') return el('div', { class: 'tblwrap' }, el('table', { class: 'mtable', 'data-table': '1' }, el('thead', {}, b.head.map(function (r) { return tr(r, b.width, true); })), el('tbody', {}, b.body.map(function (r) { return tr(r, b.width, false); }))));
+        return el('p', {}, inlineEls(b.text));
+      }));
+    }
     function picker(t) {
       var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' });
-      input.addEventListener('change', function () {
-        var files = [].slice.call(input.files || []).slice(0, 5 - pending.length), next = Promise.resolve();
-        files.forEach(function (f) { next = next.then(function () {
-          if (f.size > 5 * 1024 * 1024) return say(f.name + ' is over 5 MB.', true);
-          return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + '&ticket=' + t.number + '&name=' + encodeURIComponent(f.name) + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); }); });
-        }); });
-        next.then(function () { draw(); });
-      });
+      input.addEventListener('change', function () { uploadFiles(t, input.files); });
       return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
     }
     function sel(label, value, opts, onchange) { var s = el('select', { 'aria-label': label }, opts.map(function (o) { var op = el('option', { value: o[0] }, o[1]); if (o[0] === value) op.setAttribute('selected', 'selected'); return op; })); s.value = value; s.addEventListener('change', function () { onchange(s.value); }); return s; }
@@ -173,7 +201,7 @@
     // ── a ticket in three columns ──
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
-      body.value = draft; body.addEventListener('input', function () { draft = body.value; });
+      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -223,10 +251,10 @@
         if (editing1) { ed = el('textarea', { 'aria-label': 'Edit message' }); ed.value = m.body; }
         return el('div', { class: 'msg-row ' + side }, avatarEl(m.kind, m.author_name, avatarOf(m.author_id)),
           el('div', { class: 'msg-b ' + m.kind, 'data-kind': m.kind }, el('div', { class: 'mh' }, el('strong', {}, m.author_name || (m.kind === 'requester' ? t.requester_email : 'Agent')), el('span', { class: 'm' }, (m.kind === 'note' ? ' · Internal note · ' : ' · ') + when(m.created_at) + (m.edited_at ? ' · edited' : '')), mine && !editing1 ? el('button', { type: 'button', class: 'edit', 'data-edit': String(m.id), onclick: function () { editMsg = m.id; draw(); } }, 'Edit') : null),
-            editing1 ? el('div', {}, ed, el('button', { type: 'button', class: 'btn sm', 'data-edit-save': '1', onclick: function () { api('edit-message', { number: t.number, messageId: m.id, body: ed.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); editMsg = null; return after(); }); } }, 'Save'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { editMsg = null; draw(); } }, 'Cancel')) : el('div', { class: 'mt' }, m.body),
+            editing1 ? el('div', {}, ed, el('button', { type: 'button', class: 'btn sm', 'data-edit-save': '1', onclick: function () { api('edit-message', { number: t.number, messageId: m.id, body: ed.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); editMsg = null; return after(); }); } }, 'Save'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { editMsg = null; draw(); } }, 'Cancel')) : renderBody(m.body),
             translated[m.id] ? el('div', { class: 'tr', 'data-translated': String(m.id) }, el('div', { class: 'm' }, translated[m.id].note), translated[m.id].text ? el('div', { class: 'mt' }, translated[m.id].text) : null) : null,
             m.kind === 'requester' && has('translation') && !translated[m.id] ? el('button', { type: 'button', class: 'edit', 'data-translate': String(m.id), onclick: function () { translate(m); } }, 'Translate') : null,
-            (m.attachments || []).length ? el('div', { class: 'files' }, m.attachments.map(function (a) { return el('a', { href: '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')'); })) : null));
+            (m.attachments || []).length ? el('div', { class: 'files' }, m.attachments.map(function (a) { var u = '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), pic = /^image\/(png|jpeg|gif|webp)$/.test(a.content_type || a.contentType || ''); return el('span', { class: 'file1' }, pic ? el('a', { href: u, target: '_blank', rel: 'noopener', 'data-thumb': a.id }, el('img', { src: u, alt: a.filename, class: 'thumb', loading: 'lazy' })) : null, el('a', { href: u, 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')')); })) : null));
       });
       var modeBtn = function (m, label) { return el('button', { type: 'button', role: 'tab', 'data-mode': m, 'aria-selected': String(mode === m), onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; mode = m; draw(); } }, label); };
       var macroSel = macros.length && mode === 'reply' ? sel('Insert a macro', '', [['', 'Insert a macro…']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; var first = String(t.requester_name || '').split(' ')[0] || 'there'; draft = (draft ? draft + '\n\n' : '') + m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); macroPatch = { status: m.status, priority: m.priority, add_tags: m.add_tags }; draw(); }) : null;
@@ -315,10 +343,13 @@
         el('div', { class: 'rgrid' }, hlist('By status', r.byStatus), hlist('By priority', r.byPriority), hlist('By channel', r.byChannel), hlist('By type', r.byType), hlist('By queue', r.byQueue), hlist('Solved by', r.solvedBy), hlist('Busiest labels', r.labels)));
     }
     function field(k, ph) { return el('input', { 'aria-label': k, placeholder: ph, maxlength: '200' }); }
+    var newf = { subject: '', requesterName: '', requesterEmail: '', body: '' };
     function newPane() {
-      var f = { subject: field('subject', 'Subject'), requesterName: field('requesterName', 'Requester name'), requesterEmail: field('requesterEmail', 'Requester email') };
-      var body = el('textarea', { 'aria-label': 'First message', placeholder: 'What is the request?' });
-      return el('div', { class: 'page' }, el('h2', {}, 'New ticket'), f.subject, f.requesterName, f.requesterEmail, body, el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: function () { api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]); }); } }, 'Create ticket'), el('button', { class: 'btn l', type: 'button', onclick: function () { creating = false; draw(); } }, 'Cancel')));
+      var f = {}; [['subject', 'Subject'], ['requesterName', 'Requester name'], ['requesterEmail', 'Requester email']].forEach(function (x) { var i = field(x[0], x[1]); i.value = newf[x[0]]; i.addEventListener('input', function () { newf[x[0]] = i.value; }); f[x[0]] = i; });
+      var body = el('textarea', { 'aria-label': 'First message', placeholder: 'What is the request? You can paste a picture here or attach files.' }); body.value = newf.body;
+      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null));
+      var reset = function () { newf = { subject: '', requesterName: '', requesterEmail: '', body: '' }; pending = []; };
+      return el('div', { class: 'page' }, el('h2', {}, 'New ticket'), f.subject, f.requesterName, f.requesterEmail, body, picker(null), el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: function () { api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; reset(); return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]); }); } }, 'Create ticket'), el('button', { class: 'btn l', type: 'button', onclick: function () { pending.forEach(function (p) { api('delete-file', { id: p.id }); }); reset(); creating = false; draw(); } }, 'Cancel')));
     }
 
     // ── Manage: queues, clients and macros ──

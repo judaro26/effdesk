@@ -191,7 +191,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'fields-list': r = planHas(ent, 'custom_fields') ? await listFields(pool, orgId) : { ok: true, fields: [], types: [] }; break;
     case 'field-save': if ((g = adminOnly() || need('custom_fields'))) return g; r = await saveField(pool, orgId, b); break;
     case 'field-delete': if ((g = adminOnly() || need('custom_fields'))) return g; if (!(await deleteField(pool, orgId, b.id))) return json(404, { error: 'No such field.' }); r = { ok: true }; break;
-    case 'create': if (b.custom && (g = need('custom_fields'))) return g; r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
+    case 'create': if (b.custom && (g = need('custom_fields'))) return g; r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, r.ticket.number, r.messageRowId, b.attachmentIds); if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);

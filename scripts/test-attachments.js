@@ -72,4 +72,10 @@ check('files that are too large or cannot be fetched are skipped, the others kep
 r = await hook('em_c', mkFetch({ files: [], listOk: false }));
 t = (await call(olivia, { orgId: acme.id, action: 'get', number: r.body.number })).body;
 check('if the file list cannot be fetched the ticket still exists and says so', r.status === 200 && t.messages.some(m => m.kind === 'system' && /could not be fetched/.test(m.body)));
+{ const up = await upload(olivia, acme.id, Buffer.from('PNGDATA'), 'shot.png'); check('a file can be uploaded before the ticket exists', up.status === 200 && !!up.body.attachment.id);
+  const cr = await call(olivia, { orgId: acme.id, action: 'create', subject: 'With picture', body: 'see attached', requesterEmail: 'pic@example.com', attachmentIds: [up.body.attachment.id] });
+  const g = (await call(olivia, { orgId: acme.id, action: 'get', number: cr.body.ticket.number })).body;
+  check('creating the ticket attaches the file to its first message', cr.status === 200 && g.messages[0].attachments.length === 1 && g.messages[0].attachments[0].filename === 'shot.png');
+  const other = await upload(olivia, acme.id, Buffer.from('X'), 'x.png'); const cr2 = await call(otto, { orgId: beta.id, action: 'create', subject: 'Steal', body: 'b', requesterEmail: 'b@x.co', attachmentIds: [other.body.attachment.id] });
+  check('another person\'s upload cannot be attached to a ticket', cr2.status === 200 && (await call(otto, { orgId: beta.id, action: 'get', number: cr2.body.ticket.number })).body.messages[0].attachments.length === 0); }
 await pool.end(); done();
