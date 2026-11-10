@@ -19,6 +19,7 @@ import { getSla, saveSla, slaOf } from './sla.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
+import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
@@ -109,6 +110,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       await pool.query('insert into desk_prefs (user_id, theme, notify, avatar) values ($1, coalesce($2, \'classic\'), coalesce($3, true), $5) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), avatar = case when $4 then $5 else desk_prefs.avatar end, updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null, setAv, av]);
       r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}), ...(setAv ? { avatar: av } : {}) }; break;
     }
+    case 'rules-list': if ((g = adminOnly() || need('triggers'))) return g; r = await listRules(pool, orgId); break;
+    case 'rule-save': if ((g = adminOnly() || need('triggers'))) return g; r = await saveRule(pool, orgId, b); break;
+    case 'rule-delete': if ((g = adminOnly() || need('triggers'))) return g; if (!(await deleteRule(pool, orgId, b.id))) return json(404, { error: 'No such rule.' }); r = { ok: true }; break;
     case 'webhooks-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listHooks(pool, orgId); break;
     case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
     case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
@@ -147,7 +151,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'problem-resolve': if ((g = need('linked_tickets'))) return g; r = await desk.resolveProblem(pool, orgId, actor, b.number); break;
     case 'side-send': if ((g = need('side_conversations'))) return g; r = mailer ? await desk.sendSide(pool, mailer, env, orgId, actor, b.number, b) : { ok: false, status: 503, error: 'Email is not set up.' }; break;
     case 'side-close': if ((g = need('side_conversations'))) return g; r = await desk.closeSide(pool, orgId, actor, b.number, b.sideId); break;
-    case 'create': r = await createTicket(pool, orgId, actor, b); if (r.ok) await emitHook(pool, orgId, 'ticket.created', r.ticket.number); break;
+    case 'create': r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
@@ -207,7 +211,8 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
   if (res.ok && res.messageRowId && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
-  if (res.ok && (res.action === 'created' || res.action === 'followup')) await emitHook(pool, res.orgId, 'ticket.created', res.number);
+  if (res.ok && (res.action === 'created' || res.action === 'followup')) { await maybeTriggers(pool, mailer, env, res.orgId, 'created', res.number, res.summary || ''); await emitHook(pool, res.orgId, 'ticket.created', res.number); }
+  if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
   if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
@@ -240,6 +245,7 @@ const html = (status, body, extra) => new Response(body, { status, headers: { 'C
 const redirect = (to, extra) => new Response(null, { status: 303, headers: { Location: to, 'Cache-Control': 'no-store', ...(extra || {}) } });
 const cookieOf = (req, name) => { const m = String(req.headers.get('cookie') || '').split(/;\s*/).map(x => x.split('=')).find(x => x[0] === name); return m ? m.slice(1).join('=') : ''; };
 const pickLang = (req, u) => { const q = u.searchParams.get('lang'); if (LANGS.includes(q)) return q; const a = String(req.headers.get('accept-language') || '').toLowerCase(); const best = a.split(',').map(x => x.trim().slice(0, 2)).find(x => LANGS.includes(x)); return best || 'en'; };
+const maybeTriggers = async (pool, mailer, env, orgId, event, n, msg) => { if (planHas(await getEntitlements(pool, orgId), 'triggers')) await runTriggers(pool, mailer, env, orgId, event, n, msg); };
 // A request that came through the portal worker (<slug>.effdesk.com) carries the public address and the shared secret; only then is that address trusted.
 export function portalOrigin(req, env, slug) {
   const sec = env.PORTAL_PROXY_SECRET, got = req.headers.get('x-effdesk-secret'), pub = req.headers.get('x-effdesk-portal') || '';
@@ -291,7 +297,7 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
       const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
-      if (r.ok) { await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body }); await emitHook(pool, org.id, 'message.customer', n, { message: { body: body.slice(0, 2000) } }); }
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, 'customer_reply', n, body); await emitHook(pool, org.id, 'message.customer', n, { message: { body: body.slice(0, 2000) } }); }
       return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
     }
   }

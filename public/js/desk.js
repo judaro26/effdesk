@@ -13,11 +13,11 @@
     { id: 'ocean', name: 'Ocean', pro: true, blurb: 'Crisp blues and clear aqua.', sw: ['#0f4cc0', '#ecf4fb', '#ffffff', '#0aa8cc'] },
     { id: 'orchid', name: 'Orchid', pro: true, blurb: 'Rich plum with pink and violet.', sw: ['#6a1f8c', '#190f20', '#28172f', '#ff6ec7'] }
   ];
-  var PLAN_OF = { queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team' };
+  var PLAN_OF = { queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team' };
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -303,8 +303,38 @@
     }
 
     // ── Manage: queues, clients and macros ──
+    var RULE_FIELDS = { priority: ['is', 'is_not'], status: ['is', 'is_not'], channel: ['is', 'is_not'], type: ['is', 'is_not'], tag: ['is', 'is_not'], subject: ['contains'], message: ['contains'], sender_domain: ['is'], hours_idle: ['gte'] };
+    var RULE_ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
+    var RULE_ACTIONS = [['set_priority', 'Set priority'], ['set_status', 'Set status'], ['set_type', 'Set type'], ['add_tag', 'Add label'], ['assign', 'Assign to'], ['set_queue', 'Move to queue'], ['add_note', 'Add internal note'], ['auto_reply', 'Send public reply']];
+    function ruleEditor() {
+      var again = function () { draw(); };
+      var txt = function (label, value, on, ph) { var i = el('input', { 'aria-label': label, value: value || '', placeholder: ph || '', maxlength: '2000' }); i.addEventListener('input', function () { on(i.value); }); return i; };
+      var name = txt('Rule name', rd.name, function (v) { rd.name = v; }, 'Rule name, for example Refunds are urgent');
+      var ev = sel('When', rd.event, [['created', 'When a ticket is created'], ['customer_reply', 'When the customer replies'], ['time', 'Every hour, for idle tickets']], function (v) { rd.event = v; if (v === 'time' && !rd.conditions.some(function (c) { return c.field === 'hours_idle'; })) rd.conditions.push({ field: 'hours_idle', op: 'gte', value: '168' }); again(); });
+      var conds = rd.conditions.map(function (c, i) {
+        var f = sel('Condition field', c.field, Object.keys(RULE_FIELDS).map(function (k) { return [k, k.replace('_', ' ')]; }), function (v) { c.field = v; c.op = RULE_FIELDS[v][0]; c.value = RULE_ENUM[v] ? RULE_ENUM[v][0] : ''; again(); });
+        var o = sel('Condition operator', c.op, RULE_FIELDS[c.field].map(function (x) { return [x, x.replace('_', ' ')]; }), function (v) { c.op = v; });
+        var v = RULE_ENUM[c.field] ? sel('Condition value', c.value, RULE_ENUM[c.field].map(function (x) { return [x, x]; }), function (x) { c.value = x; }) : txt('Condition value', c.value, function (x) { c.value = x; }, c.field === 'hours_idle' ? 'hours' : 'text');
+        return el('div', { class: 'bar', 'data-cond': String(i) }, f, o, v, el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove condition', onclick: function () { rd.conditions.splice(i, 1); again(); } }, '×'));
+      });
+      var acts = rd.actions.map(function (a, i) {
+        var t = sel('Action', a.type, RULE_ACTIONS, function (v) { a.type = v; a.value = ''; again(); });
+        var v = RULE_ENUM[a.type.replace('set_', '')] ? sel('Action value', a.value, [['', 'Choose…']].concat(RULE_ENUM[a.type.replace('set_', '')].map(function (x) { return [x, x]; })), function (x) { a.value = x; })
+          : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; })), function (x) { a.value = x; })
+          : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
+          : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : a.type === 'auto_reply' ? 'Hi {{name}}, thanks for writing…' : 'text');
+        return el('div', { class: 'bar', 'data-act': String(i) }, t, v, el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×'));
+      });
+      var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
+      var on = el('input', { type: 'checkbox', 'aria-label': 'Rule is on' }); on.checked = rd.active !== false; on.addEventListener('change', function () { rd.active = on.checked; });
+      return el('div', { class: 'mlist' }, el('div', { class: 'page', style: 'padding:12px 0' }, name, ev,
+        el('h3', {}, 'If all of these are true'), conds, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-cond-add': '1', onclick: function () { if (rd.conditions.length < 8) rd.conditions.push({ field: 'priority', op: 'is', value: 'normal' }); again(); } }, 'Add condition')),
+        el('h3', {}, 'Then do'), acts, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-act-add': '1', onclick: function () { if (rd.actions.length < 6) rd.actions.push({ type: 'add_tag', value: '' }); again(); } }, 'Add action')),
+        el('label', { class: 'm' }, once, ' Run only once per ticket'), el('label', { class: 'm' }, on, ' Rule is on'),
+        el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-save': '1', onclick: function () { api('rule-save', rd).then(function (r) { if (!r.ok) return say(r.body.error, true); rd = null; rules = null; say('Automation saved.'); }); } }, 'Save automation'), el('button', { type: 'button', class: 'btn l', onclick: function () { rd = null; again(); } }, 'Cancel'))));
+    }
     function managePane() {
-      var tabs = [['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['integrations', 'Integrations']];
+      var tabs = [['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations']];
       var head = el('div', { class: 'mtabs', role: 'tablist' }, tabs.map(function (t) { return el('button', { type: 'button', role: 'tab', 'data-manage-tab': t[0], 'aria-selected': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, t[1]); }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
       var guardAdmin = !isAdmin ? el('p', { class: 'm' }, 'Only an owner or an admin can change these.') : null;
@@ -318,6 +348,19 @@
         else { var e = mEdit || {}, cn = el('input', { 'aria-label': 'Client name', placeholder: 'Client name', maxlength: '100', value: e.name || '' }), cd = el('input', { 'aria-label': 'Client domain', placeholder: 'Their email domain, like acme.com (optional)', maxlength: '100', value: e.domain || '' });
           body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'A client is a company you support. Give it a domain and tickets from that domain join it automatically.'), clients.map(function (k) { return el('div', { class: 'mitem', 'data-client-item': String(k.id) }, el('span', { class: 't' }, k.name + (k.domain ? ' · @' + k.domain : '') + ' · ' + k.tickets + ' tickets'), isAdmin ? el('span', { class: 'acts' }, el('button', { type: 'button', class: 'btn l sm', onclick: function () { mEdit = { id: k.id, name: k.name, domain: k.domain, shareTickets: k.share_tickets }; draw(); } }, 'Edit'), el('button', { type: 'button', class: 'btn l sm', 'data-client-delete': String(k.id), onclick: function () { api('client-delete', { id: k.id }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Client deleted.'); }); } }, 'Delete')) : null); }),
             guardAdmin || el('div', { class: 'bar' }, cn, cd, el('button', { type: 'button', class: 'btn', 'data-client-save': '1', onclick: function () { api('client-save', { id: e.id, name: cn.value, domain: cd.value, shareTickets: !!e.shareTickets }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Client saved.'); }); } }, e.id ? 'Save client' : 'Add client'))); }
+      } else if (manage === 'triggers') {
+        if (!has('triggers')) body = lock('triggers');
+        else if (!isAdmin) body = guardAdmin;
+        else if (rules === null) { api('rules-list').then(function (r) { rules = r.ok ? r.body.rules : []; draw(); }); body = el('p', { class: 'm' }, 'Loading…'); }
+        else if (rd) body = ruleEditor();
+        else {
+          var EVN = { created: 'a ticket is created', customer_reply: 'the customer replies', time: 'every hour, for idle tickets' };
+          body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'An automation does things for you: when something happens, and the ticket matches your conditions, it sets the priority, assigns an owner, adds a label, writes a note or sends a reply. Timed rules, such as closing tickets that were solved a week ago, are checked every hour.'),
+            rules.map(function (x) { return el('div', { class: 'mitem', 'data-rule': String(x.id) }, el('span', { class: 'grow' }, el('strong', {}, x.name), x.active ? '' : ' (off)', el('div', { class: 'm' }, 'When ' + EVN[x.event] + ' · ' + x.conditions.length + ' condition(s) · ' + x.actions.map(function (a) { return a.type.replace('_', ' '); }).join(', '))),
+              el('button', { type: 'button', class: 'btn l sm', 'data-rule-edit': String(x.id), onclick: function () { rd = JSON.parse(JSON.stringify(x)); draw(); } }, 'Edit'),
+              el('button', { type: 'button', class: 'btn l sm', 'data-rule-delete': String(x.id), onclick: function () { api('rule-delete', { id: x.id }).then(function (r) { if (!r.ok) return say(r.body.error, true); rules = null; say('Rule deleted.'); }); } }, 'Delete')); }),
+            el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-new': '1', onclick: function () { rd = { name: '', event: 'created', conditions: [], actions: [], once: true, active: true }; draw(); } }, 'New automation')));
+        }
       } else if (manage === 'integrations') {
         if (!has('integrations')) body = lock('integrations');
         else if (!isAdmin) body = guardAdmin;
