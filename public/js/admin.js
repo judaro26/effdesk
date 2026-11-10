@@ -28,6 +28,7 @@
     function customersCard() {
       var box = el('div', { class: 'card', style: 'margin:16px 0', 'data-customers': '1' }, el('h3', {}, 'Customers'));
       if (!people) { box.appendChild(el('p', { class: 'm' }, 'Loading…')); return box; }
+      if (people.error) { box.appendChild(el('p', { class: 'msg err', role: 'alert', 'data-customers-error': '1' }, people.error)); return box; }
       var t = people.totals;
       box.appendChild(el('p', { class: 'm', 'data-totals': '1' }, t.organizations + ' organizations · ' + t.paying + ' paying · ' + t.agents + ' agents · ' + t.tickets30 + ' tickets in the last 30 days · ' + t.pastDue + ' past due · ' + t.stalled + ' stalled · ' + t.heavy + ' heavy'));
       var fs = el('select', { 'aria-label': 'Show' }, [['all', 'All'], ['paying', 'Paying'], ['free', 'Free'], ['past_due', 'Past due'], ['stalled', 'Stalled'], ['heavy', 'Heavy use'], ['canceled', 'Canceled']].map(function (o) { var op = el('option', { value: o[0] }, o[1]); if (o[0] === filt) op.setAttribute('selected', ''); return op; }));
@@ -60,7 +61,7 @@
         el('button', { class: 'btn l', type: 'button', 'data-check': '1', onclick: go(true) }, 'Check first'), ' ', el('button', { class: 'btn', type: 'button', 'data-import': '1', onclick: go(false) }, 'Import')));
       main.appendChild(log);
     }
-    return call('GET', '/api/me').then(function (r) { if (r.status === 401) return root.location.assign('/auth.html?mode=signin'); draw(); return call('GET', '/api/admin/customers').then(function (c) { people = c.ok ? c.body : { customers: [], totals: { organizations: 0, paying: 0, agents: 0, tickets30: 0, pastDue: 0, stalled: 0, heavy: 0 } }; draw(); }); });
+    return call('GET', '/api/me').then(function (r) { if (r.status === 401) return root.location.assign('/auth.html?mode=signin'); draw(); return call('GET', '/api/admin/customers').then(function (c) { people = c.ok ? c.body : { error: c.status === 403 ? 'You are signed in as ' + (r.body.user && r.body.user.email || 'this account') + ', which is not on the platform owner list. Add this email to PLATFORM_ADMIN_EMAILS in Netlify, redeploy, and reload.' : (c.body.error || 'The customer list could not be loaded.'), customers: [], totals: { organizations: 0, paying: 0, agents: 0, tickets30: 0, pastDue: 0, stalled: 0, heavy: 0 } }; draw(); }); });
   }
   root.EffDeskAdmin = { start: start };
   if (root.document && root.document.getElementById('main') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root));

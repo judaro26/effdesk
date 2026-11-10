@@ -41,4 +41,8 @@ failAt = 2; calls.length = 0; $('[data-import]').click(); await tick(200); failA
 check('if a batch fails the import stops and says so', calls.filter(c => c[1] === '/api/import').length === 2 && /Boom/.test($('.msg').textContent));
 Object.defineProperty($('[data-file]'), 'files', { value: [new w.File(['not json'], 'x.json')], configurable: true }); $('[data-import]').click(); await tick(100);
 check('a file that is not JSON is explained', /not valid JSON/.test($('.msg').textContent));
+{ const d2 = new JSDOM(pub('admin.html'), { runScripts: 'outside-only', url: 'https://app.test/admin.html' }), w2 = d2.window; w2.__EFFDESK_TEST__ = true; w2.eval(pub('js/admin.js'));
+  const f403 = async url => url === '/api/me' ? { ok: true, status: 200, json: async () => ({ user: { email: 'support@mdv-ai.com' }, organizations: [] }) } : { ok: false, status: 403, json: async () => ({ error: 'Only the platform owner can do that.' }) };
+  await w2.EffDeskAdmin.start(w2.document, f403); await tick();
+  const er = w2.document.querySelector('[data-customers-error]'); check('when the customer list is refused the page says why and names the account, not an empty list', er && /support@mdv-ai\.com/.test(er.textContent) && /PLATFORM_ADMIN_EMAILS/.test(er.textContent) && !w2.document.querySelector('[data-totals]')); }
 done();
