@@ -111,6 +111,6 @@ r = await hookWith(b, h, fakeFetch());
 check('the same event delivered again is acknowledged once and not repeated', r.status === 200 && r.body.duplicate === true && fakeFetch.calls.length === 1);
 b = evBody('em_2'); h = svix(b); r = await hookWith(b, h, fakeFetch(false));
 check('if the message cannot be fetched we answer 502 so Resend retries, and the event is not marked done', r.status === 502 && (await hookWith(b, h, fakeFetch())).status === 200);
-b = JSON.stringify({ type: 'email.delivered', data: {} }); r = await hookWith(b, svix(b), fakeFetch());
+b = JSON.stringify({ type: 'email.opened', data: {} }); r = await hookWith(b, svix(b), fakeFetch());
 check('other event types are acknowledged and ignored', r.status === 200 && r.body.ignored === true);
 await pool.end(); done();
