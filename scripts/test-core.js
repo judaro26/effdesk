@@ -11,7 +11,7 @@ import { getEntitlements, seatsUsed, verifySignature, applyPaddleEvent } from '.
 import { getMigrations } from 'better-auth/db/migration';
 
 const SECRET = crypto.randomBytes(32).toString('base64');
-process.env.PLATFORM_ADMIN_EMAILS = 'owner@sundesk.test';
+process.env.PLATFORM_ADMIN_EMAILS = 'owner@effdesk.test';
 const ENV = { PADDLE_WEBHOOK_SECRET: 'whsec_test', PADDLE_CLIENT_TOKEN: 'live_token', PADDLE_ENV: 'sandbox', PADDLE_PRICE_TEAM_YEAR: 'pri_team_y', PADDLE_PRICE_TEAM_MONTH: 'pri_team_m', PADDLE_PRICE_SUITE_YEAR: 'pri_suite_y', PADDLE_PRICE_PRO_YEAR: 'pri_pro_y' };
 const { url } = await freshDb('core');
 const ran = await migrate(url);
@@ -25,7 +25,7 @@ check('migrations/001_auth.sql matches the Better Auth configuration (regenerate
 // people
 const PW = 'correct horse battery';
 const signUp = async (email, name) => { await auth.api.signUpEmail({ body: { email, password: PW, name } }); const r = await auth.api.signInEmail({ body: { email, password: PW }, returnHeaders: true }); const cookie = r.headers.get('set-cookie').split(/,(?=[^;]+=)/).map(c => c.split(';')[0]).join('; '); return { headers: new Headers({ cookie }), user: r.response.user }; };
-const owner = await signUp('owner@sundesk.test', 'Olivia Owner'), other = await signUp('other@sundesk.test', 'Otto Other');
+const owner = await signUp('owner@effdesk.test', 'Olivia Owner'), other = await signUp('other@effdesk.test', 'Otto Other');
 const mkOrg = async (who, name, slug) => (await auth.api.createOrganization({ body: { name, slug }, headers: who.headers }));
 const acme = await mkOrg(owner, 'Acme Rentals', 'acme'), beta = await mkOrg(other, 'Beta Homes', 'beta');
 check('a person signs up, signs in (an HttpOnly cookie) and creates an organization', !!acme.id && acme.slug === 'acme' && (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [owner.user.id, acme.id])).rows[0].role === 'owner');
@@ -35,7 +35,7 @@ const asJson = async r => ({ status: r.status, body: await r.json() });
 
 // the free plan: 2 agents
 let r = await asJson(await me(reqOf(owner, 'GET', '/api/me'), deps));
-check('"me" lists the organization with the free plan, 2 seats and 1 in use', r.status === 200 && r.body.user.email === 'owner@sundesk.test' && r.body.organizations.length === 1 && r.body.organizations[0].plan === 'free' && r.body.organizations[0].seats === 2 && r.body.organizations[0].seatsUsed === 1 && !r.body.organizations[0].features.includes('sla'));
+check('"me" lists the organization with the free plan, 2 seats and 1 in use', r.status === 200 && r.body.user.email === 'owner@effdesk.test' && r.body.organizations.length === 1 && r.body.organizations[0].plan === 'free' && r.body.organizations[0].seats === 2 && r.body.organizations[0].seatsUsed === 1 && !r.body.organizations[0].features.includes('sla'));
 check('"me" needs a sign-in', (await me(reqOf(null, 'GET', '/api/me'), deps)).status === 401);
 const invite = (email, role = 'member') => auth.api.createInvitation({ body: { email, role, organizationId: acme.id }, headers: owner.headers }).then(v => ({ ok: true, v }), e => ({ ok: false, e }));
 let a1 = await invite('agent1@acme.test');
@@ -78,7 +78,7 @@ check('plan changes are audited without card or customer details', (await withOr
 // checkout
 const co = body => checkout(reqOf(owner, 'POST', '/api/billing/checkout', body), deps).then(asJson);
 r = await co({ orgId: acme.id, plan: 'suite', interval: 'year', seats: 10 });
-check('an owner gets the checkout details with our organization id attached', r.status === 200 && r.body.priceId === 'pri_suite_y' && r.body.quantity === 10 && r.body.customData.org_id === acme.id && r.body.customerEmail === 'owner@sundesk.test' && r.body.sandbox === true);
+check('an owner gets the checkout details with our organization id attached', r.status === 200 && r.body.priceId === 'pri_suite_y' && r.body.quantity === 10 && r.body.customData.org_id === acme.id && r.body.customerEmail === 'owner@effdesk.test' && r.body.sandbox === true);
 check('...but not for fewer seats than people, an unknown price, a bad plan or a bad count', (await co({ orgId: acme.id, plan: 'suite', interval: 'year', seats: 1 })).status === 400 && (await co({ orgId: acme.id, plan: 'suite', interval: 'month', seats: 5 })).status === 400 && (await co({ orgId: acme.id, plan: 'free', interval: 'year', seats: 5 })).status === 400 && (await co({ orgId: acme.id, plan: 'team', interval: 'year', seats: 0 })).status === 400);
 check('a person who is not in the organization cannot start its checkout', (await checkout(reqOf(other, 'POST', '/api/billing/checkout', { orgId: acme.id, plan: 'team', interval: 'year', seats: 5 }), deps)).status === 403);
 check('nobody signed in: 401', (await checkout(reqOf(null, 'POST', '/api/billing/checkout', {}), deps)).status === 401);
@@ -87,7 +87,7 @@ check('nobody signed in: 401', (await checkout(reqOf(null, 'POST', '/api/billing
 const lic = (who, method, body) => license(reqOf(who, method, '/api/admin/license', body), deps).then(asJson);
 check('only the platform owner can grant a licence', (await lic(other, 'POST', { slug: 'acme' })).status === 403 && (await lic(null, 'POST', { slug: 'acme' })).status === 401);
 check('...and only with a verified email', (await lic(owner, 'POST', { slug: 'acme' })).status === 403);
-await pool.query(`update "user" set "emailVerified" = true where email = 'owner@sundesk.test'`);
+await pool.query(`update "user" set "emailVerified" = true where email = 'owner@effdesk.test'`);
 r = await lic(owner, 'POST', { slug: 'acme', note: 'Lifetime licence for mdv' });
 check('the owner grants a lifetime licence by slug', r.status === 200 && (await getEntitlements(pool, acme.id)).license === 'lifetime_unlimited' && (await getEntitlements(pool, acme.id)).seats === Infinity);
 check('with it, any number of agents can be invited and every feature is on', (await invite('x1@acme.test')).ok && (await invite('x2@acme.test')).ok && (await invite('x3@acme.test')).ok && (await getEntitlements(pool, acme.id)).features.has('sso'));
@@ -107,15 +107,15 @@ check('without an organization set, nothing is visible', (await asTenant('', c =
 await pool.query('revoke all on audit_log from rls_tester'); await pool.query('revoke all on all sequences in schema public from rls_tester'); await pool.query('drop role rls_tester');
 
 // the sign-in itself
-const bad = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' }, body: JSON.stringify({ email: 'owner@sundesk.test', password: 'wrong password!' }) }));
+const bad = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.7' }, body: JSON.stringify({ email: 'owner@effdesk.test', password: 'wrong password!' }) }));
 check('a wrong password is refused (401) and sets no cookie', bad.status === 401 && !bad.headers.get('set-cookie'));
-const good = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.8' }, body: JSON.stringify({ email: 'owner@sundesk.test', password: PW }) }));
+const good = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.8' }, body: JSON.stringify({ email: 'owner@effdesk.test', password: PW }) }));
 check('the session cookie is HttpOnly and SameSite=Lax', /HttpOnly/i.test(good.headers.get('set-cookie')) && /SameSite=Lax/i.test(good.headers.get('set-cookie')));
 await auth.api.signUpEmail({ body: { email: 'short@x.test', password: 'short', name: 'S' } }).then(() => check('a short password is refused', false), e => check('a short password is refused', e.statusCode === 400));
-let limited = 0; for (let i = 0; i < 12; i++) { const x = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.9' }, body: JSON.stringify({ email: 'owner@sundesk.test', password: 'nope nope nope' }) })); if (x.status === 429) limited++; }
+let limited = 0; for (let i = 0; i < 12; i++) { const x = await auth.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.9' }, body: JSON.stringify({ email: 'owner@effdesk.test', password: 'nope nope nope' }) })); if (x.status === 429) limited++; }
 check('too many sign-in attempts from one address are limited (429)', limited >= 1);
 const strict = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'http://localhost:8888', requireVerified: true });
-sent.length = 0; await strict.api.signUpEmail({ body: { email: 'new@sundesk.test', password: PW, name: 'New' } });
-const unverified = await strict.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.20' }, body: JSON.stringify({ email: 'new@sundesk.test', password: PW }) }));
-check('with verification required, sign-up emails a link and sign-in is refused (403) until it is used', sent.some(m => m.to === 'new@sundesk.test' && /Confirm your email/.test(m.subject)) && unverified.status === 403);
+sent.length = 0; await strict.api.signUpEmail({ body: { email: 'new@effdesk.test', password: PW, name: 'New' } });
+const unverified = await strict.handler(new Request('http://localhost:8888/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.20' }, body: JSON.stringify({ email: 'new@effdesk.test', password: PW }) }));
+check('with verification required, sign-up emails a link and sign-in is refused (403) until it is used', sent.some(m => m.to === 'new@effdesk.test' && /Confirm your email/.test(m.subject)) && unverified.status === 403);
 await pool.end(); done();

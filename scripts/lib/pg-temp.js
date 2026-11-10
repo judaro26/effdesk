@@ -10,7 +10,7 @@ export async function startPostgres() {
   if (process.env.TEST_DATABASE_URL) return { url: process.env.TEST_DATABASE_URL, stop() {} };
   if (cluster) return cluster;
   const bin = bindir(); if (!bin) throw new Error('No PostgreSQL server found. Install one or set TEST_DATABASE_URL.');
-  const root = process.getuid && process.getuid() === 0, dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sundesk-pg-')), port = await freePort();
+  const root = process.getuid && process.getuid() === 0, dir = fs.mkdtempSync(path.join(os.tmpdir(), 'effdesk-pg-')), port = await freePort();
   if (root) fs.chownSync(dir, Number(execFileSync('id', ['-u', 'postgres'])), Number(execFileSync('id', ['-g', 'postgres'])));
   const run = (cmd, args) => { const r = root ? spawnSync('su', ['postgres', '-s', '/bin/bash', '-c', `${cmd} ${args.map(a => `'${a}'`).join(' ')}`], { encoding: 'utf8' }) : spawnSync(cmd, args, { encoding: 'utf8' }); if (r.status !== 0) throw new Error(`${cmd} failed: ${r.stderr || r.stdout}`); };
   run(`${bin}/initdb`, ['-D', `${dir}/data`, '-A', 'trust', '-U', 'postgres', '-E', 'UTF8']);

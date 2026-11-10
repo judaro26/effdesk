@@ -1,4 +1,4 @@
-// src/auth.js: SUNDESK'S OWN SIGN-IN (Better Auth, self-hosted; users, sessions and organizations live in our Neon database, nothing is shared with any other product).
+// src/auth.js: EFFDESK'S OWN SIGN-IN (Better Auth, self-hosted; users, sessions and organizations live in our Neon database, nothing is shared with any other product).
 //   email + password (the address must be confirmed), password reset, two-factor (authenticator app), organizations with invitations.
 //   Every person in an organization is an agent and uses a seat: inviting or adding one over the plan's limit is refused here (src/billing.js checkSeat).
 import { betterAuth } from 'better-auth';

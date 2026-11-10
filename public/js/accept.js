@@ -9,6 +9,6 @@
       return fetchFn('/api/auth/organization/accept-invitation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ invitationId: id }) }).then(function (x) { if (x.ok) { t.textContent = 'You joined the team.'; nav.go('/app.html'); } else x.json().catch(function () { return {}; }).then(function (j) { t.textContent = (j && j.message) || 'This invitation did not work. It may have expired or been sent to another address.'; }); });
     });
   }
-  root.SundeskAccept = { start: start };
-  if (root.document && root.document.getElementById('t') && !root.__SUNDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); } });
+  root.EffDeskAccept = { start: start };
+  if (root.document && root.document.getElementById('t') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); } });
 })(typeof window !== 'undefined' ? window : this);

@@ -1,16 +1,16 @@
-# Setting up Sundesk (what only you can do)
+# Setting up EffDesk (what only you can do)
 
 ## 1. Neon (the database)
-1. Create a **new Neon project** named `sundesk` (not the one used by anything else), in an AWS region near your customers.
+1. Create a **new Neon project** named `effdesk` (not the one used by anything else), in an AWS region near your customers.
 2. Copy the **pooled** connection string (the host contains `-pooler`) into Netlify as `DATABASE_URL`.
 3. Migrations run by themselves: Netlify's build command (`scripts/migrate-on-build.js`) applies new files in `migrations/` on every **production** deploy (previews skip it). To run them by hand: `DATABASE_URL=... npm run migrate`.
 4. Check the role the app connects with is **not** a superuser (Neon's default owner role is not). Row-level security does not apply to superusers.
 5. Turn on point-in-time restore for the project (Neon settings) and note the retention you chose in the privacy policy.
 
 ## 2. Netlify
-1. New site from the `sundesk` repository; build command empty, publish directory `public`, functions `netlify/functions` (already in `netlify.toml`).
+1. New site from the `effdesk` repository; build command empty, publish directory `public`, functions `netlify/functions` (already in `netlify.toml`).
 2. Environment variables: everything in `.env.example`. Generate `BETTER_AUTH_SECRET` with `openssl rand -base64 32`.
-3. Domain: pick one for the product (for example `sundesk.com` for the site and `app.` for the app) and set `APP_URL` to it with `https://`.
+3. Domain: you own `effdesk.com`. In Netlify, Domain management → add `effdesk.com` (marketing site) and `app.effdesk.com` (the app), follow its DNS instructions at your registrar (or move DNS to Netlify), and wait for the HTTPS certificate. Set `APP_URL=https://app.effdesk.com`.
 
 ## 3. Resend (the product's own email)
 Create an account, verify your sending domain (SPF and DKIM records), create an API key as `RESEND_API_KEY`, and set `MAIL_FROM`.

@@ -1,7 +1,7 @@
 // src/email.js: SENDS THE MAIL THE PRODUCT ITSELF NEEDS (verify your address, reset a password, an invitation). Uses Resend's HTTP API; tests pass their own transport.
 import { PRODUCT } from './config.js';
 const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM || `${PRODUCT.name} <no-reply@sundesk.example>`, transport } = {}) {
+export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM || `${PRODUCT.name} <no-reply@effdesk.com>`, transport } = {}) {
   const send = transport || (async msg => {
     if (!apiKey) { console.warn('RESEND_API_KEY is not set: mail not sent:', msg.subject); return; }
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: msg.to, subject: msg.subject, html: msg.html, text: msg.text }) });

@@ -1,4 +1,4 @@
-# Sundesk
+# EffDesk
 
 A simple, affordable help desk: email tickets, a bilingual help center, service levels and message translation.
 Two agents are free forever; paid plans are priced per agent at about a third of the usual market price.
@@ -35,4 +35,4 @@ The tests start a throwaway local PostgreSQL (or use `TEST_DATABASE_URL`), apply
 
 ## Renaming the product
 
-The name lives in `src/config.js`, the pages in `public/` and the legal documents. A search for "Sundesk" finds them all.
+The name lives in `src/config.js`, the pages in `public/` and the legal documents. A search for "EffDesk" finds them all.

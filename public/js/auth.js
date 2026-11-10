@@ -7,7 +7,7 @@
     if (token) mode = 'reset';
     var $ = function (id) { return doc.getElementById(id); }, msg = function (t, bad) { $('msg').textContent = t || ''; $('msg').className = 'msg' + (bad ? ' err' : ''); };
     function draw() {
-      $('title').textContent = MODES[mode]; doc.title = MODES[mode] + ' | Sundesk';
+      $('title').textContent = MODES[mode]; doc.title = MODES[mode] + ' | EffDesk';
       [].forEach.call(doc.querySelectorAll('[data-for]'), function (n) { n.hidden = n.getAttribute('data-for').split(' ').indexOf(mode) < 0; });
       $('go').textContent = mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Save password' : 'Verify';
       var l = $('links'); while (l.firstChild) l.removeChild(l.firstChild);
@@ -40,6 +40,6 @@
     });
     draw();
   }
-  root.SundeskAuth = { start: start };
-  if (root.document && root.document.getElementById('f') && !root.__SUNDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); } });
+  root.EffDeskAuth = { start: start };
+  if (root.document && root.document.getElementById('f') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); } });
 })(typeof window !== 'undefined' ? window : this);

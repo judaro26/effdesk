@@ -17,9 +17,9 @@ const toml = fs.readFileSync(path.join(root, 'netlify.toml'), 'utf8');
 check('the site policy allows scripts only from itself and Paddle, forbids framing and sets HSTS', /script-src 'self' https:\/\/cdn\.paddle\.com/.test(toml) && /frame-ancestors 'none'/.test(toml) && /Strict-Transport-Security/.test(toml));
 
 // the sign-in page
-const page = (file, search, js, g = {}) => { const dom = new JSDOM(pub(file), { runScripts: 'outside-only', url: 'https://app.test/' + file }); const w = dom.window; w.__SUNDESK_TEST__ = true; w.eval(pub(js)); return w; };
+const page = (file, search, js, g = {}) => { const dom = new JSDOM(pub(file), { runScripts: 'outside-only', url: 'https://app.test/' + file }); const w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub(js)); return w; };
 const mkFetch = routes => { const calls = []; const f = async (url, opts) => { calls.push([url, opts && opts.body ? JSON.parse(opts.body) : null]); const r = routes[url]; const x = typeof r === 'function' ? r(opts) : r || { status: 404, body: {} }; return { ok: x.status < 400, status: x.status, json: async () => x.body }; }; f.calls = calls; return f; };
-const run = async (mode, routes, fill, extra = '') => { const w = page('auth.html', '', 'js/auth.js'), f = mkFetch(routes), nav = { search: `?mode=${mode}${extra}`, went: [], go(u) { this.went.push(u); } }; w.SundeskAuth.start(w.document, f, nav); const D = w.document; Object.entries(fill || {}).forEach(([id, v]) => { const e = D.getElementById(id); if (e.type === 'checkbox') e.checked = v; else e.value = v; }); D.getElementById('f').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30); return { D, f, nav, msg: D.getElementById('msg').textContent }; };
+const run = async (mode, routes, fill, extra = '') => { const w = page('auth.html', '', 'js/auth.js'), f = mkFetch(routes), nav = { search: `?mode=${mode}${extra}`, went: [], go(u) { this.went.push(u); } }; w.EffDeskAuth.start(w.document, f, nav); const D = w.document; Object.entries(fill || {}).forEach(([id, v]) => { const e = D.getElementById(id); if (e.type === 'checkbox') e.checked = v; else e.value = v; }); D.getElementById('f').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30); return { D, f, nav, msg: D.getElementById('msg').textContent }; };
 let r = await run('signin', { '/api/auth/sign-in/email': { status: 200, body: { user: {} } } }, { email: 'a@b.co', password: 'correct horse battery' });
 check('signing in posts the details and goes to the app', r.f.calls[0][0] === '/api/auth/sign-in/email' && r.f.calls[0][1].email === 'a@b.co' && r.nav.went[0] === '/app.html');
 r = await run('signin', { '/api/auth/sign-in/email': { status: 401, body: {} } }, { email: 'a@b.co', password: 'nope nope nope' });
@@ -40,7 +40,7 @@ r = await run('reset', { '/api/auth/reset-password': { status: 200, body: {} } }
 check('the reset link\'s token and the new password are posted', r.f.calls[0][1].token === 'abc' && r.f.calls[0][1].newPassword === 'a brand new password' && r.nav.went[0] === '/auth.html?mode=signin');
 
 // the account page
-const app = async (me, routes) => { const w = page('app.html', '', 'js/app.js'), f = mkFetch({ '/api/me': me, ...routes }), nav = { went: [], go(u) { this.went.push(u); } }, opened = []; await w.SundeskApp.start(w.document, f, nav, cfg => opened.push(cfg)); await tick(20); return { D: w.document, f, nav, opened, w }; };
+const app = async (me, routes) => { const w = page('app.html', '', 'js/app.js'), f = mkFetch({ '/api/me': me, ...routes }), nav = { went: [], go(u) { this.went.push(u); } }, opened = []; await w.EffDeskApp.start(w.document, f, nav, cfg => opened.push(cfg)); await tick(20); return { D: w.document, f, nav, opened, w }; };
 const ME = { status: 200, body: { user: { email: 'o@x.co' }, organizations: [{ id: 'org1', name: 'Acme', slug: 'acme', role: 'owner', plan: 'free', license: null, seats: 2, seatsUsed: 1, features: [] }] } };
 let A = await app({ status: 401, body: {} });
 check('without a session the account page sends people to sign in', A.nav.went[0] === '/auth.html?mode=signin');
@@ -62,7 +62,7 @@ A.D.querySelector('input[aria-label="Organization name"]').value = 'Brand New Co
 check('a new person creates their organization with a URL-safe slug', A.f.calls.some(c => c[0] === '/api/auth/organization/create' && c[1].name === 'Brand New Co' && /^brand-new-co-[a-z0-9]{4}$/.test(c[1].slug)));
 
 // the invitation page
-const inv = async (search, me, accept) => { const w = page('accept-invitation.html', '', 'js/accept.js'), f = mkFetch({ '/api/me': me, '/api/auth/organization/accept-invitation': accept || { status: 200, body: {} } }), nav = { search, went: [], go(u) { this.went.push(u); } }; await w.SundeskAccept.start(w.document, f, nav); await tick(20); return { D: w.document, f, nav }; };
+const inv = async (search, me, accept) => { const w = page('accept-invitation.html', '', 'js/accept.js'), f = mkFetch({ '/api/me': me, '/api/auth/organization/accept-invitation': accept || { status: 200, body: {} } }), nav = { search, went: [], go(u) { this.went.push(u); } }; await w.EffDeskAccept.start(w.document, f, nav); await tick(20); return { D: w.document, f, nav }; };
 let I = await inv('?id=inv1', { status: 200, body: {} });
 check('a signed-in person accepts the invitation and lands on the account page', I.f.calls.some(c => c[0] === '/api/auth/organization/accept-invitation' && c[1].invitationId === 'inv1') && I.nav.went[0] === '/app.html');
 I = await inv('?id=inv1', { status: 401, body: {} });

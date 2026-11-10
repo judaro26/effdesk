@@ -3,7 +3,7 @@
 The documents in `public/legal` are **drafts written as a starting point, not legal advice**. Each carries a draft banner (`data-draft="1"`); a test checks that. Remove the banner from a page only after a qualified lawyer approves it.
 
 ## Decisions and blanks to fill
-- **Legal entity**: who is "Sundesk" (an LLC?), its address and contact emails. Used in the terms, privacy policy and DPA. Form the entity before you sign Paddle's terms.
+- **Legal entity**: who is "EffDesk" (an LLC?), its address and contact emails. Used in the terms, privacy policy and DPA. Form the entity before you sign Paddle's terms.
 - **Governing law, venue, disputes, limitation of liability, indemnities, warranty disclaimer** (terms sections 10 and 12).
 - **Privacy**: region where the database lives; retention periods (account data, security logs, backups); whether you need an EU/UK representative; cookie wording if you ever add analytics.
 - **DPA**: GDPR and UK GDPR annexes to the Standard Contractual Clauses, audit rights, the CCPA/CPRA service-provider wording.

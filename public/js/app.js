@@ -40,6 +40,6 @@
     if (root.Paddle) return open();
     var s = doc.createElement('script'); s.src = 'https://cdn.paddle.com/paddle/v2/paddle.js'; s.onload = open; doc.head.appendChild(s);
   }
-  root.SundeskApp = { start: start };
-  if (root.document && root.document.getElementById('main') && !root.__SUNDESK_TEST__) start(root.document, root.fetch.bind(root), { go: function (u) { root.location.assign(u); } }, function (cfg) { paddleOverlay(root.document, cfg); });
+  root.EffDeskApp = { start: start };
+  if (root.document && root.document.getElementById('main') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { go: function (u) { root.location.assign(u); } }, function (cfg) { paddleOverlay(root.document, cfg); });
 })(typeof window !== 'undefined' ? window : this);
