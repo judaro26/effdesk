@@ -26,6 +26,11 @@
 
 # A workspace's desk has its own address: /w/acme/agent/10042/tickets/57 (the page reads the workspace and ticket from the address).
 [[redirects]]
+  from = "/agent/*"
+  to = "/desk.html"
+  status = 200
+
+[[redirects]]
   from = "/w/*"
   to = "/desk.html"
   status = 200

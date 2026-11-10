@@ -42,4 +42,10 @@ r = await A(olivia, 'create', { subject: 'Bad patch', body: 'x', requesterEmail:
 check('a bad property does not lose the ticket, and says what was not saved', r.status === 200 && !!r.body.warning && !!r.body.ticket.number);
 const ag = (await A(olivia, 'agents')).body.agents;
 check('every agent has a distinct permanent number of five digits or more', ag.length >= 2 && new Set(ag.map(a => a.agent_number)).size === ag.length && ag.every(a => Number(a.agent_number) >= 10001));
+{ const { me } = await import('../src/handlers.js');
+  const m = await (await me(new Request('http://x/api/me', { headers: { cookie: olivia.cookie } }), { pool, auth, env: { ...ENV, DESK_BASE_DOMAIN: '.EffDesk.test' } })).json();
+  check('the sign-in info carries the agent number and the base domain for workspace addresses', Number(m.user.agentNumber) >= 10001 && m.deskBase === 'effdesk.test');
+  const shared = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'https://app.effdesk.test', requireVerified: false, cookieDomain: '.effdesk.test' });
+  const res = await shared.api.signInEmail({ body: { email: 'olivia@acme.test', password: PW }, returnHeaders: true });
+  check('with a cookie domain, the sign-in cookie is shared by every workspace address', res.headers.getSetCookie().some(c => /Domain=\.?effdesk\.test/i.test(c))); }
 await pool.end(); done();

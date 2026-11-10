@@ -62,3 +62,10 @@ Admins add extra fields under Manage > Fields: text, number, dropdown, yes/no an
 - **Customer detail.** Plan and billing, seats used, who has access (names, roles, last sign-in), 30 days of tickets, replies and API calls, and flags (payment failed, seats nearly full, no sign-in for 14 days, very heavy API use). Never ticket content.
 - **Usage history.** The hourly `automations` function writes one `usage_daily` row per organization per day; each API request adds to `api_calls`. Alerts for the flags are emailed to `PLATFORM_ADMIN_EMAILS` at most once a week per customer and problem.
 - **Formatting.** Messages show pasted spreadsheet tables, ``` code blocks, --- lines, `inline code`, **bold** and links (public/js/format.js); the same formatter, escaping first, makes the HTML of emails and the portal.
+
+## Workspace addresses (acme.effdesk.com)
+Off by default: the desk lives at `app.effdesk.com/w/<slug>/agent/<number>/tickets/<n>`. To give every workspace its own subdomain:
+1. Cloudflare DNS: add `*` (wildcard) CNAME for `effdesk.com` pointing at the Netlify site (DNS only, or proxied with SSL mode Full).
+2. Netlify: Domain management, add `*.effdesk.com` as a domain alias (wildcard domains need Netlify DNS or a plan that supports them; otherwise add each workspace's subdomain as it is created) and make sure the certificate covers it.
+3. Env vars: `COOKIE_DOMAIN=.effdesk.com` (one sign-in shared by all workspace addresses) and `DESK_BASE_DOMAIN=effdesk.com`. Redeploy.
+Then app.effdesk.com/desk.html sends people to `<slug>.effdesk.com/agent/<number>/tickets`. Remove the two variables to go back. Reserved names (app, www, api, admin, ...) can never be workspaces.

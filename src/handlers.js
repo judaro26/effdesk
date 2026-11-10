@@ -49,7 +49,7 @@ export async function me(req, { pool, auth, env = process.env }) {
   for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
   const pend0 = await pendingOf(pool, s.user.id), pend = pend0 && { ...pend0, ownerWorkspace: ownerWorkspaces(env)[pend0.slug] === String(s.user.email).toLowerCase() };
   const agentNumber = Number((await pool.query('select agent_number from "user" where id = $1', [s.user.id])).rows[0]?.agent_number) || null;
-  return json(200, { user: { id: s.user.id, agentNumber, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend });
+  return json(200, { deskBase: String(env.DESK_BASE_DOMAIN || '').toLowerCase().replace(/^\./, ''), user: { id: s.user.id, agentNumber, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend });
 }
 
 // the plan an owner or admin picked → the details the Paddle checkout needs

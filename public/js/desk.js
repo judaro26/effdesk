@@ -20,7 +20,7 @@
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -44,12 +44,16 @@
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
+    function support0(n) { return !!new URLSearchParams(n.search || '').get('support'); }
     function boot() {
       return post('/api/me').then(function (r) {
         if (r.status === 401) return nav.go('/auth.html?mode=signin');
         orgs = r.body.organizations; me = r.body.user.email; meId = r.body.user.id; meName = r.body.user.name || me; doc.getElementById('who').textContent = me; doc.getElementById('av').textContent = initial(me);
-        var pm = /^\/w\/([a-z0-9-]+)(?:\/agent\/\d+)?(?:\/tickets\/(\d+))?/.exec(nav.path || ''), want = new URLSearchParams(nav.search || '').get('org'); var o = (pm && orgs.filter(function (x) { return x.slug === pm[1]; })[0]) || orgs.filter(function (x) { return x.id === want; })[0] || (new URLSearchParams(nav.search || '').get('support') && want ? { id: want, role: 'admin', slug: '' } : orgs[0]);
+        var base = r.body.deskBase || '', host = String(nav.host || '').toLowerCase(); hostSlug = base && host.length > base.length + 1 && host.slice(-(base.length + 1)) === '.' + base && host !== 'app.' + base ? host.slice(0, -(base.length + 1)) : '';
+        var pm = /^(?:\/w\/([a-z0-9-]+))?(?:\/agent\/\d+)?(?:\/tickets\/(\d+))?/.exec(nav.path || ''), want = new URLSearchParams(nav.search || '').get('org'); var o = (hostSlug && orgs.filter(function (x) { return x.slug === hostSlug; })[0]) || (!hostSlug && pm && pm[1] && orgs.filter(function (x) { return x.slug === pm[1]; })[0]) || orgs.filter(function (x) { return x.id === want; })[0] || (new URLSearchParams(nav.search || '').get('support') && want ? { id: want, role: 'admin', slug: '' } : orgs[0]);
         if (!o) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
+        if (hostSlug && o.slug !== hostSlug) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'You are not a member of the workspace ' + hostSlug + '. Ask an owner to invite you, or ', el('a', { href: 'https://app.' + base + '/app.html' }, 'open your own workspaces'), '.')); return; }
+        if (base && !hostSlug && o.slug && !support0(nav) && nav.go) { var np = r.body.user.agentNumber; return nav.go('https://' + o.slug + '.' + base + '/agent/' + (np || 0) + '/tickets' + (pm && pm[2] ? '/' + pm[2] : '')); }
         orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')) || (pm && Number(pm[2])) || 0; myNo = r.body.user.agentNumber || ''; return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); return goHome(); });
       });
     }
@@ -60,7 +64,7 @@
     function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; if (support) supportBar(); views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     // the address bar shows where you are, like /w/acme/agent/10042/tickets/57
-    function addr(n) { try { if (nav.replace && slug && myNo) nav.replace('/w/' + slug + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
+    function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
       return api('get', { number: n }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
@@ -635,5 +639,5 @@
     return boot();
   }
   root.EffDeskDesk = { start: start };
-  if (root.document && root.document.getElementById('main') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); }, path: root.location.pathname, replace: function (u) { root.history.replaceState(null, '', u); } });
+  if (root.document && root.document.getElementById('main') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); }, path: root.location.pathname, host: root.location.hostname, replace: function (u) { root.history.replaceState(null, '', u); } });
 })(typeof window !== 'undefined' ? window : this);
