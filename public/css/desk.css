@@ -174,3 +174,4 @@ html[data-theme="champagne"] .deskapp .logo{color:#4a3208}html[data-theme="champ
 .mmain .mtitle{font-size:22px;letter-spacing:0;text-transform:none;color:var(--d-ink);margin:0}.mmain .mdesc{margin:0 0 8px;font-size:14px}
 .mmain .page{padding:0!important;max-width:none}
 @media(max-width:800px){.mgrid{grid-template-columns:1fr}.mnav{position:static;flex-direction:row;flex-wrap:wrap;gap:6px}.mgroup{display:contents}.mgh{display:none}.mnav-i{width:auto}}
+.mhelp{margin:0 0 8px;padding-left:20px;font-size:14px;color:var(--d-muted)}.mhelp li{margin:2px 0}

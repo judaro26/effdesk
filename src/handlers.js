@@ -11,6 +11,7 @@ import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publis
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
+import { source as migrationSource, Wait, Bad, PROVIDERS } from './migration-sources.js';
 import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
@@ -235,6 +236,23 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'article-get': r = await getArticle(pool, orgId, b.id); break;
     case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
+    case 'migrate-check': case 'migrate-run': {
+      if ((g = adminOnly())) return g;
+      if (!PROVIDERS.includes(b.provider)) return json(400, { error: 'Choose Zendesk or Freshdesk.' });
+      try {
+        const src = migrationSource(b.provider, b.creds, env.__migrationFetch || fetch);
+        if (b.action === 'migrate-check') { r = await src.check(); break; }
+        const pg = await src.page(b.cursor && typeof b.cursor === 'object' ? b.cursor : null);
+        const done = await importMdv(pool, orgId, { tickets: pg.tickets, articles: pg.articles }, { dryRun: b.dryRun === true, source: b.provider });
+        if (!done.ok) return json(done.status || 400, { error: done.error });
+        r = { ok: true, next: pg.next, progress: pg.progress, tickets: done.tickets, messages: done.messages, articles: done.articles, filesNotCopied: done.filesNotCopied, unassigned: done.unassigned, warnings: done.warnings };
+      } catch (e) {
+        if (e instanceof Wait) return json(429, { error: `The provider asked us to slow down. Waiting ${e.retryAfter} seconds.`, retryAfter: e.retryAfter });
+        if (e instanceof Bad) return json(e.status === 502 ? 502 : 400, { error: e.message });
+        return json(502, { error: 'We could not reach the provider. Try again in a minute.' });
+      }
+      break;
+    }
     case 'sso-get': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = { ok: true, sso: await getSso(pool, orgId), callback: `${PRODUCT.appUrl}/api/auth/sso/callback` }; break;
     case 'sso-save': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = await saveSso(pool, env, orgId, b); break;
     case 'sso-delete': if ((g = adminOnly())) return g; r = await deleteSso(pool, orgId); break;

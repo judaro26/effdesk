@@ -12,7 +12,7 @@ const tag = s => slugify(s).slice(0, 30);
 export const MAX_BATCH = { tickets: 200, articles: 200 };
 
 // data = { tickets: [...], articles: [...] } exactly as the export button of the old desk produces it
-export async function importMdv(pool, orgId, data, { dryRun = false } = {}) {
+export async function importMdv(pool, orgId, data, { dryRun = false, source = 'mdv' } = {}) {
   const tickets = Array.isArray(data && data.tickets) ? data.tickets : [], articles = Array.isArray(data && data.articles) ? data.articles : [];
   if (tickets.length > MAX_BATCH.tickets || articles.length > MAX_BATCH.articles) return { ok: false, status: 413, error: `Send at most ${MAX_BATCH.tickets} tickets and ${MAX_BATCH.articles} articles at a time.` };
   const sum = { tickets: { added: 0, existing: 0, skipped: 0 }, messages: 0, articles: { added: 0, existing: 0, skipped: 0 }, assigned: 0, unassigned: 0, filesNotCopied: 0, warnings: [] };
@@ -21,7 +21,7 @@ export async function importMdv(pool, orgId, data, { dryRun = false } = {}) {
   const run = async c => {
     let maxNumber = 0;
     for (const t of tickets) {
-      const sid = 'mdv:' + text(t && t.id, 80), subject = text(t && t.subject, 200), email = text(t && t.requester && t.requester.email, 254).toLowerCase();
+      const sid = source + ':' + text(t && t.id, 80), subject = text(t && t.subject, 200), email = text(t && t.requester && t.requester.email, 254).toLowerCase();
       if (!t || !t.id || !subject || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { sum.tickets.skipped++; warn(`Ticket ${text(t && (t.number || t.id), 40)} skipped: it needs an id, a subject and a requester email.`); continue; }
       if ((await c.query('select 1 from tickets where org_id = $1 and source_id = $2', [orgId, sid])).rowCount) { sum.tickets.existing++; continue; }
       let number = Number(t.number) > 0 ? Number(t.number) : 0;
@@ -47,7 +47,7 @@ export async function importMdv(pool, orgId, data, { dryRun = false } = {}) {
     if (!dryRun && maxNumber) await c.query('insert into ticket_counters (org_id, last_number) values ($1,$2) on conflict (org_id) do update set last_number = greatest(ticket_counters.last_number, excluded.last_number)', [orgId, maxNumber]);
     const groups = new Map(), seen = new Set();
     for (const a of articles) {
-      const sid = 'mdv:' + text(a && a.id, 80), title = text(a && a.title, 200), body = text(a && a.body, 50000), lang = a && a.lang === 'es' ? 'es' : 'en';
+      const sid = source + ':' + text(a && a.id, 80), title = text(a && a.title, 200), body = text(a && a.body, 50000), lang = a && a.lang === 'es' ? 'es' : 'en';
       if (!a || !a.id || !title || !body) { sum.articles.skipped++; warn(`An article was skipped: it needs an id, a title and text.`); continue; }
       if ((await c.query('select 1 from help_articles where org_id = $1 and source_id = $2', [orgId, sid])).rowCount) { sum.articles.existing++; continue; }
       const gkey = text(a.group, 80) || sid, taken = `${gkey}|${lang}`;
