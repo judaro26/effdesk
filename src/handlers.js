@@ -22,6 +22,8 @@ import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
+import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
+import { customers as platformCustomers, csv as customersCsv } from './platform.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
@@ -118,6 +120,17 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'tokens-list': if ((g = adminOnly() || need('api'))) return g; r = await listTokens(pool, orgId); break;
     case 'token-create': if ((g = adminOnly() || need('api'))) return g; r = await createToken(pool, orgId, actor.id, b.name); break;
     case 'token-delete': if ((g = adminOnly() || need('api'))) return g; if (!(await deleteToken(pool, orgId, b.id))) return json(404, { error: 'No such token.' }); r = { ok: true }; break;
+    case 'team-list': if ((g = adminOnly())) return g; r = await listTeam(pool, orgId, ent); break;
+    case 'team-role': if ((g = adminOnly())) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
+    case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;
+    case 'team-invite': {
+      if ((g = adminOnly())) return g; const em = String(b.email || '').trim().toLowerCase(), rl = b.role === 'admin' ? 'admin' : 'member';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return json(400, { error: 'Enter a valid email address.' });
+      try { await auth.api.createInvitation({ body: { email: em, role: rl, organizationId: orgId }, headers: req.headers }); r = { ok: true, email: em }; } catch (e) { return json(400, { error: String((e && e.message) || 'The invitation could not be sent.').slice(0, 200) }); }
+      await audit(pool, orgId, actor.id, 'invited', em, { role: rl }); break;
+    }
+    case 'team-invite-cancel': if ((g = adminOnly())) return g; r = await cancelInvite(pool, orgId, b.id); break;
+    case 'team-invite-resend': if ((g = adminOnly())) return g; r = await resendInvite(pool, mailer, orgId, actor, b.id); break;
     case 'webhooks-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listHooks(pool, orgId); break;
     case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
     case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
@@ -393,4 +406,14 @@ export async function apiV1(req, { pool, mailer, env = process.env }) {
     return json(201, { message: { id: r.message.id, kind: r.message.kind }, email: r.email || null });
   }
   return json(404, { error: 'Not found.' });
+}
+
+// the platform owner's list of customers and their use (counts only): GET /api/admin/customers, or ?format=csv
+export async function platformList(req, { pool, auth }) {
+  if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  if (!s.user.emailVerified || !platformAdmins().includes(String(s.user.email).toLowerCase())) return json(403, { error: 'Only the platform owner can do that.' });
+  const r = await platformCustomers(pool);
+  if (new URL(req.url).searchParams.get('format') === 'csv') return new Response(customersCsv(r.customers), { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="effdesk-customers.csv"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  return json(200, r);
 }

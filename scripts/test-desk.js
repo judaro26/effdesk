@@ -26,6 +26,9 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'rules-list') return ok({ ok: true, rules: [{ id: 8, name: 'Refunds are urgent', event: 'created', conditions: [{ field: 'subject', op: 'contains', value: 'refund' }], actions: [{ type: 'set_priority', value: 'urgent' }], once: true, active: true }] });
   if (b.action === 'rule-save') return b.name ? ok({ ok: true, id: 9 }) : { ok: false, status: 400, json: async () => ({ error: 'Give the rule a name.' }) };
   if (b.action === 'rule-delete') return ok({ ok: true });
+  if (b.action === 'team-list') return ok({ ok: true, roles: ['owner', 'admin', 'member'], seats: { used: 2, allowed: 2, plan: 'free' }, people: [{ memberId: 'm1', userId: 'u1', name: 'Ann', email: 'ann@acme.test', role: 'owner', openTickets: 1, lastActive: new Date().toISOString() }, { memberId: 'm2', userId: 'u2', name: 'Bo', email: 'bo@acme.test', role: 'member', openTickets: 3, lastActive: null }], invites: [{ id: 'i1', email: 'new@acme.test', role: 'admin', expires_at: new Date(Date.now() + 86400000).toISOString() }] });
+  if (b.action === 'team-role' || b.action === 'team-remove' || b.action === 'team-invite-resend' || b.action === 'team-invite-cancel') return ok({ ok: true });
+  if (b.action === 'team-invite') return /@/.test(b.email) ? ok({ ok: true, email: b.email }) : { ok: false, status: 400, json: async () => ({ error: 'Enter a valid email address.' }) };
   if (b.action === 'tokens-list') return ok({ ok: true, tokens: [{ id: 2, name: 'Zapier', prefix: 'abc123', created_at: new Date().toISOString(), last_used_at: null }] });
   if (b.action === 'token-create') return b.name ? ok({ ok: true, id: 3, token: 'effk.o1.secretsecret' }) : { ok: false, status: 400, json: async () => ({ error: 'Give the token a name' }) };
   if (b.action === 'token-delete') return ok({ ok: true });

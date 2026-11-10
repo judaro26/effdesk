@@ -7,6 +7,10 @@ const fetchFn = async (url, opts) => {
   const b = opts && opts.body ? JSON.parse(opts.body) : null; calls.push([opts.method, url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
   if (url === '/api/me') return ok({ user: {}, organizations: [] });
+  if (url === '/api/admin/customers') return ok({ ok: true, totals: { organizations: 3, paying: 1, agents: 7, tickets30: 120, pastDue: 1, stalled: 1, heavy: 0 }, customers: [
+    { slug: 'rooster', name: 'Rooster', owner: 'r@rooster.co', plan: 'team', status: 'active', seatsPaid: 5, agents: 4, invites: 1, lastActive: new Date().toISOString(), tickets: { total: 300, last30: 100 }, health: 'healthy' },
+    { slug: 'stale', name: 'Stale Co', owner: 's@stale.co', plan: 'free', status: 'none', seatsPaid: 0, agents: 1, invites: 0, lastActive: null, tickets: { total: 0, last30: 0 }, health: 'stalled' },
+    { slug: 'late', name: 'Late Ltd', owner: 'l@late.co', plan: 'team', status: 'past_due', seatsPaid: 2, agents: 2, invites: 0, lastActive: null, tickets: { total: 20, last30: 20 }, health: 'past_due' }] });
   if (url === '/api/license') return b.slug === 'nobody' ? { ok: false, status: 404, json: async () => ({ error: 'No such organization.' }) } : ok({ ok: true });
   if (url === '/api/import') { if (failAt && calls.filter(c => c[1] === '/api/import').length === failAt) return { ok: false, status: 500, json: async () => ({ error: 'Boom.' }) }; return ok({ ok: true, dryRun: b.dryRun, tickets: { added: b.data.tickets.length, existing: 0, skipped: 0 }, messages: b.data.tickets.length * 2, articles: { added: b.data.articles.length, existing: 0, skipped: 0 }, filesNotCopied: 1, warnings: ['w'] }); }
 };
@@ -14,6 +18,10 @@ const dom = new JSDOM(pub('admin.html'), { runScripts: 'outside-only', url: 'htt
 await w.EffDeskAdmin.start(w.document, fetchFn); await tick();
 const $ = s => w.document.querySelector(s), setFile = obj => { const f = $('[data-file]'); Object.defineProperty(f, 'files', { value: [new w.File([JSON.stringify(obj)], 'export.json', { type: 'application/json' })], configurable: true }); };
 const fill = (label, v) => { $(`input[aria-label="${label}"]`).value = v; };
+check('the customer list shows totals and one row per organization', /3 organizations/.test($('[data-totals]').textContent) && w.document.querySelectorAll('[data-org]').length === 3 && /team \(active\) · 5 seats/.test($('[data-org=rooster]').textContent) && /4 \(\+1 invited\)/.test($('[data-org=rooster]').textContent));
+{ const f = $('select[aria-label="Show"]'); f.value = 'stalled'; f.dispatchEvent(new w.Event('change')); check('the list can show only stalled customers', w.document.querySelectorAll('[data-org]').length === 1 && !!$('[data-org=stale]'));
+  f.value = 'all'; f.dispatchEvent(new w.Event('change')); const sb = $('input[aria-label="Search customers"]'); sb.value = 'late.co'; sb.dispatchEvent(new w.Event('input')); check('and be searched by name, address or owner', w.document.querySelectorAll('[data-org]').length === 1 && !!$('[data-org=late]')); sb.value = ''; sb.dispatchEvent(new w.Event('input')); }
+check('the list can be downloaded as a spreadsheet', $('[data-customers-csv]').getAttribute('href') === '/api/admin/customers?format=csv');
 fill('Organization slug', 'mdv'); fill('Note', 'our company'); $('[data-grant]').click(); await tick();
 check('Grant posts the slug and note to the licence endpoint and confirms', calls.some(c => c[0] === 'POST' && c[1] === '/api/license' && c[2].slug === 'mdv' && c[2].note === 'our company') && /Licence granted to mdv/.test($('.msg').textContent));
 $('[data-revoke]').click(); await tick();
