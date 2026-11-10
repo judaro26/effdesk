@@ -45,3 +45,8 @@ Set the Netlify variable `OWNER_WORKSPACES=mdv:you@yourcompany.com` (several all
 1. Nobody else can register `mdv` (it shows as reserved to everyone else).
 2. Sign up at effdesk.com with that exact email and workspace address `mdv`, confirm the email, and the workspace is created with the **lifetime licence** at once: every feature, no seat limit, not changed by Paddle events.
 3. If the workspace already exists, grant the licence on `/admin.html` (needs `PLATFORM_ADMIN_EMAILS=you@yourcompany.com`).
+
+## Business hours and SLA alert emails
+* **Business hours** (Manage > SLA): working windows per weekday in a time zone. When on, SLA clocks count only those minutes (a 1-hour target started Friday 16:30 falls due Monday 09:30). The "at risk" point (80%) uses the same calendar. Off by default (around the clock).
+* **Alerts:** every hour (the `automations` function) each active ticket that reaches "at risk" or "breached" emails its owner once per state, or the owners and admins when nobody has it. People with notifications off are skipped.
+* With business hours on, the SLA filters in Views and the dashboard count are computed from the 2000 most recently updated active tickets.

@@ -1,6 +1,7 @@
 // src/reports.js: REPORTS over the last 7, 30 or 90 days of tickets: volume per day, where tickets stand, who solved what, how fast the team answers and solves, SLA compliance, busiest labels; and the same tickets as a CSV. Read-only.
 import { withOrg } from './db.js';
 import { getSla, slaOf } from './sla.js';
+import { calendarOf } from './hours.js';
 
 export const RANGES = [7, 30, 90];
 const ROW_CAP = 5000;
@@ -14,13 +15,13 @@ async function windowRows(c, orgId, days) {
 }
 const tally = (rows, f) => { const m = new Map(); for (const r of rows) { const k = f(r); if (k) m.set(k, (m.get(k) || 0) + 1); } return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)); };
 export async function report(pool, orgId, daysIn, now = Date.now()) {
-  const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30, sla = (await getSla(pool, orgId)).policies;
+  const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30, sla = (await getSla(pool, orgId)).policies, cal = await calendarOf(pool, orgId);
   return withOrg(pool, orgId, async c => {
     const rows = await windowRows(c, orgId, days);
     const perDay = (await c.query(`select to_char(d, 'YYYY-MM-DD') as day, (select count(*)::int from tickets t where t.org_id = $1 and t.created_at::date = d) created, (select count(*)::int from tickets t where t.org_id = $1 and t.solved_at::date = d) solved
       from generate_series(current_date - ($2::int - 1), current_date, interval '1 day') d order by d`, [orgId, days])).rows;
     const first = rows.map(r => mins(r.created_at, r.first_response_at)), res = rows.filter(r => r.solved_at).map(r => mins(r.created_at, r.solved_at));
-    const slas = rows.map(r => slaOf(r, sla, now)).filter(Boolean), judged = slas.filter(s => s.worst !== 'ok'), good = judged.filter(s => s.worst === 'met').length;
+    const slas = rows.map(r => slaOf(r, sla, now, cal)).filter(Boolean), judged = slas.filter(s => s.worst !== 'ok'), good = judged.filter(s => s.worst === 'met').length;
     const cs = (await c.query("select count(*)::int sent, count(rating)::int rated, count(*) filter (where rating = 1)::int good from csat_ratings where org_id = $1 and sent_at >= now() - ($2::int * interval '1 day')", [orgId, days])).rows[0];
     return { ok: true, days, csat: { sent: cs.sent, rated: cs.rated, good: cs.good, rate: cs.rated ? Math.round(100 * cs.good / cs.rated) : null }, total: rows.length, truncated: rows.length >= ROW_CAP, perDay,
       byStatus: tally(rows, r => r.status), byPriority: tally(rows, r => r.priority), byChannel: tally(rows, r => r.channel), byType: tally(rows, r => r.type), byQueue: tally(rows, r => r.queue_name),

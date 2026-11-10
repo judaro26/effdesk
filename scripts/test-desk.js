@@ -23,6 +23,8 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'dashboard') return ok({ ok: true, portal: 'https://acme.effdesk.com', counts: { open: 3, pending: 1, unassigned: 2, mine: 1, newToday: 2, solvedToday: 1, solvedWeek: 4, breached: FEATURES.indexOf('sla') >= 0 ? 1 : null }, mine: [{ number: 7, subject: 'Heater', status: 'open', priority: 'normal', requester: 'Tess', updatedAt: new Date().toISOString() }], unassigned: [], setup: { inbox: false, articles: true, team: true, firstTicket: true } });
   if (b.action === 'report-csv') return ok({ ok: true, filename: 'effdesk-tickets-30d.csv', csv: 'number\r\n1\r\n', count: 1 });
   if (b.action === 'sla-save') return ok({ ok: true });
+  if (b.action === 'sla-hours-get') return ok({ ok: true, hours: { enabled: false, tz: 'UTC', schedule: {} } });
+  if (b.action === 'sla-hours-save') return b.schedule && Object.keys(b.schedule).length ? ok({ ok: true, hours: { enabled: b.enabled, tz: b.tz, schedule: b.schedule } }) : { ok: false, status: 400, json: async () => ({ error: 'Choose at least one working day' }) };
   if (b.action === 'rules-list') return ok({ ok: true, rules: [{ id: 8, name: 'Refunds are urgent', event: 'created', conditions: [{ field: 'subject', op: 'contains', value: 'refund' }], actions: [{ type: 'set_priority', value: 'urgent' }], once: true, active: true }] });
   if (b.action === 'rule-save') return b.name ? ok({ ok: true, id: 9 }) : { ok: false, status: 400, json: async () => ({ error: 'Give the rule a name.' }) };
   if (b.action === 'rule-delete') return ok({ ok: true });
@@ -199,6 +201,9 @@ $('[data-manage]').click(); await tick(); $('[data-manage-tab=sla]').click(); aw
 check('Manage has SLA targets in hours, filled from the saved ones', $('input[aria-label="Normal first reply in hours"]').value === '1' && $('input[aria-label="Normal solve in hours"]').value === '8' && $('input[aria-label="Low solve in hours"]').value === '');
 $('input[aria-label="Urgent first reply in hours"]').value = '0.5'; $('input[aria-label="Urgent solve in hours"]').value = '4'; $('[data-sla-save]').click(); await tick();
 check('saving sends minutes per priority, and empty boxes as none', calls.some(c => c[1] && c[1].action === 'sla-save' && c[1].policies.urgent.firstResponseMin === 30 && c[1].policies.urgent.resolveMin === 240 && c[1].policies.low.firstResponseMin === null && c[1].policies.normal.resolveMin === 480));
+$('[data-hours-save]').click(); await tick(); check('business hours need a working day', /Choose at least one working day/.test($('.msg').textContent));
+{ const mon = $('input[aria-label="Monday opens"]'), monc = $('input[aria-label="Monday closes"]'); mon.value = '09:00'; monc.value = '17:00'; $('input[aria-label="Count only business hours"]').checked = true; $('[data-hours-save]').click(); await tick(20);
+  check('business hours are sent with the time zone and the working days', calls.some(c => c[1] && c[1].action === 'sla-hours-save' && c[1].enabled === true && c[1].schedule.mon.start === '09:00' && c[1].schedule.mon.end === '17:00' && !c[1].schedule.tue && c[1].tz.length > 0)); }
 $('#userbtn').click(); $('[data-profile]').click(); await tick();
 check('the profile has the notification switch, on, and it saves when changed', $('[data-notify]').checked === true && ($('[data-notify]').checked = false, $('[data-notify]').dispatchEvent(new w.Event('change')), await tick(), calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].notify === false && c[1].theme === undefined)) && /off/.test($('.msg').textContent));
 const deep = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), dw = deep.window; dw.__EFFDESK_TEST__ = true; dw.eval(pub('js/desk.js'));

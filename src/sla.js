@@ -1,5 +1,6 @@
 // src/sla.js: SLA TARGETS. Per priority, a time to the first public reply and a time to solve, counted around the clock from when the ticket was created. A ticket is "ok", at "risk" (80% of the time used) or "breached"; a target already reached is "met" (or "missed" when it was reached late).
 import { withOrg } from './db.js';
+import { ROUND_THE_CLOCK } from './hours.js';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
 const MAX = 525600;                                              // a year, in minutes
@@ -23,17 +24,17 @@ export async function saveSla(pool, orgId, policies) {
   return withOrg(pool, orgId, async c => { for (const [p, f, r] of rows) { if (f === null && r === null) await c.query('delete from sla_policies where org_id = $1 and priority = $2', [orgId, p]); else await c.query('insert into sla_policies (org_id, priority, first_response_min, resolve_min) values ($1,$2,$3,$4) on conflict (org_id, priority) do update set first_response_min = excluded.first_response_min, resolve_min = excluded.resolve_min', [orgId, p, f, r]); } return { ok: true }; });
 }
 // one target: when it is due and where it stands (pure: the caller passes the policy and the clock)
-function target(startMs, minutes, doneMs, nowMs) {
+function target(startMs, minutes, doneMs, nowMs, cal) {
   if (!minutes) return null;
-  const due = startMs + minutes * 60000;
+  const due = cal.add(startMs, minutes);
   if (doneMs) return { due, state: doneMs <= due ? 'met' : 'missed' };
-  return { due, state: nowMs > due ? 'breached' : nowMs > startMs + minutes * 60000 * RISK_AT ? 'risk' : 'ok' };
+  return { due, state: nowMs > due ? 'breached' : nowMs > cal.add(startMs, minutes * RISK_AT) ? 'risk' : 'ok' };
 }
 // the SLA of one ticket row (created_at, first_response_at, solved_at, status, priority); null when its priority has no targets
-export function slaOf(t, policies, nowMs = Date.now()) {
+export function slaOf(t, policies, nowMs = Date.now(), cal = ROUND_THE_CLOCK) {
   const p = policies && policies[t.priority]; if (!p || (!p.firstResponseMin && !p.resolveMin)) return null;
   const start = new Date(t.created_at).getTime(), ms = v => v ? new Date(v).getTime() : 0, finished = t.status === 'solved' || t.status === 'closed';
-  const first = target(start, p.firstResponseMin, ms(t.first_response_at), nowMs), resolve = target(start, p.resolveMin, finished ? ms(t.solved_at) || nowMs : 0, nowMs);
+  const first = target(start, p.firstResponseMin, ms(t.first_response_at), nowMs, cal), resolve = target(start, p.resolveMin, finished ? ms(t.solved_at) || nowMs : 0, nowMs, cal);
   const rank = { breached: 3, missed: 2, risk: 1, ok: 0, met: 0 }, all = [first, resolve].filter(Boolean);
   const worst = all.reduce((w, x) => rank[x.state] > rank[w] ? x.state : w, 'ok');
   return { first, resolve, worst: all.length && all.every(x => x.state === 'met') ? 'met' : worst };
@@ -45,4 +46,11 @@ export function slaWhere(kind) {
   if (kind === 'breached') return exists(over(1));
   if (kind === 'risk') return `${exists(over(RISK_AT))} and not (${exists(over(1))})`;
   return null;
+}
+
+// with business hours the clock cannot be done in SQL, so the tickets that match are worked out here (the 2000 most recently updated active ones) and listed by number
+export async function slaNumbers(pool, orgId, kind, cal, nowMs = Date.now()) {
+  const policies = (await getSla(pool, orgId)).policies;
+  const rows = (await withOrg(pool, orgId, c => c.query("select number, priority, status, created_at, first_response_at, solved_at from tickets where org_id = $1 and status in ('open','pending') order by updated_at desc limit 2000", [orgId]))).rows;
+  return rows.filter(t => { const s = slaOf(t, policies, nowMs, cal); if (!s) return false; const st = [s.first, s.resolve].filter(Boolean).map(x => x.state); return kind === 'breached' ? st.includes('breached') : !st.includes('breached') && st.includes('risk'); }).map(t => t.number);
 }

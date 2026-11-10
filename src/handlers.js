@@ -15,7 +15,8 @@ import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanC
 import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
-import { getSla, saveSla, slaOf } from './sla.js';
+import { getSla, saveSla, slaOf, slaNumbers } from './sla.js';
+import { getHours, saveHours, calendarOf } from './hours.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
@@ -136,22 +137,26 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'webhooks-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listHooks(pool, orgId); break;
     case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
     case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
-    case 'dashboard': r = await dashboard(pool, orgId, actor, { portalDomain: String(env.PORTAL_DOMAIN || '').toLowerCase(), sla: planHas(ent, 'sla'), agents: (await listAgents(pool, orgId)).length }); break;
+    case 'dashboard': r = await dashboard(pool, orgId, actor, { portalDomain: String(env.PORTAL_DOMAIN || '').toLowerCase(), sla: planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null, agents: (await listAgents(pool, orgId)).length }); break;
     case 'sla-get': if ((g = need('sla'))) return g; r = await getSla(pool, orgId); break;
+    case 'sla-hours-get': if ((g = need('sla'))) return g; r = await getHours(pool, orgId); break;
+    case 'sla-hours-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveHours(pool, orgId, b); break;
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
     case 'report-csv': if ((g = need('reports'))) return g; r = await reportCsv(pool, orgId, b.days); break;
     case 'list': {
       if (!planHas(ent, 'sla')) b.sla = undefined;
+      const cal = planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null;
+      if (cal && cal.enabled && (b.sla === 'breached' || b.sla === 'risk')) { b.numbers = await slaNumbers(pool, orgId, b.sla, cal); }
       r = await listTickets(pool, orgId, actor, b);
-      if (r.ok && planHas(ent, 'sla')) { const pol = (await getSla(pool, orgId)).policies; r.tickets = r.tickets.map(t => ({ ...t, sla: slaOf(t, pol) })); }
+      if (r.ok && planHas(ent, 'sla')) { const pol = (await getSla(pool, orgId)).policies; r.tickets = r.tickets.map(t => ({ ...t, sla: slaOf(t, pol, Date.now(), cal) })); }
       break;
     }
     case 'get': {
       r = await getTicket(pool, orgId, actor, b.number);
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
       if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
-      if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies) };
+      if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies, Date.now(), await calendarOf(pool, orgId)) };
       break;
     }
     case 'queue-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveQueue(pool, orgId, b); break;

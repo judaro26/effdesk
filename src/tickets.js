@@ -43,7 +43,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (TYPES.includes(q.type)) add('type = $#', q.type);
   if (/^\d{1,12}$/.test(String(q.client || ''))) add('client_id = $#', Number(q.client));
   if (/^\d{1,9}$/.test(String(q.problem || ''))) add('problem_number = $#', Number(q.problem));
-  const sw = slaWhere(q.sla); if (sw) where.push(sw);
+  if (Array.isArray(q.numbers)) add('number = any($#)', q.numbers.map(Number).filter(Number.isInteger)); else { const sw = slaWhere(q.sla); if (sw) where.push(sw); }
   if (q.following === 'me') add('id in (select ticket_id from ticket_followers where org_id = $1 and user_id = $#)', actor.id);
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
