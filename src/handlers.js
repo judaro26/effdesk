@@ -31,6 +31,8 @@ import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { info as logInfo, annotate } from './log.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
+import { getRouting, saveRouting, setAvailable, myAvailability } from './routing.js';
+import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
@@ -103,8 +105,8 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
-const LIGHT_OK = new Set(['ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
+const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
@@ -161,6 +163,11 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'export-data': if ((g = adminOnly() || need('data_export'))) return g; r = await exportData(pool, orgId, b.part); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'part ' + r.part, { tickets: r.tickets }); break;
     case 'export-tickets-csv': if ((g = adminOnly() || need('data_export'))) return g; r = await ticketsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'tickets csv', {}); break;
     case 'agent-detail': if ((g = adminOnly())) return g; r = await agentDetail(pool, orgId, b.userId, { auditOn: planHas(ent, 'audit_log') }); break;
+    case 'routing-get': if ((g = adminOnly() || need('routing'))) return g; r = { ok: true, settings: await getRouting(pool, orgId) }; break;
+    case 'routing-save': if ((g = adminOnly() || need('routing'))) return g; r = await saveRouting(pool, orgId, b); break;
+    case 'availability-get': r = { ok: true, available: await myAvailability(pool, orgId, actor.id) }; break;
+    case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
+    case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
     case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;
     case 'form-delete': if ((g = adminOnly() || need('request_forms'))) return g; if (!(await deleteForm(pool, orgId, b.id))) return json(404, { error: 'No such form.' }); r = { ok: true }; break;
@@ -247,6 +254,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'reply': {
+      if (!b.force && b.seenMessageId) { const fresh = await newSince(pool, orgId, actor.id, b.number, b.seenMessageId); if (fresh.length) return json(409, { error: `${[...new Set(fresh.map(m => m.author_name || 'Someone'))].slice(0, 3).join(', ')} wrote on this ticket since you opened it.`, conflict: true, messages: fresh.length }); }
+      if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
       if (r.ok && mailer && !(await chatOpen(pool, orgId, b.number))) {

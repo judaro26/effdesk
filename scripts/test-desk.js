@@ -5,7 +5,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub 
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }, { id: 99, kind: 'requester', author_name: 'Tina', body: 'Takeoff\t\t\nCategory\tItem\tQty\nLighting\t\t\nLighting\tLED strip\t12\n---\n```\nnpm test <b>\n```\nAlso `x` and **bold** at https://ex.org/a', created_at: '2026-11-01T12:00:00Z', attachments: [] }];
-const calls = []; const ALLF = ['custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents', 'custom_roles', 'audit_log', 'data_export', 'request_forms']; let FEATURES = ALLF.slice();
+const calls = []; const ALLF = ['custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents', 'custom_roles', 'audit_log', 'data_export', 'request_forms', 'routing']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
@@ -29,6 +29,9 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'rule-save') return b.name ? ok({ ok: true, id: 9 }) : { ok: false, status: 400, json: async () => ({ error: 'Give the rule a name.' }) };
   if (b.action === 'agent-detail') return ok({ ok: true, person: { userId: b.userId, name: 'Ann', email: 'ann@acme.test', role: 'member' }, can: { level: 'custom', text: 'Custom role: Tier 1', perms: ['reply'] }, counts: { open: 2, pending: 1, solved30: 9 }, week: { replies: 4, notes: 1 }, tickets: [{ number: 7, subject: 'Leak', status: 'open' }], activity: [{ number: 7, kind: 'agent', at: new Date().toISOString(), snippet: 'On our way' }], changes: [] });
   if (b.action === 'forms-list') return ok({ ok: true, forms: [{ id: 3, name: 'Billing question', description: 'Charges', subject_hint: '', queue_id: null, type: 'question', priority: 'normal', tags: ['money'], field_keys: [], active: true, tickets: 4 }] });
+  if (b.action === 'presence') return ok({ ok: true, others: [{ userId: 'u9', name: 'Bo', typing: true }] });
+  if (b.action === 'reply' && /^conflict/.test(b.body) && !b.force) return { ok: false, status: 409, json: async () => ({ error: 'Sam wrote on this ticket since you opened it.', conflict: true }) };
+  if (b.action === 'routing-get') return ok({ ok: true, settings: { enabled: true, strategy: 'round_robin', max_open: 5 } });
   if (b.action === 'roles-list') return ok({ ok: true, perms: [{ id: 'reply', label: 'Reply to customers and create tickets' }], roles: [{ id: 1, name: 'Tier 1', permissions: ['reply'], people: 1 }], people: [{ userId: 'u1', name: 'Bo', email: 'bo@x.co', role: 'member', customRoleId: 1 }] });
   if (b.action === 'audit-list') return ok({ ok: true, entries: [{ id: 9, at: new Date().toISOString(), action: 'role-save', target: '1', actor: 'a@x.co', actorName: 'Ann' }], next: null });
   if (b.action === 'export-info') return ok({ ok: true, tickets: 700, parts: 3, partSize: 300 });
@@ -106,6 +109,17 @@ $('[data-views]').click(); await tick(); $('[data-status=solved]').click(); awai
 check('a status tab reloads the list with that filter, and "Mine" filters by assignee', calls.some(c => c[1] && c[1].action === 'list' && c[1].status === 'solved') && ($('[data-mine]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'list' && c[1].assignee === 'me')));
 const q = $('input[type=search]'); q.value = 'heat'; q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' })); await tick();
 check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat'));
+{ const before = calls.length; q.value = 'heat'; q.dispatchEvent(new w.Event('input')); await new Promise(r => setTimeout(r, 300)); await tick();
+  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat' && c[1].limit === 6) && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
+  q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown' })); await tick(); check('arrow keys choose a result', $('.qi[aria-selected=true]') !== null);
+  q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true })); await tick(); await tick();
+  check('Enter on a chosen result opens that ticket and closes the preview', !!$('.conv') && $('.qpop').hidden && calls.some(c => c[1] && c[1].action === 'get'));
+  check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /replying/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
+$('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
+check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
+w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
+check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
+w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
 $('[data-new]').click(); await tick();
 check('"New ticket" shows the form', !!$('[data-create]'));
 $('[data-create]').click(); await tick();
@@ -131,6 +145,10 @@ $('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('tex
 check('if the email could not be sent the agent is told, and the reply is kept', /email could not be sent/.test($('.msg').textContent));
 $('textarea').value = 'limit now'; $('[data-reply]').click(); await tick();
 check('if the daily email limit is reached the agent is told why', /email limit/.test($('.msg').textContent));
+{ const n0 = calls.filter(c => c[1] && c[1].action === 'reply').length;
+  $('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('textarea').value = 'double click'; const rb = $('[data-reply]'); rb.click(); rb.click(); w.document.querySelector('textarea') && w.document.querySelector('textarea').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+  const locked = $('[data-reply]') && $('[data-reply]').hasAttribute('disabled'); await tick();
+  check('a message that is still sending cannot be sent twice, and the button is locked meanwhile', calls.filter(c => c[1] && c[1].action === 'reply').length - n0 === 1 && locked); }
 $('[data-help]').click(); await tick();
 check('Help center lists articles with status, language, views and votes, and links to the public page', $$('[data-article]').length === 1 && /Published · English · 5 views · 2 helpful, 1 not/.test($('[data-article]').textContent) && $('[data-view-help]').getAttribute('href') === '/help/acme');
 $('[data-article=a1]').click(); await tick();
@@ -185,6 +203,8 @@ $('[data-agent-detail]').click(); await tick(); await tick();
 check('details show role permissions, counts, open tickets and recent activity', !!$('[data-agent-panel]') && /Custom role: Tier 1/.test($('[data-agent-panel]').textContent) && /solved in 30 days/.test($('[data-agent-panel]').textContent) && /On our way/.test($('[data-agent-panel]').textContent));
 $('[data-group="Tickets"]').click(); await tick();
 check('a menu group collapses and expands', !$('[data-manage-tab=queues]') && $('[data-group="Tickets"]').getAttribute('aria-expanded') === 'false'); $('[data-group="Tickets"]').click(); await tick(); check('and opens again', !!$('[data-manage-tab=queues]'));
+$('[data-manage-tab=routing]').click(); await tick(); await tick();
+check('the routing page shows the switch, the way to choose, the limit and who is available', !!$('[data-routing-save]') && /Round robin/.test($('.mmain').textContent) && !!$('.mmain input[type=number]'));
 $('[data-manage-tab=helpwidget]').click(); await tick();
 check('the help page shows the help center address, the request page and the widget line to copy', !!$('[data-help-link]') && !!$('[data-request-link]') && /help-widget\.js/.test($('[data-help-snippet]').textContent) && /data-org=/.test($('[data-help-snippet]').textContent));
 $('[data-manage-tab=forms]').click(); await tick(); await tick();

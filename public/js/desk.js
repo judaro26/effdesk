@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
-    var formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -62,17 +62,17 @@
       if (!doc.getElementById('supportbar')) { var bar = el('div', { id: 'supportbar', class: 'supportbar', role: 'status', 'data-support-bar': '1' }, 'Support view: you are looking at this workspace with the customer’s permission. It is read-only and every visit is logged for them. ', el('a', { href: '/admin.html#customers' }, 'Back to the admin page')); doc.body.insertBefore(bar, doc.body.firstChild); }
       if (!supportEntered) { supportEntered = true; api('support-enter'); }
     }
-    function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; if (support) supportBar(); views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
-    function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
+    function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; if (support) supportBar(); views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
+    function refresh() { kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     // the address bar shows where you are, like /w/acme/agent/10042/tickets/57
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
       return api('get', { number: n }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
-        if (!current || current.ticket.number !== n) { draft = ''; mode = 'reply'; pending = []; macroPatch = null; sendStatus = ''; }
+        if (!current || current.ticket.number !== n) { draft = ''; mode = 'reply'; pending = []; macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
         closePanes(); current = r.body;
         var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) hit.subject = r.body.ticket.subject; else openTabs.push({ number: n, subject: r.body.ticket.subject });
-        draw();
+        draw(); presenceTick();
       });
     }
     function goViews() { closePanes(); draw(); }
@@ -81,6 +81,79 @@
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
     newBtn.addEventListener('click', function () { closePanes(); creating = true; newf = blankNew(); pending = []; draw(); });
 
+
+    // ── who else is looking at this ticket ──
+    function othersText() { if (!others.length) return ''; var names = others.map(function (o) { return o.name || 'Someone'; }), typing = others.some(function (o) { return o.typing; }); return (names.length > 2 ? names.slice(0, 2).join(', ') + ' and ' + (names.length - 2) + ' more' : names.join(' and ')) + (typing ? (names.length > 1 ? ' are replying' : ' is replying') : (names.length > 1 ? ' are also here' : ' is also viewing this ticket')); }
+    function paintOthers() { var b = main.querySelector('.collide'); if (!b) return; b.textContent = othersText(); b.hidden = !others.length; b.classList.toggle('typing', others.some(function (o) { return o.typing; })); }
+    function presenceTick() {
+      if (!current || (doc.visibilityState && doc.visibilityState === 'hidden')) return;
+      var ta = main.querySelector('.compose textarea'), n = current.ticket.number;
+      api('presence', { number: n, typing: !!(ta && ta.value.trim()) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
+    }
+    root.setInterval(presenceTick, 20000);
+
+    // ── a preview of matching tickets under the search box ──
+    var qWrap = el('span', { class: 'qwrap' }), qPop = el('div', { class: 'qpop', id: 'qpop', role: 'listbox', 'aria-label': 'Matching tickets' });
+    qPop.hidden = true; qBox.parentNode.insertBefore(qWrap, qBox); qWrap.appendChild(qBox); qWrap.appendChild(qPop);
+    qBox.setAttribute('role', 'combobox'); qBox.setAttribute('aria-expanded', 'false'); qBox.setAttribute('aria-controls', 'qpop'); qBox.setAttribute('aria-autocomplete', 'list');
+    function qClose() { qPop.hidden = true; qItems = []; qSel = -1; qBox.setAttribute('aria-expanded', 'false'); qBox.removeAttribute('aria-activedescendant'); }
+    function qPick(i) { var t = qItems[i]; if (!t) return; var n = t.number; qClose(); qBox.value = ''; qBox.blur(); open(n); }
+    function qDraw() {
+      while (qPop.firstChild) qPop.removeChild(qPop.firstChild);
+      if (!qItems.length) { qPop.appendChild(el('div', { class: 'qnone m' }, 'No tickets match. Press Enter to search everything.')); }
+      qItems.forEach(function (t, i) { qPop.appendChild(el('div', { class: 'qi', role: 'option', id: 'qi' + i, 'aria-selected': String(i === qSel), 'data-qresult': String(t.number), onmousedown: function (e) { e.preventDefault(); qPick(i); } }, el('strong', {}, '#' + t.number), ' ' + t.subject, el('span', { class: 'badge s-' + t.status }, cap(t.status)), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email))); });
+      if (qItems.length) qPop.appendChild(el('div', { class: 'qfoot m' }, 'Enter to see all results · ↑ ↓ to choose'));
+      qPop.hidden = false; qBox.setAttribute('aria-expanded', 'true');
+      if (qSel >= 0) qBox.setAttribute('aria-activedescendant', 'qi' + qSel); else qBox.removeAttribute('aria-activedescendant');
+    }
+    var qTimer = 0;
+    qBox.addEventListener('input', function () {
+      root.clearTimeout(qTimer); var v = qBox.value.trim(); if (v.length < 2) { qSeq++; return qClose(); }
+      qTimer = root.setTimeout(function () { var my = ++qSeq; api('list', { q: v, limit: 6 }).then(function (r) { if (my !== qSeq || !r.ok) return; qItems = r.body.tickets; qSel = -1; qDraw(); }); }, 200);
+    });
+    qBox.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (qPop.hidden || !qItems.length) return; e.preventDefault(); qSel = (qSel + (e.key === 'ArrowDown' ? 1 : -1) + qItems.length + 1) % (qItems.length + 1); if (qSel === qItems.length) qSel = -1; qDraw(); }
+      else if (e.key === 'Enter' && qSel >= 0 && !qPop.hidden) { e.preventDefault(); e.stopImmediatePropagation(); qPick(qSel); }
+      else if (e.key === 'Escape') { qClose(); }
+    }, true);
+    qBox.addEventListener('blur', function () { root.setTimeout(qClose, 120); });
+    qBox.addEventListener('focus', function () { if (qBox.value.trim().length >= 2 && qItems.length) qDraw(); });
+
+    // ── keyboard shortcuts ──
+    var SHORTCUTS = [['/', 'Search tickets'], ['c', 'New ticket'], ['j / k', 'Next / previous ticket in the list'], ['o', 'Open the highlighted ticket'], ['r', 'Reply to the customer'], ['m', 'Write an internal note'], ['g then h', 'Go to Home'], ['g then v', 'Go to Views'], ['Ctrl or ⌘ + Enter', 'Send what you wrote'], ['?', 'Show this list'], ['Esc', 'Close this list or leave the search']];
+    var helpEl = null;
+    // while a message is on its way the send buttons and the text box are locked, so it cannot go out twice
+    function paintSending() { Array.prototype.forEach.call(root.document.querySelectorAll('[data-reply],[data-note],.compose textarea,.split select'), function (n) { if (sending) { n.setAttribute('disabled', 'disabled'); } else { n.removeAttribute('disabled'); } }); var b = root.document.querySelector('[data-reply]'); if (b) { if (sending) { b.setAttribute('data-label', b.textContent); b.textContent = 'Sending…'; } else if (b.getAttribute('data-label')) { b.textContent = b.getAttribute('data-label'); b.removeAttribute('data-label'); } } }
+    function closeHelp() { helpOpen = false; if (helpEl && helpEl.parentNode) helpEl.parentNode.removeChild(helpEl); helpEl = null; }
+    function showHelp() {
+      if (helpOpen) return; helpOpen = true;
+      helpEl = el('div', { class: 'khelp-bg', 'data-khelp': '1', onclick: function (e) { if (e.target === helpEl) closeHelp(); } }, el('div', { class: 'khelp', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts' }, el('h2', {}, 'Keyboard shortcuts'),
+        el('table', {}, el('tbody', {}, SHORTCUTS.map(function (x) { return el('tr', {}, el('th', { scope: 'row' }, x[0].split(' then ').reduce(function (acc, k, i) { if (i) acc.push(' then '); acc.push(el('kbd', {}, k)); return acc; }, [])), el('td', {}, x[1])); }))),
+        el('button', { type: 'button', class: 'btn', 'data-help-close': '1', onclick: closeHelp }, 'Close')));
+      doc.body.appendChild(helpEl);
+      var cb = helpEl.querySelector('[data-help-close]'); if (cb && cb.focus) cb.focus();
+    }
+    function kbRows() { return [].slice.call(main.querySelectorAll('tbody tr[tabindex], .tlist tr[tabindex], [data-ticket-row]')); }
+    function kbMove(d) { var rows = kbRows(); if (!rows.length) return; kbIndex = Math.max(0, Math.min(rows.length - 1, (kbIndex < 0 ? (d > 0 ? 0 : 0) : kbIndex + d))); rows.forEach(function (r, i) { r.classList.toggle('kb-on', i === kbIndex); }); var r = rows[kbIndex]; if (r && r.scrollIntoView) r.scrollIntoView({ block: 'nearest' }); }
+    function focusCompose(m) { if (!current) return; if (mode !== m) { var ta0 = main.querySelector('.compose textarea'); if (ta0) draft = ta0.value; mode = m; draw(); } var a = main.querySelector('.compose .ed-area') || main.querySelector('.compose textarea'); if (a && a.focus) a.focus(); }
+    doc.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && helpOpen) { closeHelp(); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      var t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (helpOpen) return;
+      var k = e.key;
+      if (pendingG) { pendingG = false; if (k === 'h') { e.preventDefault(); goHome(); } else if (k === 'v') { e.preventDefault(); goViews(); } return; }
+      if (k === '?') { e.preventDefault(); showHelp(); }
+      else if (k === '/') { e.preventDefault(); qBox.focus(); }
+      else if (k === 'c') { e.preventDefault(); newBtn.click(); }
+      else if (k === 'g') { pendingG = true; root.setTimeout(function () { pendingG = false; }, 1200); }
+      else if (k === 'j') { e.preventDefault(); kbMove(1); }
+      else if (k === 'k') { e.preventDefault(); kbMove(-1); }
+      else if (k === 'o' || (k === 'Enter' && kbIndex >= 0 && !current)) { var rows = kbRows(); if (!current && rows[kbIndex]) { e.preventDefault(); rows[kbIndex].click(); } }
+      else if (k === 'r') { e.preventDefault(); focusCompose('reply'); }
+      else if (k === 'm') { e.preventDefault(); focusCompose('note'); }
+    });
+
     // ── the profile menu ──
     function setMenu(on) { menuOpen = on; userBtn.setAttribute('aria-expanded', String(on)); drawMenu(); }
     function drawMenu() {
@@ -88,6 +161,8 @@
       userMenu.hidden = !menuOpen; if (!menuOpen) return;
       userMenu.appendChild(el('div', { class: 'who-line' }, el('strong', {}, meName), el('div', { class: 'm' }, me)));
       userMenu.appendChild(el('button', { type: 'button', role: 'menuitem', 'data-profile': '1', onclick: function () { setMenu(false); closePanes(); profile = true; draw(); } }, 'Profile and themes'));
+      userMenu.appendChild(el('button', { type: 'button', role: 'menuitemcheckbox', 'aria-checked': String(myAvail), 'data-availability': '1', onclick: function () { var v = !myAvail; api('availability-set', { available: v }).then(function (r) { if (!r.ok) return say(r.body.error, true); myAvail = v; drawMenu(); say(v ? 'You will get new tickets again.' : 'You are away: new tickets will go to others.'); }); } }, myAvail ? '● Available for new tickets' : '○ Away (no new tickets)'));
+      userMenu.appendChild(el('button', { type: 'button', role: 'menuitem', 'data-shortcuts': '1', onclick: function () { setMenu(false); showHelp(); } }, 'Keyboard shortcuts'));
       userMenu.appendChild(el('a', { role: 'menuitem', href: '/app.html', 'data-account': '1' }, 'Account and billing'));
       userMenu.appendChild(el('button', { type: 'button', role: 'menuitem', 'data-signout': '1', onclick: function () { post('/api/auth/sign-out', {}).then(function () { nav.go('/'); }); } }, 'Sign out'));
     }
@@ -214,16 +289,22 @@
         i.addEventListener('change', function () { put(i.value); }); return i;
       };
       var act = function (action, extra, ok) { return api(action, Object.assign({ number: t.number }, extra || {})).then(function (r) { if (!r.ok) return say(r.body.error, true); return after().then(function () { if (ok) say(ok); }); }); };
-      var send = function (action) {
+      var send = function (action, force) {
+        if (sending) return;
         draft = body.value; if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
         var status = action === 'reply' ? (sendStatus || (macroPatch && macroPatch.status) || undefined) : undefined, ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : [], mp = action === 'reply' ? macroPatch : null;
-        api(action, { number: t.number, body: body.value, status: status, attachmentIds: ids }).then(function (r) {
-          if (!r.ok) return say(r.body.error, true);
+        var req = api(action, { number: t.number, body: body.value, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
+        sending = true; paintSending();
+        var done = function () { sending = false; paintSending(); };
+        req.then(function (r) {
+          if (!r.ok && r.body && r.body.duplicate) { done(); pending = []; draft = ''; return after().then(function () { say(r.body.error); }); }
+          if (!r.ok && r.body && r.body.conflict) { done(); conflict = { text: r.body.error }; return draw(); }
+          if (!r.ok) { done(); return say(r.body.error, true); }
           var n = ''; if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : '';
-          pending = []; draft = ''; macroPatch = null; sendStatus = '';
+          done(); pending = []; draft = ''; macroPatch = null; sendStatus = ''; conflict = null;
           var patch = {}; if (mp && mp.priority) patch.priority = mp.priority; if (mp && mp.add_tags && mp.add_tags.length) patch.tags = (t.tags || []).concat(mp.add_tags);
           return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, true); });
-        });
+        }).catch(function () { done(); say('Could not confirm that the message was sent. Check the conversation before sending it again.', true); });
       };
       body.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(mode === 'note' ? 'note' : 'reply'); });
       var who = t.requester_name || t.requester_email;
@@ -284,10 +365,11 @@
         sel('Rewrite your draft with AI', '', [['', '✦ Rewrite…'], ['friendlier', 'Friendlier'], ['shorter', 'Shorter'], ['clearer', 'Clearer'], ['formal', 'More formal'], ['fix', 'Fix spelling and grammar']], function (v) { var ta = main.querySelector('.compose textarea'); var text = ta ? ta.value : draft; if (!v) return; if (!String(text).trim()) return say('Write a draft first, then choose how to rewrite it.', true); aiRun('rewrite', 'ai-rewrite', { mode: v, text: text }, function (b) { draft = b.text; }); }),
         el('span', { class: 'm' }, 'Drafts only. You read and send.')) : null;
       var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Submit as ' + cap(chosen)), statusSel);
-      var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, hdrTools, el('h2', {}, '#' + t.number + ' ' + t.subject), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
+      var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, hdrTools, el('h2', {}, '#' + t.number + ' ' + t.subject), (function () { var b = el('div', { class: 'collide' + (others.some(function (o) { return o.typing; }) ? ' typing' : ''), role: 'status', 'data-collide': '1' }, othersText()); b.hidden = !others.length; return b; })(), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
         tools,
         summaries[t.number] ? el('div', { class: 'aisum', 'data-ai-summary': '1' }, el('strong', {}, 'AI summary'), renderBody(summaries[t.number]), el('button', { type: 'button', class: 'btn l sm', onclick: function () { delete summaries[t.number]; draw(); } }, 'Hide')) : null,
         el('div', { class: 'thread' }, showTimeline ? timelineEl() : msgs),
+        conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), ' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')) : null,
         el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard' }, el('div', { class: 'row1' }, el('span', { class: 'av in', 'aria-hidden': 'true' }, initial(who)), el('div', {}, el('strong', {}, who), el('div', { class: 'm' }, t.requester_email))), el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
@@ -466,7 +548,7 @@
       // the settings are grouped by what they are for; each entry: id, name, what it does, the plan feature it needs (if any)
       var groups = [
         ['Agents and access', [['team', 'Agents', 'Your team: roles, permissions, recent activity and tickets.'], ['sso', 'Single sign-on', 'Let people sign in with your company identity provider.', 'sso'], ['roles', 'Custom roles', 'Decide exactly what each agent may change.', 'custom_roles'], ['support', 'Support visits', 'See when EffDesk support looked at this workspace.']]],
-        ['Tickets', [['queues', 'Queues', 'Split work between teams and send tickets to the right one.', 'queues'], ['fields', 'Ticket fields', 'Add your own fields to every ticket.', 'custom_fields'], ['macros', 'Macros', 'Saved replies that also set status, priority and labels.'], ['triggers', 'Automations', 'Rules that act on tickets by themselves.', 'triggers'], ['sla', 'SLA and hours', 'Reply and solve targets, and business hours.', 'sla']]],
+        ['Tickets', [['routing', 'Routing', 'Hand new tickets to the right agent automatically.', 'routing'], ['queues', 'Queues', 'Split work between teams and send tickets to the right one.', 'queues'], ['fields', 'Ticket fields', 'Add your own fields to every ticket.', 'custom_fields'], ['macros', 'Macros', 'Saved replies that also set status, priority and labels.'], ['triggers', 'Automations', 'Rules that act on tickets by themselves.', 'triggers'], ['sla', 'SLA and hours', 'Reply and solve targets, and business hours.', 'sla']]],
         ['Customers', [['clients', 'Clients', 'Group requesters by company.', 'clients']]],
         ['Channels', [['helpwidget', 'Help center and search widget', 'Your public help center, request page and a search box for your website.'], ['forms', 'Request forms', 'Forms customers fill in on the help center.', 'request_forms'], ['chat', 'Live chat', 'A chat button for your website.', 'live_chat']]],
         ['Data and compliance', [['migrate', 'Import from Zendesk or Freshdesk', 'Bring your tickets and help articles over. Customers are not emailed.'], ['audit', 'Audit log', 'Who changed what, and when.', 'audit_log'], ['export', 'Export your data', 'Download your tickets, clients, macros and articles.', 'data_export']]],
@@ -534,7 +616,7 @@
               var others = team.people.filter(function (x) { return x.userId !== p.userId; });
               var rmBtn = mine ? null : el('button', { type: 'button', class: 'btn l sm', 'data-remove': String(p.memberId), onclick: function () { var to = others.length ? others[0].memberId : ''; var pick = sel('Hand ' + (p.name || p.email) + "'s open tickets to", to, [['', 'Leave them unassigned']].concat(others.map(function (x) { return [x.memberId, x.name || x.email]; })), function (v) { to = v; }); var box = el('div', { class: 'pcard', 'data-remove-box': String(p.memberId) }, el('strong', {}, 'Remove ' + (p.name || p.email) + '?'), el('p', { class: 'm' }, 'They lose access right away. Their ' + p.openTickets + ' open ticket(s) go to:'), pick, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-remove-confirm': '1', onclick: function () { api('team-remove', { memberId: p.memberId, reassignTo: to }).then(function (r) { if (!r.ok) { team = null; return say(r.body.error, true); } reload(p.email + ' was removed.'); }); } }, 'Remove'), el('button', { type: 'button', class: 'btn l', onclick: function () { draw(); } }, 'Cancel'))); var row = main.querySelector('[data-person="' + p.memberId + '"]'); if (row) row.appendChild(box); } }, 'Remove');
               var more = el('button', { type: 'button', class: 'btn l sm', 'data-agent-detail': p.email, 'aria-expanded': String(agentOpen === p.userId), onclick: function () { if (agentOpen === p.userId) { agentOpen = ''; return draw(); } agentOpen = p.userId; delete agentInfo[p.userId]; draw(); } }, agentOpen === p.userId ? 'Hide details' : 'Details');
-              var row = el('div', { class: 'mitem', 'data-person': String(p.memberId), style: 'flex-wrap:wrap' }, avatarEl('', p.name || p.email, null), el('span', { class: 'grow' }, el('strong', {}, (p.name || p.email) + (mine ? ' (you)' : '')), el('div', { class: 'm' }, p.email + ' · ' + p.openTickets + ' open · ' + (p.solved30 || 0) + ' solved in 30 days · last active ' + (p.lastActive ? ago(p.lastActive) : 'never')), p.customRole ? el('span', { class: 'chip' }, p.customRole) : null), rs, more, rmBtn);
+              var row = el('div', { class: 'mitem', 'data-person': String(p.memberId), style: 'flex-wrap:wrap' }, avatarEl('', p.name || p.email, null), el('span', { class: 'grow' }, el('strong', {}, (p.name || p.email) + (mine ? ' (you)' : '')), el('div', { class: 'm' }, p.email + ' · ' + p.openTickets + ' open · ' + (p.solved30 || 0) + ' solved in 30 days · last active ' + (p.lastActive ? ago(p.lastActive) : 'never')), p.customRole ? el('span', { class: 'chip' }, p.customRole) : null, p.available === false ? el('span', { class: 'chip off' }, 'Away') : null), rs, more, rmBtn);
               return el('div', { class: 'agent' }, row, agentOpen === p.userId ? agentPanel(p) : null);
             }),
             team.invites.length ? el('h3', {}, 'Waiting for an answer') : null,
@@ -620,6 +702,23 @@
           body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'Your data is yours. ' + exportCfg.tickets + ' tickets. The JSON files hold tickets with every message, plus clients, queues, macros and help articles (in part 1). Each file holds up to ' + (exportCfg.partSize || 300) + ' tickets. Every download is recorded in the audit log.'),
             el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-export-csv': '1', onclick: function () { api('export-tickets-csv').then(function (x) { if (!x.ok) return say(x.body.error, true); saveFile(x.body.filename, x.body.csv, 'text/csv'); }); } }, 'Ticket list (CSV)')),
             el('h3', {}, 'Everything (JSON)'), el('div', { class: 'bar' }, parts.map(function (n) { return el('button', { type: 'button', class: 'btn l', 'data-export-part': String(n), onclick: function () { api('export-data', { part: n }).then(function (x) { if (!x.ok) return say(x.body.error, true); saveFile(x.body.filename, x.body.json, 'application/json'); }); } }, 'Part ' + n); })));
+        }
+      } else if (manage === 'routing') {
+        if (!has('routing')) body = lock('routing');
+        else if (!isAdmin) body = guardAdmin;
+        else if (routingCfg === null) { api('routing-get').then(function (r) { routingCfg = r.ok ? r.body.settings : { enabled: false, strategy: 'round_robin', max_open: null }; draw(); }); body = el('p', { class: 'm' }, 'Loading…'); }
+        else {
+          var ron = el('input', { type: 'checkbox', 'aria-label': 'Assign new tickets automatically' }); ron.checked = !!routingCfg.enabled;
+          var rst = sel('How to choose', routingCfg.strategy, [['round_robin', 'Round robin: take turns, whoever waited longest'], ['least_busy', 'Least busy: the agent with the fewest open tickets']], function () {});
+          var rmax = el('input', { 'aria-label': 'Open tickets limit', type: 'number', min: '1', max: '500', placeholder: 'No limit', value: routingCfg.max_open || '' });
+          var rteam = team ? team.people.filter(function (x) { return x.role !== 'light'; }) : null;
+          if (!team) api('team-list').then(function (r) { if (r.ok) { team = r.body; draw(); } });
+          body = el('div', { class: 'page', style: 'padding:12px 0' }, el('p', { class: 'm' }, 'When a customer starts a ticket (help center, email, chat or API), it is given to a full agent right away. Light agents and agents who are away are skipped. Tickets you create yourself are not routed.'),
+            el('label', { class: 'chk' }, ron, ' Assign new tickets automatically'), prop('How to choose', rst), prop('Most open tickets one agent may hold', rmax),
+            el('p', { class: 'm' }, 'If everyone is away or at the limit, the ticket waits unassigned.'),
+            guardAdmin || el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-routing-save': '1', onclick: function () { api('routing-save', { enabled: ron.checked, strategy: rst.value, maxOpen: rmax.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); routingCfg = r.body.settings; say('Routing saved.'); draw(); }); } }, 'Save')),
+            el('h3', {}, 'Who is available now'), rteam ? rteam.map(function (x) { return el('div', { class: 'mitem', 'data-avail': x.email }, avatarEl('', x.name || x.email, null), el('span', { class: 'grow' }, x.name || x.email, el('div', { class: 'm' }, x.openTickets + ' open')), el('span', { class: 'chip' + (x.available === false ? ' off' : '') }, x.available === false ? 'Away' : 'Available')); }) : el('p', { class: 'm' }, 'Loading…'),
+            el('p', { class: 'm' }, 'Agents switch themselves away or back from their profile menu (top right).'));
         }
       } else if (manage === 'helpwidget') {
         var slug1 = (orgs.filter(function (o) { return o.id === orgId; })[0] || {}).slug || '', site = (root.location && root.location.origin) || '';

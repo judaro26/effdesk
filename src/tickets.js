@@ -1,4 +1,5 @@
 // src/tickets.js: THE TICKET CORE. Every function runs inside withOrg (row level security) AND names org_id in its queries, so a mistake in one layer is caught by the other.
+import { autoAssign } from './routing.js';
 import { withOrg } from './db.js';
 import { slaWhere } from './sla.js';
 import { defsOf, cleanValues } from './fields.js';
@@ -31,6 +32,7 @@ export async function createTicket(pool, orgId, actor, input) {
     const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' || input.channel === 'chat' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom)])).rows[0];
     await logEvent(c, orgId, t.id, actor ? who(actor) : clean(input.requesterName, 100) || email, 'created', 'Ticket created' + (input.channel === 'email' ? ' by email' : ''));
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, kind, kind === 'requester' ? null : actor.id, kind === 'requester' ? clean(input.requesterName, 100) || email : who(actor), body, input.messageId ? clean(input.messageId, 300) : null])).rows[0].id;
+    if ((!actor || input.channel === 'api') && input.route !== false) { const a = await autoAssign(c, orgId, t.id); if (a) { t.assignee_id = a.id; await logEvent(c, orgId, t.id, 'Routing', 'assigned', 'Assigned to ' + a.name + ' automatically'); } }
     if (kind === 'agent') { await c.query('update tickets set first_response_at = now() where id = $1', [t.id]); t.first_response_at = new Date().toISOString(); }
     return { ok: true, ticket: t, messageRowId: mid };
   });

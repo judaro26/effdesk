@@ -5,7 +5,7 @@ export const FREE_SEATS = 2;
 export const INTERVALS = ['month', 'year'];
 
 const BASE = ['tickets', 'email_channel', 'macros', 'help_center_basic', 'csat_basic'];
-const TEAM = [...BASE, 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'sla', 'triggers', 'reports', 'csat', 'integrations', 'light_agents', 'bulk_actions', 'request_forms'];
+const TEAM = [...BASE, 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'sla', 'triggers', 'reports', 'csat', 'integrations', 'light_agents', 'bulk_actions', 'request_forms', 'routing'];
 const SUITE = [...TEAM, 'side_conversations', 'help_center', 'live_chat', 'translation', 'ai_assist', 'custom_fields', 'api'];
 const PRO = [...SUITE, 'custom_roles', 'audit_log', 'sso', 'data_export', 'sandbox', 'two_factor_enforcement'];
 
