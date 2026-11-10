@@ -4,6 +4,7 @@ import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddl
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
 import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress } from './ticket-mail.js';
+import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, MAX_UPLOAD, cleanName } from './attachments.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -63,7 +64,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
-export async function tickets(req, { pool, auth, mailer, env = process.env }) {
+export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
@@ -77,9 +78,15 @@ export async function tickets(req, { pool, auth, mailer, env = process.env }) {
     case 'create': r = await createTicket(pool, orgId, actor, b); break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
-      if (r.ok && mailer) { const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id); r.email = d.delivery; r.emailWhy = d.why; }
+      if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
+      if (r.ok && mailer) {
+        const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
+        for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
+        const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
+      }
       break;
     }
+    case 'delete-file': if (!store || !(await deleteFile(pool, store, orgId, b.id))) return json(404, { error: 'No such file.' }); r = { ok: true }; break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
@@ -91,7 +98,7 @@ export async function tickets(req, { pool, auth, mailer, env = process.env }) {
 }
 
 // customers' email, posted by Resend (event email.received). The signature is checked on the exact bytes, the full message is fetched with our key, and anything we cannot use is acknowledged so it is not retried forever.
-export async function inboundEmail(req, { pool, env = process.env, fetchFn = fetch, now = Date.now() }) {
+export async function inboundEmail(req, { pool, store, env = process.env, fetchFn = fetch, now = Date.now() }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' });
   if (!verifySvix(raw, req.headers, env.RESEND_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
@@ -105,8 +112,30 @@ export async function inboundEmail(req, { pool, env = process.env, fetchFn = fet
     if (!r.ok) throw new Error('status ' + r.status); full = await r.json();
   } catch (e) { console.warn('could not fetch the received email:', e.message); return json(502, { error: 'Could not fetch the message.' }); }
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
+  if (res.ok && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
+}
+
+// an agent uploads one file: POST the raw bytes to /api/attachments?org=…&name=…&type=…&ticket=…  (up to 5 MB; it waits unattached until a reply claims it)
+export async function attachmentUpload(req, { pool, auth, store }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  if (!role) return json(403, { error: 'You are not part of that organization.' });
+  if (Number(req.headers.get('content-length') || 0) > MAX_UPLOAD + 1024) return json(413, { error: 'Files can be up to 5 MB each.' });
+  const bytes = Buffer.from(await req.arrayBuffer());
+  const r = await saveUpload(pool, store, orgId, { id: s.user.id }, { filename: u.searchParams.get('name'), contentType: u.searchParams.get('type') || req.headers.get('content-type'), bytes, ticketNumber: u.searchParams.get('ticket') });
+  return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
+}
+// a file is always downloaded, never shown inside our pages, and the browser may not guess its type
+export async function attachmentDownload(req, { pool, auth, store }) {
+  if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  if (!role) return json(403, { error: 'You are not part of that organization.' });
+  const f = await readFile(pool, store, orgId, u.pathname.split('/').pop()); if (!f) return json(404, { error: 'No such file.' });
+  return new Response(f.bytes, { status: 200, headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });
 }
 export const _json = json;

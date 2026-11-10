@@ -47,7 +47,7 @@ export async function saveMailSettings(pool, orgId, input, env = process.env) {
 
 // ---------- outgoing ----------
 // Emails an agent's public reply to the requester. Never throws: the reply is already saved, the result says what happened ('sent', 'failed' or 'skipped' with why).
-export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId) {
+export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId, files = []) {
   const domain = inboundDomain(env);
   try {
     const data = await withOrg(pool, orgId, async c => {
@@ -73,7 +73,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const text = `${m.body}${sig}${foot}`;
     const html = `<div style="white-space:pre-wrap">${esc(m.body)}</div>${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
-    try { await mailer.ticketMail({ from, to: t.requester_email, replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers }); }
+    try { await mailer.ticketMail({ from, to: t.requester_email, replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
     await mark('sent', mid); return { delivery: 'sent' };
   } catch (e) { console.warn('ticket mail error:', e.message); return { delivery: 'failed' }; }
@@ -115,7 +115,7 @@ export async function handleInbound(pool, env, email) {
   const recent = (await withOrg(pool, orgId, c => c.query("select count(*)::int n from tickets where org_id = $1 and channel = 'email' and created_at > now() - interval '1 hour'", [orgId]))).rows[0].n;
   if (recent >= 200) return { dropped: 'rate' };
   let body = stripQuoted(email.text || htmlToText(email.html)); const att = (email.attachments || []).length;
-  if (att) body += `\n\n[${att} attachment${att > 1 ? 's' : ''} not stored: ${(email.attachments || []).map(a => clean(a.filename, 80)).join(', ')}]`;
+  if (!body.trim() && att) body = '(no message, see the attached files)';
   if (!body.trim()) return { dropped: 'empty' };
   const subject = clean(email.subject, 200).replace(/^\s*\[#\d+\]\s*/, '') || '(no subject)';
   let number = target.number && tokenOk(env, orgId, target.number, target.tok) ? target.number : 0;
@@ -125,13 +125,13 @@ export async function handleInbound(pool, env, email) {
   }
   if (number) {
     const r = await addRequesterMessage(pool, orgId, number, { body, authorName: from.name || from.email, messageId: email.messageId });
-    if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened };
+    if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened, orgId, messageRowId: r.messageRowId };
     if (!r.closed) return { dropped: 'no-ticket' };
     const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
-    return f.ok ? { ok: true, action: 'followup', number: f.ticket.number } : { dropped: 'invalid' };
+    return f.ok ? { ok: true, action: 'followup', number: f.ticket.number, orgId, messageRowId: f.messageRowId } : { dropped: 'invalid' };
   }
   const t = await createTicket(pool, orgId, null, { subject, body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
-  return t.ok ? { ok: true, action: 'created', number: t.ticket.number } : { dropped: 'invalid' };
+  return t.ok ? { ok: true, action: 'created', number: t.ticket.number, orgId, messageRowId: t.messageRowId } : { dropped: 'invalid' };
 }
 
 // Resend signs webhooks with Svix: svix-id, svix-timestamp and svix-signature ("v1,<base64 hmac of id.timestamp.body>"); the secret is "whsec_" + base64

@@ -19,8 +19,8 @@ export async function createTicket(pool, orgId, actor, input) {
   return withOrg(pool, orgId, async c => {
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
     const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags) values ($1,$2,$3,$4,$5,$6,$7,$8) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags)])).rows[0];
-    await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7)', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body, input.messageId ? clean(input.messageId, 300) : null]);
-    return { ok: true, ticket: t };
+    const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body, input.messageId ? clean(input.messageId, 300) : null])).rows[0].id;
+    return { ok: true, ticket: t, messageRowId: mid };
   });
 }
 
@@ -46,6 +46,8 @@ export async function getTicket(pool, orgId, actor, number) {
     const t = (await c.query(`select ${ticketCols} from tickets where org_id = $1 and number = $2`, [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     const messages = (await c.query('select id, kind, author_id, author_name, body, created_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
+    const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at', [orgId, t.id])).rows;
+    for (const m of messages) m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
     return { ok: true, ticket: t, messages };
   });
 }
@@ -96,9 +98,9 @@ export async function addRequesterMessage(pool, orgId, number, { body, authorNam
     const t = (await c.query('select id, status from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     if (t.status === 'closed') return { ok: false, status: 409, closed: true, error: 'The ticket is closed.' };
-    await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6)', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null]);
+    const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6) returning id', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null])).rows[0].id;
     await c.query("update tickets set status = 'open', solved_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
-    return { ok: true, reopened: t.status !== 'open' };
+    return { ok: true, reopened: t.status !== 'open', messageRowId: mid };
   });
 }
 export async function ticketByMessageId(pool, orgId, messageId) {

@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.9",
     "better-auth": "^1.7.19",
     "pg": "^8.23.1"
   },

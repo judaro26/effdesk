@@ -44,8 +44,6 @@ check('the same message delivered twice is stored once', (await inbound({ messag
 check('automatic mail is dropped (auto-replies, bulk, mailing lists, bounces, no-reply senders)', (await inbound({ headers: { 'auto-submitted': 'auto-replied' } })).dropped === 'automated' && (await inbound({ headers: { precedence: 'bulk' } })).dropped === 'automated' && (await inbound({ headers: { 'list-id': '<x.example.com>' } })).dropped === 'automated' && (await inbound({ from: 'mailer-daemon@example.com' })).dropped === 'automated' && !isAutomated({ 'auto-submitted': 'no' }, 'a@b.co'));
 check('mail that fails DMARC is dropped as likely forged', (await inbound({ authentication: { dmarc: 'fail', spf: 'pass', dkim: 'pass' } })).dropped === 'auth-failed' && (await inbound({ authentication: { dmarc: 'pass' }, text: 'dmarc ok' })).ok);
 check('quoted history is cut from replies, and an all-quoted message is kept whole', stripQuoted('Thanks!\n\nOn Mon, Nov 9, 2026 at 9:00 AM Acme <a@b.co> wrote:\n> hi') === 'Thanks!' && stripQuoted('Yes\n\n-----Original Message-----\nFrom: x') === 'Yes' && stripQuoted('Fine\n> quoted') === 'Fine' && stripQuoted('> only quoted') === '> only quoted');
-r = await inbound({ subject: 'Photos', text: 'See attached', attachments: [{ filename: 'leak.jpg' }] });
-check('attachments are not stored yet, and the message says so honestly', /1 attachment not stored: leak\.jpg/.test((await ticket(r.number)).m[0].body));
 
 // sending
 failSend = false; outbox.length = 0;
