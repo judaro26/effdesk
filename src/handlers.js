@@ -12,6 +12,8 @@ import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
 import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
+import * as desk from './desk.js';
+import { PLANS, has as planHas } from './plans.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -78,10 +80,40 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const orgId = String(b.orgId || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
-  let r;
+  const isAdmin = role === 'owner' || role === 'admin', ent = await getEntitlements(pool, orgId);
+  // a feature of a higher plan: refuse with the name of the plan that has it
+  const need = f => planHas(ent, f) ? null : json(402, { error: `This is part of the ${PLANS[Object.keys(PLANS).find(k => PLANS[k].features.includes(f))].name} plan. Upgrade to use it.`, upgrade: true });
+  const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
+  let r, g;
   switch (b.action) {
+    case 'init': {
+      const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
+      r = { ok: true, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+    }
     case 'list': r = await listTickets(pool, orgId, actor, b); break;
-    case 'get': r = await getTicket(pool, orgId, actor, b.number); break;
+    case 'get': {
+      r = await getTicket(pool, orgId, actor, b.number);
+      if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
+      break;
+    }
+    case 'queue-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveQueue(pool, orgId, b); break;
+    case 'queue-delete': if ((g = adminOnly() || need('queues'))) return g; r = await desk.deleteQueue(pool, orgId, b.id); break;
+    case 'labels': r = await desk.labelsInUse(pool, orgId); break;
+    case 'follow': r = await desk.follow(pool, orgId, actor, b.number, b.on !== false); break;
+    case 'merge': r = await desk.mergeTickets(pool, orgId, actor, b.number, b.into); break;
+    case 'edit-message': r = await desk.editMessage(pool, orgId, actor, b.number, b.messageId, b.body); break;
+    case 'client-save': if ((g = adminOnly() || need('clients'))) return g; r = await desk.saveClient(pool, orgId, actor, b); break;
+    case 'client-delete': if ((g = adminOnly() || need('clients'))) return g; r = await desk.deleteClient(pool, orgId, b.id); break;
+    case 'client-notes': if ((g = need('clients'))) return g; r = await desk.saveClientNotes(pool, orgId, b.id, b.notes); break;
+    case 'macro-save': if ((g = adminOnly())) return g; r = await desk.saveMacro(pool, orgId, b); break;
+    case 'macro-delete': if ((g = adminOnly())) return g; r = await desk.deleteMacro(pool, orgId, b.id); break;
+    case 'view-save': if ((g = need('saved_views'))) return g; if (b.shared === true && (g = adminOnly())) return g; r = await desk.saveView(pool, orgId, actor, b); break;
+    case 'view-delete': if ((g = need('saved_views'))) return g; r = await desk.deleteView(pool, orgId, actor, b.id, isAdmin); break;
+    case 'link': if ((g = need('linked_tickets'))) return g; r = await desk.linkIncident(pool, orgId, actor, b.number, b.problem); break;
+    case 'unlink': if ((g = need('linked_tickets'))) return g; r = await desk.unlinkIncident(pool, orgId, actor, b.number); break;
+    case 'problem-resolve': if ((g = need('linked_tickets'))) return g; r = await desk.resolveProblem(pool, orgId, actor, b.number); break;
+    case 'side-send': if ((g = need('side_conversations'))) return g; r = mailer ? await desk.sendSide(pool, mailer, env, orgId, actor, b.number, b) : { ok: false, status: 503, error: 'Email is not set up.' }; break;
+    case 'side-close': if ((g = need('side_conversations'))) return g; r = await desk.closeSide(pool, orgId, actor, b.number, b.sideId); break;
     case 'create': r = await createTicket(pool, orgId, actor, b); break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
@@ -101,7 +133,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
-    case 'update': r = await updateTicket(pool, orgId, actor, b.number, b.patch || {}); break;
+    case 'update': { const pt = b.patch || {}; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g; r = await updateTicket(pool, orgId, actor, b.number, pt); break; }
     case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
     default: return json(400, { error: 'Unknown action.' });
   }
@@ -123,7 +155,7 @@ export async function inboundEmail(req, { pool, store, env = process.env, fetchF
     if (!r.ok) throw new Error('status ' + r.status); full = await r.json();
   } catch (e) { console.warn('could not fetch the received email:', e.message); return json(502, { error: 'Could not fetch the message.' }); }
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
-  if (res.ok && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
+  if (res.ok && res.messageRowId && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });

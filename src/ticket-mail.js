@@ -6,6 +6,7 @@ import { inboundDomain } from './config.js';
 import { getEntitlements } from './billing.js';
 import { mailLimit } from './plans.js';
 import { createTicket, addRequesterMessage, ticketByMessageId, messageSeen } from './tickets.js';
+import { sideTokenOk, sideReplyIn } from './desk.js';
 
 export const MODES = ['ticket', 'custom', 'none'];
 const RESERVED = new Set(['admin', 'administrator', 'postmaster', 'abuse', 'no-reply', 'noreply', 'mailer-daemon', 'root', 'webmaster', 'hostmaster', 'security', 'support', 'help', 'info', 'billing', 'sales', 'effdesk', 'www', 'mail', 'test']);
@@ -51,7 +52,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
   const domain = inboundDomain(env);
   try {
     const data = await withOrg(pool, orgId, async c => {
-      const t = (await c.query('select id, number, subject, requester_email, requester_name from tickets where org_id = $1 and number = $2', [orgId, number])).rows[0]; if (!t) return null;
+      const t = (await c.query('select id, number, subject, requester_email, requester_name, cc from tickets where org_id = $1 and number = $2', [orgId, number])).rows[0]; if (!t) return null;
       const m = (await c.query('select id, body, author_name from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
       const settings = (await c.query('select reply_mode, reply_to, from_name, signature from mail_settings where org_id = $1', [orgId])).rows[0];
       const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
@@ -73,7 +74,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const text = `${m.body}${sig}${foot}`;
     const html = `<div style="white-space:pre-wrap">${esc(m.body)}</div>${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
-    try { await mailer.ticketMail({ from, to: t.requester_email, replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
+    try { await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
     await mark('sent', mid); return { delivery: 'sent' };
   } catch (e) { console.warn('ticket mail error:', e.message); return { delivery: 'failed' }; }
@@ -104,8 +105,8 @@ export async function handleInbound(pool, env, email) {
   if (from.email.endsWith('@' + domain)) return { dropped: 'loop' };
   let target = null;
   for (const a of [...(email.to || []), ...(email.receivedFor || [])]) {
-    const m = String(parseAddress(a).email).match(/^([a-z0-9-]+)(?:\+(\d{1,9})\.([0-9a-f]{12}))?@(.+)$/); if (!m || m[4] !== domain) continue;
-    const row = (await pool.query('select org_id from inbox_directory where inbox = $1', [m[1]])).rows[0]; if (row) { target = { orgId: row.org_id, number: m[2] ? Number(m[2]) : 0, tok: m[3] }; break; }
+    const m = String(parseAddress(a).email).match(/^([a-z0-9-]+)(?:\+(s?)(\d{1,9})\.([0-9a-f]{12}))?@(.+)$/); if (!m || m[5] !== domain) continue;
+    const row = (await pool.query('select org_id from inbox_directory where inbox = $1', [m[1]])).rows[0]; if (row) { target = { orgId: row.org_id, number: m[3] && !m[2] ? Number(m[3]) : 0, tok: m[4], side: m[2] ? Number(m[3]) : 0 }; break; }
   }
   if (!target) return { dropped: 'unknown-inbox' };
   const orgId = target.orgId;
@@ -117,6 +118,11 @@ export async function handleInbound(pool, env, email) {
   let body = stripQuoted(email.text || htmlToText(email.html)); const att = (email.attachments || []).length;
   if (!body.trim() && att) body = '(no message, see the attached files)';
   if (!body.trim()) return { dropped: 'empty' };
+  if (target.side) {                                // the reply of someone a side conversation was written to
+    if (!sideTokenOk(env, orgId, target.side, target.tok)) return { dropped: 'bad-token' };
+    const r = await sideReplyIn(pool, orgId, target.side, from.email, from.name, body, email.messageId);
+    return r.ok ? { ok: true, action: r.action, number: r.number, orgId } : r;
+  }
   const subject = clean(email.subject, 200).replace(/^\s*\[#\d+\]\s*/, '') || '(no subject)';
   let number = target.number && tokenOk(env, orgId, target.number, target.tok) ? target.number : 0;
   if (!number) {                                    // no private address: a reply is recognised by the Message-ID it answers, and only from the person who opened the ticket
