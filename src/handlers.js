@@ -30,7 +30,7 @@ import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './cs
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
+import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
 import { SUPPORT_READ, recentEntries, customerDetail, countApiCall } from './support.js';
 import { listFields, saveField, deleteField } from './fields.js';
@@ -155,6 +155,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'export-info': if ((g = adminOnly() || need('data_export'))) return g; r = await exportInfo(pool, orgId); break;
     case 'export-data': if ((g = adminOnly() || need('data_export'))) return g; r = await exportData(pool, orgId, b.part); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'part ' + r.part, { tickets: r.tickets }); break;
     case 'export-tickets-csv': if ((g = adminOnly() || need('data_export'))) return g; r = await ticketsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'tickets csv', {}); break;
+    case 'agent-detail': if ((g = adminOnly())) return g; r = await agentDetail(pool, orgId, b.userId, { auditOn: planHas(ent, 'audit_log') }); break;
     case 'team-list': if ((g = adminOnly())) return g; r = await listTeam(pool, orgId, ent); break;
     case 'team-role': if ((g = adminOnly() || (b.role === 'light' ? need('light_agents') : null))) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
     case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await clearAssignment(pool, orgId, r.userId || ''); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;

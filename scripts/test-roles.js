@@ -72,4 +72,12 @@ r = await A(olivia, 'export-tickets-csv'); check('the ticket list downloads as a
 await A(olivia, 'macro-save', { name: '=HYPERLINK("x")', body: 'b' }); await A(olivia, 'create', { subject: '=SUM(1+1)', body: 'x', requesterEmail: 't@x.com' });
 check('spreadsheet formulas in a CSV are defused', !/(^|,|\n)=SUM/.test((await A(olivia, 'export-tickets-csv')).body.csv));
 check('exports are logged', (await A(olivia, 'audit-list', { filter: 'data-exported' })).body.entries.length >= 2);
+// agent detail
+await A(olivia, 'role-assign', { userId: bu, roleId: (await A(olivia, 'role-save', { name: 'Tier 2', permissions: ['reply', 'status'] })).body.id });
+{ const d = (await A(olivia, 'agent-detail', { userId: bu })).body; const lt = (await A(olivia, 'team-list')).body.people.find(x => x.userId === bu);
+  check('an agent\'s detail shows role, permissions, counts, tickets and recent activity', d.ok && d.person.email === 'bo@acme.test' && d.can.level === 'custom' && d.can.perms.join() === 'reply,status' && d.week.replies >= 1 && d.activity.some(a => a.number === T) && Array.isArray(d.tickets) && d.counts.open >= 0);
+  check('the team list names the custom role and counts solved tickets', lt.customRole === 'Tier 2' && typeof lt.solved30 === 'number');
+  check('an owner is described as having everything', (await A(olivia, 'agent-detail', { userId: ou })).body.can.level === 'everything');
+  check('their recent changes come from the audit log on a plan that has it', Array.isArray((await A(olivia, 'agent-detail', { userId: ou })).body.changes) && (await A(olivia, 'agent-detail', { userId: ou })).body.changes.length > 0);
+  check('only admins see agent detail, and not across workspaces', (await A(bo, 'agent-detail', { userId: ou })).status === 403 && (await A(olivia, 'agent-detail', { userId: otto.user.id })).status === 404); }
 await pool.end(); done(); process.exit(0);

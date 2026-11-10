@@ -4,7 +4,7 @@ import { withOrg } from './db.js';
 import { getEntitlements } from './billing.js';
 // EffDesk support may always look in, read-only. Every visit is written to the customer's audit log and listed to them under Manage > Support access.
 // the only desk actions the support view may call: all of them only read
-export const SUPPORT_READ = new Set(['init', 'list', 'get', 'dashboard', 'agents', 'labels', 'fields-list', 'team-list', 'sla-get', 'sla-hours-get', 'report', 'article-list', 'article-get', 'mail-get', 'rules-list', 'webhooks-list', 'support-enter']);
+export const SUPPORT_READ = new Set(['init', 'list', 'get', 'dashboard', 'agents', 'labels', 'fields-list', 'team-list', 'agent-detail', 'sla-get', 'sla-hours-get', 'report', 'article-list', 'article-get', 'mail-get', 'rules-list', 'webhooks-list', 'support-enter']);
 export const getAccess = async () => ({ active: true, always: true });
 export const recentEntries = async (pool, orgId) => withOrg(pool, orgId, async c => (await c.query(`select at, target as who, action from audit_log where org_id = $1 and action like 'support.%' order by at desc limit 10`, [orgId])).rows);
 
