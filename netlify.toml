@@ -1,4 +1,5 @@
 [build]
+  command = "node scripts/migrate-on-build.js"
   publish = "public"
   functions = "netlify/functions"
 

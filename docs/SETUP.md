@@ -3,7 +3,7 @@
 ## 1. Neon (the database)
 1. Create a **new Neon project** named `sundesk` (not the one used by anything else), in an AWS region near your customers.
 2. Copy the **pooled** connection string (the host contains `-pooler`) into Netlify as `DATABASE_URL`.
-3. Run the migrations once: `DATABASE_URL=... npm run migrate`. Run it again after every release that adds a file in `migrations/`.
+3. Migrations run by themselves: Netlify's build command (`scripts/migrate-on-build.js`) applies new files in `migrations/` on every **production** deploy (previews skip it). To run them by hand: `DATABASE_URL=... npm run migrate`.
 4. Check the role the app connects with is **not** a superuser (Neon's default owner role is not). Row-level security does not apply to superusers.
 5. Turn on point-in-time restore for the project (Neon settings) and note the retention you chose in the privacy policy.
 
