@@ -12,6 +12,10 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 // the company a person typed at registration, handed to the confirmation email that Better Auth sends in the middle of the sign-up call
 export const signupContext = new AsyncLocalStorage();
 
+// The same site answers on its apex (effdesk.com), www and app. addresses; sign-in from any of them is trusted. Anything else is refused.
+export function siteOrigins(baseURL) {
+  try { const u = new URL(baseURL); if (u.protocol !== 'https:') return []; const root = u.hostname.replace(/^(app|www)\./, ''); return [...new Set(['https://' + root, 'https://www.' + root, 'https://app.' + root])]; } catch { return []; }
+}
 export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SECRET, baseURL = PRODUCT.appUrl, requireVerified = process.env.REQUIRE_EMAIL_VERIFICATION !== 'false', cookieDomain = process.env.COOKIE_DOMAIN || '' }) {
   const seatGuard = async orgId => { const s = await checkSeat(pool, orgId); if (!s.ok) throw new APIError('FORBIDDEN', { message: s.reason, code: 'SEATS_FULL' }); };
   return {
@@ -21,7 +25,7 @@ export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SEC
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     advanced: { useSecureCookies: /^https:/.test(baseURL), defaultCookieAttributes: { sameSite: 'lax', httpOnly: true }, ...(cookieDomain ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } : {}) },
     // with a cookie domain set (for example .effdesk.com) every workspace address (acme.effdesk.com) shares the one sign-in
-    trustedOrigins: [...(cookieDomain ? ['https://*' + cookieDomain] : []), ...(process.env.ORIGIN_HOST ? ['https://' + process.env.ORIGIN_HOST] : [])],
+    trustedOrigins: [...siteOrigins(baseURL), ...(process.env.DESK_BASE_DOMAIN ? ['https://*.' + process.env.DESK_BASE_DOMAIN.replace(/^\./, '')] : []), ...(cookieDomain ? ['https://*' + cookieDomain] : []), ...(process.env.ORIGIN_HOST ? ['https://' + process.env.ORIGIN_HOST] : [])],
     rateLimit: { enabled: true, window: 60, max: 60, storage: 'database', customRules: { '/sign-in/email': { window: 60, max: 8 }, '/sign-up/email': { window: 60, max: 5 }, '/request-password-reset': { window: 300, max: 5 } } },
     plugins: [
       ssoPlugin({ pool, env: { BETTER_AUTH_SECRET: secret }, baseURL }),
