@@ -111,4 +111,11 @@ check('on the free plan queues, clients, linked tickets, views and side conversa
 await B(otto, 'create', { subject: 'B1', body: 'x', requesterEmail: 'b@x.co' });
 check('the free plan keeps type, labels, CC, follow, merge, macros and the timeline', (await B(otto, 'update', { number: 1, patch: { type: 'task', cc: 'c@x.co' } })).status === 200 && (await B(otto, 'follow', { number: 1 })).status === 200 && (await B(otto, 'macro-save', { name: 'M', body: 'b' })).status === 200 && (await B(otto, 'update', { number: 1, patch: { queueId: qid } })).status === 402 && (await B(otto, 'init')).body.queues.length === 0);
 check('another organization cannot touch our queue, client, macro or side conversation', (await B(otto, 'queue-delete', { id: qid })).status === 402 && (await A(olivia, 'init')).body.queues.length === 1 && (await call(otto, { orgId: acme.id, action: 'merge', number: 1, into: 2 })).status === 403);
+
+// themes
+check('everyone starts on the classic theme', (await A(ann, 'init')).body.theme === 'classic');
+check('a paid plan can choose a premium theme, and it is remembered for that person only', (await A(ann, 'prefs-save', { theme: 'aurora' })).status === 200 && (await A(ann, 'init')).body.theme === 'aurora' && (await A(olivia, 'init')).body.theme === 'classic');
+check('the free plan can choose the two free themes but a premium one asks for an upgrade, and an unknown theme is refused', (await B(otto, 'prefs-save', { theme: 'midnight' })).status === 200 && (await B(otto, 'init')).body.theme === 'midnight' && (await B(otto, 'prefs-save', { theme: 'sunset' })).status === 402 && (await B(otto, 'prefs-save', { theme: 'nope' })).status === 400);
+await pool.query("insert into desk_prefs (user_id, theme) values ($1,'orchid') on conflict (user_id) do update set theme = 'orchid'", [otto.user.id]);
+check('a premium theme saved before the plan ended falls back to classic on the free plan', (await B(otto, 'init')).body.theme === 'classic');
 done();

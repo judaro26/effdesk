@@ -13,6 +13,7 @@ import { importMdv } from './importer.js';
 import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
+import { themeById, usableTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -88,7 +89,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   switch (b.action) {
     case 'init': {
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
-      r = { ok: true, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      const theme = usableTheme((await pool.query('select theme from desk_prefs where user_id = $1', [actor.id])).rows[0]?.theme, planHas(ent, 'themes'));
+      r = { ok: true, theme, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+    }
+    case 'prefs-save': {
+      const th = themeById(String(b.theme || '')); if (!th) return json(400, { error: 'That theme does not exist.' });
+      if (th.premium && (g = need('themes'))) return g;
+      await pool.query('insert into desk_prefs (user_id, theme) values ($1,$2) on conflict (user_id) do update set theme = excluded.theme, updated_at = now()', [actor.id, th.id]); r = { ok: true, theme: th.id }; break;
     }
     case 'list': r = await listTickets(pool, orgId, actor, b); break;
     case 'get': {

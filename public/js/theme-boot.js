@@ -1,0 +1,2 @@
+// public/js/theme-boot.js: puts the person's last theme on the page before it is drawn, so it does not flash. desk.js confirms it against the account once the desk loads.
+(function () { try { var t = window.localStorage.getItem('eff_theme'); if (t && /^[a-z]{3,20}$/.test(t)) document.documentElement.setAttribute('data-theme', t); } catch (e) { /* storage may be blocked: the default theme is used */ } })();

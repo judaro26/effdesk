@@ -30,3 +30,7 @@ Lawyer-approved documents, Paddle live, status page, backup and restore drill, b
 - Free seats on paid plans: DECIDED. The 2 free agents belong to the free (freemium) plan only; a paid plan is priced for every agent and the free seats do not stack on top.
 - Light agents (read and note only) are not built; every member uses a seat.
 - Data region: one region at first; EU hosting later if customers ask.
+
+
+## Desk features (done)
+Type, queues, labels, CC, follow, merge, timeline, edit message, clients with notes, linked problem/incident tickets, macros, saved views, side conversations, Manage page, profile menu and themes. See DESK.md for what each plan gets. Next here: notify followers on customer replies, translate messages, SLA, reports.
