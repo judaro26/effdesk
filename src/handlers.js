@@ -19,6 +19,7 @@ import { getSla, saveSla, slaOf, slaNumbers } from './sla.js';
 import { getHours, saveHours, calendarOf } from './hours.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
@@ -218,7 +219,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
-      if (r.ok && mailer) {
+      if (r.ok && mailer && !(await chatOpen(pool, orgId, b.number))) {
         const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
         const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
@@ -232,6 +233,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'article-get': r = await getArticle(pool, orgId, b.id); break;
     case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
+    case 'chat-get': if ((g = need('live_chat'))) return g; r = { ok: true, settings: await chatSettings(pool, orgId) }; break;
+    case 'chat-save': if ((g = adminOnly())) return g; if ((g = need('live_chat'))) return g; r = await saveChatSettings(pool, orgId, b); break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;
     case 'csat-set': if ((g = adminOnly())) return g; await setCsatOn(pool, orgId, b.on === true); r = { ok: true, csatOn: b.on === true }; break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;

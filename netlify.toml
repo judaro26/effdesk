@@ -17,6 +17,13 @@
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.paddle.com; frame-src https://buy.paddle.com https://sandbox-buy.paddle.com; connect-src 'self' https://checkout-service.paddle.com https://sandbox-checkout-service.paddle.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
+# The chat window is the one page other websites may put in a frame (the chat button on a customer's site opens it). It runs only its own scripts and talks only to this site.
+[[headers]]
+  for = "/chat.html"
+  [headers.values]
+    X-Frame-Options = "ALLOWALL"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors *"
+
 # Sign-in, the account page, the desk and invitations belong to the app host (the session cookie is for that host only). The marketing site links to them, and these redirects carry the visitor over.
 [[redirects]]
   from = "https://effdesk.com/auth.html"
