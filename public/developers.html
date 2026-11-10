@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Developer guide | EffDesk</title>
+<meta name="description" content="Create and update tickets with the EffDesk REST API, and react to events with signed webhooks. Examples in curl, Node and Python.">
+<meta name="theme-color" content="#0b1b2e">
+<link rel="stylesheet" href="/css/marketing.css"></head><body class="mk">
+<header class="mkhead"><div class="wrap"><a class="brand" href="/">Eff<span>Desk</span></a><nav aria-label="Main"><a href="/#answers">What it does</a><a href="/#pricing">Pricing</a><a href="/developers.html" aria-current="page">Developers</a></nav><div class="right"><a class="plain" href="/auth.html?mode=signin">Sign in</a><a class="cta sm" href="/auth.html?mode=signup">Start free</a></div></div></header>
+<main class="wrap"><div class="dev">
+<aside><nav aria-label="On this page">
+<span class="grp">Start here</span><a href="#quickstart">Quickstart</a><a href="#auth">Authentication</a><a href="#errors">Errors</a>
+<span class="grp">Tickets</span><a href="#list">List tickets</a><a href="#create">Create a ticket</a><a href="#get">Get a ticket</a><a href="#update">Update a ticket</a><a href="#comment">Reply or add a note</a><a href="#custom">Custom fields</a>
+<span class="grp">Webhooks</span><a href="#events">Events and payload</a><a href="#verify">Verify a signature</a><a href="#chat">Slack and Teams</a>
+</nav></aside>
+<article>
+<h1>Developer guide</h1>
+<p class="lead">Create and update tickets from your own systems, and get told when something happens. Everything here works with a plain HTTP client.</p>
+<div class="note"><strong>Plans.</strong> The REST API and custom fields need the Suite plan or above. Webhooks, Slack and Teams need Team or above.</div>
+
+<h2 id="quickstart">Quickstart</h2>
+<p>Make a token in the desk under <strong>Manage, API</strong> (owners and admins only). Copy it when it appears: it is shown once. Then create your first ticket:</p>
+<pre class="code"><span class="k">curl</span> https://app.effdesk.com/api/v1/tickets \
+  -H <span class="s">"Authorization: Bearer effk.YOUR_TOKEN"</span> \
+  -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"subject":"Hello from the API","body":"It works.","requesterEmail":"tina@example.com"}'</span></pre>
+<p>The ticket appears in your desk with the history line <em>API: your token name</em>. It starts the same automations and webhooks as a ticket made by hand.</p>
+
+<h2 id="auth">Authentication</h2>
+<p>Send the token on every request as a bearer token. The base address is <code>https://app.effdesk.com/api/v1</code> and bodies are JSON.</p>
+<pre class="code">Authorization: Bearer effk.&lt;organization id&gt;.&lt;secret&gt;</pre>
+<p>Tokens belong to your organization, not a person. Delete a token under Manage, API and it stops working at once. Keep tokens out of browsers and public code.</p>
+
+<h2 id="errors">Errors</h2>
+<p>Errors are JSON with a message you can show to a person: <code>{ "error": "…" }</code>.</p>
+<table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>400</code></td><td>The input is wrong, for example a missing subject or an unknown field value.</td></tr>
+<tr><td><code>401</code></td><td>No token, or a wrong or deleted one.</td></tr>
+<tr><td><code>402</code></td><td>The feature is part of a higher plan. The body has <code>"upgrade": true</code>.</td></tr>
+<tr><td><code>404</code></td><td>No such ticket or path.</td></tr>
+<tr><td><code>405</code></td><td>That method is not allowed on this path.</td></tr>
+<tr><td><code>413</code></td><td>The body is too large (the limit is 100 KB).</td></tr></tbody></table>
+
+<h2 id="list">List tickets</h2>
+<div class="ep"><span class="verb get">GET</span><b>/tickets</b></div>
+<p>Newest first, with the count in each status.</p>
+<table><thead><tr><th>Query</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>status</code></td><td><code>open</code>, <code>pending</code>, <code>solved</code> or <code>closed</code></td></tr>
+<tr><td><code>q</code></td><td>Search text</td></tr>
+<tr><td><code>tag</code></td><td>Only tickets with this tag</td></tr>
+<tr><td><code>limit</code>, <code>offset</code></td><td>Paging</td></tr></tbody></table>
+<pre class="code"><span class="k">curl</span> <span class="s">"https://app.effdesk.com/api/v1/tickets?status=open&amp;tag=vip&amp;limit=20"</span> \
+  -H <span class="s">"Authorization: Bearer effk.YOUR_TOKEN"</span></pre>
+
+<h2 id="create">Create a ticket</h2>
+<div class="ep"><span class="verb post">POST</span><b>/tickets</b></div>
+<table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>subject</code></td><td>Required. Up to 200 characters.</td></tr>
+<tr><td><code>body</code></td><td>Required. The first message. It supports <a href="#formatting">formatting</a>.</td></tr>
+<tr><td><code>requesterEmail</code></td><td>Required. The customer.</td></tr>
+<tr><td><code>requesterName</code></td><td>Optional.</td></tr>
+<tr><td><code>priority</code></td><td>Optional: <code>low</code>, <code>normal</code>, <code>high</code>, <code>urgent</code>.</td></tr>
+<tr><td><code>custom</code></td><td>Optional. Values for your <a href="#custom">custom fields</a>.</td></tr></tbody></table>
+<p>The reply is <code>201</code> with the ticket:</p>
+<pre class="code">{ <span class="g">"ticket"</span>: { <span class="g">"number"</span>: 1043, <span class="g">"subject"</span>: <span class="s">"Payment failed"</span>, <span class="g">"status"</span>: <span class="s">"open"</span>,
+  <span class="g">"priority"</span>: <span class="s">"normal"</span>, <span class="g">"channel"</span>: <span class="s">"api"</span>, <span class="g">"requester_email"</span>: <span class="s">"tina@example.com"</span>,
+  <span class="g">"custom"</span>: { <span class="g">"order_number"</span>: <span class="s">"A-1042"</span> }, … } }</pre>
+<h3 id="formatting">Formatting in message bodies</h3>
+<p>Message text is plain text with a few shortcuts: a line of <code>---</code> becomes a rule, text between lines of three backticks becomes a code block, <code>`like this`</code> is inline code, <code>**bold**</code> is bold, web addresses become links, and tab-separated rows (pasted from a spreadsheet) or <code>| pipe | tables |</code> become tables. Everything else is shown as typed, and nothing is run as HTML.</p>
+
+<h2 id="get">Get a ticket</h2>
+<div class="ep"><span class="verb get">GET</span><b>/tickets/{number}</b></div>
+<p>The ticket and its public messages, oldest first. Internal notes are left out.</p>
+<pre class="code"><span class="k">curl</span> https://app.effdesk.com/api/v1/tickets/1043 -H <span class="s">"Authorization: Bearer effk.YOUR_TOKEN"</span>
+
+{ <span class="g">"ticket"</span>: { … }, <span class="g">"messages"</span>: [ { <span class="g">"id"</span>: 9, <span class="g">"kind"</span>: <span class="s">"requester"</span>, <span class="g">"author"</span>: <span class="s">"Tina"</span>, <span class="g">"body"</span>: <span class="s">"…"</span>, <span class="g">"createdAt"</span>: <span class="s">"2026-11-10T16:02:11Z"</span> } ] }</pre>
+
+<h2 id="update">Update a ticket</h2>
+<div class="ep"><span class="verb patch">PATCH</span><b>/tickets/{number}</b></div>
+<p>Send only what changes: <code>status</code>, <code>priority</code>, <code>type</code>, <code>tags</code> (the whole list), <code>assigneeId</code>, <code>queueId</code>, <code>cc</code> or <code>custom</code>. Automations and <code>ticket.updated</code> webhooks run as usual.</p>
+<pre class="code"><span class="k">curl</span> -X PATCH https://app.effdesk.com/api/v1/tickets/1043 \
+  -H <span class="s">"Authorization: Bearer effk.YOUR_TOKEN"</span> -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"status":"pending","tags":["billing","vip"]}'</span></pre>
+
+<h2 id="comment">Reply or add a note</h2>
+<div class="ep"><span class="verb post">POST</span><b>/tickets/{number}/comments</b></div>
+<table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>body</code></td><td>Required. The message.</td></tr>
+<tr><td><code>public</code></td><td><code>true</code> (the default) emails the customer. <code>false</code> adds a private note only your team sees.</td></tr>
+<tr><td><code>status</code></td><td>Optional, on a public reply: set the ticket to <code>pending</code> or <code>solved</code>. Solving asks the customer for a rating.</td></tr></tbody></table>
+<pre class="code"><span class="k">curl</span> https://app.effdesk.com/api/v1/tickets/1043/comments \
+  -H <span class="s">"Authorization: Bearer effk.YOUR_TOKEN"</span> -H <span class="s">"Content-Type: application/json"</span> \
+  -d <span class="s">'{"body":"We have refunded the charge. Anything else?","status":"solved"}'</span></pre>
+
+<h2 id="custom">Custom fields</h2>
+<p>Admins add fields under <strong>Manage, Fields</strong>: text, number, dropdown, yes or no, and date. Each has a key made from its name (for example <em>Order number</em> becomes <code>order_number</code>). Send values by key in <code>custom</code> when you create or update a ticket. An empty value clears a field.</p>
+<pre class="code">{ <span class="g">"custom"</span>: { <span class="g">"order_number"</span>: <span class="s">"A-1042"</span>, <span class="g">"units"</span>: 3, <span class="g">"urgent_call"</span>: <span class="k">true</span>, <span class="g">"product"</span>: <span class="s">"Pro"</span> } }</pre>
+<p>Dropdown values must be one of the listed choices, numbers must be numbers and dates look like <code>2026-11-30</code>. Otherwise you get a <code>400</code> that names the field.</p>
+
+<h2 id="events">Webhooks: events and payload</h2>
+<p>Add a webhook under <strong>Manage, Integrations</strong>. The address must be public and use https. Pick the events you want:</p>
+<table><thead><tr><th>Event</th><th>When</th></tr></thead><tbody>
+<tr><td><code>ticket.created</code></td><td>A ticket is made, by email, the desk or the API.</td></tr>
+<tr><td><code>ticket.updated</code></td><td>Status, priority, assignee, tags or fields change.</td></tr>
+<tr><td><code>message.agent</code></td><td>An agent replies to the customer.</td></tr>
+<tr><td><code>message.customer</code></td><td>The customer writes back.</td></tr>
+<tr><td><code>ticket.mentioned</code></td><td>Someone is @mentioned in an internal note.</td></tr></tbody></table>
+<p>Each delivery is a <code>POST</code> of JSON with a five second limit:</p>
+<pre class="code">{ <span class="g">"event"</span>: <span class="s">"ticket.created"</span>, <span class="g">"organization"</span>: <span class="s">"org_123"</span>, <span class="g">"occurredAt"</span>: <span class="s">"2026-11-10T16:02:11.000Z"</span>,
+  <span class="g">"ticket"</span>: { <span class="g">"number"</span>: 1043, <span class="g">"subject"</span>: <span class="s">"Payment failed"</span>, <span class="g">"status"</span>: <span class="s">"open"</span>, <span class="g">"priority"</span>: <span class="s">"normal"</span>,
+    <span class="g">"channel"</span>: <span class="s">"api"</span>, <span class="g">"requester"</span>: { <span class="g">"name"</span>: <span class="s">"Tina"</span>, <span class="g">"email"</span>: <span class="s">"tina@example.com"</span> },
+    <span class="g">"assigneeId"</span>: <span class="k">null</span>, <span class="g">"tags"</span>: [], <span class="g">"custom"</span>: {} } }</pre>
+<p>Headers: <code>X-EffDesk-Event</code>, <code>X-EffDesk-Timestamp</code> (seconds since 1970) and <code>X-EffDesk-Signature</code>. Reply with any <code>2xx</code> status. The last result of each webhook is shown in the desk.</p>
+
+<h2 id="verify">Verify a signature</h2>
+<p>The secret is shown once when you add the webhook. The signature is <code>sha256=</code> followed by the hex HMAC-SHA256, with that secret, of the timestamp, a dot and the raw request body. Compare in constant time, and reject a timestamp more than a few minutes old so a captured request cannot be replayed.</p>
+<pre class="code"><span class="c">// Node.js</span>
+<span class="k">import</span> crypto <span class="k">from</span> <span class="s">'node:crypto'</span>;
+<span class="k">export function</span> verify(rawBody, headers, secret) {
+  <span class="k">const</span> ts = headers[<span class="s">'x-effdesk-timestamp'</span>], sig = headers[<span class="s">'x-effdesk-signature'</span>] || <span class="s">''</span>;
+  <span class="k">if</span> (Math.abs(Date.now() / 1000 - Number(ts)) &gt; 300) <span class="k">return false</span>;
+  <span class="k">const</span> want = <span class="s">'sha256='</span> + crypto.createHmac(<span class="s">'sha256'</span>, secret).update(ts + <span class="s">'.'</span> + rawBody).digest(<span class="s">'hex'</span>);
+  <span class="k">return</span> sig.length === want.length &amp;&amp; crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+}</pre>
+<pre class="code"><span class="c"># Python</span>
+<span class="k">import</span> hmac, hashlib, time
+<span class="k">def</span> verify(raw_body: bytes, headers, secret: str) -&gt; bool:
+    ts = headers.get(<span class="s">"X-EffDesk-Timestamp"</span>, <span class="s">""</span>); sig = headers.get(<span class="s">"X-EffDesk-Signature"</span>, <span class="s">""</span>)
+    <span class="k">if</span> abs(time.time() - float(ts <span class="k">or</span> 0)) &gt; 300: <span class="k">return False</span>
+    want = <span class="s">"sha256="</span> + hmac.new(secret.encode(), ts.encode() + <span class="s">b"."</span> + raw_body, hashlib.sha256).hexdigest()
+    <span class="k">return</span> hmac.compare_digest(sig, want)</pre>
+<div class="note">Use the raw body exactly as received. Parsing and re-serializing the JSON changes the bytes and breaks the signature.</div>
+
+<h2 id="chat">Slack and Teams</h2>
+<p>For chat you do not need code. Choose <strong>Slack</strong> or <strong>Microsoft Teams</strong> when you add a webhook and paste the channel's incoming webhook address (Slack: <code>https://hooks.slack.com/services/…</code>; Teams: the address from a Workflows or connector webhook). EffDesk posts a short message for each event you pick. Teams receives an Adaptive Card.</p>
+<p style="margin-top:48px"><a class="cta dark" href="/auth.html?mode=signup">Start free</a> &nbsp; <a class="cta line" href="/#pricing">See plans</a></p>
+</article></div></main>
+<footer class="mkfoot"><div class="wrap"><span class="grow">© EffDesk</span><a href="/">Home</a><a href="/legal/terms.html">Terms</a><a href="/legal/privacy.html">Privacy</a><a href="/legal/aup.html">Acceptable use</a></div></footer>
+<script src="/js/rescue.js"></script>
+</body></html>

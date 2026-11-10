@@ -1,5 +1,7 @@
 # EffDesk REST API (Suite plan)
 
+The friendly version of this page, with examples in curl, Node and Python, is published at /developers.html (public/developers.html).
+
 Make a token under **Manage > API** (owners and admins). It looks like `effk.<organization id>.<secret>` and is shown once. Send it on every request:
 
     Authorization: Bearer effk.…
