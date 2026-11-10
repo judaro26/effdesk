@@ -18,8 +18,10 @@ export async function report(pool, orgId, daysIn, now = Date.now()) {
   const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30, sla = (await getSla(pool, orgId)).policies, cal = await calendarOf(pool, orgId);
   return withOrg(pool, orgId, async c => {
     const rows = await windowRows(c, orgId, days);
-    const perDay = (await c.query(`select to_char(d, 'YYYY-MM-DD') as day, (select count(*)::int from tickets t where t.org_id = $1 and t.created_at::date = d) created, (select count(*)::int from tickets t where t.org_id = $1 and t.solved_at::date = d) solved
-      from generate_series(current_date - ($2::int - 1), current_date, interval '1 day') d order by d`, [orgId, days])).rows;
+    const perDay = (await c.query(`with d as (select generate_series(current_date - ($2::int - 1), current_date, interval '1 day')::date as day),
+        c as (select created_at::date as day, count(*)::int n from tickets where org_id = $1 and created_at >= current_date - ($2::int - 1) group by 1),
+        s as (select solved_at::date as day, count(*)::int n from tickets where org_id = $1 and solved_at >= current_date - ($2::int - 1) group by 1)
+      select to_char(d.day, 'YYYY-MM-DD') as day, coalesce(c.n, 0) as created, coalesce(s.n, 0) as solved from d left join c using (day) left join s using (day) order by d.day`, [orgId, days])).rows;
     const first = rows.map(r => mins(r.created_at, r.first_response_at)), res = rows.filter(r => r.solved_at).map(r => mins(r.created_at, r.solved_at));
     const slas = rows.map(r => slaOf(r, sla, now, cal)).filter(Boolean), judged = slas.filter(s => s.worst !== 'ok'), good = judged.filter(s => s.worst === 'met').length;
     const cs = (await c.query("select count(*)::int sent, count(rating)::int rated, count(*) filter (where rating = 1)::int good from csat_ratings where org_id = $1 and sent_at >= now() - ($2::int * interval '1 day')", [orgId, days])).rows[0];

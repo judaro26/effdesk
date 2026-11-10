@@ -96,3 +96,17 @@
   status = 301
   force = true
 
+
+# scripts, styles and pictures are reused by the browser for a few minutes (and refreshed in the background), so pages open without a round trip per file
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300, stale-while-revalidate=3600"
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300, stale-while-revalidate=3600"
+[[headers]]
+  for = "/brand/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

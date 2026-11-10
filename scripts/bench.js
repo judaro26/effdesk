@@ -1,0 +1,48 @@
+// scripts/bench.js: HOW FAST IS IT WITH A LOT OF DATA? Seeds a throwaway Postgres (not part of npm test) and times the screens that run most. Usage: node scripts/bench.js [tickets]
+import { freshDb } from './lib/pg-temp.js';
+import { migrate } from './migrate.js';
+import { makePool } from '../src/db.js';
+import { listTickets, getTicket } from '../src/tickets.js';
+import { dashboard } from '../src/dashboard.js';
+import { report } from '../src/reports.js';
+import { listTeam, agentDetail } from '../src/team.js';
+import { exportData } from '../src/audit.js';
+const N = Number(process.argv[2]) || 100000;
+const { url } = await freshDb('bench'); await migrate(url); const pool = makePool(url);
+const orgs = ['big', ...Array.from({ length: 30 }, (_, i) => 'o' + i)];
+for (const o of orgs) await pool.query('insert into "organization" (id, name, slug, "createdAt") values ($1,$1,$1,now())', [o]);
+const u = (await pool.query(`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") select 'u' || g, 'User ' || g, 'u' || g || '@x.test', true, now(), now() from generate_series(1, 20) g returning id`)).rows;
+for (const o of orgs) await pool.query(`insert into member (id, "organizationId", "userId", role, "createdAt") select $1 || '-' || g, $1, 'u' || g, 'member', now() from generate_series(1, 20) g`, [o]);
+const t0 = Date.now();
+const seed = async (org, n) => {
+  await pool.query(`insert into tickets (org_id, number, subject, status, priority, requester_name, requester_email, assignee_id, tags, created_at, updated_at, solved_at)
+    select $1, g, 'Subject number ' || g || ' about ' || (array['billing','login','refund','shipping','outage'])[1 + g % 5], (array['open','pending','solved','solved','solved'])[1 + g % 5], 'normal', 'Name ' || g % 900, 'person' || g % 900 || '@client' || g % 40 || '.test', 'u' || (1 + g % 20), array['t' || g % 7],
+      now() - (g || ' minutes')::interval * 7, now() - (g || ' minutes')::interval * 5, case when g % 5 >= 2 then now() - (g || ' minutes')::interval * 4 end from generate_series(1, $2) g`, [org, n]);
+  await pool.query(`insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, created_at)
+    select t.org_id, t.id, (array['requester','agent','requester','note'])[1 + m % 4], case when m % 4 in (1,3) then t.assignee_id end, 'Someone', 'Message ' || m || ' on ticket ' || t.number || ' lorem ipsum dolor sit amet', t.created_at + (m || ' minutes')::interval
+    from tickets t cross join generate_series(0, 3) m where t.org_id = $1`, [org]);
+  await pool.query('insert into ticket_counters (org_id, last) values ($1, $2) on conflict (org_id) do update set last = excluded.last', [org, n]).catch(() => {});
+};
+await seed('big', N); for (const o of orgs.slice(1)) await seed(o, Math.round(N / 100));
+await pool.query('analyze');
+console.log(`seeded ${N} tickets in the big workspace and ${orgs.length - 1} small ones in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+const me = { id: 'u1' }; const rows = [];
+const time = async (name, fn, runs = 5) => { await fn(); const ts = []; for (let i = 0; i < runs; i++) { const s = performance.now(); await fn(); ts.push(performance.now() - s); } ts.sort((a, b) => a - b); rows.push([name, ts[Math.floor(ts.length / 2)].toFixed(0)]); };
+await time('ticket list (default)', () => listTickets(pool, 'big', me, {}));
+await time('ticket list (active)', () => listTickets(pool, 'big', me, { status: 'active' }));
+await time('ticket list (mine, open)', () => listTickets(pool, 'big', me, { assignee: 'me', status: 'open' }));
+await time('ticket list (page 200)', () => listTickets(pool, 'big', me, { offset: 10000 }));
+await time('ticket list (by tag)', () => listTickets(pool, 'big', me, { tag: 't3' }));
+await time('ticket list (by queue none)', () => listTickets(pool, 'big', me, { queue: 'none' }));
+await time('search "refund"', () => listTickets(pool, 'big', me, { q: 'refund' }));
+await time('search by email', () => listTickets(pool, 'big', me, { q: 'person77@client7' }));
+await time('open one ticket', () => getTicket(pool, 'big', me, 5000));
+await time('dashboard', () => dashboard(pool, 'big', me, { sla: false, agents: 5 }));
+await time('report (30 days)', () => report(pool, 'big', 30));
+await time('team list', () => listTeam(pool, 'big', { seats: 99, plan: 'pro' }));
+await time('agent detail', () => agentDetail(pool, 'big', 'u3', {}));
+await time('export part 1', () => exportData(pool, 'big', 1), 3);
+await time('ticket list (small workspace)', () => listTickets(pool, 'o3', me, {}));
+await time('session-style lookups x4', async () => { for (let i = 0; i < 4; i++) await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', ['u1', 'big']); });
+console.table(rows.map(([n, ms]) => ({ screen: n, 'median ms': Number(ms) })));
+await pool.end(); process.exit(0);

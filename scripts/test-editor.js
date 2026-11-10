@@ -20,7 +20,7 @@ await clear(); await page.keyboard.type('hi'); await page.locator('[data-cmd=und
 check('the underline button makes ++underlined++ text', /^hi\+\+under\+\+$/.test((await val()).trim()));
 await clear(); await page.keyboard.type('above'); await page.keyboard.press('Enter'); await page.keyboard.type('---'); await page.keyboard.press('Enter'); await page.keyboard.type('below');
 check('--- then Enter draws a line', await page.locator('.ed-area hr').count() === 1 && /above\n\n---\n\nbelow/.test(await val()));
-await clear(); await page.keyboard.type('```'); await page.keyboard.press('Enter'); await page.keyboard.type('a < b'); await page.keyboard.press('Enter'); await page.keyboard.type('c');
+await clear(); await page.keyboard.type('```'); await page.keyboard.type('a < b'); await page.keyboard.press('Enter'); await page.keyboard.type('c');
 check('``` then Enter starts a code block that keeps its lines', await page.locator('.ed-area pre').count() === 1 && /```\na < b\nc\n```/.test(await val()));
 await clear(); await page.keyboard.type('- '); await page.keyboard.type('one'); await page.keyboard.press('Enter'); await page.keyboard.type('two');
 check('"- " starts a bulleted list', await page.locator('.ed-area ul li').count() === 2 && /^- one\n- two$/.test((await val()).trim()));
@@ -36,4 +36,9 @@ await clear(); await page.evaluate(() => { const a = document.querySelector('[da
 check('a pasted table stays a table and scripts are dropped', await page.locator('.ed-area table td').count() >= 2 && !(await page.locator('.ed-area script').count()) && /\| Bolt \| 4 \|/.test(await val()));
 await clear(); await page.evaluate(() => { const a = document.querySelector('[data-editor]'); a.focus(); const dt = new DataTransfer(); dt.items.add(new File(['x'], 'p.png', { type: 'image/png' })); a.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
 check('a pasted picture goes to the attachments, not into the text', await page.evaluate(() => window.__imgs) === 1);
+await clear();
+await page.evaluate(() => { const a = document.querySelector('.ed-area'); a.focus(); const dt = new DataTransfer(); dt.setData('text/plain', 'Title\t\t\nCategory\tItem\tQty\nLighting\tLED strip\t5\nLighting\tSwitch\t8\nPaint\t\t'); dt.setData('text/html', '<div><span>Category</span><span>Item</span><span>Qty</span></div>'); a.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
+check('cells pasted as tab separated text become a table, even when the copied html has no table', await page.locator('.ed-area table').count() === 1 && await page.locator('.ed-area td, .ed-area th').count() >= 9 && /LED strip/.test(await page.locator('.ed-area table').innerText()));
+await clear(); await page.keyboard.type('```'); 
+check('typing three backticks makes a code block at once', await page.locator('.ed-area pre').count() === 1);
 await browser.close(); done();

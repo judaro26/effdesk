@@ -106,10 +106,20 @@
       var h = cd.getData && cd.getData('text/html'), t = cd.getData && cd.getData('text/plain');
       e.preventDefault();
       var box = el('div');
+      // cells copied from a spreadsheet or another page: when the html has no table but the plain text is tab separated, the tabs make the table
+      var tabbed = t && t.split(/\r?\n/).filter(function (l) { return l.indexOf('\t') >= 0; }).length >= 2;
+      if (tabbed && !/<table\b/i.test(h || '')) h = '';
       if (h && /<(table|b|strong|i|em|u|a|ul|ol|li|h[1-6]|pre|code|blockquote|p|div|br)\b/i.test(h)) {
         var parsed = new win.DOMParser().parseFromString(h, 'text/html'); F().toDom(doc, F().fromDom(parsed.body), box);
       } else F().toDom(doc, t || '', box);
       var frag = doc.createDocumentFragment(); while (box.firstChild) frag.appendChild(box.firstChild); insertNodes(frag);
+    });
+    // typing three backticks at the start of a line starts a code block
+    area.addEventListener('input', function (e) {
+      if (e.inputType !== 'insertText' || e.data !== '`') return;
+      var b = lineBlock(); if (!b || b.tagName === 'LI' || b.tagName === 'PRE') return;
+      if (b.textContent.replace(/ |​/g, ' ').trim() !== '```') return;
+      var pre = el('pre'), cd = el('code'); cd.appendChild(doc.createTextNode('​')); pre.appendChild(cd); b.parentNode.replaceChild(pre, b); place(cd); sync();
     });
     area.addEventListener('input', sync);
     area.addEventListener('blur', sync);

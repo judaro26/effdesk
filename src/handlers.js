@@ -114,9 +114,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
   if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
-  const isAdmin = role === 'owner' || role === 'admin', ent = await getEntitlements(pool, orgId);
+  // the plan and the custom role are looked up side by side (each is a trip to the database)
+  const isAdmin = role === 'owner' || role === 'admin', [ent, cr] = await Promise.all([getEntitlements(pool, orgId), role === 'member' && !support ? customRoleOf(pool, orgId, s.user.id) : null]), perm = permFor(String(b.action));
   // a custom role limits what a full agent may change
-  const cr = role === 'member' && !support ? await customRoleOf(pool, orgId, s.user.id) : null, perm = permFor(String(b.action));
   if (cr && perm && !cr.permissions.includes(perm)) return json(403, { error: `Your role (${cr.name}) does not allow this. Ask an admin.` });
   // a feature of a higher plan: refuse with the name of the plan that has it
   const need = f => planHas(ent, f) ? null : json(402, { error: `This is part of the ${PLANS[Object.keys(PLANS).find(k => PLANS[k].features.includes(f))].name} plan. Upgrade to use it.`, upgrade: true });

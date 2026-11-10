@@ -13,8 +13,7 @@ export async function withOrg(pool, orgId, fn) {
   if (!orgId || typeof orgId !== 'string') throw new Error('An organization id is required');
   const c = await pool.connect();
   try {
-    await c.query('begin');
-    await c.query("select set_config('app.org_id', $1, true)", [orgId]);
+    await c.query("begin; select set_config('app.org_id', " + c.escapeLiteral(orgId) + ", true)");     // one round trip, not two
     const r = await fn(c);
     await c.query('commit');
     return r;
