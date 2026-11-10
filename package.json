@@ -1,0 +1,22 @@
+{
+  "name": "sundesk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sundesk: a simple, affordable help desk.",
+  "scripts": {
+    "test": "node scripts/run-tests.js",
+    "migrate": "node scripts/migrate.js",
+    "auth:sql": "node scripts/auth-sql.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-auth": "^1.7.19",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.0"
+  }
+}

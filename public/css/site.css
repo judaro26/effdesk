@@ -1,0 +1,13 @@
+:root{--ink:#1d2428;--muted:#5b6770;--line:#e1e4e7;--bg:#fafaf8;--accent:#e8890c;--accent-d:#b86a05;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--ink:#eceff1;--muted:#a3adb4;--line:#2d363c;--bg:#14181b;--card:#1b2024;--accent:#f4a030;--accent-d:#f4a030}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+a{color:var(--accent-d)}main,header .in,footer .in{max-width:1040px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line)}header .in{display:flex;align-items:center;gap:20px;height:60px}header .brand{font-weight:800;font-size:20px;text-decoration:none;color:var(--ink)}header .brand span{color:var(--accent)}header nav{margin-left:auto;display:flex;gap:18px;align-items:center}
+.btn{display:inline-block;padding:10px 18px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#1d1100;font-weight:700;text-decoration:none;cursor:pointer;font:inherit;font-weight:700}.btn.l{background:transparent;color:var(--accent-d)}
+.hero{padding:64px 0 40px}.hero h1{font-size:clamp(32px,5vw,52px);line-height:1.1;margin:0 0 16px}.hero p{font-size:19px;color:var(--muted);max-width:640px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}.card h3{margin:0 0 6px}.price{font-size:32px;font-weight:800}.price small{font-size:14px;font-weight:400;color:var(--muted)}
+.card.hot{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}ul.t{padding-left:18px;margin:10px 0}ul.t li{margin:4px 0}h2{margin:48px 0 16px}.m{color:var(--muted);font-size:14px}
+footer{border-top:1px solid var(--line);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px}footer .in{display:flex;gap:18px;flex-wrap:wrap}
+form.f{max-width:380px;margin:48px auto}form.f label{display:block;margin:14px 0 4px;font-weight:600;font-size:14px}form.f input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--card);color:var(--ink)}form.f button{margin-top:20px;width:100%}
+.msg{margin-top:14px;min-height:22px}.msg.err{color:#cc3340}.draft{background:#fff4d6;color:#4a3500;border-bottom:1px solid #e8c766;padding:8px 20px;font-size:14px;text-align:center}
+.doc{max-width:760px;margin:0 auto;padding:32px 20px}.doc h1{margin-top:0}.doc h2{font-size:20px;margin:32px 0 8px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}

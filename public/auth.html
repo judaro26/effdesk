@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Sign in | Sundesk</title><link rel="stylesheet" href="/css/site.css"></head><body>
+<header><div class="in"><a class="brand" href="/">Sun<span>desk</span></a></div></header>
+<main>
+<form class="f" id="f" novalidate>
+  <h1 id="title">Sign in</h1>
+  <div data-for="signup"><label for="name">Your name</label><input id="name" autocomplete="name"></div>
+  <div data-for="signin signup forgot"><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
+  <div data-for="signin signup reset"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password"></div>
+  <div data-for="twofactor"><label for="code">Code from your authenticator app</label><input id="code" inputmode="numeric" autocomplete="one-time-code"></div>
+  <div data-for="signup"><label style="font-weight:400"><input id="terms" type="checkbox" style="width:auto"> I agree to the <a href="/legal/terms.html">Terms</a> and the <a href="/legal/privacy.html">Privacy Policy</a>.</label></div>
+  <button class="btn" id="go" type="submit">Continue</button>
+  <p class="msg" id="msg" role="status"></p>
+  <p class="m" id="links"></p>
+</form>
+</main>
+<script src="/js/auth.js"></script>
+</body></html>
