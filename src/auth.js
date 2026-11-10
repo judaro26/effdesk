@@ -6,13 +6,17 @@ import { organization, twoFactor } from 'better-auth/plugins';
 import { APIError } from 'better-auth/api';
 import { PRODUCT } from './config.js';
 import { checkSeat } from './billing.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+// the company a person typed at registration, handed to the confirmation email that Better Auth sends in the middle of the sign-up call
+export const signupContext = new AsyncLocalStorage();
 
 export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SECRET, baseURL = PRODUCT.appUrl, requireVerified = process.env.REQUIRE_EMAIL_VERIFICATION !== 'false' }) {
   const seatGuard = async orgId => { const s = await checkSeat(pool, orgId); if (!s.ok) throw new APIError('FORBIDDEN', { message: s.reason, code: 'SEATS_FULL' }); };
   return {
     appName: PRODUCT.name, baseURL, basePath: '/api/auth', secret, database: pool,
     emailAndPassword: { enabled: true, minPasswordLength: 10, maxPasswordLength: 128, requireEmailVerification: requireVerified, autoSignIn: !requireVerified, sendResetPassword: async ({ user, url }) => { await mailer.reset(user.email, url); } },
-    emailVerification: { sendOnSignUp: true, autoSignInAfterVerification: true, sendVerificationEmail: async ({ user, url }) => { await mailer.verify(user.email, url); } },
+    emailVerification: { sendOnSignUp: true, autoSignInAfterVerification: true, sendVerificationEmail: async ({ user, token }) => { const row = (await pool.query('select company from pending_signups where user_id = $1', [user.id]).catch(() => ({ rows: [] }))).rows[0]; await mailer.verify(user.email, `${baseURL}/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=${encodeURIComponent('/welcome.html')}`, { company: (signupContext.getStore() && signupContext.getStore().company) || (row && row.company), name: String(user.name || '').split(' ')[0] }); } },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     advanced: { useSecureCookies: /^https:/.test(baseURL), defaultCookieAttributes: { sameSite: 'lax', httpOnly: true } },
     rateLimit: { enabled: true, window: 60, max: 60, storage: 'database', customRules: { '/sign-in/email': { window: 60, max: 8 }, '/sign-up/email': { window: 60, max: 5 }, '/request-password-reset': { window: 300, max: 5 } } },

@@ -17,6 +17,20 @@
     function post(path, body) {
       return fetchFn('/api/auth' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
     }
+    var get = function (path) { return fetchFn(path, { credentials: 'same-origin' }).then(function (r) { return r.json().catch(function () { return {}; }); }); };
+    var slugOk = false, slugTouched = false, slugTimer = null, slugSeq = 0;
+    var normSlug = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); };
+    function checkSlug() {
+      var v = normSlug($('slug').value), seq = ++slugSeq, note = $('slugnote'); slugOk = false;
+      if (v.length < 3) { note.className = 'm'; note.textContent = 'Use at least 3 letters or numbers. Your help center will be at app.effdesk.com/help/' + (v || 'your-address'); return; }
+      note.className = 'm'; note.textContent = 'Checking ' + v + '…';
+      get('/api/workspace-check?slug=' + encodeURIComponent(v)).then(function (r) { if (seq !== slugSeq) return; slugOk = !!r.available; note.className = 'm ' + (r.available ? 'ok' : 'err'); note.textContent = r.available ? v + ' is available. Your help center will be at app.effdesk.com/help/' + v : (r.reason || 'That address is not available.') ; }).catch(function () { if (seq === slugSeq) { note.className = 'm'; note.textContent = 'Could not check that address right now.'; } });
+    }
+    $('company').addEventListener('input', function () { if (!slugTouched) { $('slug').value = normSlug($('company').value); } clearTimeout(slugTimer); slugTimer = setTimeout(checkSlug, 300); });
+    $('slug').addEventListener('input', function () { slugTouched = true; clearTimeout(slugTimer); slugTimer = setTimeout(checkSlug, 300); });
+    var verifyEmail = '';
+    function showDone(email, slug) { verifyEmail = email; $('f').hidden = true; $('done').hidden = false; $('doneemail').textContent = email; $('doneslug').textContent = '(' + slug + ')'; doc.title = 'Check your email | EffDesk'; }
+    $('resend').addEventListener('click', function () { $('resend').disabled = true; post('/send-verification-email', { email: verifyEmail, callbackURL: '/welcome.html' }).then(function (r) { $('donemsg').textContent = r.ok ? 'Sent again. It can take a minute to arrive.' : fail(r); $('donemsg').className = 'msg' + (r.ok ? '' : ' err'); setTimeout(function () { $('resend').disabled = false; }, 30000); }).catch(function () { $('donemsg').textContent = 'Could not reach the server. Try again.'; $('donemsg').className = 'msg err'; $('resend').disabled = false; }); });
     var fail = function (r) { return r.status === 429 ? 'Too many attempts. Wait a minute and try again.' : r.status === 403 && /verif/i.test(String(r.body.message || '')) ? 'Check your email and confirm your address first.' : r.status === 401 ? 'Those details did not work.' : (r.body && r.body.message) || 'That did not work. Try again.'; };
     $('f').addEventListener('submit', function (e) {
       e.preventDefault(); msg('');
@@ -24,12 +38,15 @@
       if (mode === 'signup') {
         if (!$('name').value.trim() || !/^\S+@\S+\.\S+$/.test(email)) return msg('Enter your name and a valid email.', true);
         if (pw.length < 10) return msg('Use at least 10 characters for the password.', true);
+        if ($('company').value.trim().length < 2) return msg('Enter your company name.', true);
+        var slug = normSlug($('slug').value); if (slug.length < 3) return msg('Choose your workspace address (3 or more letters or numbers).', true);
         if (!$('terms').checked) return msg('Please agree to the Terms and the Privacy Policy.', true);
-        p = post('/sign-up/email', { name: $('name').value.trim(), email: email, password: pw }).then(function (r) { if (!r.ok) return msg(r.status === 422 ? 'There is already an account with that email.' : fail(r), true); msg('Check your email for a link to confirm your address.'); $('go').disabled = true; });
+        $('go').disabled = true; msg('Creating your account…');
+        p = fetchFn('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ name: $('name').value.trim(), email: email, password: pw, company: $('company').value.trim(), slug: slug }) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { $('go').disabled = false; if (!r.ok) { if (j.code === 'SLUG_TAKEN') { slugOk = false; $('slugnote').className = 'm err'; $('slugnote').textContent = j.message; return msg(j.message, true); } return msg(r.status === 422 || /exists|already/i.test(String(j.message || '')) ? 'There is already an account with that email. Sign in instead.' : r.status === 429 ? 'Too many attempts. Wait a minute and try again.' : j.message || 'That did not work. Try again.', true); } msg(''); showDone(email, j.slug || slug); }); });
       } else if (mode === 'signin') {
-        p = post('/sign-in/email', { email: email, password: pw }).then(function (r) { if (r.ok && r.body.twoFactorRedirect) { mode = 'twofactor'; draw(); return msg('Enter the 6-digit code.'); } if (!r.ok) return msg(fail(r), true); nav.go('/app.html'); });
+        p = post('/sign-in/email', { email: email, password: pw }).then(function (r) { if (r.ok && r.body.twoFactorRedirect) { mode = 'twofactor'; draw(); return msg('Enter the 6-digit code.'); } if (!r.ok) return msg(fail(r), true); nav.go('/welcome.html'); });
       } else if (mode === 'twofactor') {
-        p = post('/two-factor/verify-totp', { code: $('code').value.trim() }).then(function (r) { if (!r.ok) return msg('That code did not work.', true); nav.go('/app.html'); });
+        p = post('/two-factor/verify-totp', { code: $('code').value.trim() }).then(function (r) { if (!r.ok) return msg('That code did not work.', true); nav.go('/welcome.html'); });
       } else if (mode === 'forgot') {
         p = post('/request-password-reset', { email: email, redirectTo: '/auth.html?mode=reset' }).then(function () { msg('If there is an account with that email, a reset link is on its way.'); });
       } else {

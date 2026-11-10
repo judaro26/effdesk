@@ -1,5 +1,6 @@
 // src/handlers.js: THE API, as plain functions of (Request, deps) → Response, so the tests can call them without Netlify. The files in netlify/functions only wire these to addresses.
 import { PRODUCT, platformAdmins } from './config.js';
+import { signupContext } from './auth.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
@@ -9,6 +10,7 @@ import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publis
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
+import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -24,7 +26,8 @@ export async function me(req, { pool, auth }) {
   const orgs = (await pool.query(`select o.id, o.name, o.slug, m.role from member m join "organization" o on o.id = m."organizationId" where m."userId" = $1 order by o.name`, [s.user.id])).rows;
   const out = [];
   for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
-  return json(200, { user: { id: s.user.id, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled }, organizations: out });
+  const pend = await pendingOf(pool, s.user.id);
+  return json(200, { user: { id: s.user.id, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend });
 }
 
 // the plan an owner or admin picked → the details the Paddle checkout needs
@@ -214,5 +217,37 @@ export async function importData(req, { pool, auth }) {
   if (!r.ok) return json(r.status || 400, { error: r.error });
   if (!r.dryRun) await audit(pool, org.id, s.user.id, 'data-imported', org.id, { tickets: r.tickets.added, articles: r.articles.added, by: s.user.email });
   return json(200, r);
+}
+
+// ---- registration and the first workspace ----
+const hits = new Map();            // a light per-address limit for the public availability check (per function instance)
+const tooMany = (ip, now, max = 40) => { const w = (hits.get(ip) || []).filter(t => now - t < 60000); w.push(now); hits.set(ip, w); if (hits.size > 5000) hits.clear(); return w.length > max; };
+export async function workspaceCheck(req, { pool, now = Date.now() }) {
+  if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+  if (tooMany(String(req.headers.get('x-forwarded-for') || 'x').split(',')[0].trim(), now)) return json(429, { error: 'Too many checks. Wait a minute.' });
+  return json(200, await slugStatus(pool, new URL(req.url).searchParams.get('slug')));
+}
+// registration: checks the company and address, creates the account through Better Auth (so its limits and rules all apply), and holds the address for the person
+export async function signup(req, { pool, auth }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const b = await readJson(req); if (!b) return json(400, { message: 'That request could not be read.' });
+  const company = cleanCompany(b.company), st = await slugStatus(pool, b.slug);
+  if (company.length < 2) return json(400, { message: 'Enter your company name.', code: 'COMPANY' });
+  if (!st.available) return json(409, { message: st.reason, code: 'SLUG_TAKEN' });
+  const headers = new Headers({ 'content-type': 'application/json' }); for (const h of ['x-forwarded-for', 'origin', 'referer', 'user-agent']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
+  const r = await signupContext.run({ company }, () => auth.handler(new Request(new URL('/api/auth/sign-up/email', req.url), { method: 'POST', headers, body: JSON.stringify({ name: b.name, email: b.email, password: b.password, callbackURL: '/welcome.html' }) })));
+  if (!r.ok) return new Response(await r.text(), { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  const u = (await pool.query(`select id from "user" where lower(email) = $1 and "emailVerified" = false and "createdAt" > now() - interval '1 minute' and not exists (select 1 from pending_signups where user_id = "user".id)`, [String(b.email || '').trim().toLowerCase()])).rows[0];       // only an account created by THIS request: an existing address (Better Auth answers the same way, to avoid revealing it) must never get its pending workspace changed
+  if (u && !(await holdSlug(pool, u.id, company, st.slug))) { await pool.query('delete from "user" where id = $1', [u.id]); return json(409, { message: 'That address was just taken. Choose another.', code: 'SLUG_TAKEN' }); }
+  return json(200, { ok: true, slug: st.slug });
+}
+// after the confirmation link: create the workspace the person asked for (POST), or choose another address first (PATCH { slug })
+export async function workspace(req, { pool, auth, env = process.env }) {
+  if (req.method !== 'POST' && req.method !== 'PATCH') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  if (!s.user.emailVerified) return json(403, { error: 'Confirm your email address first.' });
+  if (req.method === 'PATCH') { const b = await readJson(req); const r = b ? await changePending(pool, s.user.id, b.slug) : { ok: false, reason: 'Bad request.' }; return r.ok ? json(200, r) : json(409, { error: r.reason }); }
+  const r = await createWorkspace(pool, auth, req.headers, s.user, env);
+  return r.ok ? json(200, { ok: true, existing: r.existing, organization: r.org }) : json(r.status || 400, { error: r.error, taken: !!r.taken });
 }
 export const _json = json;

@@ -3,9 +3,20 @@
 <title>Sign in | EffDesk</title><link rel="stylesheet" href="/css/site.css"></head><body>
 <header><div class="in"><a class="brand" href="/">Eff<span>Desk</span></a></div></header>
 <main>
+<div class="f" id="done" hidden>
+  <h1>Check your email</h1>
+  <p>We sent a confirmation link to <strong id="doneemail"></strong>.</p>
+  <p>Open it to choose your plan and create your workspace <strong id="doneslug"></strong>. The link works for one hour.</p>
+  <p class="m">Nothing there? Look in your spam folder, or</p>
+  <button class="btn l" id="resend" type="button">Send the email again</button>
+  <p class="msg" id="donemsg" role="status"></p>
+  <p class="m"><a href="/auth.html?mode=signup">Use a different email</a></p>
+</div>
 <form class="f" id="f" novalidate>
   <h1 id="title">Sign in</h1>
   <div data-for="signup"><label for="name">Your name</label><input id="name" autocomplete="name"></div>
+  <div data-for="signup"><label for="company">Company name</label><input id="company" autocomplete="organization" maxlength="80" placeholder="Acme Rentals"></div>
+  <div data-for="signup"><label for="slug">Your workspace address</label><input id="slug" autocomplete="off" maxlength="40" placeholder="acme" spellcheck="false" autocapitalize="none"><p class="m" id="slugnote">Your help center will be at app.effdesk.com/help/your-address</p></div>
   <div data-for="signin signup forgot"><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
   <div data-for="signin signup reset"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password"></div>
   <div data-for="twofactor"><label for="code">Code from your authenticator app</label><input id="code" inputmode="numeric" autocomplete="one-time-code"></div>
