@@ -34,7 +34,7 @@ export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process
       ? mail(to, `Tu enlace de acceso a ${orgName}`, { preheader: 'Ver tus solicitudes.', heading: 'Tus solicitudes', paragraphs: [`Usa este botón para ver tus solicitudes en ${orgName}. Sirve una vez durante 30 minutos.`], button: 'Ver mis solicitudes', url, foot: 'Si no lo pediste, ignora este correo.' })
       : mail(to, `Your sign-in link for ${orgName}`, { preheader: 'See your requests.', heading: 'Your requests', paragraphs: [`Use this button to see your requests with ${orgName}. It works once, for 30 minutes.`], button: 'See my requests', url, foot: 'If you did not ask for this, ignore this email.' }),
     agentNotice: (to, { kind, orgName, number, subject, summary, url }) => {
-      const what = kind === 'assigned' ? 'A ticket was assigned to you' : kind === 'side' ? 'New reply in a side conversation' : 'The customer replied';
+      const what = kind === 'assigned' ? 'A ticket was assigned to you' : kind === 'mention' ? 'You were mentioned in an internal note' : kind === 'side' ? 'New reply in a side conversation' : 'The customer replied';
       return mail(to, `${what}: #${number} ${subject}`, { preheader: summary || what, heading: what, paragraphs: [`#${number} ${subject} (${orgName})`, ...(summary ? [summary] : [])], button: 'Open the ticket', url, foot: 'You get this because you follow the ticket, own it, or it was assigned to you. You can switch these emails off under Profile and themes on your desk.' });
     },
     ticketMail: msg => send(msg),                       // a ticket reply: own From, Reply-To and threading headers

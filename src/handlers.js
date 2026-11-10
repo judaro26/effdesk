@@ -12,11 +12,14 @@ import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, r
 import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
 import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
+import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
 import { getSla, saveSla, slaOf } from './sla.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
+import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
+import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
@@ -94,16 +97,21 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   switch (b.action) {
     case 'init': {
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
-      const pref = (await pool.query('select theme, notify from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, theme, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
+      r = { ok: true, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
       if (th && th.premium && (g = need('themes'))) return g;
-      if (b.theme === undefined && typeof b.notify !== 'boolean') return json(400, { error: 'Nothing to save.' });
-      await pool.query('insert into desk_prefs (user_id, theme, notify) values ($1, coalesce($2, \'classic\'), coalesce($3, true)) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null]);
-      r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}) }; break;
+      const setAv = b.avatar !== undefined, av = setAv && b.avatar ? String(b.avatar) : null;
+      if (setAv && av && !validAvatar(av)) return json(400, { error: 'Use a PNG, JPEG or WebP picture under 60 KB.' });
+      if (b.theme === undefined && typeof b.notify !== 'boolean' && !setAv) return json(400, { error: 'Nothing to save.' });
+      await pool.query('insert into desk_prefs (user_id, theme, notify, avatar) values ($1, coalesce($2, \'classic\'), coalesce($3, true), $5) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), avatar = case when $4 then $5 else desk_prefs.avatar end, updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null, setAv, av]);
+      r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}), ...(setAv ? { avatar: av } : {}) }; break;
     }
+    case 'webhooks-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listHooks(pool, orgId); break;
+    case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
+    case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
     case 'dashboard': r = await dashboard(pool, orgId, actor, { portalDomain: String(env.PORTAL_DOMAIN || '').toLowerCase(), sla: planHas(ent, 'sla'), agents: (await listAgents(pool, orgId)).length }); break;
     case 'sla-get': if ((g = need('sla'))) return g; r = await getSla(pool, orgId); break;
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
@@ -139,7 +147,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'problem-resolve': if ((g = need('linked_tickets'))) return g; r = await desk.resolveProblem(pool, orgId, actor, b.number); break;
     case 'side-send': if ((g = need('side_conversations'))) return g; r = mailer ? await desk.sendSide(pool, mailer, env, orgId, actor, b.number, b) : { ok: false, status: 503, error: 'Email is not set up.' }; break;
     case 'side-close': if ((g = need('side_conversations'))) return g; r = await desk.closeSide(pool, orgId, actor, b.number, b.sideId); break;
-    case 'create': r = await createTicket(pool, orgId, actor, b); break;
+    case 'create': r = await createTicket(pool, orgId, actor, b); if (r.ok) await emitHook(pool, orgId, 'ticket.created', r.ticket.number); break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
@@ -148,6 +156,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
         const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
       }
+      if (r.ok) await emitHook(pool, orgId, 'message.agent', b.number, { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
     case 'delete-file': if (!store || !(await deleteFile(pool, store, orgId, b.id))) return json(404, { error: 'No such file.' }); r = { ok: true }; break;
@@ -157,11 +166,21 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
-    case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
+    case 'note': {
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true });
+      if (r.ok) {
+        const ids = (await mentionedIds(pool, orgId, b.body)).filter(i => i !== actor.id);
+        for (const id of ids) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'mention', onlyUserId: id, actorId: actor.id, summary: `${actor.name || actor.email}: ${String(b.body).slice(0, 250)}` });
+        if (ids.length) await emitHook(pool, orgId, 'ticket.mentioned', b.number, { mentioned: ids, by: actor.name || actor.email });
+        r.mentioned = ids.length;
+      }
+      break;
+    }
     case 'update': {
       const pt = b.patch || {}; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
       const was = pt.assigneeId ? (await pool.query('select assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(b.number) || 0])).rows[0]?.assignee_id : null;
       r = await updateTicket(pool, orgId, actor, b.number, pt);
+      if (r.ok) await emitHook(pool, orgId, 'ticket.updated', b.number, { changes: Object.keys(pt) });
       if (r.ok && pt.assigneeId && pt.assigneeId !== was && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
       break;
     }
@@ -188,6 +207,8 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
   if (res.ok && res.messageRowId && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
+  if (res.ok && (res.action === 'created' || res.action === 'followup')) await emitHook(pool, res.orgId, 'ticket.created', res.number);
+  if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
@@ -270,7 +291,7 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
       const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
-      if (r.ok) await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body });
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body }); await emitHook(pool, org.id, 'message.customer', n, { message: { body: body.slice(0, 2000) } }); }
       return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
     }
   }

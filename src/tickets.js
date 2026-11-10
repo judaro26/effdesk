@@ -117,7 +117,7 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
 }
 
 export async function listAgents(pool, orgId) {
-  return (await pool.query('select u.id, u.name, u.email, m.role from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 order by u.name', [orgId])).rows;
+  return (await pool.query('select u.id, u.name, u.email, m.role, p.avatar from member m join "user" u on u.id = m."userId" left join desk_prefs p on p.user_id = u.id where m."organizationId" = $1 order by u.name', [orgId])).rows;
 }
 
 // ---- used by the inbound email webhook (no signed-in agent) ----

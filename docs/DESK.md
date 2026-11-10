@@ -24,3 +24,8 @@ The plan of each feature is set in one place, `src/plans.js` (`BASE`, `TEAM`, `S
 
 ## Dashboard (home)
 The desk opens on a dashboard (action `dashboard`, `src/dashboard.js`): open / pending / unassigned / mine / new and solved today, SLA breached (plans with SLA), your tickets, tickets that need an owner, and a setup checklist (support email, first article, a teammate, a first ticket). The numbers link to the matching ticket list. The top-left logo and the Home tab go to this page, not the marketing site.
+
+## Profile pictures, @mentions, webhooks
+* **Pictures:** each agent can upload one (profile page). It is cut to a 128-pixel square on the device, checked by its first bytes on the server (PNG/JPEG/WebP, under 60 KB) and shown on the profile button and next to messages.
+* **@mentions:** in an internal note, `@ann` (the part of the email before the @) emails that teammate. A list in the note box inserts the handle. Only current members; never yourself.
+* **Webhooks (Team plan, admins):** Manage > Integrations. Events: ticket.created, ticket.updated, message.agent, message.customer, ticket.mentioned. Each POST is signed: `X-EffDesk-Signature: sha256=` + HMAC-SHA256(secret, timestamp + "." + body). Public https addresses only, 5 second limit, no redirects, up to 10 per organization.
