@@ -19,12 +19,14 @@ ${button && url ? `<tr><td style="padding:4px 32px 8px"><a href="${esc(url)}" st
 }
 const textOf = ({ heading, paragraphs = [], url, foot = '' }) => [heading, '', ...paragraphs.flatMap(p => [p, '']), ...(url ? [url, ''] : []), foot, '', PRODUCT.name].join('\n');
 
+import { info as logInfo, error as logError } from './log.js';
 export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM || `${PRODUCT.name} <no-reply@effdesk.com>`, transport } = {}) {
-  const send = transport || (async msg => {
+  const send0 = transport || (async msg => {
     if (!apiKey) { console.warn('RESEND_API_KEY is not set: mail not sent:', msg.subject); return; }
     const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: msg.from || from, to: msg.to, ...(msg.cc && msg.cc.length ? { cc: msg.cc } : {}), subject: msg.subject, html: msg.html, text: msg.text, ...(msg.replyTo ? { reply_to: msg.replyTo } : {}), ...(msg.headers ? { headers: msg.headers } : {}), ...(msg.attachments ? { attachments: msg.attachments } : {}) }) });
     if (!r.ok) throw new Error(`mail provider answered ${r.status}`);
   });
+  const send = async msg => { const t0 = Date.now(); try { const r = await send0(msg); logInfo('email', { ok: true, ms: Date.now() - t0, to_domain: String(msg.to || '').split('@')[1] }); return r; } catch (err) { logError('email', { ok: false, ms: Date.now() - t0, error: err }); throw err; } };
   const mail = (to, subject, spec) => send({ to, subject, text: textOf(spec), html: emailLayout(spec) });
   return {
     verify: (to, url, { company, name } = {}) => mail(to, `Confirm your email to set up ${company || PRODUCT.name}`, { preheader: 'One click and you can choose your plan.', heading: name ? `Welcome, ${name}!` : 'Welcome to EffDesk!', paragraphs: [company ? `You are one step away from setting up ${company}. Confirm your email address, then choose a plan (the free plan includes 2 agents) and your workspace is created right away.` : 'Confirm your email address to finish creating your account.', 'The link works for one hour.'], button: 'Confirm my email', url, foot: 'If you did not create an account, you can ignore this email and nothing will happen.' }),

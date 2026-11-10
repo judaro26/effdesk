@@ -28,6 +28,7 @@ import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
+import { info as logInfo, annotate } from './log.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
@@ -44,7 +45,8 @@ const json = (status, body, extra) => new Response(JSON.stringify(body), { statu
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const session = async (auth, req) => { try { return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
 const roleIn = async (pool, userId, orgId) => (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [userId, orgId])).rows[0]?.role || '';
-const audit = (pool, orgId, actorId, action, target, meta) => withOrg(pool, orgId, c => c.query('insert into audit_log (org_id, actor_id, action, target, meta) values ($1,$2,$3,$4,$5)', [orgId, actorId, action, target || null, JSON.stringify(meta || {})]));
+const audit = (pool, orgId, actorId, action, target, meta) => { logInfo('audit', { org: orgId, actor: actorId, action, target }); return auditWrite(pool, orgId, actorId, action, target, meta); };
+const auditWrite = (pool, orgId, actorId, action, target, meta) => withOrg(pool, orgId, c => c.query('insert into audit_log (org_id, actor_id, action, target, meta) values ($1,$2,$3,$4,$5)', [orgId, actorId, action, target || null, JSON.stringify(meta || {})]));
 
 // who am I, which organizations am I in, and what each one may do
 export async function me(req, { pool, auth, env = process.env }) {
@@ -93,6 +95,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
   if (!verifySignature(raw, req.headers.get('paddle-signature'), env.PADDLE_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
   let ev; try { ev = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
   const r = await applyPaddleEvent(pool, ev, env);
+  logInfo('billing', { why: r.why, ok: r.ok, plan: r.plan, org: r.orgId, event_id: ev && ev.event_id });
   if (!r.ok) { console.warn('paddle event not applied:', r.why, ev && ev.event_id); return json(r.why === 'malformed' ? 400 : 200, { ok: false, why: r.why }); }          // an event we cannot use is acknowledged (200) so Paddle does not retry it forever
   if (r.orgId && r.why === 'applied') await audit(pool, r.orgId, null, 'plan-changed', r.orgId, { plan: r.plan, seats: r.seats, status: r.status });
   return json(200, { ok: true, why: r.why });
@@ -114,6 +117,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   }
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const actor = { id: s.user.id, name: s.user.name, email: s.user.email };
+  annotate({ org: orgId, user: s.user.id, role, action: String(b.action || ''), support: support || undefined });
   if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
   // the plan and the custom role are looked up side by side (each is a trip to the database)
   const isAdmin = role === 'owner' || role === 'admin', [ent, cr] = await Promise.all([getEntitlements(pool, orgId), role === 'member' && !support ? customRoleOf(pool, orgId, s.user.id) : null]), perm = permFor(String(b.action));
@@ -405,6 +409,7 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
   const org = parts[0] ? await orgBySlug(pool, parts[0]) : null, lang = pickLang(req, u), post = req.method === 'POST';
   if (req.method !== 'GET' && !post) return json(405, { error: 'Method not allowed.' });
   if (!org) return html(404, pages.notFoundPage({ org: { name: 'Help center' }, lang, base: '/help' }));
+  annotate({ org: org.id });
   const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:', portal = portalOrigin(req, env, org.slug);
   const form = async () => { const t = await req.text(); if (t.length > 40000) return new URLSearchParams(); return new URLSearchParams(t); };
   if (post) { const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' }); }

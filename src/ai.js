@@ -1,6 +1,7 @@
 // src/ai.js: AI ASSIST (OpenAI). Three helpers for agents: a suggested reply, a summary of a ticket, and a rewrite of the agent's own draft. A person always reads and sends; nothing is ever sent by the AI.
 //   what is sent: the ticket's subject and messages (a reply never sees internal notes; a summary does, since only the team sees a summary), and for a reply a few help articles of the same organization.
 //   cost control: a monthly cap per organization, counted before the call. Set OPENAI_API_KEY (and optionally OPENAI_MODEL, AI_MONTHLY_CAP) in the server's environment.
+import { info as logInfo } from './log.js';
 import { withOrg } from './db.js';
 import { getTicket } from './tickets.js';
 
@@ -12,7 +13,9 @@ const month = () => new Date().toISOString().slice(0, 7);
 export const cap = env => Math.max(1, Number(env.AI_MONTHLY_CAP) || 1000);
 
 async function chat(env, system, user, fetchFn, max = 700) {
+  const t0 = Date.now();
   const r = await fetchFn('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify({ model: env.OPENAI_MODEL || 'gpt-4o-mini', temperature: 0.3, max_tokens: max, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }), signal: AbortSignal.timeout(25000) });
+  logInfo('ai', { status: r.status, ok: r.ok, ms: Date.now() - t0, model: env.OPENAI_MODEL || 'gpt-4o-mini' });
   if (r.status === 429) throw Object.assign(new Error('busy'), { code: 'busy' });
   if (!r.ok) throw Object.assign(new Error('provider ' + r.status), { code: 'provider' });
   const j = await r.json(), out = clean(j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content, 6000);

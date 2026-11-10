@@ -1,5 +1,6 @@
 // src/webhooks.js: OUTBOUND WEBHOOKS. An organization can have a few URLs that are told, with a signed JSON message, when something happens to a ticket. Used to connect Slack automations, Zapier, a CRM or your own system.
 //   Signature: header X-EffDesk-Signature = "sha256=" + HMAC-SHA256(secret, timestamp + "." + body), with X-EffDesk-Timestamp (seconds). Reject a message whose timestamp is old.
+import { info as logInfo } from './log.js';
 import crypto from 'node:crypto';
 import { withOrg } from './db.js';
 export const EVENTS = ['ticket.created', 'ticket.updated', 'message.agent', 'message.customer', 'ticket.mentioned'];
@@ -54,6 +55,7 @@ export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = f
         const r = await fetchFn(h.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5000), headers: chat ? { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1' } : { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1', 'X-EffDesk-Event': event, 'X-EffDesk-Timestamp': ts, 'X-EffDesk-Signature': 'sha256=' + sig }, body: chat || body });
         status = String(r.status);
       } catch (e) { status = e && e.name === 'TimeoutError' ? 'timeout' : 'error'; }
+      logInfo('webhook', { org: orgId, kind: h.kind || 'json', status });
       await withOrg(pool, orgId, c => c.query('update webhooks set last_status = $3, last_at = now() where org_id = $1 and id = $2', [orgId, h.id, status])).catch(() => {});
     }));
     return { sent: data.hooks.length };
