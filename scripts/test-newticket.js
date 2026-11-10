@@ -40,4 +40,6 @@ r = await A(olivia, 'create', { subject: 'Solved at once', body: 'Done for you.'
 check('it can be submitted as solved', (await A(olivia, 'get', { number: r.body.ticket.number })).body.ticket.status === 'solved');
 r = await A(olivia, 'create', { subject: 'Bad patch', body: 'x', requesterEmail: 'b@x.co', firstKind: 'agent', patch: { priority: 'nope' } });
 check('a bad property does not lose the ticket, and says what was not saved', r.status === 200 && !!r.body.warning && !!r.body.ticket.number);
+const ag = (await A(olivia, 'agents')).body.agents;
+check('every agent has a distinct permanent number of five digits or more', ag.length >= 2 && new Set(ag.map(a => a.agent_number)).size === ag.length && ag.every(a => Number(a.agent_number) >= 10001));
 await pool.end(); done();

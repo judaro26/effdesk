@@ -24,6 +24,12 @@
     X-Frame-Options = "ALLOWALL"
     Content-Security-Policy = "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors *"
 
+# A workspace's desk has its own address: /w/acme/agent/10042/tickets/57 (the page reads the workspace and ticket from the address).
+[[redirects]]
+  from = "/w/*"
+  to = "/desk.html"
+  status = 200
+
 # Sign-in, the account page, the desk and invitations belong to the app host (the session cookie is for that host only). The marketing site links to them, and these redirects carry the visitor over.
 [[redirects]]
   from = "https://effdesk.com/auth.html"
