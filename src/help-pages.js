@@ -22,7 +22,7 @@ const langLinks = (base, lang, path) => `<p class="m">${esc(T[lang].lang)}: ${Ob
 
 export function homePage({ org, lang, base, articles }) {
   const t = T[lang], list = articles.length ? `<ul class="list">${articles.map(a => `<li><a href="${base}/a/${esc(a.slug)}?lang=${lang}">${esc(a.title)}</a><span class="m">${esc(a.excerpt.replace(/[#*`\[\]]/g, ''))}…</span></li>`).join('')}</ul>` : `<p class="m">${esc(t.none)}</p>`;
-  return layout({ org, lang, title: t.help, base, body: `<h1>${esc(t.help)}</h1>${searchBox(base, lang)}${langLinks(base, lang, '')}<h2>${esc(t.articles)}</h2>${list}<p class="m">${esc(t.needHelp)}</p>` });
+  return layout({ org, lang, title: t.help, base, body: `<h1>${esc(t.help)}</h1>${searchBox(base, lang)}${langLinks(base, lang, '')}<h2>${esc(t.articles)}</h2>${list}<p class="m">${esc(t.needHelp)}</p>${requestLink(base, lang)}` });
 }
 export function searchPage({ org, lang, base, q, results }) {
   const t = T[lang];
@@ -50,3 +50,34 @@ export const notFoundPage = ({ org, lang, base }) => layout({ org, lang, title: 
 // the rating page (opened from the survey email): good or bad, a comment, one button. Nothing is recorded until the button is pressed.
 const CS = { en: { title: 'How did we do?', good: 'Good, I am happy with the support', bad: 'Bad, I am not happy', comment: 'Anything to add? (optional)', send: 'Send my rating', thanks: 'Thank you for your feedback.', again: 'You can change your rating by opening the link in the email again.' }, es: { title: '¿Cómo lo hicimos?', good: 'Bien, estoy satisfecho con la atención', bad: 'Mal, no estoy satisfecho', comment: '¿Algo que añadir? (opcional)', send: 'Enviar mi valoración', thanks: 'Gracias por tus comentarios.', again: 'Puedes cambiar tu valoración abriendo de nuevo el enlace del correo.' } };
 export const csatPage = ({ org, lang, base, number, token, pre, done }) => { const c = CS[lang] || CS.en; return layout({ org, lang, title: c.title, base, body: done ? `<h1>${esc(c.thanks)}</h1><p class="m">${esc(c.again)}</p>` : `<h1>${esc(c.title)}</h1><p class="m">#${esc(number)}</p><form method="post" action="${base}/csat/${esc(number)}?lang=${lang}"><input type="hidden" name="t" value="${esc(token)}"><p><label><input type="radio" name="r" value="good"${pre === 'good' ? ' checked' : ''} required> ${esc(c.good)}</label></p><p><label><input type="radio" name="r" value="bad"${pre === 'bad' ? ' checked' : ''}> ${esc(c.bad)}</label></p><p><label>${esc(c.comment)}<br><textarea name="comment" rows="4" maxlength="1000" style="width:100%"></textarea></label></p><p><button class="btn" type="submit">${esc(c.send)}</button></p></form>` }); };
+
+// ---- request forms ----
+const RQ = {
+  en: { title: 'Submit a request', pick: 'What do you need help with?', email: 'Your email', name: 'Your name (optional)', subject: 'Subject', desc: 'How can we help?', send: 'Send request', thanks: 'Request received', got: 'We got your request. Your reference number is', follow: 'We will reply by email. To follow it online, sign in with your email address.', follow2: 'Follow your request', back: 'Back to the help center', before: 'Look for an answer first', optional: '(optional)', yes: 'Yes', hint: 'Short summary' },
+  es: { title: 'Enviar una solicitud', pick: '¿Con qué necesitas ayuda?', email: 'Tu correo', name: 'Tu nombre (opcional)', subject: 'Asunto', desc: '¿Cómo podemos ayudarte?', send: 'Enviar solicitud', thanks: 'Solicitud recibida', got: 'Recibimos tu solicitud. Tu número de referencia es', follow: 'Te responderemos por correo. Para seguirla en línea, inicia sesión con tu correo.', follow2: 'Seguir tu solicitud', back: 'Volver al centro de ayuda', before: 'Busca primero una respuesta', optional: '(opcional)', yes: 'Sí', hint: 'Resumen corto' },
+};
+const fieldInput = (f, v, lang) => {
+  const id = 'cf_' + esc(f.key), val = v == null ? '' : v;
+  if (f.type === 'dropdown') return `<label for="${id}">${esc(f.label)}</label><select id="${id}" name="${id}"><option value=""></option>${(f.options || []).map(o => `<option${String(val) === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  if (f.type === 'checkbox') return `<label class="chk"><input type="checkbox" id="${id}" name="${id}"${val === 'on' ? ' checked' : ''}> ${esc(f.label)}</label>`;
+  return `<label for="${id}">${esc(f.label)}</label><input id="${id}" name="${id}" type="${f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}" value="${esc(val)}" maxlength="500">`;
+};
+export function requestPage({ org, lang, base, forms, form, token, values = {}, error = '', field = '' }) {
+  const t = RQ[lang] || RQ.en, v = values, pick = forms.length ? `<form method="get" action="${base}/requests/new" class="f"><input type="hidden" name="lang" value="${lang}"><label for="form">${esc(t.pick)}</label><select id="form" name="form"><option value="">${esc(t.title)}</option>${forms.map(f => `<option value="${f.id}"${form && form.id === f.id ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select><button class="btn l" type="submit">OK</button></form>` : '';
+  const err = error ? `<p class="msg err" role="alert">${esc(error)}</p>` : '';
+  const extra = form ? (form.fields || []).map(f => fieldInput(f, v['cf_' + f.key], lang)).join('') : '';
+  return layout({ org, lang, title: t.title, base, body: `<h1>${esc(t.title)}</h1>${form && form.description ? `<p class="m">${esc(form.description)}</p>` : ''}${pick}<p class="m"><a href="${base}?lang=${lang}">${esc(t.before)}</a></p>${err}
+<form method="post" action="${base}/requests/new?lang=${lang}" class="f req">
+<input type="hidden" name="ts" value="${esc(token)}"><input type="hidden" name="form" value="${form ? form.id : ''}">
+<div class="hp" aria-hidden="true" style="position:absolute;left:-9999px"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+<label for="email">${esc(t.email)}</label><input id="email" name="email" type="email" required maxlength="254" autocomplete="email" value="${esc(v.email)}"${field === 'email' ? ' autofocus' : ''}>
+<label for="name">${esc(t.name)}</label><input id="name" name="name" maxlength="100" autocomplete="name" value="${esc(v.name)}">
+<label for="subject">${esc(t.subject)}</label><input id="subject" name="subject" required maxlength="200" placeholder="${esc(form ? form.subject_hint : '')}" value="${esc(v.subject)}">
+${extra}<label for="description">${esc(t.desc)}</label><textarea id="description" name="description" required rows="8" maxlength="5000">${esc(v.description)}</textarea>
+<button class="btn" type="submit">${esc(t.send)}</button></form>` });
+}
+export function requestDonePage({ org, lang, base, number }) {
+  const t = RQ[lang] || RQ.en;
+  return layout({ org, lang, title: t.thanks, base, body: `<h1>${esc(t.thanks)}</h1><p>${esc(t.got)} <strong>#${Number(number)}</strong>.</p><p class="m">${esc(t.follow)}</p><p><a class="btn" href="${base}/tickets?lang=${lang}">${esc(t.follow2)}</a> <a class="btn l" href="${base}?lang=${lang}">${esc(t.back)}</a></p>` });
+}
+export const requestLink = (base, lang) => `<p><a class="btn l" href="${base}/requests/new?lang=${lang}">${esc((RQ[lang] || RQ.en).title)}</a></p>`;

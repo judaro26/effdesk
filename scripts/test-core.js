@@ -15,7 +15,7 @@ process.env.PLATFORM_ADMIN_EMAILS = 'owner@effdesk.test';
 const ENV = { PADDLE_WEBHOOK_SECRET: 'whsec_test', PADDLE_CLIENT_TOKEN: 'live_token', PADDLE_ENV: 'sandbox', PADDLE_PRICE_TEAM_YEAR: 'pri_team_y', PADDLE_PRICE_TEAM_MONTH: 'pri_team_m', PADDLE_PRICE_SUITE_YEAR: 'pri_suite_y', PADDLE_PRICE_PRO_YEAR: 'pri_pro_y' };
 const { url } = await freshDb('core');
 const ran = await migrate(url);
-check('the migrations apply in order, once each', ran.join() === '001_auth.sql,002_core.sql,003_tickets.sql,004_email.sql,005_attachments.sql,006_help.sql,007_import.sql,008_signup.sql,009_desk.sql,010_prefs.sql,011_sla_notify.sql,012_avatar_webhooks.sql,013_automations_csat_api.sql,014_org_settings.sql,015_hours_alerts_fields.sql,016_support_usage.sql,017_live_chat.sql,018_sso.sql,019_agent_numbers.sql,020_ai_usage.sql,021_roles_audit.sql,022_performance.sql' && (await migrate(url)).length === 0);
+check('the migrations apply in order, once each', ran.join() === '001_auth.sql,002_core.sql,003_tickets.sql,004_email.sql,005_attachments.sql,006_help.sql,007_import.sql,008_signup.sql,009_desk.sql,010_prefs.sql,011_sla_notify.sql,012_avatar_webhooks.sql,013_automations_csat_api.sql,014_org_settings.sql,015_hours_alerts_fields.sql,016_support_usage.sql,017_live_chat.sql,018_sso.sql,019_agent_numbers.sql,020_ai_usage.sql,021_roles_audit.sql,022_performance.sql,023_request_forms.sql' && (await migrate(url)).length === 0);
 const pool = makePool(url);
 const sent = [], mailer = makeMailer({ transport: async m => { sent.push(m); } });
 const auth = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'http://localhost:8888', requireVerified: false });

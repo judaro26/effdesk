@@ -1,0 +1,26 @@
+// scripts/test-help-widget.js: THE HELP SEARCH ON A CUSTOMER'S WEBSITE, in a page without a server: the button, searching, results drawn as text (never as HTML), and the request link.
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+import { check, done } from './lib/check.js';
+const pub = f => readFileSync(new URL('../public/' + f, import.meta.url), 'utf8'), tick = (ms = 10) => new Promise(r => setTimeout(r, ms));
+const calls = []; let reply = { ok: true, results: [{ title: 'Heater <img src=x onerror=alert(1)>', excerpt: 'Fixed in two days', url: 'https://app.effdesk.com/help/acme/a/heater?lang=en' }], request: 'https://app.effdesk.com/help/acme/requests/new?lang=en' }, fail = false;
+const fake = async url => { calls.push(url); if (fail) throw new Error('offline'); return { ok: true, status: 200, json: async () => reply }; };
+const mount = (attrs = {}, html = '<body><div id="spot"></div></body>') => { const d = new JSDOM(html, { runScripts: 'outside-only', url: 'https://shop.test/' }), w = d.window; w.fetch = fake; const s = w.document.createElement('script'); s.setAttribute('src', 'https://app.effdesk.com/help-widget.js'); s.setAttribute('data-org', 'acme'); for (const k in attrs) s.setAttribute(k, attrs[k]); w.document.body.appendChild(s); Object.defineProperty(w.document, 'currentScript', { value: s }); w.eval(pub('help-widget.js')); return w; };
+let w = mount(), $ = s => w.document.querySelector(s);
+const btn = $('button[aria-label="Help center"]'); check('the widget adds a Help button and a hidden search box', !!btn && $('[role=dialog]').style.display === 'none');
+btn.click(); check('clicking opens the search box', $('[role=dialog]').style.display === 'block' && btn.getAttribute('aria-expanded') === 'true');
+const input = $('input[type=search]'); input.value = 'h'; input.dispatchEvent(new w.Event('input')); await tick(300);
+check('a one-letter search asks for more and does not call the server', calls.length === 0 && /at least 2/.test($('[role=dialog]').textContent));
+input.value = 'heater'; input.dispatchEvent(new w.Event('input')); await tick(300);
+check('a search calls the workspace\'s help center', calls.length === 1 && /app\.effdesk\.com\/help\/acme\/api\/search\?lang=en&q=heater/.test(calls[0]));
+check('results are links that open in a new tab, and html in a title stays text', !!$('[role=dialog] a[target=_blank][href$="heater?lang=en"]') && !$('[role=dialog] img') && /<img/.test($('[role=dialog]').textContent));
+check('the link to send a request comes from the answer', /requests\/new/.test([...w.document.querySelectorAll('[role=dialog] a')].pop().href));
+reply = { ok: true, results: [], request: '' }; input.value = 'zzz'; input.dispatchEvent(new w.Event('input')); await tick(300); check('no results says so', /Nothing found/.test($('[role=dialog]').textContent));
+fail = true; input.value = 'broken'; input.dispatchEvent(new w.Event('input')); await tick(300); check('when the search fails it says so plainly', /not available/.test($('[role=dialog]').textContent)); fail = false;
+w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' })); check('Escape closes the box', $('[role=dialog]').style.display === 'none');
+w = mount({ 'data-lang': 'es', 'data-position': 'left', 'data-color': '#aa0000', 'data-label': 'Soporte' }); $ = s => w.document.querySelector(s);
+check('language, side, color and label can be set', $('button').textContent === 'Soporte' && /left:\s*20px/.test($('button').style.cssText) && /rgb\(170, 0, 0\)/.test($('button').style.cssText) && /Busca/.test($('input').placeholder));
+w = mount({ 'data-target': '#spot' }); $ = s => w.document.querySelector(s);
+check('with a target the search box is drawn inside that element, without a button', !!$('#spot input[type=search]') && !$('button'));
+w = mount({ 'data-org': '' }); check('without a workspace it does nothing', !w.document.querySelector('button') && !w.document.querySelector('input'));
+done(); process.exit(0);

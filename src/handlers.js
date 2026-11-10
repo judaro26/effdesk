@@ -30,6 +30,7 @@ import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './cs
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
+import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
 import { SUPPORT_READ, recentEntries, customerDetail, countApiCall } from './support.js';
@@ -99,7 +100,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -156,6 +157,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'export-data': if ((g = adminOnly() || need('data_export'))) return g; r = await exportData(pool, orgId, b.part); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'part ' + r.part, { tickets: r.tickets }); break;
     case 'export-tickets-csv': if ((g = adminOnly() || need('data_export'))) return g; r = await ticketsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'data-exported', 'tickets csv', {}); break;
     case 'agent-detail': if ((g = adminOnly())) return g; r = await agentDetail(pool, orgId, b.userId, { auditOn: planHas(ent, 'audit_log') }); break;
+    case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
+    case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;
+    case 'form-delete': if ((g = adminOnly() || need('request_forms'))) return g; if (!(await deleteForm(pool, orgId, b.id))) return json(404, { error: 'No such form.' }); r = { ok: true }; break;
     case 'team-list': if ((g = adminOnly())) return g; r = await listTeam(pool, orgId, ent); break;
     case 'team-role': if ((g = adminOnly() || (b.role === 'light' ? need('light_agents') : null))) return g; r = await changeRole(pool, orgId, actor, role, b.memberId, b.role); if (r.ok) await audit(pool, orgId, actor.id, 'role-changed', r.email, { from: r.from, to: r.role }); break;
     case 'team-remove': if ((g = adminOnly())) return g; r = await removeMember(pool, orgId, actor, role, b.memberId, b.reassignTo); if (r.ok) await clearAssignment(pool, orgId, r.userId || ''); if (r.ok) await audit(pool, orgId, actor.id, 'member-removed', r.email, { reassigned: r.reassigned }); break;
@@ -418,6 +422,22 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     if (found.better) return redirect(`${base}/a/${found.better.slug}?lang=${found.better.lang}`);
     await countView(pool, org.id, a.id);
     return html(200, pages.articlePage({ org, lang, base, a, html: renderBody(a.body), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
+  }
+  // the search box for a customer's own website: a small JSON answer any page may ask for (published articles only)
+  if (rest[0] === 'api' && rest[1] === 'search' && !post) {
+    const hdr = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60', 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' };
+    const q = String(u.searchParams.get('q') || '').slice(0, 100), found = await searchArticles(pool, org.id, q, lang);
+    return new Response(JSON.stringify({ ok: true, name: org.name, results: found.slice(0, 6).map(a => ({ title: a.title, excerpt: String(a.excerpt || '').replace(/[#*`\[\]]/g, '').slice(0, 140), url: `${portal || PRODUCT.appUrl}${base}/a/${a.slug}?lang=${a.lang}` })), request: `${portal || PRODUCT.appUrl}${base}/requests/new?lang=${lang}` }), { status: 200, headers: hdr });
+  }
+  // request forms
+  if (rest[0] === 'requests' && rest[1] === 'new') {
+    const ent = await getEntitlements(pool, org.id), custom = planHas(ent, 'request_forms'), fields = planHas(ent, 'custom_fields'), forms = await publicForms(pool, org.id, { custom, fields });
+    const pickForm = id => forms.find(f => String(f.id) === String(id)) || null;
+    if (!post) return html(200, pages.requestPage({ org, lang, base, forms, form: pickForm(u.searchParams.get('form')), token: requestToken(env, org.id, now) }));
+    const f = await form(), vals = Object.fromEntries(f.entries()), r = await submitRequest(pool, env, org, vals, { mailer, custom, fields, now });
+    if (r.silent) return html(200, pages.requestDonePage({ org, lang, base, number: 0 }));
+    if (!r.ok) return html(r.status === 404 ? 404 : r.status || 400, pages.requestPage({ org, lang, base, forms, form: pickForm(vals.form), token: requestToken(env, org.id, now - 3500), values: vals, error: r.error, field: r.field }));
+    return html(200, pages.requestDonePage({ org, lang, base, number: r.number }));
   }
   // the rating page from the survey email
   if (rest[0] === 'csat' && /^\d{1,9}$/.test(rest[1] || '')) {
