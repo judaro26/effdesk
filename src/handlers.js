@@ -11,7 +11,7 @@ import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publis
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
-import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
+import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
@@ -38,13 +38,13 @@ const roleIn = async (pool, userId, orgId) => (await pool.query('select role fro
 const audit = (pool, orgId, actorId, action, target, meta) => withOrg(pool, orgId, c => c.query('insert into audit_log (org_id, actor_id, action, target, meta) values ($1,$2,$3,$4,$5)', [orgId, actorId, action, target || null, JSON.stringify(meta || {})]));
 
 // who am I, which organizations am I in, and what each one may do
-export async function me(req, { pool, auth }) {
+export async function me(req, { pool, auth, env = process.env }) {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const orgs = (await pool.query(`select o.id, o.name, o.slug, m.role from member m join "organization" o on o.id = m."organizationId" where m."userId" = $1 order by o.name`, [s.user.id])).rows;
   const out = [];
   for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
-  const pend = await pendingOf(pool, s.user.id);
+  const pend0 = await pendingOf(pool, s.user.id), pend = pend0 && { ...pend0, ownerWorkspace: ownerWorkspaces(env)[pend0.slug] === String(s.user.email).toLowerCase() };
   return json(200, { user: { id: s.user.id, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend });
 }
 

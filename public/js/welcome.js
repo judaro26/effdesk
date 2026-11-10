@@ -14,6 +14,7 @@
         if (r.status === 401) return nav.go('/auth.html?mode=signin');
         me = r.body; doc.getElementById('who').textContent = me.user.email;
         if (!me.user.emailVerified) { clear(); main.appendChild(el('h1', {}, 'Confirm your email first')); main.appendChild(el('p', {}, 'Open the link we emailed you, then come back.')); return; }
+        if (me.pendingWorkspace && me.pendingWorkspace.ownerWorkspace) return create(null);          // our own workspace: no plan to choose, it gets the lifetime licence
         if (me.pendingWorkspace) return draw();
         if (me.organizations.length) return nav.go('/desk.html?org=' + encodeURIComponent(me.organizations[0].id));
         nav.go('/app.html');

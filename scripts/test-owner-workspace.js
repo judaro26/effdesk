@@ -27,7 +27,10 @@ check('another person cannot register it', (await reg({ name: 'Eve', email: 'eve
 const own = await workspaceCheck(new Request(`${BASE}/api/workspace-check?slug=mdv&email=juan.rodriguez@ziphq.com`, { headers: { 'x-forwarded-for': '198.51.100.3' } }), { pool, env: ENV }).then(asJson);
 check('the owner sees it as available (the email is compared without regard to capitals)', own.body.available === true);
 check('the owner can register it', (await reg({ name: 'Juan', email: 'juan.rodriguez@ziphq.com', password: PW, company: 'MDV', slug: 'mdv' }, 3)).status === 200);
-const jc = await verifyAndCookie('juan.rodriguez@ziphq.com', 4), made = await mk(jc, 5); 
+const jc = await verifyAndCookie('juan.rodriguez@ziphq.com', 4);
+const meOwn = await me(new Request(`${BASE}/api/me`, { headers: { cookie: jc } }), { ...deps, env: ENV }).then(asJson);
+check('the welcome page is told this pending workspace is ours, so it skips the plan choice', meOwn.body.pendingWorkspace && meOwn.body.pendingWorkspace.slug === 'mdv' && meOwn.body.pendingWorkspace.ownerWorkspace === true);
+const made = await mk(jc, 5); 
 const sub = (await pool.query('select license from subscriptions where org_id = $1', [made.body.organization.id])).rows[0], ent = await getEntitlements(pool, made.body.organization.id);
 check('creating it gives the workspace the lifetime licence: every feature, no seat limit', made.status === 200 && made.body.organization.slug === 'mdv' && sub.license === 'lifetime_unlimited' && ent.plan === 'pro' && ent.seats === Infinity && ent.features.has('api') && ent.features.has('sso'));
 await reg({ name: 'Ann', email: 'ann@acme.test', password: PW, company: 'Acme', slug: 'acme' }, 6);
