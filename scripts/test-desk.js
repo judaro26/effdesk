@@ -84,8 +84,9 @@ check('choosing a file uploads it to this ticket and shows it waiting to be sent
 $('textarea').value = 'On our way'; $('[data-reply]').click(); await tick();
 check('the reply sends the waiting files\' ids, and the list is cleared afterwards', calls.some(c => c[1] && c[1].action === 'reply' && c[1].attachmentIds && c[1].attachmentIds.join() === 'up1') && !$('[data-pending]'));
 check('Reply posts the text to the reply action', calls.some(c => c[1] && c[1].action === 'reply' && c[1].number === 7 && c[1].body === 'On our way' && !c[1].status));
-$('[data-mode=reply]').click(); await tick(); $('textarea').value = 'Done'; { const ss = $('select[aria-label="Set status when sending"]'); ss.value = 'solved'; ss.dispatchEvent(new w.Event('change')); } $('[data-reply]').click(); await tick();
-check('choosing "Send as solved" sends the status with the reply', calls.some(c => c[1] && c[1].action === 'reply' && c[1].status === 'solved'));
+$('[data-mode=reply]').click(); await tick(); { const ss = $('select[aria-label="Choose the status to submit as"]'); ss.value = 'solved'; ss.dispatchEvent(new w.Event('change')); } await tick(); $('textarea').value = 'Done'; check('the submit button says which status it will set', /Submit as Solved/.test($('[data-reply]').textContent)); $('[data-reply]').click(); await tick();
+check('Refresh and History sit together in the ticket header', !!$('.ch .chtools [data-refresh]') && !!$('.ch .chtools [data-timeline]'));
+check('choosing "Submit as Solved" sends the status with the reply', calls.some(c => c[1] && c[1].action === 'reply' && c[1].status === 'solved'));
 $('[data-mode=note]').click(); await tick(); $('textarea').value = 'internal'; $('[data-note]').click(); await tick();
 check('Add internal note uses the note action', calls.some(c => c[1] && c[1].action === 'note' && c[1].body === 'internal'));
 $('[data-mode=reply]').click(); await tick(); $('textarea').value = ''; $('[data-reply]').click(); await tick();
