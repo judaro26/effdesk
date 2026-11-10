@@ -1,11 +1,54 @@
-.desk{display:grid;grid-template-columns:minmax(260px,380px) 1fr;gap:16px;align-items:start}
-@media (max-width:760px){.desk{grid-template-columns:1fr}}
-.desk .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
-.desk .tabs button{border:1px solid var(--line);background:transparent;color:inherit;border-radius:999px;padding:4px 10px;cursor:pointer}
-.desk .tabs button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
-.desk .row{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;padding:10px 4px;cursor:pointer}
-.desk .row[aria-current="true"]{background:rgba(127,127,127,.12)}
-.desk .row b{display:block}.desk .msg-b{white-space:pre-wrap;margin:6px 0 14px;padding:10px;border:1px solid var(--line);border-radius:8px}
-.desk .msg-b.note{background:rgba(250,200,60,.18)}.desk .msg-b.agent{border-left:4px solid var(--accent)}
-.desk textarea{width:100%;min-height:90px}.desk .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
-.desk .files{margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}.desk .chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin:4px 6px 0 0;font-size:14px}.desk .chip button{border:0;background:transparent;color:inherit;cursor:pointer}
+/* The agent desk: an icon rail, ticket tabs, a Views list and a three-column ticket, in the console layout agents know. */
+.deskapp{--d-bg:#f4f5f7;--d-panel:#fff;--d-line:#e3e6ea;--d-ink:#1d2428;--d-muted:#66737c;--d-rail:#14181b;--d-hover:#eef0f2;--d-in:#f0f2f4;--d-out:#fdeed8;--d-note:#fff4c2;--d-badge:#e6e9ec;background:var(--d-bg);color:var(--d-ink);margin:0;height:100vh;overflow:hidden}
+@media (prefers-color-scheme:dark){.deskapp{--d-bg:#101316;--d-panel:#181c20;--d-line:#2a3238;--d-ink:#eceff1;--d-muted:#9aa6ad;--d-rail:#0b0d0f;--d-hover:#22282d;--d-in:#232a30;--d-out:#3a2c18;--d-note:#4a4220;--d-badge:#2a3238}}
+.deskapp *{box-sizing:border-box}.deskapp h2{margin:0;font-size:20px}.deskapp h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--d-muted)}
+.deskapp .m{color:var(--d-muted);font-size:13px}.deskapp .pad{padding:20px}.deskapp .grow{flex:1}
+.shell{display:flex;height:100vh}
+.rail{width:60px;flex:none;background:var(--d-rail);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px}
+.rail .logo{width:36px;height:36px;border-radius:9px;background:var(--accent);color:#1d1100;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center;text-decoration:none;margin-bottom:12px}
+.rail .ri{width:42px;height:42px;border:0;border-radius:10px;background:transparent;color:#aeb9c0;display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;position:relative}
+.rail .ri svg{width:22px;height:22px}.rail .ri:hover{background:rgba(255,255,255,.08);color:#fff}.rail .ri[aria-current="true"]{background:rgba(255,255,255,.12);color:var(--accent)}
+.rail .ri[aria-current="true"]::before{content:"";position:absolute;left:-9px;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--accent)}
+.work{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{flex:none;display:flex;align-items:flex-end;gap:10px;padding:8px 14px 0;background:var(--d-panel);border-bottom:1px solid var(--d-line);min-height:56px}
+.top .tabs{display:flex;gap:2px;align-items:flex-end;min-width:0;overflow-x:auto}
+.top .tab{border:1px solid transparent;border-bottom:0;background:transparent;color:var(--d-muted);padding:9px 14px;border-radius:8px 8px 0 0;cursor:pointer;font:inherit;font-size:14px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.top .tab:hover{background:var(--d-hover)}.top .tab[aria-selected="true"]{background:var(--d-bg);color:var(--d-ink);border-color:var(--d-line);font-weight:600;margin-bottom:-1px;padding-bottom:10px}
+.top .tab.has-x{padding:0}.top .tab.has-x>button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:9px 4px 9px 14px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top .tab.has-x>.x{padding:9px 12px 9px 4px;font-size:16px;line-height:1;max-width:none}.top .tab.has-x[aria-selected="true"]>button{padding-bottom:10px}
+.top #q{width:220px;margin-bottom:8px}.top .btn{margin-bottom:8px}.top #orgsel{margin-bottom:8px}.who{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:14px}
+.av{width:28px;height:28px;border-radius:50%;background:#143c46;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}.av.requester,.av.in{background:#c9d6ee;color:#1d2a44}.av.note{background:#d9a400;color:#fff}
+.deskapp input,.deskapp select,.deskapp textarea{font:inherit;font-size:14px;color:var(--d-ink);background:var(--d-panel);border:1px solid var(--d-line);border-radius:6px;padding:7px 9px;max-width:100%}
+.deskapp textarea{width:100%;min-height:96px;resize:vertical}.deskapp input:focus,.deskapp select:focus,.deskapp textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.deskapp .btn{padding:7px 14px;font-size:14px;border-radius:6px}.deskapp .btn.l{background:var(--d-panel);color:var(--d-ink);border-color:var(--d-line)}.deskapp .btn.l:hover{background:var(--d-hover)}.deskapp .btn.sm{padding:4px 10px;font-size:13px}
+.deskapp main{max-width:none;margin:0;padding:0;flex:1;min-height:0;overflow:auto}
+.deskapp .msg{margin:0;padding:8px 18px;background:#fff4d6;color:#4a3500;border-bottom:1px solid #e8c766;min-height:0;font-size:14px}.deskapp .msg.err{background:#fde8ea;color:#8a1c27;border-color:#f0b4ba}
+.desk{height:100%}
+/* Views */
+.views{display:grid;grid-template-columns:220px 1fr;height:100%}
+.views .side{background:var(--d-panel);border-right:1px solid var(--d-line);padding:16px 12px;overflow:auto}
+.flt{display:flex;justify-content:space-between;width:100%;border:0;background:transparent;color:inherit;font:inherit;font-size:14px;padding:8px 10px;border-radius:6px;cursor:pointer;text-align:left}
+.flt:hover{background:var(--d-hover)}.flt[aria-pressed="true"]{background:var(--d-hover);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}.flt .n{color:var(--d-muted)}
+.views .tbl{overflow:auto;background:var(--d-panel)}.views table{width:100%;border-collapse:collapse;font-size:14px}.views th{position:sticky;top:0;background:var(--d-panel);text-align:left;font-size:12px;color:var(--d-muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--d-line)}
+.views td{padding:10px 12px;border-bottom:1px solid var(--d-line);vertical-align:middle}.views tr.row{cursor:pointer}.views tr.row:hover,.views tr.row:focus{background:var(--d-hover);outline:0}.views .subj{font-weight:600;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.views .num,.views .when{color:var(--d-muted);white-space:nowrap}
+.badge{display:inline-block;padding:1px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;background:var(--d-badge);color:var(--d-ink)}.badge.s-open{background:#e5483a;color:#fff}.badge.s-pending{background:#3b7bd6;color:#fff}.badge.s-solved{background:#5b6770;color:#fff}.badge.s-closed{background:var(--d-badge);color:var(--d-muted)}
+/* a ticket */
+.ticket{display:grid;grid-template-columns:270px minmax(0,1fr) 290px;height:100%}
+.ticket .col{min-height:0;overflow:auto}.props{background:var(--d-panel);border-right:1px solid var(--d-line);padding:16px}.info{background:var(--d-panel);border-left:1px solid var(--d-line);padding:16px}
+.prop{margin-bottom:14px}.prop .pl{font-size:12px;font-weight:700;color:var(--d-muted);margin-bottom:4px}.prop select,.prop input{width:100%}.prop .btn{margin-top:6px}.prop div{overflow-wrap:anywhere}
+.pcard{border:1px solid var(--d-line);border-radius:8px;padding:12px;margin-bottom:16px;overflow-wrap:anywhere}.pcard .row1{display:flex;gap:10px;align-items:center;margin-bottom:8px}.pcard .m div{margin:2px 0}
+.conv{display:flex;flex-direction:column;overflow:hidden!important;background:var(--d-panel)}
+.conv .ch{flex:none;padding:16px 20px 12px;border-bottom:1px solid var(--d-line)}.conv .ch h2{margin-bottom:4px;overflow-wrap:anywhere}
+.thread{flex:1;min-height:0;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.msg-row{display:flex;gap:10px;align-items:flex-start}.msg-row.out{flex-direction:row-reverse}
+.msg-b{max-width:min(720px,85%);padding:10px 14px;border-radius:10px;background:var(--d-in);min-width:0}.msg-b.agent{background:var(--d-out)}.msg-b.note{background:var(--d-note);border:1px solid #e8c766}
+.msg-b .mh{margin-bottom:4px;font-size:13px}.msg-b .mt{white-space:pre-wrap;overflow-wrap:anywhere}.msg-b .files{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;font-size:13px}
+.compose{flex:none;border-top:1px solid var(--d-line);padding:10px 20px 14px;background:var(--d-panel)}
+.modes{display:flex;gap:4px;margin-bottom:8px}.modes button{border:0;background:transparent;color:var(--d-muted);font:inherit;font-size:14px;padding:6px 12px;border-radius:6px;cursor:pointer}.modes button[aria-selected="true"]{background:var(--d-hover);color:var(--d-ink);font-weight:700}
+.cbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}.cbar .hint{margin-left:auto}.attach{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.attach label{cursor:pointer}.attach input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.split{display:inline-flex;gap:6px}.chip{display:inline-block;border:1px solid var(--d-line);border-radius:999px;padding:2px 10px;font-size:13px}.chip button{border:0;background:transparent;color:inherit;cursor:pointer}
+/* panes: new ticket, email settings, help center */
+.page{max-width:720px;margin:0;padding:24px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}.page input,.page select{width:100%;max-width:520px}.page textarea{max-width:720px}.page .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%}.page .bar input{width:auto;flex:1;min-width:160px}
+.page .row.art{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--d-line);background:transparent;color:inherit;padding:10px 4px;cursor:pointer}.page .row.art b{display:block}.page label.bar input{flex:none;min-width:0}
+@media (max-width:1000px){.ticket{grid-template-columns:1fr;height:auto}.ticket .col{overflow:visible}.conv{overflow:visible!important}.thread{overflow:visible}.props,.info{border:0;border-bottom:1px solid var(--d-line)}.deskapp{height:auto;overflow:auto}.shell{height:auto;min-height:100vh}.deskapp main{overflow:visible}.views{grid-template-columns:1fr}.views .side{border-right:0;border-bottom:1px solid var(--d-line)}.top{flex-wrap:wrap}.top #q{width:140px}}
+@media (max-width:560px){.rail{width:48px}.who #who{display:none}.views th:nth-child(n+5),.views td:nth-child(n+5){display:none}}

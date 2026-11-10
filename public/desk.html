@@ -1,7 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>Desk | EffDesk</title><link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/desk.css"></head><body>
-<header><div class="in"><a class="brand" href="/">Eff<span>Desk</span></a><nav><a href="/app.html">Account</a><span class="m" id="who"></span></nav></div></header>
-<main id="main"><p class="m">Loading…</p></main>
+<title>Desk | EffDesk</title><link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/desk.css"></head><body class="deskapp">
+<div class="shell">
+<nav class="rail" id="rail" aria-label="Main"></nav>
+<div class="work">
+<div class="top"><div class="tabs" id="tabs" role="tablist" aria-label="Open tickets"></div><span class="grow"></span><span id="orgsel"></span>
+<input type="search" id="q" aria-label="Search tickets" placeholder="Search tickets" autocomplete="off"><button class="btn" type="button" id="newbtn" data-new="1">+ New ticket</button>
+<span class="who"><span class="av" id="av" aria-hidden="true"></span><span id="who"></span></span></div>
+<main id="main"><p class="m pad">Loading…</p></main>
+</div></div>
 <script src="/js/desk.js"></script>
 </body></html>
