@@ -25,6 +25,7 @@ import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './cs
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
 import { customers as platformCustomers, csv as customersCsv } from './platform.js';
+import { listFields, saveField, deleteField } from './fields.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
@@ -88,7 +89,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
-const LIGHT_OK = new Set(['init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
+const LIGHT_OK = new Set(['fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
@@ -104,9 +105,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   let r, g;
   switch (b.action) {
     case 'init': {
+      const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
@@ -177,7 +179,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'problem-resolve': if ((g = need('linked_tickets'))) return g; r = await desk.resolveProblem(pool, orgId, actor, b.number); break;
     case 'side-send': if ((g = need('side_conversations'))) return g; r = mailer ? await desk.sendSide(pool, mailer, env, orgId, actor, b.number, b) : { ok: false, status: 503, error: 'Email is not set up.' }; break;
     case 'side-close': if ((g = need('side_conversations'))) return g; r = await desk.closeSide(pool, orgId, actor, b.number, b.sideId); break;
-    case 'create': r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
+    case 'fields-list': r = planHas(ent, 'custom_fields') ? await listFields(pool, orgId) : { ok: true, fields: [], types: [] }; break;
+    case 'field-save': if ((g = adminOnly() || need('custom_fields'))) return g; r = await saveField(pool, orgId, b); break;
+    case 'field-delete': if ((g = adminOnly() || need('custom_fields'))) return g; if (!(await deleteField(pool, orgId, b.id))) return json(404, { error: 'No such field.' }); r = { ok: true }; break;
+    case 'create': if (b.custom && (g = need('custom_fields'))) return g; r = await createTicket(pool, orgId, actor, b); if (r.ok) { if (planHas(ent, 'triggers')) await runTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); } break;
     case 'reply': {
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
@@ -209,7 +214,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'update': {
-      const pt = b.patch || {}; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
+      const pt = b.patch || {}; if (pt.custom !== undefined && (g = need('custom_fields'))) return g; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
       const was = pt.assigneeId ? (await pool.query('select assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(b.number) || 0])).rows[0]?.assignee_id : null;
       r = await updateTicket(pool, orgId, actor, b.number, pt);
       if (r.ok) await emitHook(pool, orgId, 'ticket.updated', b.number, { changes: Object.keys(pt) });
@@ -411,12 +416,12 @@ export async function apiV1(req, { pool, mailer, env = process.env }) {
   const n = parts[1] ? Number(parts[1]) : 0; if (parts[1] && !/^\d{1,9}$/.test(parts[1])) return json(404, { error: 'Not found.' });
   if (!parts[1]) {
     if (m === 'GET') { const q = Object.fromEntries(u.searchParams); delete q.assignee; const r = await listTickets(pool, orgId, actor, { status: q.status, q: q.q, tag: q.tag, limit: q.limit, offset: q.offset }); return r.ok ? json(200, { tickets: r.tickets, counts: r.counts }) : out(r); }
-    if (m === 'POST') { const r = await createTicket(pool, orgId, actor, { ...b, channel: 'api' }); if (!r.ok) return out(r); await maybeTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); return json(201, { ticket: r.ticket }); }
+    if (m === 'POST') { if (b.custom && !planHas(ent, 'custom_fields')) return json(402, { error: 'Custom fields are part of the Suite plan.', upgrade: true }); const r = await createTicket(pool, orgId, actor, { ...b, channel: 'api' }); if (!r.ok) return out(r); await maybeTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); return json(201, { ticket: r.ticket }); }
     return json(405, { error: 'Method not allowed.' });
   }
   if (!parts[2]) {
     if (m === 'GET') { const r = await getTicket(pool, orgId, actor, n); return r.ok ? json(200, { ticket: r.ticket, messages: r.messages.filter(x => x.kind !== 'note' || b.notes === true).map(({ id, kind, author_name, body, created_at }) => ({ id, kind, author: author_name, body, createdAt: created_at })) }) : out(r); }
-    if (m === 'PATCH') { const patch = {}; for (const k of ['status', 'priority', 'type', 'tags', 'assigneeId', 'queueId', 'cc']) if (b[k] !== undefined) patch[k] = b[k]; const r = await updateTicket(pool, orgId, actor, n, patch); if (r.ok) await emitHook(pool, orgId, 'ticket.updated', n, { changes: Object.keys(patch) }); return r.ok ? json(200, { ticket: r.ticket }) : out(r); }
+    if (m === 'PATCH') { const patch = {}; for (const k of ['status', 'priority', 'type', 'tags', 'assigneeId', 'queueId', 'cc', 'custom']) if (b[k] !== undefined) patch[k] = b[k]; if (patch.custom !== undefined && !planHas(ent, 'custom_fields')) return json(402, { error: 'Custom fields are part of the Suite plan.', upgrade: true }); const r = await updateTicket(pool, orgId, actor, n, patch); if (r.ok) await emitHook(pool, orgId, 'ticket.updated', n, { changes: Object.keys(patch) }); return r.ok ? json(200, { ticket: r.ticket }) : out(r); }
     return json(405, { error: 'Method not allowed.' });
   }
   if (parts[2] === 'comments' && !parts[3] && m === 'POST') {

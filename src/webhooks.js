@@ -41,10 +41,10 @@ export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = f
   try {
     const data = await withOrg(pool, orgId, async c => ({
       hooks: (await c.query('select id, url, secret, kind from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,
-      t: (await c.query('select number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, created_at, updated_at from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0],
+      t: (await c.query('select custom, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, created_at, updated_at from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0],
     }));
     if (!data.hooks.length || !data.t) return { sent: 0 };
-    const body = JSON.stringify({ event, organization: orgId, occurredAt: new Date(now).toISOString(), ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
+    const body = JSON.stringify({ event, organization: orgId, occurredAt: new Date(now).toISOString(), ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, custom: data.t.custom, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
     const ts = String(Math.floor(now / 1000)), text = chatText(event, data.t, extra);
     await Promise.allSettled(data.hooks.map(async h => {
       let status = 'error';

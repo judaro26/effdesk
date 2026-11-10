@@ -13,11 +13,11 @@
     { id: 'ocean', name: 'Ocean', pro: true, blurb: 'Crisp blues and clear aqua.', sw: ['#0f4cc0', '#ecf4fb', '#ffffff', '#0aa8cc'] },
     { id: 'orchid', name: 'Orchid', pro: true, blurb: 'Rich plum with pink and violet.', sw: ['#6a1f8c', '#190f20', '#28172f', '#ff6ec7'] }
   ];
-  var PLAN_OF = { light_agents: 'Team', bulk_actions: 'Team', queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team', api: 'Suite' };
+  var PLAN_OF = { custom_fields: 'Suite', light_agents: 'Team', bulk_actions: 'Team', queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team', api: 'Suite' };
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -50,7 +50,7 @@
         orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')); return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); return goHome(); });
       });
     }
-    function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
+    function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     function open(n) {
       return api('get', { number: n }).then(function (r) {
@@ -172,6 +172,13 @@
       body.value = draft; body.addEventListener('input', function () { draft = body.value; });
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
+      var fieldInput = function (f, v) {
+        var put = function (val) { var c = {}; c[f.key] = val; update({ custom: c }); };
+        if (f.type === 'dropdown') return sel(f.label, v === undefined ? '' : String(v), [['', '—']].concat(f.options.map(function (o) { return [o, o]; })), function (x) { put(x); });
+        if (f.type === 'checkbox') { var cb = el('input', { type: 'checkbox', 'aria-label': f.label, 'data-field': f.key }); cb.checked = v === true; cb.addEventListener('change', function () { put(cb.checked); }); return cb; }
+        var i = el('input', { type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text', 'aria-label': f.label, 'data-field': f.key, value: v === undefined ? '' : String(v), maxlength: '500' });
+        i.addEventListener('change', function () { put(i.value); }); return i;
+      };
       var act = function (action, extra, ok) { return api(action, Object.assign({ number: t.number }, extra || {})).then(function (r) { if (!r.ok) return say(r.body.error, true); return after().then(function () { if (ok) say(ok); }); }); };
       var send = function (action) {
         draft = body.value; if (!body.value.trim()) return say('Write a message first.', true);
@@ -197,6 +204,7 @@
         prop('Assignee', sel('Assignee', t.assignee_id || '', [['', 'Unassigned']].concat(agents.map(function (a) { return [a.id, a.name || a.email]; })), function (v) { update({ assigneeId: v || null }); })),
         prop('Priority', el('div', {}, sel('Priority', t.priority, [['low', 'Low'], ['normal', 'Normal'], ['high', 'High'], ['urgent', 'Urgent']], function (v) { update({ priority: v }); }), t.priority === 'low' || t.priority === 'normal' ? el('button', { type: 'button', class: 'btn l sm', 'data-escalate': '1', onclick: function () { update({ priority: 'high' }); } }, 'Escalate to high') : null)),
         prop('Status', sel('Status', t.status, [['open', 'Open'], ['pending', 'Pending'], ['solved', 'Solved'], ['closed', 'Closed']], function (v) { update({ status: v }); })),
+        has('custom_fields') ? fields.map(function (f) { return prop(f.label, fieldInput(f, (t.custom || {})[f.key])); }) : null,
         prop('Type', sel('Type', t.type || 'question', [['question', 'Question'], ['incident', 'Incident'], ['problem', 'Problem'], ['task', 'Task']], function (v) { update({ type: v }); })),
         prop('Queue', has('queues') ? sel('Queue', t.queue_id ? String(t.queue_id) : '', [['', 'No queue']].concat(queues.map(function (q) { return [String(q.id), q.name]; })), function (v) { update({ queueId: v || null }); }) : lock('queues')),
         prop('Client', has('clients') ? sel('Client', t.client_id ? String(t.client_id) : '', [['', 'No client']].concat(clients.map(function (k) { return [String(k.id), k.name]; })), function (v) { update({ clientId: v || null }); }) : lock('clients')),
@@ -355,7 +363,7 @@
         el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-save': '1', onclick: function () { api('rule-save', rd).then(function (r) { if (!r.ok) return say(r.body.error, true); rd = null; rules = null; say('Automation saved.'); }); } }, 'Save automation'), el('button', { type: 'button', class: 'btn l', onclick: function () { rd = null; again(); } }, 'Cancel'))));
     }
     function managePane() {
-      var tabs = [['team', 'Team'], ['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations'], ['api', 'API']];
+      var tabs = [['team', 'Team'], ['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA'], ['triggers', 'Automations'], ['integrations', 'Integrations'], ['api', 'API'], ['fields', 'Fields']];
       var head = el('div', { class: 'mtabs', role: 'tablist' }, tabs.map(function (t) { return el('button', { type: 'button', role: 'tab', 'data-manage-tab': t[0], 'aria-selected': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, t[1]); }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
       var guardAdmin = !isAdmin ? el('p', { class: 'm' }, 'Only an owner or an admin can change these.') : null;
@@ -400,6 +408,17 @@
             team.invites.length ? el('h3', {}, 'Waiting for an answer') : null,
             team.invites.map(function (i) { return el('div', { class: 'mitem', 'data-invite': i.id }, el('span', { class: 'grow' }, i.email, el('div', { class: 'm' }, (i.role === 'admin' ? 'Admin' : 'Agent') + ' · expires ' + when(i.expires_at))), el('button', { type: 'button', class: 'btn l sm', 'data-invite-resend': i.id, onclick: function () { api('team-invite-resend', { id: i.id }).then(function (r) { if (!r.ok) return say(r.body.error, true); reload('Invitation sent again to ' + i.email + '.'); }); } }, 'Resend'), el('button', { type: 'button', class: 'btn l sm', 'data-invite-cancel': i.id, onclick: function () { api('team-invite-cancel', { id: i.id }).then(function (r) { if (!r.ok) return say(r.body.error, true); reload('Invitation cancelled.'); }); } }, 'Cancel')); }),
             el('h3', {}, 'Invite someone'), el('div', { class: 'bar' }, ie, ir, el('button', { type: 'button', class: 'btn', 'data-invite-send': '1', onclick: function () { api('team-invite', { email: ie.value, role: ir.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); reload('Invitation sent to ' + r.body.email + '.'); }); } }, 'Send invitation')));
+        }
+      } else if (manage === 'fields') {
+        if (!has('custom_fields')) body = lock('custom_fields');
+        else if (!isAdmin) body = guardAdmin;
+        else {
+          var fn = el('input', { 'aria-label': 'Field name', placeholder: 'Field name, for example Order number', maxlength: '60', value: mEdit && mEdit.label || '' }), ft = sel('Field type', mEdit && mEdit.type || 'text', [['text', 'Text'], ['number', 'Number'], ['dropdown', 'Dropdown'], ['checkbox', 'Yes / no'], ['date', 'Date']], function (v) { mEdit = { id: mEdit && mEdit.id, label: fn.value, type: v, options: mEdit && mEdit.options }; draw(); });
+          var fo = el('textarea', { 'aria-label': 'Dropdown choices', placeholder: 'One choice per line', maxlength: '2000' }); fo.value = mEdit && mEdit.options ? mEdit.options.join('\n') : '';
+          var ftype = mEdit && mEdit.type || 'text';
+          body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'Extra fields agents fill in on each ticket, such as an order number, a product or a due date. The type of a field cannot change once it is made.'),
+            fields.map(function (f) { return el('div', { class: 'mitem', 'data-field-row': f.key }, el('span', { class: 'grow' }, el('strong', {}, f.label), el('div', { class: 'm' }, f.type + (f.options && f.options.length ? ': ' + f.options.join(', ') : ''))), el('button', { type: 'button', class: 'btn l sm', onclick: function () { mEdit = { id: f.id, label: f.label, type: f.type, options: f.options }; draw(); } }, 'Edit'), el('button', { type: 'button', class: 'btn l sm', 'data-field-delete': f.key, onclick: function () { api('field-delete', { id: f.id }).then(function (r) { if (!r.ok) return say(r.body.error, true); afterSave('Field deleted.'); }); } }, 'Delete')); }),
+            el('div', { class: 'page', style: 'padding:12px 0' }, fn, mEdit && mEdit.id ? null : ft, ftype === 'dropdown' ? fo : null, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-field-save': '1', onclick: function () { api('field-save', { id: mEdit && mEdit.id, label: fn.value, type: ftype, options: fo.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); afterSave('Field saved.'); }); } }, mEdit && mEdit.id ? 'Save field' : 'Add field'), mEdit ? el('button', { type: 'button', class: 'btn l', onclick: function () { mEdit = null; draw(); } }, 'Cancel') : null)));
         }
       } else if (manage === 'api') {
         if (!has('api')) body = lock('api');

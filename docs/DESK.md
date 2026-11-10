@@ -50,3 +50,7 @@ Set the Netlify variable `OWNER_WORKSPACES=mdv:you@yourcompany.com` (several all
 * **Business hours** (Manage > SLA): working windows per weekday in a time zone. When on, SLA clocks count only those minutes (a 1-hour target started Friday 16:30 falls due Monday 09:30). The "at risk" point (80%) uses the same calendar. Off by default (around the clock).
 * **Alerts:** every hour (the `automations` function) each active ticket that reaches "at risk" or "breached" emails its owner once per state, or the owners and admins when nobody has it. People with notifications off are skipped.
 * With business hours on, the SLA filters in Views and the dashboard count are computed from the 2000 most recently updated active tickets.
+
+## Custom ticket fields (Suite plan)
+
+Admins add extra fields under Manage > Fields: text, number, dropdown, yes/no and date (up to 20). Agents fill them in on each ticket; values are stored in `tickets.custom`, changes are logged on the ticket, and they appear in webhooks and the REST API (`custom`). A field's type and key cannot change once made.

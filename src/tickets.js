@@ -1,6 +1,7 @@
 // src/tickets.js: THE TICKET CORE. Every function runs inside withOrg (row level security) AND names org_id in its queries, so a mistake in one layer is caught by the other.
 import { withOrg } from './db.js';
 import { slaWhere } from './sla.js';
+import { defsOf, cleanValues } from './fields.js';
 
 export const STATUSES = ['open', 'pending', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -8,7 +9,7 @@ const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'id, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
+const ticketCols = 'custom, id, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -24,8 +25,9 @@ export async function createTicket(pool, orgId, actor, input) {
   const priority = PRIORITIES.includes(input.priority) ? input.priority : 'normal';
   return withOrg(pool, orgId, async c => {
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
+    let custom = {}; if (input.custom && Object.keys(input.custom).length) { const cv = cleanValues(await defsOf(c, orgId), input.custom); if (cv.error) return fail(cv.error); custom = cv.set; }
     const domain = email.split('@')[1], client = (await c.query("select id from clients where org_id = $1 and domain <> '' and domain = $2", [orgId, domain])).rows[0];
-    const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null])).rows[0];
+    const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom)])).rows[0];
     await logEvent(c, orgId, t.id, actor ? who(actor) : clean(input.requesterName, 100) || email, 'created', 'Ticket created' + (input.channel === 'email' ? ' by email' : ''));
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body, input.messageId ? clean(input.messageId, 300) : null])).rows[0].id;
     return { ok: true, ticket: t, messageRowId: mid };
@@ -85,7 +87,7 @@ export async function addMessage(pool, orgId, actor, number, { body, internal, s
 // status, priority, assignee (an organization member or null), tags, type, queue, client and CC; every change is written to the ticket's timeline
 export async function updateTicket(pool, orgId, actor, number, patch) {
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, status, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = $${args.length}`); };
     if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when $${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); if (patch.status !== t.status) notes.push(['status', `Status ${t.status} → ${patch.status}`]); }
@@ -108,6 +110,12 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
       const list = [...new Set((Array.isArray(patch.cc) ? patch.cc : String(patch.cc || '').split(/[,;\s]+/)).map(x => clean(x, 254).toLowerCase()).filter(Boolean))];
       if (list.length > 10) return fail('A ticket can copy up to 10 people.'); if (list.some(x => !isEmail(x))) return fail('One of the CC addresses is not a valid email address.');
       const cc = list.filter(x => x !== t.requester_email); set('cc', cc); if (cc.join() !== t.cc.join()) notes.push(['cc', 'CC: ' + (cc.join(', ') || 'none')]);
+    }
+    if (patch.custom !== undefined) {
+      const defs = await defsOf(c, orgId), cv = cleanValues(defs, patch.custom); if (cv.error) return fail(cv.error);
+      const merged = { ...(t.custom || {}), ...cv.set }; for (const k of cv.clear) delete merged[k];
+      for (const k of Object.keys({ ...cv.set, ...Object.fromEntries(cv.clear.map(x => [x, 1])) })) { const d = defs.find(x => x.key === k), before = (t.custom || {})[k], after = merged[k]; if (JSON.stringify(before) !== JSON.stringify(after)) notes.push(['field', `${d.label}: ${before === undefined ? 'empty' : before} → ${after === undefined ? 'empty' : after}`]); }
+      set('custom', JSON.stringify(merged));
     }
     if (!sets.length) return fail('Nothing to change.');
     const row = (await c.query(`update tickets set ${sets.join(', ')}, updated_at = now() where org_id = $1 and id = $2 returning ${ticketCols}`, args)).rows[0];
