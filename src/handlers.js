@@ -364,16 +364,16 @@ export async function importData(req, { pool, auth }) {
 // ---- registration and the first workspace ----
 const hits = new Map();            // a light per-address limit for the public availability check (per function instance)
 const tooMany = (ip, now, max = 40) => { const w = (hits.get(ip) || []).filter(t => now - t < 60000); w.push(now); hits.set(ip, w); if (hits.size > 5000) hits.clear(); return w.length > max; };
-export async function workspaceCheck(req, { pool, now = Date.now() }) {
+export async function workspaceCheck(req, { pool, env = process.env, now = Date.now() }) {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
   if (tooMany(String(req.headers.get('x-forwarded-for') || 'x').split(',')[0].trim(), now)) return json(429, { error: 'Too many checks. Wait a minute.' });
-  return json(200, await slugStatus(pool, new URL(req.url).searchParams.get('slug')));
+  const q = new URL(req.url).searchParams; return json(200, await slugStatus(pool, q.get('slug'), { email: q.get('email') || '', env }));
 }
 // registration: checks the company and address, creates the account through Better Auth (so its limits and rules all apply), and holds the address for the person
-export async function signup(req, { pool, auth }) {
+export async function signup(req, { pool, auth, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const b = await readJson(req); if (!b) return json(400, { message: 'That request could not be read.' });
-  const company = cleanCompany(b.company), st = await slugStatus(pool, b.slug);
+  const company = cleanCompany(b.company), st = await slugStatus(pool, b.slug, { email: String(b.email || ''), env });
   if (company.length < 2) return json(400, { message: 'Enter your company name.', code: 'COMPANY' });
   if (!st.available) return json(409, { message: st.reason, code: 'SLUG_TAKEN' });
   const headers = new Headers({ 'content-type': 'application/json' }); for (const h of ['x-forwarded-for', 'origin', 'referer', 'user-agent']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
@@ -388,7 +388,7 @@ export async function workspace(req, { pool, auth, env = process.env }) {
   if (req.method !== 'POST' && req.method !== 'PATCH') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   if (!s.user.emailVerified) return json(403, { error: 'Confirm your email address first.' });
-  if (req.method === 'PATCH') { const b = await readJson(req); const r = b ? await changePending(pool, s.user.id, b.slug) : { ok: false, reason: 'Bad request.' }; return r.ok ? json(200, r) : json(409, { error: r.reason }); }
+  if (req.method === 'PATCH') { const b = await readJson(req); const r = b ? await changePending(pool, s.user.id, b.slug, env) : { ok: false, reason: 'Bad request.' }; return r.ok ? json(200, r) : json(409, { error: r.reason }); }
   const r = await createWorkspace(pool, auth, req.headers, s.user, env);
   return r.ok ? json(200, { ok: true, existing: r.existing, organization: r.org }) : json(r.status || 400, { error: r.error, taken: !!r.taken });
 }

@@ -38,10 +38,10 @@ check('a taken address is said plainly, next to the address field, and the form 
 r = await run('signup', { '/api/signup': { status: 422, body: { message: 'User already exists' } } }, SU);
 check('an address that already has an account is said plainly', /already an account/.test(r.msg));
 {
-  const w = page('auth.html', '', 'js/auth.js'), f = mkFetch({ '/api/workspace-check?slug=acme-rentals': { status: 200, body: { available: true, slug: 'acme-rentals' } }, '/api/workspace-check?slug=taken': { status: 200, body: { available: false, reason: 'That address is already taken.' } } }), nav = { search: '?mode=signup', went: [], go() {} };
+  const w = page('auth.html', '', 'js/auth.js'), f = mkFetch({ '/api/workspace-check?slug=acme-rentals&email=': { status: 200, body: { available: true, slug: 'acme-rentals' } }, '/api/workspace-check?slug=taken&email=': { status: 200, body: { available: false, reason: 'That address is already taken.' } } }), nav = { search: '?mode=signup', went: [], go() {} };
   w.EffDeskAuth.start(w.document, f, nav); const D = w.document, type = (id, v) => { const e = D.getElementById(id); e.value = v; e.dispatchEvent(new w.Event('input')); };
   type('company', 'Acme Rentals'); await tick(450);
-  check('typing a company name suggests the address and checks it live ("is available")', D.getElementById('slug').value === 'acme-rentals' && /acme-rentals is available/.test(D.getElementById('slugnote').textContent) && D.getElementById('slugnote').className.includes('ok') && f.calls.some(c => c[0] === '/api/workspace-check?slug=acme-rentals'));
+  check('typing a company name suggests the address and checks it live ("is available")', D.getElementById('slug').value === 'acme-rentals' && /acme-rentals is available/.test(D.getElementById('slugnote').textContent) && D.getElementById('slugnote').className.includes('ok') && f.calls.some(c => c[0] === '/api/workspace-check?slug=acme-rentals&email='));
   type('slug', 'taken'); await tick(450);
   const shownTaken = /already taken/.test(D.getElementById('slugnote').textContent) && D.getElementById('slugnote').className.includes('err'); type('company', 'Other Name');
   check('typing an address that is used shows why, and the address stops following the company name', shownTaken && D.getElementById('slug').value === 'taken', JSON.stringify(f.calls.map(c => c[0])) + D.getElementById('slug').value + ' | ' + D.getElementById('slugnote').textContent);

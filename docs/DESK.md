@@ -39,3 +39,9 @@ The desk opens on a dashboard (action `dashboard`, `src/dashboard.js`): open / p
 * **Light agents** (Team plan and up): a role in Manage > Team. They are free (not counted as a seat), can read tickets and add internal notes, and cannot reply, change, assign or see settings. They are never picked by round-robin.
 * **Bulk actions** (Team and up): tick tickets in the Views list, then set status, priority or assignee for all of them (up to 100 at a time). Solving in bulk also asks customers for a rating.
 * **Round-robin:** an automation action "Assign to > Next available agent" hands a ticket to the full agent with the fewest open tickets.
+
+## Our own workspace (mdv) with the lifetime licence
+Set the Netlify variable `OWNER_WORKSPACES=mdv:you@yourcompany.com` (several allowed, comma separated, as `address:email`). Then:
+1. Nobody else can register `mdv` (it shows as reserved to everyone else).
+2. Sign up at effdesk.com with that exact email and workspace address `mdv`, confirm the email, and the workspace is created with the **lifetime licence** at once: every feature, no seat limit, not changed by Paddle events.
+3. If the workspace already exists, grant the licence on `/admin.html` (needs `PLATFORM_ADMIN_EMAILS=you@yourcompany.com`).
