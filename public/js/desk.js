@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
-  var ICONS = { tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6' };
+  var ICONS = { tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'Follows your device: light by day, dark by night.', sw: ['#14181b', '#f4f5f7', '#ffffff', '#e8890c'] },
@@ -13,11 +13,11 @@
     { id: 'ocean', name: 'Ocean', pro: true, blurb: 'Crisp blues and clear aqua.', sw: ['#0f4cc0', '#ecf4fb', '#ffffff', '#0aa8cc'] },
     { id: 'orchid', name: 'Orchid', pro: true, blurb: 'Rich plum with pink and violet.', sw: ['#6a1f8c', '#190f20', '#28172f', '#ff6ec7'] }
   ];
-  var PLAN_OF = { queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite' };
+  var PLAN_OF = { queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team' };
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var features = [], queues = [], clients = [], macros = [], views = [], labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -29,8 +29,12 @@
     var cap = function (s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; };
     var initial = function (s) { return (String(s || '?').trim()[0] || '?').toUpperCase(); };
     var has = function (f) { return features.indexOf(f) >= 0; };
+    var dur = function (ms) { var m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? m + ' min' : m < 2880 ? (Math.round(m / 6) / 10) + ' h' : Math.round(m / 1440) + ' d'; };
+    var minsText = function (m) { return m === null || m === undefined ? '—' : dur(m * 60000); };
+    var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
+    var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -40,10 +44,10 @@
         orgs = r.body.organizations; me = r.body.user.email; meId = r.body.user.id; meName = r.body.user.name || me; doc.getElementById('who').textContent = me; doc.getElementById('av').textContent = initial(me);
         var want = new URLSearchParams(nav.search || '').get('org'); var o = orgs.filter(function (x) { return x.id === want; })[0] || orgs[0];
         if (!o) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
-        orgId = o.id; role = o.role; slug = o.slug; return loadInit().then(refresh);
+        orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')); return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); });
       });
     }
-    function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; if (b.theme) applyTheme(b.theme); }); }
+    function loadInit() { return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; features = b.features || []; queues = b.queues || []; clients = b.clients || []; macros = b.macros || []; views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     function open(n) {
       return api('get', { number: n }).then(function (r) {
@@ -75,18 +79,19 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = articles ? 'help' : settings ? 'mail' : manage ? 'manage' : 'tickets';
+      var where = articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/', 'aria-label': 'EffDesk home', title: 'EffDesk' }, 'E'));
       rail.appendChild(item('tickets', 'Tickets', 'data-nav', goViews));
       rail.appendChild(item('manage', 'Manage queues, clients and macros', 'data-manage', function () { closePanes(); manage = 'queues'; mEdit = null; draw(); }));
+      rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
       rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
       rail.appendChild(item('help', 'Help center', 'data-help', loadArticles));
       rail.appendChild(el('span', { class: 'grow' }));
       rail.appendChild(el('a', { class: 'ri', href: '/app.html', 'aria-label': 'Account', title: 'Account and billing' }, icon('account')));
       while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
-      var onViews = !current && !creating && !settings && !articles && !manage && !profile;
+      var onViews = !current && !creating && !settings && !articles && !manage && !profile && !report;
       tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-views': '1', 'aria-selected': String(onViews), onclick: goViews }, 'Views'));
       openTabs.forEach(function (t) {
         var on = !!current && current.ticket.number === t.number;
@@ -106,6 +111,7 @@
       var statusBtns = STATUS.map(function (s) { return flt(s === 'active' ? 'Active' : cap(s), filter.status === s && !filter.queue && !filter.following, function () { filter = { status: s, assignee: filter.assignee || '', q: filter.q || '' }; refresh(); }, n(s), ['data-status', s]); });
       statusBtns.push(flt('Assigned to me', filter.assignee === 'me', function () { filter.assignee = filter.assignee === 'me' ? '' : 'me'; refresh(); }, null, ['data-mine', '1']));
       statusBtns.push(flt('Following', filter.following === 'me', function () { filter = { status: '', assignee: '', q: '', following: filter.following === 'me' ? '' : 'me' }; refresh(); }, null, ['data-following', '1']));
+      if (has('sla')) { statusBtns.push(flt('SLA at risk', filter.sla === 'risk', function () { filter = { status: '', assignee: '', q: '', sla: filter.sla === 'risk' ? '' : 'risk' }; refresh(); }, null, ['data-sla-filter', 'risk'])); statusBtns.push(flt('SLA breached', filter.sla === 'breached', function () { filter = { status: '', assignee: '', q: '', sla: filter.sla === 'breached' ? '' : 'breached' }; refresh(); }, null, ['data-sla-filter', 'breached'])); }
       var side = el('div', { class: 'side' }, el('h3', {}, 'Tickets'), el('div', { role: 'group', 'aria-label': 'Status' }, statusBtns));
       side.appendChild(el('h3', {}, 'Queues'));
       if (!has('queues')) side.appendChild(lock('queues'));
@@ -125,11 +131,11 @@
       var rows = list.map(function (t) {
         var tags = (t.tags || []).map(function (g) { return el('button', { type: 'button', class: 'tag', 'data-tag': g, onclick: function (e) { e.stopPropagation(); filter = { status: '', assignee: '', q: '', tag: g }; refresh(); } }, g); });
         var tr = el('tr', { class: 'row', tabindex: '0', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number) },
-          el('td', {}, el('span', { class: 'badge s-' + t.status }, cap(t.status))), el('td', { class: 'num' }, '#' + t.number), el('td', { class: 'subj' }, t.subject, tags.length ? el('span', { class: 'tagline' }, tags) : null), el('td', {}, t.requester_name || t.requester_email), el('td', {}, cap(t.priority)), el('td', {}, name(t.assignee_id) || '—'), el('td', { class: 'when' }, ago(t.updated_at)));
+          el('td', {}, el('span', { class: 'badge s-' + t.status }, cap(t.status))), el('td', { class: 'num' }, '#' + t.number), el('td', { class: 'subj' }, t.subject, tags.length ? el('span', { class: 'tagline' }, tags) : null), el('td', {}, t.requester_name || t.requester_email), el('td', {}, cap(t.priority)), el('td', {}, name(t.assignee_id) || '—'), has('sla') ? el('td', {}, t.sla && t.sla.worst !== 'ok' && t.sla.worst !== 'met' ? el('span', { class: 'sla s-' + t.sla.worst, 'data-sla-row': t.sla.worst }, t.sla.worst === 'breached' ? 'Breached' : t.sla.worst === 'missed' ? 'Missed' : 'At risk') : '') : null, el('td', { class: 'when' }, ago(t.updated_at)));
         tr.addEventListener('click', function () { open(t.number); }); tr.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(t.number); });
         return tr;
       });
-      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, list.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Status', 'Ticket', 'Subject', 'Requester', 'Priority', 'Assignee', 'Updated'].map(function (h) { return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
+      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, list.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Status', 'Ticket', 'Subject', 'Requester', 'Priority', 'Assignee'].concat(has('sla') ? ['SLA'] : [], ['Updated']).map(function (h) { return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
     }
 
     function picker(t) {
@@ -193,13 +199,15 @@
         return el('div', { class: 'msg-row ' + side }, el('span', { class: 'av ' + m.kind, 'aria-hidden': 'true' }, initial(m.author_name)),
           el('div', { class: 'msg-b ' + m.kind, 'data-kind': m.kind }, el('div', { class: 'mh' }, el('strong', {}, m.author_name || (m.kind === 'requester' ? t.requester_email : 'Agent')), el('span', { class: 'm' }, (m.kind === 'note' ? ' · Internal note · ' : ' · ') + when(m.created_at) + (m.edited_at ? ' · edited' : '')), mine && !editing1 ? el('button', { type: 'button', class: 'edit', 'data-edit': String(m.id), onclick: function () { editMsg = m.id; draw(); } }, 'Edit') : null),
             editing1 ? el('div', {}, ed, el('button', { type: 'button', class: 'btn sm', 'data-edit-save': '1', onclick: function () { api('edit-message', { number: t.number, messageId: m.id, body: ed.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); editMsg = null; return after(); }); } }, 'Save'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { editMsg = null; draw(); } }, 'Cancel')) : el('div', { class: 'mt' }, m.body),
+            translated[m.id] ? el('div', { class: 'tr', 'data-translated': String(m.id) }, el('div', { class: 'm' }, translated[m.id].note), translated[m.id].text ? el('div', { class: 'mt' }, translated[m.id].text) : null) : null,
+            m.kind === 'requester' && has('translation') && !translated[m.id] ? el('button', { type: 'button', class: 'edit', 'data-translate': String(m.id), onclick: function () { translate(m); } }, 'Translate') : null,
             (m.attachments || []).length ? el('div', { class: 'files' }, m.attachments.map(function (a) { return el('a', { href: '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')'); })) : null));
       });
       var modeBtn = function (m, label) { return el('button', { type: 'button', role: 'tab', 'data-mode': m, 'aria-selected': String(mode === m), onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; mode = m; draw(); } }, label); };
       var macroSel = macros.length && mode === 'reply' ? sel('Insert a macro', '', [['', 'Insert a macro…']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; var first = String(t.requester_name || '').split(' ')[0] || 'there'; draft = (draft ? draft + '\n\n' : '') + m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); macroPatch = { status: m.status, priority: m.priority, add_tags: m.add_tags }; draw(); }) : null;
       var statusSel = sel('Set status when sending', sendStatus, [['', 'Keep status (open becomes pending)'], ['open', 'Send as open'], ['pending', 'Send as pending'], ['solved', 'Send as solved']], function (v) { sendStatus = v; });
       var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Send reply'), statusSel);
-      var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, el('h2', {}, '#' + t.number + ' ' + t.subject), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : '')),
+      var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, el('h2', {}, '#' + t.number + ' ' + t.subject), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null),
         el('div', { class: 'thread' }, msgs),
         el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel), body, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
@@ -230,9 +238,34 @@
         var st = el('input', { 'aria-label': 'Side conversation to', placeholder: 'Their email address', type: 'email' }), ss = el('input', { 'aria-label': 'Side conversation subject', placeholder: 'Subject', maxlength: '200' }), sb = el('textarea', { 'aria-label': 'Side conversation message', placeholder: 'Ask someone outside your team, like a vendor. They reply by email and the answer appears here.' });
         cards.push(el('div', { class: 'side-c' }, st, ss, sb, el('button', { type: 'button', class: 'btn l sm', 'data-side-start': '1', onclick: function () { act('side-send', { to: st.value, subject: ss.value, body: sb.value }); } }, 'Start a side conversation')));
       }
+      if (!has('translation')) { cards.push(el('h3', {}, 'Translation')); cards.push(el('div', { class: 'pcard' }, lock('translation'))); }
       if (x.followers.length) { cards.push(el('h3', {}, 'Followers')); cards.push(el('div', { class: 'pcard m' }, x.followers.map(function (f) { return el('div', {}, f.name || f.email); }))); }
       cards.push(el('h3', {}, 'Timeline')); cards.push(el('ul', { class: 'timeline' }, x.events.map(function (e) { return el('li', { 'data-event': e.kind }, el('b', {}, e.actor_name || 'Someone'), ' ' + e.detail + ' · ' + ago(e.created_at)); })));
       return el('div', { class: 'ticket' }, props, center, el('aside', { class: 'col info', 'aria-label': 'Requester and context' }, cards));
+    }
+    // translation happens in the browser (Chrome's on-device translator): the text never goes to a server
+    function translate(m) {
+      var T = root.Translator, D = root.LanguageDetector, target = String((root.navigator && root.navigator.language) || 'en').slice(0, 2).toLowerCase();
+      if (!T) return say('Your browser cannot translate on the device. Chrome on a computer can; nothing is sent to a server.', true);
+      var detect = D ? Promise.resolve(D.create()).then(function (d) { return d.detect(m.body); }).then(function (rs) { return rs && rs[0] && rs[0].detectedLanguage || 'en'; }) : Promise.resolve('en');
+      return detect.then(function (src) {
+        if (src === target) { translated[m.id] = { note: 'Already in ' + target + '.', text: '' }; return draw(); }
+        return Promise.resolve(T.create({ sourceLanguage: src, targetLanguage: target })).then(function (t) { return t.translate(m.body); }).then(function (out) { translated[m.id] = { note: 'Translated from ' + src + ' to ' + target + ' on this device.', text: String(out) }; draw(); });
+      }).catch(function () { say('That message could not be translated here.', true); });
+    }
+    // reports
+    function loadReport() { return api('report', { days: reportDays }).then(function (r) { if (r.status === 402) { closePanes(); report = { locked: true }; return draw(); } if (!r.ok) return say(r.body.error, true); closePanes(); report = r.body; draw(); }); }
+    function hlist(title, rows) { var max = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.n; }))); return el('div', { class: 'rcard' }, el('h3', {}, title), rows.length ? rows.map(function (r) { return el('div', { class: 'hbar' }, el('span', { class: 'hn' }, cap(r.name)), el('span', { class: 'ht' }, el('span', { class: 'hf', style: 'width:' + Math.max(2, Math.round(100 * r.n / max)) + '%' })), el('span', { class: 'hv' }, String(r.n))); }) : el('p', { class: 'm' }, 'Nothing yet.')); }
+    function reportPane() {
+      if (report.locked) return el('div', { class: 'page' }, el('h2', {}, 'Reports'), el('div', { class: 'pcard' }, el('p', {}, 'See volume, response times, who solved what and SLA results, and download the tickets as a spreadsheet.'), lock('reports')));
+      var r = report, top = Math.max.apply(null, [1].concat(r.perDay.map(function (d) { return Math.max(d.created, d.solved); })));
+      var stat = function (label, value, sub) { return el('div', { class: 'stat' }, el('div', { class: 'sv' }, value), el('div', { class: 'sl' }, label), sub ? el('div', { class: 'm' }, sub) : null); };
+      var range = sel('Report range', String(reportDays), [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days']], function (v) { reportDays = Number(v); loadReport(); });
+      var chart = el('div', { class: 'chart', role: 'img', 'aria-label': 'Tickets created and solved per day: ' + r.perDay.reduce(function (a, d) { return a + d.created; }, 0) + ' created, ' + r.perDay.reduce(function (a, d) { return a + d.solved; }, 0) + ' solved' }, r.perDay.map(function (d) { return el('span', { class: 'day', title: d.day + ': ' + d.created + ' created, ' + d.solved + ' solved' }, el('i', { class: 'c', style: 'height:' + Math.round(100 * d.created / top) + '%' }), el('i', { class: 's', style: 'height:' + Math.round(100 * d.solved / top) + '%' })); }));
+      return el('div', { class: 'page wide' }, el('div', { class: 'bar' }, el('h2', {}, 'Reports'), el('span', { class: 'grow' }), range, el('button', { type: 'button', class: 'btn l', 'data-report-csv': '1', onclick: function () { api('report-csv', { days: reportDays }).then(function (x) { if (!x.ok) return say(x.body.error, true); var u = root.URL.createObjectURL(new root.Blob([x.body.csv], { type: 'text/csv' })), a = doc.createElement('a'); a.href = u; a.download = x.body.filename; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); }); } }, 'Download CSV')),
+        el('div', { class: 'stats' }, stat('Tickets created', String(r.total), r.truncated ? 'Showing the latest 5,000' : ''), stat('First reply, average', minsText(r.firstReply.avgMin), 'median ' + minsText(r.firstReply.medianMin) + ' · ' + r.firstReply.answered + ' answered'), stat('Time to solve, average', minsText(r.resolution.avgMin), 'median ' + minsText(r.resolution.medianMin) + ' · ' + r.resolution.solved + ' solved'), r.sla ? stat('SLA met', r.sla.rate === null ? '—' : r.sla.rate + '%', r.sla.breached + ' breached or missed') : null),
+        el('div', { class: 'rcard' }, el('h3', {}, 'Created and solved per day'), chart, el('div', { class: 'legend m' }, el('span', { class: 'k c' }), ' Created ', el('span', { class: 'k s' }), ' Solved')),
+        el('div', { class: 'rgrid' }, hlist('By status', r.byStatus), hlist('By priority', r.byPriority), hlist('By channel', r.byChannel), hlist('By type', r.byType), hlist('By queue', r.byQueue), hlist('Solved by', r.solvedBy), hlist('Busiest labels', r.labels)));
     }
     function field(k, ph) { return el('input', { 'aria-label': k, placeholder: ph, maxlength: '200' }); }
     function newPane() {
@@ -243,7 +276,7 @@
 
     // ── Manage: queues, clients and macros ──
     function managePane() {
-      var tabs = [['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros']];
+      var tabs = [['queues', 'Queues'], ['clients', 'Clients'], ['macros', 'Macros'], ['sla', 'SLA']];
       var head = el('div', { class: 'mtabs', role: 'tablist' }, tabs.map(function (t) { return el('button', { type: 'button', role: 'tab', 'data-manage-tab': t[0], 'aria-selected': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; draw(); } }, t[1]); }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
       var guardAdmin = !isAdmin ? el('p', { class: 'm' }, 'Only an owner or an admin can change these.') : null;
@@ -257,6 +290,14 @@
         else { var e = mEdit || {}, cn = el('input', { 'aria-label': 'Client name', placeholder: 'Client name', maxlength: '100', value: e.name || '' }), cd = el('input', { 'aria-label': 'Client domain', placeholder: 'Their email domain, like acme.com (optional)', maxlength: '100', value: e.domain || '' });
           body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'A client is a company you support. Give it a domain and tickets from that domain join it automatically.'), clients.map(function (k) { return el('div', { class: 'mitem', 'data-client-item': String(k.id) }, el('span', { class: 't' }, k.name + (k.domain ? ' · @' + k.domain : '') + ' · ' + k.tickets + ' tickets'), isAdmin ? el('span', { class: 'acts' }, el('button', { type: 'button', class: 'btn l sm', onclick: function () { mEdit = { id: k.id, name: k.name, domain: k.domain, shareTickets: k.share_tickets }; draw(); } }, 'Edit'), el('button', { type: 'button', class: 'btn l sm', 'data-client-delete': String(k.id), onclick: function () { api('client-delete', { id: k.id }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Client deleted.'); }); } }, 'Delete')) : null); }),
             guardAdmin || el('div', { class: 'bar' }, cn, cd, el('button', { type: 'button', class: 'btn', 'data-client-save': '1', onclick: function () { api('client-save', { id: e.id, name: cn.value, domain: cd.value, shareTickets: !!e.shareTickets }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('Client saved.'); }); } }, e.id ? 'Save client' : 'Add client'))); }
+      } else if (manage === 'sla') {
+        if (!has('sla')) body = lock('sla');
+        else { var P = ['low', 'normal', 'high', 'urgent'], inputs = {}, hrs = function (v) { return v ? String(Math.round(v / 6) / 10) : ''; };
+          P.forEach(function (p) { var cur = (sla || {})[p] || {}; inputs[p] = { f: el('input', { 'aria-label': cap(p) + ' first reply in hours', inputmode: 'decimal', placeholder: 'none', value: hrs(cur.firstResponseMin) }), r: el('input', { 'aria-label': cap(p) + ' solve in hours', inputmode: 'decimal', placeholder: 'none', value: hrs(cur.resolveMin) }) }; });
+          var toMin = function (v) { var n = parseFloat(String(v).replace(',', '.')); return String(v).trim() === '' ? null : Math.round(n * 60); };
+          body = el('div', { class: 'mlist' }, el('p', { class: 'm' }, 'Set how many hours the team has, counted around the clock from when a ticket is created. A ticket is at risk when 80% of the time is used, and breached when it runs out. Leave a box empty for no target.'),
+            el('table', { class: 'slatable' }, el('thead', {}, el('tr', {}, el('th', {}, 'Priority'), el('th', {}, 'First reply within (hours)'), el('th', {}, 'Solved within (hours)'))), el('tbody', {}, P.map(function (p) { return el('tr', {}, el('td', {}, cap(p)), el('td', {}, inputs[p].f), el('td', {}, inputs[p].r)); }))),
+            guardAdmin || el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-sla-save': '1', onclick: function () { var pol = {}; P.forEach(function (p) { pol[p] = { firstResponseMin: toMin(inputs[p].f.value), resolveMin: toMin(inputs[p].r.value) }; }); api('sla-save', { policies: pol }).then(function (r) { if (!r.ok) return noteFrom(r); return afterSave('SLA targets saved.'); }); } }, 'Save targets'))); }
       } else {
         var m = mEdit || {}, mn = el('input', { 'aria-label': 'Macro name', placeholder: 'Macro name, for example Thanks and solve', maxlength: '80', value: m.name || '' }), mb = el('textarea', { 'aria-label': 'Macro text', placeholder: 'The reply. Use {{name}} for the requester\'s first name and {{agent}} for you.' }); mb.value = m.body || '';
         var ms = sel('Macro status', m.status || '', [['', 'Do not change the status'], ['open', 'Set to open'], ['pending', 'Set to pending'], ['solved', 'Set to solved'], ['closed', 'Set to closed']], function () {}), mp = sel('Macro priority', m.priority || '', [['', 'Do not change the priority'], ['low', 'Set to low'], ['normal', 'Set to normal'], ['high', 'Set to high'], ['urgent', 'Set to urgent']], function () {}), mt = el('input', { 'aria-label': 'Macro labels', placeholder: 'Labels to add, comma separated', value: (m.add_tags || []).join(', ') });
@@ -268,6 +309,7 @@
 
     // ── profile and themes ──
     function profilePane() {
+      var nb = el('input', { type: 'checkbox', 'aria-label': 'Email me about my tickets', 'data-notify': '1' }); nb.checked = notify; nb.addEventListener('change', function () { var want = nb.checked; api('prefs-save', { notify: want }).then(function (r) { if (!r.ok) { nb.checked = notify; return say(r.body.error, true); } notify = want; say(want ? 'Notification emails on.' : 'Notification emails off.'); }); });
       var cards = THEMES.map(function (t) {
         var locked = !!t.pro && !has('themes');
         var b = el('button', { type: 'button', class: 'theme', 'data-theme-id': t.id, 'aria-pressed': String(theme === t.id), 'aria-disabled': String(locked), 'aria-label': t.name + ' theme' + (locked ? ' (paid plans)' : '') },
@@ -276,7 +318,7 @@
         b.addEventListener('click', function () { if (locked) return say('The ' + t.name + ' theme comes with the ' + PLAN_OF.themes + ' plan and above. Upgrade on the account page to use it.', true); var prev = theme; applyTheme(t.id); api('prefs-save', { theme: t.id }).then(function (r) { if (!r.ok) { applyTheme(prev); return say(r.body.error, true); } note = t.name + ' theme on.'; bad = false; draw(); }); });
         return b;
       });
-      return el('div', { class: 'page' }, el('h2', {}, 'Profile and themes'), el('div', { class: 'pcard', style: 'width:100%;max-width:520px' }, el('div', { class: 'row1' }, el('span', { class: 'av', 'aria-hidden': 'true' }, initial(me)), el('div', {}, el('strong', {}, meName), el('div', { class: 'm' }, me)))), el('h3', {}, 'Theme'), el('p', { class: 'm' }, 'Pick how your desk looks. It follows you on every device. Classic and Midnight are on every plan' + (has('themes') ? '; the PRO themes are yours too.' : '; the PRO themes come with paid plans.')), el('div', { class: 'themes' }, cards), !has('themes') ? lock('themes') : null);
+      return el('div', { class: 'page' }, el('h2', {}, 'Profile and themes'), el('div', { class: 'pcard', style: 'width:100%;max-width:520px' }, el('div', { class: 'row1' }, el('span', { class: 'av', 'aria-hidden': 'true' }, initial(me)), el('div', {}, el('strong', {}, meName), el('div', { class: 'm' }, me)))), el('h3', {}, 'Email notifications'), el('label', { class: 'bar' }, nb, ' Email me when a customer replies on a ticket I own or follow, and when a ticket is assigned to me'), el('h3', {}, 'Theme'), el('p', { class: 'm' }, 'Pick how your desk looks. It follows you on every device. Classic and Midnight are on every plan' + (has('themes') ? '; the PRO themes are yours too.' : '; the PRO themes come with paid plans.')), el('div', { class: 'themes' }, cards), !has('themes') ? lock('themes') : null);
     }
     function mailPane() {
       var m = settings, f = {};
@@ -316,7 +358,7 @@
       drawChrome(); drawMenu();
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg' + (bad ? ' err' : ''), role: 'status' }, note));
-      main.appendChild(el('div', { class: 'desk' }, profile ? profilePane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }

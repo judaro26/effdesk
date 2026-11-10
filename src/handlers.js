@@ -13,6 +13,9 @@ import { importMdv } from './importer.js';
 import { slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
+import { getSla, saveSla, slaOf } from './sla.js';
+import { report as buildReport, reportCsv } from './reports.js';
+import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
 
@@ -89,18 +92,30 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   switch (b.action) {
     case 'init': {
       const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
-      const theme = usableTheme((await pool.query('select theme from desk_prefs where user_id = $1', [actor.id])).rows[0]?.theme, planHas(ent, 'themes'));
-      r = { ok: true, theme, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      const pref = (await pool.query('select theme, notify from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
+      r = { ok: true, theme, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
-      const th = themeById(String(b.theme || '')); if (!th) return json(400, { error: 'That theme does not exist.' });
-      if (th.premium && (g = need('themes'))) return g;
-      await pool.query('insert into desk_prefs (user_id, theme) values ($1,$2) on conflict (user_id) do update set theme = excluded.theme, updated_at = now()', [actor.id, th.id]); r = { ok: true, theme: th.id }; break;
+      const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
+      if (th && th.premium && (g = need('themes'))) return g;
+      if (b.theme === undefined && typeof b.notify !== 'boolean') return json(400, { error: 'Nothing to save.' });
+      await pool.query('insert into desk_prefs (user_id, theme, notify) values ($1, coalesce($2, \'classic\'), coalesce($3, true)) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null]);
+      r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}) }; break;
     }
-    case 'list': r = await listTickets(pool, orgId, actor, b); break;
+    case 'sla-get': if ((g = need('sla'))) return g; r = await getSla(pool, orgId); break;
+    case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
+    case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
+    case 'report-csv': if ((g = need('reports'))) return g; r = await reportCsv(pool, orgId, b.days); break;
+    case 'list': {
+      if (!planHas(ent, 'sla')) b.sla = undefined;
+      r = await listTickets(pool, orgId, actor, b);
+      if (r.ok && planHas(ent, 'sla')) { const pol = (await getSla(pool, orgId)).policies; r.tickets = r.tickets.map(t => ({ ...t, sla: slaOf(t, pol) })); }
+      break;
+    }
     case 'get': {
       r = await getTicket(pool, orgId, actor, b.number);
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
+      if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies) };
       break;
     }
     case 'queue-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveQueue(pool, orgId, b); break;
@@ -140,7 +155,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
-    case 'update': { const pt = b.patch || {}; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g; r = await updateTicket(pool, orgId, actor, b.number, pt); break; }
+    case 'update': {
+      const pt = b.patch || {}; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
+      const was = pt.assigneeId ? (await pool.query('select assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(b.number) || 0])).rows[0]?.assignee_id : null;
+      r = await updateTicket(pool, orgId, actor, b.number, pt);
+      if (r.ok && pt.assigneeId && pt.assigneeId !== was && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
+      break;
+    }
     case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
     default: return json(400, { error: 'Unknown action.' });
   }
@@ -148,7 +169,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
 }
 
 // customers' email, posted by Resend (event email.received). The signature is checked on the exact bytes, the full message is fetched with our key, and anything we cannot use is acknowledged so it is not retried forever.
-export async function inboundEmail(req, { pool, store, env = process.env, fetchFn = fetch, now = Date.now() }) {
+export async function inboundEmail(req, { pool, store, mailer, env = process.env, fetchFn = fetch, now = Date.now() }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' });
   if (!verifySvix(raw, req.headers, env.RESEND_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
@@ -164,6 +185,7 @@ export async function inboundEmail(req, { pool, store, env = process.env, fetchF
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
   if (res.ok && res.messageRowId && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
+  if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
 }
@@ -239,6 +261,7 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
       const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
+      if (r.ok) await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body });
       return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
     }
   }

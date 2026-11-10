@@ -1,5 +1,6 @@
 // src/tickets.js: THE TICKET CORE. Every function runs inside withOrg (row level security) AND names org_id in its queries, so a mistake in one layer is caught by the other.
 import { withOrg } from './db.js';
+import { slaWhere } from './sla.js';
 
 export const STATUSES = ['open', 'pending', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -42,6 +43,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (TYPES.includes(q.type)) add('type = $#', q.type);
   if (/^\d{1,12}$/.test(String(q.client || ''))) add('client_id = $#', Number(q.client));
   if (/^\d{1,9}$/.test(String(q.problem || ''))) add('problem_number = $#', Number(q.problem));
+  const sw = slaWhere(q.sla); if (sw) where.push(sw);
   if (q.following === 'me') add('id in (select ticket_id from ticket_followers where org_id = $1 and user_id = $#)', actor.id);
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }

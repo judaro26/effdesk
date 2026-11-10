@@ -121,7 +121,7 @@ export async function handleInbound(pool, env, email) {
   if (target.side) {                                // the reply of someone a side conversation was written to
     if (!sideTokenOk(env, orgId, target.side, target.tok)) return { dropped: 'bad-token' };
     const r = await sideReplyIn(pool, orgId, target.side, from.email, from.name, body, email.messageId);
-    return r.ok ? { ok: true, action: r.action, number: r.number, orgId } : r;
+    return r.ok ? { ok: true, action: r.action, number: r.number, orgId, summary: body } : r;
   }
   const subject = clean(email.subject, 200).replace(/^\s*\[#\d+\]\s*/, '') || '(no subject)';
   let number = target.number && tokenOk(env, orgId, target.number, target.tok) ? target.number : 0;
@@ -131,7 +131,7 @@ export async function handleInbound(pool, env, email) {
   }
   if (number) {
     const r = await addRequesterMessage(pool, orgId, number, { body, authorName: from.name || from.email, messageId: email.messageId });
-    if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened, orgId, messageRowId: r.messageRowId };
+    if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened, orgId, messageRowId: r.messageRowId, summary: body };
     if (!r.closed) return { dropped: 'no-ticket' };
     const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
     return f.ok ? { ok: true, action: 'followup', number: f.ticket.number, orgId, messageRowId: f.messageRowId } : { dropped: 'invalid' };

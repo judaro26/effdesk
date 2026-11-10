@@ -2,10 +2,10 @@
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url'; import { JSDOM } from 'jsdom';
 import { check, done } from './lib/check.js';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub = f => fs.readFileSync(path.join(root, 'public', f), 'utf8'), tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
-const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z' };
+const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
-const calls = []; let FEATURES = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations'];
+const calls = []; const ALLF = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
@@ -18,8 +18,11 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
   if (b.action === 'article-get') return ok({ article: { id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', body: 'Use the portal.' } });
   if (b.action === 'article-save') return b.title ? ok({ ok: true, id: 'a2', slug: 's' }) : { ok: false, status: 400, json: async () => ({ error: 'Give the article a title.' }) };
-  if (b.action === 'init') return ok({ theme: 'classic', agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }], features: FEATURES, labels: [{ name: 'heat', n: 2 }, { name: 'boiler', n: 1 }], queues: [{ id: 5, name: 'Maintenance', active: 2 }], clients: [{ id: 9, name: 'Initech', domain: 'initech.com', share_tickets: false, tickets: 3 }], macros: [{ id: 3, name: 'Thanks', body: 'Thanks, {{name}}. -{{agent}}', status: 'solved', priority: 'low', add_tags: ['thanks'] }], views: [{ id: 7, name: 'Hot', shared: false, mine: true, filter: { status: 'open', tag: 'heat' } }], admin: true, plan: 'pro' });
-  if (b.action === 'prefs-save') return /^(classic|midnight|aurora)$/.test(b.theme) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
+  if (b.action === 'init') return ok({ theme: 'classic', agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }], features: FEATURES, labels: [{ name: 'heat', n: 2 }, { name: 'boiler', n: 1 }], queues: [{ id: 5, name: 'Maintenance', active: 2 }], clients: [{ id: 9, name: 'Initech', domain: 'initech.com', share_tickets: false, tickets: 3 }], macros: [{ id: 3, name: 'Thanks', body: 'Thanks, {{name}}. -{{agent}}', status: 'solved', priority: 'low', add_tags: ['thanks'] }], views: [{ id: 7, name: 'Hot', shared: false, mine: true, filter: { status: 'open', tag: 'heat' } }], admin: true, plan: 'pro', notify: true, sla: { low: { firstResponseMin: null, resolveMin: null }, normal: { firstResponseMin: 60, resolveMin: 480 }, high: { firstResponseMin: 15, resolveMin: null }, urgent: { firstResponseMin: null, resolveMin: null } } });
+  if (b.action === 'report') return ok({ days: b.days, total: 12, truncated: false, perDay: [{ day: '2026-11-08', created: 4, solved: 2 }, { day: '2026-11-09', created: 8, solved: 5 }], byStatus: [{ name: 'open', n: 7 }, { name: 'solved', n: 5 }], byPriority: [{ name: 'normal', n: 12 }], byChannel: [{ name: 'email', n: 9 }, { name: 'web', n: 3 }], byType: [], byQueue: [{ name: 'Maintenance', n: 6 }], solvedBy: [{ name: 'Ann', n: 5 }], labels: [{ name: 'heat', n: 4 }], firstReply: { avgMin: 125, medianMin: 90, answered: 10 }, resolution: { avgMin: 1500, medianMin: 1200, solved: 5 }, sla: { judged: 10, met: 8, rate: 80, breached: 2 } });
+  if (b.action === 'report-csv') return ok({ ok: true, filename: 'effdesk-tickets-30d.csv', csv: 'number\r\n1\r\n', count: 1 });
+  if (b.action === 'sla-save') return ok({ ok: true });
+  if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
   if (b.action === 'list') return ok({ tickets: [T], counts: { open: 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
@@ -149,5 +152,35 @@ check('the free themes still work there', fw.document.documentElement.getAttribu
   check('without the plan, queue, client, linked tickets and side conversations show an upgrade note instead of the control', !bw.document.querySelector('select[aria-label=Queue]') && bw.document.querySelectorAll('[data-lock]').length >= 4 && !bw.document.querySelector('[data-link]') && !bw.document.querySelector('[data-side-start]') && !!bw.document.querySelector('select[aria-label=Type]')); }
 check('the three theme lists agree: the server, the picker and the stylesheet', (await import('../src/themes.js')).THEMES.every(t => !!$(`[data-theme-id=${t.id}]`) || true) && (await import('../src/themes.js')).THEMES.filter(t => t.id !== 'classic').every(t => pub('css/desk.css').includes(`html[data-theme="${t.id}"]`) && pub('js/desk.js').includes(`id: '${t.id}'`)));
 check('the page loads the theme before drawing, from its own file', /theme-boot\.js/.test(pub('desk.html')) && /localStorage/.test(pub('js/theme-boot.js')));
+
+// ── SLA, reports, translation, notifications ──
+FEATURES = ALLF.slice(); { const again = w.document.getElementById('userbtn'); }
+$('[data-views]').click(); await tick();
+check('the list has an SLA column that flags a breached ticket, and filters for at risk and breached', /SLA/.test($('thead').textContent) && $('[data-sla-row=breached]').textContent === 'Breached' && !!$('[data-sla-filter=risk]') && !!$('[data-sla-filter=breached]'));
+$('[data-sla-filter=breached]').click(); await tick();
+check('the SLA filter asks the server for it', calls.some(c => c[1] && c[1].action === 'list' && c[1].sla === 'breached'));
+$('tr.row').click(); await tick();
+check('a ticket shows its first-reply and solve targets in plain words', $('[data-sla=first]').textContent === 'First reply breached 3 h ago' && /^Solve due in 5 h$/.test($('[data-sla=resolve]').textContent));
+w.Translator = { create: async o => ({ translate: async t => `[${o.sourceLanguage}>${o.targetLanguage}] ${t}` }) }; w.LanguageDetector = { create: async () => ({ detect: async () => [{ detectedLanguage: 'es' }] }) };
+$('[data-translate]').click(); await tick(40);
+check('Translate uses the browser\'s on-device translator and shows the result under the message, saying so', /^\[es>en\] /.test($('[data-translated]').textContent.replace(/^Translated[^\[]*/, '')) && /on this device/.test($('[data-translated]').textContent));
+{ const nt = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), nw = nt.window; nw.__EFFDESK_TEST__ = true; nw.eval(pub('js/desk.js'));
+  await nw.EffDeskDesk.start(nw.document, fetchFn, { search: '?org=o1&ticket=7', go() {} }); await tick(40); const n0 = calls.length; nw.document.querySelector('[data-translate]').click(); await tick();
+  check('without a translator in the browser the agent is told why, and nothing is sent anywhere', /cannot translate on the device/.test(nw.document.querySelector('.msg').textContent) && calls.length === n0); }
+$('[data-reports]').click(); await tick();
+check('Reports shows the headline numbers, the daily chart and the breakdowns', $$('.stat').length === 4 && /12/.test($('.stat').textContent) && /2 h 5 min|2.1 h/.test($$('.stat')[1].textContent) && /80%/.test($$('.stat')[3].textContent) && $$('.chart .day').length === 2 && $$('.hbar').length >= 6 && /Maintenance/.test($('.rgrid').textContent));
+const rng = $('select[aria-label="Report range"]'); rng.value = '90'; rng.dispatchEvent(new w.Event('change')); await tick();
+check('changing the range reloads the report for it', calls.some(c => c[1] && c[1].action === 'report' && c[1].days === 90));
+w.URL.createObjectURL = () => 'blob:x'; w.URL.revokeObjectURL = () => {}; $('[data-report-csv]').click(); await tick();
+check('Download CSV asks the server for the same range', calls.some(c => c[1] && c[1].action === 'report-csv' && c[1].days === 90));
+$('[data-manage]').click(); await tick(); $('[data-manage-tab=sla]').click(); await tick();
+check('Manage has SLA targets in hours, filled from the saved ones', $('input[aria-label="Normal first reply in hours"]').value === '1' && $('input[aria-label="Normal solve in hours"]').value === '8' && $('input[aria-label="Low solve in hours"]').value === '');
+$('input[aria-label="Urgent first reply in hours"]').value = '0.5'; $('input[aria-label="Urgent solve in hours"]').value = '4'; $('[data-sla-save]').click(); await tick();
+check('saving sends minutes per priority, and empty boxes as none', calls.some(c => c[1] && c[1].action === 'sla-save' && c[1].policies.urgent.firstResponseMin === 30 && c[1].policies.urgent.resolveMin === 240 && c[1].policies.low.firstResponseMin === null && c[1].policies.normal.resolveMin === 480));
+$('#userbtn').click(); $('[data-profile]').click(); await tick();
+check('the profile has the notification switch, on, and it saves when changed', $('[data-notify]').checked === true && ($('[data-notify]').checked = false, $('[data-notify]').dispatchEvent(new w.Event('change')), await tick(), calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].notify === false && c[1].theme === undefined)) && /off/.test($('.msg').textContent));
+const deep = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), dw = deep.window; dw.__EFFDESK_TEST__ = true; dw.eval(pub('js/desk.js'));
+await dw.EffDeskDesk.start(dw.document, fetchFn, { search: '?org=o1&ticket=7', go() {} }); await tick(40);
+check('a link from a notification email opens that ticket straight away', !!dw.document.querySelector('[data-tab="7"]') && /#7 /.test(dw.document.querySelector('h2').textContent));
 check('the account page links to the desk', /Open the desk/.test(pub('js/app.js')) && /desk\.html\?org=/.test(pub('js/app.js')));
 done();
