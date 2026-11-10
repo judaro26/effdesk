@@ -8,6 +8,7 @@ import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeIn
 import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publishedList, publicArticle, countView, vote as voteArticle, searchArticles, renderBody, LANGS } from './help.js';
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
+import { importMdv } from './importer.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -200,5 +201,18 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     }
   }
   return notFound();
+}
+
+// the platform owner moves the old desk's data in: POST { orgSlug, dryRun, data: { tickets, articles } }
+export async function importData(req, { pool, auth }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  if (!s.user.emailVerified || !platformAdmins().includes(String(s.user.email).toLowerCase())) return json(403, { error: 'Only the platform owner can do that.' });
+  const b = await readJson(req, 5500000); if (!b) return json(400, { error: 'That file could not be read, or it is too large (5 MB at a time).' });
+  const org = await orgBySlug(pool, b.orgSlug); if (!org) return json(404, { error: 'No such organization.' });
+  const r = await importMdv(pool, org.id, b.data, { dryRun: b.dryRun === true });
+  if (!r.ok) return json(r.status || 400, { error: r.error });
+  if (!r.dryRun) await audit(pool, org.id, s.user.id, 'data-imported', org.id, { tickets: r.tickets.added, articles: r.articles.added, by: s.user.email });
+  return json(200, r);
 }
 export const _json = json;

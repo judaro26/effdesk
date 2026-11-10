@@ -20,7 +20,7 @@ SLA policies and alerts, the on-device translation helper, optional AI helpers w
 ## Phase 5: admin and security
 Roles with permissions, audit viewer, data export and account deletion (the terms promise these), two-factor enforcement, SSO (Better Auth SSO plugin) on Pro, API tokens and webhooks.
 
-## Phase 6: move mdv over
+## Phase 6: move mdv over (importer, admin page and runbook done, see docs/MIGRATION.md; the export button lives in the mdv repository)
 Export mdv's Firestore support collections, load them into Postgres under the mdv organization, run both for a short overlap, switch the mail address, then retire the embedded portal in the mdv repository. mdv keeps a lifetime unlimited licence.
 
 ## Phase 7: launch
