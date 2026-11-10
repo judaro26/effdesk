@@ -11,6 +11,8 @@ import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publis
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
 import { importMdv } from './importer.js';
+import { printPage, eml as emlFile, pick as pickMessages } from './ticket-export.js';
+import { suggestReply, summarize as aiSummarize, rewrite as aiRewrite, usage as aiUsage } from './ai.js';
 import { source as migrationSource, Wait, Bad, PROVIDERS } from './migration-sources.js';
 import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { validAvatar } from './avatar.js';
@@ -94,7 +96,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
-const LIGHT_OK = new Set(['fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
+const LIGHT_OK = new Set(['ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
@@ -253,6 +255,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       }
       break;
     }
+    case 'ai-suggest': case 'ai-summary': case 'ai-rewrite': case 'ai-usage': {
+      if ((g = need('ai_assist'))) return g;
+      const f = env.__aiFetch || fetch;
+      r = b.action === 'ai-suggest' ? await suggestReply(pool, env, orgId, actor, b.number, f) : b.action === 'ai-summary' ? await aiSummarize(pool, env, orgId, actor, b.number, f) : b.action === 'ai-rewrite' ? await aiRewrite(pool, env, orgId, b.mode, b.text, f) : { ok: true, ...(await aiUsage(pool, env, orgId)) };
+      break;
+    }
     case 'sso-get': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = { ok: true, sso: await getSso(pool, orgId), callback: `${PRODUCT.appUrl}/api/auth/sso/callback` }; break;
     case 'sso-save': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = await saveSso(pool, env, orgId, b); break;
     case 'sso-delete': if ((g = adminOnly())) return g; r = await deleteSso(pool, orgId); break;
@@ -342,6 +350,20 @@ export async function attachmentDownload(req, { pool, auth, store }) {
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const f = await readFile(pool, store, orgId, u.pathname.split('/').pop()); if (!f) return json(404, { error: 'No such file.' });
   return new Response(f.bytes, { status: 200, headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });
+}
+
+// a ticket's thread or one message, to print (PDF) or as an .eml file: GET /api/ticket-export?org=…&number=…&format=print|eml[&message=…][&notes=1]
+export async function ticketExport(req, { pool, auth }) {
+  if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  if (!role) return json(403, { error: 'You are not part of that organization.' });
+  const t = await getTicket(pool, orgId, { id: s.user.id }, u.searchParams.get('number')); if (!t.ok) return json(t.status || 404, { error: t.error });
+  const mid = u.searchParams.get('message') || '', msgs = pickMessages(t.messages, { messageId: mid, notes: u.searchParams.get('notes') === '1' });
+  if (mid && !msgs.length) return json(404, { error: 'No such message.' });
+  const org = (await pool.query('select name from "organization" where id = $1', [orgId])).rows[0] || {}, fmt = u.searchParams.get('format') === 'eml' ? 'eml' : 'print';
+  if (fmt === 'eml') return new Response(emlFile(t.ticket, msgs, { messageId: mid }), { status: 200, headers: { 'Content-Type': 'message/rfc822', 'Content-Disposition': `attachment; filename="ticket-${t.ticket.number}${mid ? '-message-' + String(mid).replace(/\D/g, '') : ''}.eml"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  return new Response(printPage(t.ticket, msgs, { orgName: org.name, auto: u.searchParams.get('auto') === '1' }), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
 }
 
 // THE PUBLIC HELP CENTER AND CUSTOMER PORTAL: /help/<organization>/… (server-rendered pages, no script)

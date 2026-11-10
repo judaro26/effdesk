@@ -6,7 +6,7 @@ import { migrate } from './migrate.js';
 import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
-import { tickets } from '../src/handlers.js';
+import { tickets, ticketExport } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
@@ -48,4 +48,18 @@ check('every agent has a distinct permanent number of five digits or more', ag.l
   const shared = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'https://app.effdesk.test', requireVerified: false, cookieDomain: '.effdesk.test' });
   const res = await shared.api.signInEmail({ body: { email: 'olivia@acme.test', password: PW }, returnHeaders: true });
   check('with a cookie domain, the sign-in cookie is shared by every workspace address', res.headers.getSetCookie().some(c => /Domain=\.?effdesk\.test/i.test(c))); }
+{ // export: print page and .eml
+  const cr = await A(olivia, 'create', { subject: 'Export <b>me</b>', body: 'Hello **there**\n\n| a | b |\n| --- | --- |\n| 1 | 2 |', requesterEmail: 'ex@example.com', requesterName: 'Ex Ample' }); const n = cr.body.ticket.number;
+  await A(olivia, 'reply', { number: n, body: 'Reply <script>alert(1)</script> text' }); await A(olivia, 'note', { number: n, body: 'SECRET NOTE' });
+  const got = async (who, qs) => ticketExport(new Request('http://x/api/ticket-export?org=' + acme.id + '&' + qs, { headers: who ? { cookie: who.cookie } : {} }), { pool, auth });
+  const msgsOf = (await A(olivia, 'get', { number: n })).body.messages, first = msgsOf[0].id;
+  let r = await got(olivia, 'format=print&number=' + n), h = await r.text();
+  check('the print page shows the thread, escaped, with tables, without internal notes, under a strict policy', r.status === 200 && /Hello <strong>there<\/strong>/.test(h) && /<table/.test(h) && !/<script>alert/.test(h) && /&lt;script&gt;/.test(h) && !/SECRET NOTE/.test(h) && /script-src 'self'/.test(r.headers.get('content-security-policy')) && /Export &lt;b&gt;me/.test(h));
+  check('internal notes appear only when asked for', /SECRET NOTE/.test(await (await got(olivia, 'format=print&notes=1&number=' + n)).text()));
+  r = await got(olivia, 'format=eml&number=' + n + '&message=' + first); const raw = await r.text(), decoded = Buffer.from(raw.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString();
+  check('one message downloads as a real .eml from the right person with its text', r.status === 200 && /message\/rfc822/.test(r.headers.get('content-type')) && /filename="ticket-\d+-message-\d+\.eml"/.test(r.headers.get('content-disposition')) && /^From: Ex Ample <ex@example.com>/m.test(raw) && /^Subject: \[#\d+\] Export <b>me<\/b>/m.test(raw) && /Hello there/.test(decoded) && /^MIME-Version: 1\.0/m.test(raw));
+  r = await got(olivia, 'format=eml&number=' + n); const traw = await r.text();
+  check('the whole thread downloads as one .eml without the notes', r.status === 200 && !/SECRET/.test(Buffer.from(traw.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString()));
+  check('a message that is not in this ticket is not found, and strangers are refused', (await got(olivia, 'format=eml&number=' + n + '&message=999999')).status === 404 && (await got(null, 'format=print&number=' + n)).status === 401 && (await got(await signUp('zed@other.test', 'Zed'), 'format=print&number=' + n)).status === 403);
+}
 await pool.end(); done();
