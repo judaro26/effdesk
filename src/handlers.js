@@ -23,6 +23,7 @@ import { getHours, saveHours, calendarOf } from './hours.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
 import { getSso, saveSso, deleteSso } from './sso.js';
+import * as wa from './whatsapp.js';
 import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
@@ -105,7 +106,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -204,6 +205,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       r = await getTicket(pool, orgId, actor, b.number);
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
       if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
+      if (r.ok && r.ticket.channel === 'whatsapp') r.delivery = await wa.deliveryOf(pool, orgId, b.number);
       if (r.ok && planHas(ent, 'sla')) r.ticket = { ...r.ticket, sla: slaOf(r.ticket, (await getSla(pool, orgId)).policies, Date.now(), await calendarOf(pool, orgId)) };
       break;
     }
@@ -256,9 +258,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'reply': {
       if (!b.force && b.seenMessageId) { const fresh = await newSince(pool, orgId, actor.id, b.number, b.seenMessageId); if (fresh.length) return json(409, { error: `${[...new Set(fresh.map(m => m.author_name || 'Someone'))].slice(0, 3).join(', ')} wrote on this ticket since you opened it.`, conflict: true, messages: fresh.length }); }
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
+      const wst = await wa.windowState(pool, orgId, b.number);
+      if (wst && !wst.open) return json(409, { error: 'WhatsApp only lets you reply within 24 hours of the customer\'s last message. Nothing was sent. Your text is still here.', window: true });
       r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
+      if (r.ok && wst) { const d = await wa.sendReply(pool, env, orgId, Number(b.number), r.message.id, b.body, env.__waFetch || fetch); r.whatsapp = d.delivery; r.whatsappWhy = d.why; }
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
-      if (r.ok && mailer && !(await chatOpen(pool, orgId, b.number))) {
+      if (r.ok && mailer && !wst && !(await chatOpen(pool, orgId, b.number))) {
         const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
         const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
@@ -298,6 +303,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'sso-get': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = { ok: true, sso: await getSso(pool, orgId), callback: `${PRODUCT.appUrl}/api/auth/sso/callback` }; break;
     case 'sso-save': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = await saveSso(pool, env, orgId, b); break;
     case 'sso-delete': if ((g = adminOnly())) return g; r = await deleteSso(pool, orgId); break;
+    case 'whatsapp-get': if ((g = adminOnly())) return g; if ((g = need('whatsapp'))) return g; r = { ok: true, settings: await wa.getSettings(pool, env, orgId, siteBase(req, env)) }; break;
+    case 'whatsapp-save': if ((g = adminOnly())) return g; if ((g = need('whatsapp'))) return g; r = await wa.saveSettings(pool, env, orgId, b, siteBase(req, env)); break;
+    case 'whatsapp-delete': if ((g = adminOnly())) return g; r = await wa.deleteAccount(pool, orgId); break;
     case 'chat-get': if ((g = need('live_chat'))) return g; r = { ok: true, settings: await chatSettings(pool, orgId) }; break;
     case 'chat-save': if ((g = adminOnly())) return g; if ((g = need('live_chat'))) return g; r = await saveChatSettings(pool, orgId, b); break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;
@@ -581,4 +589,14 @@ export async function platformCustomer(req, { pool, auth }) {
   if (!s.user.emailVerified || !platformAdmins().includes(String(s.user.email).toLowerCase())) return json(403, { error: 'Only the platform owner can do that.' });
   const r = await customerDetail(pool, new URL(req.url).searchParams.get('slug'));
   return r.ok ? json(200, r) : json(r.status, { error: r.error });
+}
+
+const siteBase = (req, env) => { try { return env.APP_URL ? String(env.APP_URL).replace(/\/+$/, '') : new URL(req.url).origin; } catch { return ''; } };
+// Meta's WhatsApp webhook: GET answers the one-time address check, POST carries messages and delivery reports
+export async function whatsappWebhook(req, { pool, mailer, env = process.env }) {
+  if (req.method === 'GET') { const c = await wa.verifyChallenge(pool, new URL(req.url).searchParams); return c === null ? new Response('Forbidden', { status: 403 }) : new Response(c, { status: 200, headers: { 'content-type': 'text/plain' } }); }
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const raw = await req.text(); if (raw.length > 200000) return json(413, { error: 'Too large.' });
+  const r = await wa.handleWebhook(pool, env, raw, req.headers.get('x-hub-signature-256'), mailer);
+  return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
 }

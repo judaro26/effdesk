@@ -10,6 +10,7 @@ Next, in the order that sells best:
 5. **Custom ticket fields and forms** on the portal (`custom_fields`), ticket types and priorities per form.
 6. **Light agents (free, comment only) and custom roles** (`custom_roles`), audit log, SSO (SAML) and 2FA enforcement for Pro.
 7. ~~Live chat widget~~ (done: `public/widget.js`, `src/chat.js`, Manage > Live chat). Still to do: an embeddable help-center search widget, typing indicators, chat transcripts by email, business-hours away message.
+8. ~~WhatsApp~~ (done: `src/whatsapp.js`, `docs/WHATSAPP.md`). Still to do: inbound media as attachments, template messages for replies after 24 hours.
 8. ~~SSO (OIDC)~~ done (`src/sso.js`, Manage > Single sign-on). Still to do: SAML, DNS domain verification, SCIM.
 8. **Knowledge-base extras:** article feedback is built; add categories, drafts review, and AI-suggested answers (`ai_assist`).
 9. **Business hours and holidays** for SLA (today it is around the clock), and breach alert emails.
