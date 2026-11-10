@@ -19,6 +19,7 @@ import { getSla, saveSla, slaOf, slaNumbers } from './sla.js';
 import { getHours, saveHours, calendarOf } from './hours.js';
 import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
+import { getSso, saveSso, deleteSso } from './sso.js';
 import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
@@ -233,6 +234,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'article-get': r = await getArticle(pool, orgId, b.id); break;
     case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
+    case 'sso-get': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = { ok: true, sso: await getSso(pool, orgId), callback: `${PRODUCT.appUrl}/api/auth/sso/callback` }; break;
+    case 'sso-save': if ((g = adminOnly())) return g; if ((g = need('sso'))) return g; r = await saveSso(pool, env, orgId, b); break;
+    case 'sso-delete': if ((g = adminOnly())) return g; r = await deleteSso(pool, orgId); break;
     case 'chat-get': if ((g = need('live_chat'))) return g; r = { ok: true, settings: await chatSettings(pool, orgId) }; break;
     case 'chat-save': if ((g = adminOnly())) return g; if ((g = need('live_chat'))) return g; r = await saveChatSettings(pool, orgId, b); break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;

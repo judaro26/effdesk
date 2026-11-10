@@ -6,6 +6,7 @@ import { organization, twoFactor } from 'better-auth/plugins';
 import { APIError } from 'better-auth/api';
 import { PRODUCT } from './config.js';
 import { checkSeat } from './billing.js';
+import { ssoPlugin } from './sso.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 // the company a person typed at registration, handed to the confirmation email that Better Auth sends in the middle of the sign-up call
@@ -21,6 +22,7 @@ export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SEC
     advanced: { useSecureCookies: /^https:/.test(baseURL), defaultCookieAttributes: { sameSite: 'lax', httpOnly: true } },
     rateLimit: { enabled: true, window: 60, max: 60, storage: 'database', customRules: { '/sign-in/email': { window: 60, max: 8 }, '/sign-up/email': { window: 60, max: 5 }, '/request-password-reset': { window: 300, max: 5 } } },
     plugins: [
+      ssoPlugin({ pool, env: { BETTER_AUTH_SECRET: secret }, baseURL }),
       twoFactor({ issuer: PRODUCT.name }),
       organization({
         allowUserToCreateOrganization: true, organizationLimit: 5, membershipLimit: 500, invitationExpiresIn: 60 * 60 * 24 * 7,

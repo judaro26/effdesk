@@ -1,7 +1,7 @@
 // public/js/welcome.js: THE PAGE AFTER THE CONFIRMATION LINK: choose a plan, the workspace is created, billing details are taken by Paddle's checkout, and the person lands in their desk. Also the page every sign-in goes through: it sends people where they belong. Draws text only.
 (function (root) {
   'use strict';
-  var PLANS = { team: { name: 'Team', month: 8, year: 6, line: 'SLA timers, triggers, reports, CSAT' }, suite: { name: 'Suite', month: 23, year: 18, line: 'Everything in Team, plus help center, live chat, translation and AI helpers' }, pro: { name: 'Pro', month: 49, year: 39, line: 'Everything in Suite, plus audit log, SSO, data export, custom roles' } };
+  var PLANS = { team: { name: 'Team', month: 8, year: 6, line: 'SLA timers, triggers, reports, CSAT' }, suite: { name: 'Suite', month: 23, year: 18, line: 'Everything in Team, plus help center, live chat, translation and AI helpers' }, pro: { name: 'Pro', month: 49, year: 39, line: 'Everything in Suite, plus single sign-on (audit log, data export and custom roles coming)' } };
   function start(doc, fetchFn, nav, openCheckout, opts) {
     var pollMs = (opts && opts.pollMs) || 2000;
     var main = doc.getElementById('main'), me = null, state = { interval: 'year', seats: 3, note: '', bad: false, busy: false };

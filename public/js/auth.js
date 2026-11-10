@@ -12,7 +12,7 @@
       $('go').textContent = mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : mode === 'reset' ? 'Save password' : 'Verify';
       var l = $('links'); while (l.firstChild) l.removeChild(l.firstChild);
       var add = function (text, m) { var a = doc.createElement('a'); a.href = '/auth.html?mode=' + m; a.textContent = text; l.appendChild(a); l.appendChild(doc.createTextNode(' ')); };
-      if (mode === 'signin') { add('Create an account', 'signup'); add('Forgot your password?', 'forgot'); } else if (mode === 'signup' || mode === 'forgot') add('Sign in instead', 'signin');
+      if (mode === 'signin') { add('Create an account', 'signup'); add('Forgot your password?', 'forgot'); var sso = doc.createElement('a'); sso.href = '#'; sso.setAttribute('data-sso', '1'); sso.textContent = 'Sign in with SSO'; sso.addEventListener('click', function (e) { e.preventDefault(); var em = $('email').value.trim(); if (!/^\S+@\S+\.\S+$/.test(em)) return msg('Enter your work email above, then choose Sign in with SSO.', true); (nav.go || function (u) { root.location.assign(u); })('/api/auth/sso/start?email=' + encodeURIComponent(em)); }); l.appendChild(sso); } else if (mode === 'signup' || mode === 'forgot') add('Sign in instead', 'signin');
     }
     function post(path, body) {
       return fetchFn('/api/auth' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
@@ -56,7 +56,7 @@
       }
       return p && p.catch(function () { msg('Could not reach the server. Try again.', true); });
     });
-    draw();
+    draw(); if (qs.get('sso_error')) msg(qs.get('sso_error'), true);
   }
   root.EffDeskAuth = { start: start };
   if (root.document && root.document.getElementById('f') && !root.__EFFDESK_TEST__) start(root.document, root.fetch.bind(root), { search: root.location.search, go: function (u) { root.location.assign(u); } });
