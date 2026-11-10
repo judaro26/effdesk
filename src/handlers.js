@@ -1,4 +1,5 @@
 // src/handlers.js: THE API, as plain functions of (Request, deps) → Response, so the tests can call them without Netlify. The files in netlify/functions only wire these to addresses.
+import crypto from 'node:crypto';
 import { PRODUCT, platformAdmins } from './config.js';
 import { signupContext } from './auth.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
@@ -103,7 +104,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       await pool.query('insert into desk_prefs (user_id, theme, notify) values ($1, coalesce($2, \'classic\'), coalesce($3, true)) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null]);
       r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}) }; break;
     }
-    case 'dashboard': r = await dashboard(pool, orgId, actor, { sla: planHas(ent, 'sla'), agents: (await listAgents(pool, orgId)).length }); break;
+    case 'dashboard': r = await dashboard(pool, orgId, actor, { portalDomain: String(env.PORTAL_DOMAIN || '').toLowerCase(), sla: planHas(ent, 'sla'), agents: (await listAgents(pool, orgId)).length }); break;
     case 'sla-get': if ((g = need('sla'))) return g; r = await getSla(pool, orgId); break;
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
@@ -218,12 +219,18 @@ const html = (status, body, extra) => new Response(body, { status, headers: { 'C
 const redirect = (to, extra) => new Response(null, { status: 303, headers: { Location: to, 'Cache-Control': 'no-store', ...(extra || {}) } });
 const cookieOf = (req, name) => { const m = String(req.headers.get('cookie') || '').split(/;\s*/).map(x => x.split('=')).find(x => x[0] === name); return m ? m.slice(1).join('=') : ''; };
 const pickLang = (req, u) => { const q = u.searchParams.get('lang'); if (LANGS.includes(q)) return q; const a = String(req.headers.get('accept-language') || '').toLowerCase(); const best = a.split(',').map(x => x.trim().slice(0, 2)).find(x => LANGS.includes(x)); return best || 'en'; };
+// A request that came through the portal worker (<slug>.effdesk.com) carries the public address and the shared secret; only then is that address trusted.
+export function portalOrigin(req, env, slug) {
+  const sec = env.PORTAL_PROXY_SECRET, got = req.headers.get('x-effdesk-secret'), pub = req.headers.get('x-effdesk-portal') || '';
+  if (!sec || !got || got.length !== sec.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(sec))) return '';
+  try { const u = new URL(pub); return u.protocol === 'https:' && u.hostname.split('.')[0] === slug && !u.port && u.pathname === '/' ? u.origin : ''; } catch { return ''; }
+}
 export async function helpCenter(req, { pool, mailer, env = process.env, now = Date.now() }) {
   const u = new URL(req.url), parts = u.pathname.replace(/^\/help\/?/, '').split('/').filter(Boolean).map(x => { try { return decodeURIComponent(x); } catch { return ''; } });
   const org = parts[0] ? await orgBySlug(pool, parts[0]) : null, lang = pickLang(req, u), post = req.method === 'POST';
   if (req.method !== 'GET' && !post) return json(405, { error: 'Method not allowed.' });
   if (!org) return html(404, pages.notFoundPage({ org: { name: 'Help center' }, lang, base: '/help' }));
-  const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:';
+  const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:', portal = portalOrigin(req, env, org.slug);
   const form = async () => { const t = await req.text(); if (t.length > 40000) return new URLSearchParams(); return new URLSearchParams(t); };
   if (post) { const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' }); }
   const cookie = cookieOf(req, COOKIE), sess = readSession(env, cookie, org.id, now);
@@ -246,7 +253,7 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     if (!rest[1] && !post) return sess ? html(200, pages.ticketsPage({ org, lang, base, email: sess.email, tickets: await myTickets(pool, org.id, sess.email) })) : html(200, pages.signinPage({ org, lang, base, sent: false, bad: u.searchParams.get('bad') === '1' }));
     if (rest[1] === 'login' && post) {
       const f = await form(), link = await requestLink(pool, org.id, f.get('email'), now);
-      if (link && mailer) { try { await mailer.portalLink(link.email, `${PRODUCT.appUrl}${base}/tickets/verify?t=${encodeURIComponent(link.token)}&lang=${lang}`, org.name, lang); } catch (e) { console.warn('portal link not sent:', e.message); } }
+      if (link && mailer) { try { await mailer.portalLink(link.email, `${portal ? portal + '/tickets/verify?t=' : PRODUCT.appUrl + base + '/tickets/verify?t='}${encodeURIComponent(link.token)}&lang=${lang}`, org.name, lang); } catch (e) { console.warn('portal link not sent:', e.message); } }
       return html(200, pages.signinPage({ org, lang, base, sent: true, bad: false }));
     }
     if (rest[1] === 'verify') {

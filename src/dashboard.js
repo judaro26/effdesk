@@ -3,7 +3,7 @@ import { withOrg } from './db.js';
 import { slaWhere } from './sla.js';
 const row = r => ({ number: r.number, subject: r.subject, status: r.status, priority: r.priority, requester: r.requester_name || r.requester_email, updatedAt: r.updated_at });
 const COLS = 'number, subject, status, priority, requester_name, requester_email, updated_at';
-export async function dashboard(pool, orgId, actor, { sla = false, agents = 1 } = {}) {
+export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, portalDomain = '' } = {}) {
   return withOrg(pool, orgId, async c => {
     const one = async (sql, args = [orgId]) => (await c.query(sql, args)).rows[0];
     const n = await one(`select
@@ -21,7 +21,8 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1 } 
     const breached = sla ? (await one(`select count(*)::int n from tickets where org_id = $1 and ${slaWhere('breached')}`)).n : null;
     const articles = (await one('select count(*)::int n from help_articles where org_id = $1', [orgId])).n;
     const inbox = !!(await one('select inbox from inbox_directory where org_id = $1'))?.inbox;
-    return { ok: true, counts: { open: n.open, pending: n.pending, unassigned: n.unassigned, mine: n.mine, newToday: n.new_today, solvedToday: n.solved_today, solvedWeek: n.solved_week, breached },
+    const slug = (await one('select slug from "organization" where id = $1'))?.slug;
+    return { ok: true, portal: portalDomain && slug ? `https://${slug}.${portalDomain}` : '', counts: { open: n.open, pending: n.pending, unassigned: n.unassigned, mine: n.mine, newToday: n.new_today, solvedToday: n.solved_today, solvedWeek: n.solved_week, breached },
       mine, unassigned, setup: { inbox, articles: articles > 0, team: agents > 1, firstTicket: n.total > 0 } };
   });
 }

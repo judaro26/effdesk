@@ -1,0 +1,7 @@
+name = "effdesk-portal"
+main = "portal-worker.js"
+compatibility_date = "2026-01-01"
+routes = [{ pattern = "*.effdesk.com/*", zone_name = "effdesk.com" }]
+[vars]
+PORTAL_DOMAIN = "effdesk.com"
+# ORIGIN_HOST is set in .github/workflows/deploy-portal-worker.yml from the repository variable ORIGIN_HOST; PORTAL_PROXY_SECRET is a Worker secret.

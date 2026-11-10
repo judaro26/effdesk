@@ -25,3 +25,16 @@ Build **C**, and nothing needs engineering approval because nothing is provision
 5. Show the address in Email settings and on the dashboard setup checklist.
 
 Open points to decide: (a) is effdesk.com's DNS fully on Cloudflare (it is today) and may the main site stay DNS-only while the wildcard is proxied; (b) Cloudflare Workers plan (free tier covers 100k requests/day, a paid plan is $5/month); (c) whether the custom-domain add-on (D) should come with the Suite plan. Not verified against live accounts: Netlify and Cloudflare limits above are from mdv's docs and general knowledge, so confirm before relying on them.
+
+## Built (recommendation C)
+* `cloudflare/portal-worker.js` + `wrangler.toml`: `<slug>.effdesk.com/x` is served from `/help/<slug>/x`; links, forms, redirects and cookie paths are rewritten back. Reserved names (`app`, `in`, `www`, …) pass through.
+* `.github/workflows/deploy-portal-worker.yml`: publishes the Worker when `cloudflare/**` changes on main. Nothing per customer.
+* App: `portalOrigin()` in `src/handlers.js` trusts the public address only when `x-effdesk-secret` equals `PORTAL_PROXY_SECRET`; sign-in links in portal emails use that address. The dashboard shows each org its address when `PORTAL_DOMAIN` is set.
+* Tests: `scripts/test-portal-worker.js`.
+
+### One-time setup (you, about 10 minutes)
+1. Cloudflare DNS for effdesk.com: add a **proxied** (orange cloud) `A` record named `*` pointing to `192.0.2.1` (a placeholder; the Worker answers before it is used). Keep `app`, `in` and the apex as they are.
+2. GitHub repo secrets: `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, Zone Workers Routes: Edit), `CLOUDFLARE_ACCOUNT_ID`, `PORTAL_PROXY_SECRET` (long random). Repo variable `ORIGIN_HOST` = the Netlify site host (e.g. `effdesk.netlify.app`).
+3. Netlify env: `PORTAL_PROXY_SECRET` (same value), `PORTAL_DOMAIN=effdesk.com`. Redeploy.
+4. Run the "Deploy portal worker" workflow once. Then open `https://<your-org-slug>.effdesk.com`.
+Not verified live: the Worker, the wildcard certificate and the Netlify host behaviour have only been tested with fakes.

@@ -1,0 +1,21 @@
+// scripts/test-portal-worker.js: <slug>.effdesk.com. The worker's rewrites, and the app trusting the public address only with the shared secret.
+import { check, done } from './lib/check.js';
+import { slugOf, stripBase, fixLocation, fixCookie, handle } from '../cloudflare/portal-worker.js';
+import { portalOrigin } from '../src/handlers.js';
+const ENVW = { PORTAL_DOMAIN: 'effdesk.com', ORIGIN_HOST: 'effdesk.netlify.app', PORTAL_PROXY_SECRET: 's3cret-value' };
+check('a customer name is read from the host, nothing else is', slugOf('rooster.effdesk.com', 'effdesk.com') === 'rooster' && slugOf('Rooster.EffDesk.com:443', 'effdesk.com') === 'rooster' && slugOf('effdesk.com', 'effdesk.com') === null && slugOf('a.b.effdesk.com', 'effdesk.com') === null && slugOf('rooster.evil.com', 'effdesk.com') === null && slugOf('-x.effdesk.com', 'effdesk.com') === null);
+check('reserved names pass straight through', ['app', 'in', 'www', 'api', 'auth', 'support'].every(n => slugOf(n + '.effdesk.com', 'effdesk.com') === null));
+check('the org prefix is removed from links, redirects and cookies', stripBase('<a href="/help/rooster/a/x">', 'rooster') === '<a href="/a/x">' && fixLocation('/help/rooster/tickets', 'rooster', 'effdesk.netlify.app') === '/tickets' && fixLocation('/help/rooster', 'rooster', 'effdesk.netlify.app') === '/' && fixLocation('https://effdesk.netlify.app/help/rooster/a', 'rooster', 'effdesk.netlify.app') === '/a' && fixCookie('eff_portal=abc; Path=/help; HttpOnly; Secure') === 'eff_portal=abc; Path=/; HttpOnly; Secure');
+let seen;
+const origin = async (u, init) => { seen = { u, init }; const h = new Headers({ 'content-type': 'text/html', location: '' }); h.delete('location'); return new Response('<a href="/help/rooster/a/1">x</a><form action="/help/rooster/tickets" method="post"></form><a href="/help/rooster">home</a>', { status: 200, headers: h }); };
+const r = await handle(new Request('https://rooster.effdesk.com/a/1?lang=es', { headers: { origin: 'https://rooster.effdesk.com' } }), ENVW, origin), body = await r.text();
+check('the worker asks the app for that organization\'s page and sends the secret and the public address', seen.u === 'https://effdesk.netlify.app/help/rooster/a/1?lang=es' && seen.init.headers.get('x-effdesk-portal') === 'https://rooster.effdesk.com' && seen.init.headers.get('x-effdesk-secret') === 's3cret-value' && seen.init.headers.get('origin') === 'https://effdesk.netlify.app');
+check('the visitor sees links on their own address', body === '<a href="/a/1">x</a><form action="/tickets" method="post"></form><a href="/">home</a>');
+seen = null; await handle(new Request('https://rooster.effdesk.com/'), ENVW, origin);
+check('the front page is the help center home', seen.u === 'https://effdesk.netlify.app/help/rooster');
+let passed = false; await handle(new Request('https://app.effdesk.com/x'), ENVW, async () => { passed = true; return new Response('ok'); });
+check('app.effdesk.com is not touched', passed);
+check('an unconfigured worker says so instead of guessing', (await handle(new Request('https://rooster.effdesk.com/'), { PORTAL_DOMAIN: 'effdesk.com' }, origin)).status === 503);
+const req = (h) => new Request('https://effdesk.netlify.app/help/rooster', { headers: h }), E = { PORTAL_PROXY_SECRET: 's3cret-value' };
+check('the app trusts the public address only with the secret, only for that organization, only over https', portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === 'https://rooster.effdesk.com' && portalOrigin(req({ 'x-effdesk-secret': 'nope-nope-nope', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-portal': 'https://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://other.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'http://rooster.effdesk.com' }), E, 'rooster') === '' && portalOrigin(req({ 'x-effdesk-secret': 's3cret-value', 'x-effdesk-portal': 'https://rooster.effdesk.com' }), {}, 'rooster') === '');
+done();

@@ -277,7 +277,7 @@
       var todo = steps.filter(function (x) { return !x[0]; }), setup = null;
       if (todo.length) { setup = el('div', { class: 'pcard', 'data-setup': '1' }, el('h3', {}, 'Finish setting up (' + (steps.length - todo.length) + ' of ' + steps.length + ' done)')); todo.forEach(function (x) { setup.appendChild(el('button', { type: 'button', class: 'hrow', onclick: x[2] }, el('span', { class: 'grow' }, x[1]), el('span', { class: 'm' }, 'Go →'))); }); }
       return el('div', { class: 'page wide' }, el('div', { class: 'bar' }, el('h2', {}, hello), el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn', 'data-new-home': '1', onclick: function () { closePanes(); creating = true; draw(); } }, 'New ticket')),
-        el('div', { class: 'stats' }, cards), setup, el('div', { class: 'rgrid' }, list('Assigned to you', dash.mine, 'Nothing is waiting on you.', 'data-list-mine'), list('Needs an owner', dash.unassigned, 'Every active ticket has an owner.', 'data-list-unassigned')));
+        el('div', { class: 'stats' }, cards), dash.portal ? el('div', { class: 'pcard', 'data-portal': '1' }, el('h3', {}, 'Your customer portal and help center'), el('p', {}, el('a', { href: dash.portal, target: '_blank', rel: 'noopener' }, dash.portal.replace('https://', '')), ' · share this address with your customers.')) : null, setup, el('div', { class: 'rgrid' }, list('Assigned to you', dash.mine, 'Nothing is waiting on you.', 'data-list-mine'), list('Needs an owner', dash.unassigned, 'Every active ticket has an owner.', 'data-list-unassigned')));
     }
     function location_go(u) { nav.go(u); }
     function reportPane() {

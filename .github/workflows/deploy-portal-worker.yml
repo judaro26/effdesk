@@ -1,0 +1,28 @@
+name: Deploy portal worker
+# Publishes cloudflare/portal-worker.js (the <slug>.effdesk.com router) whenever it changes. SETUP (once): repository secrets CLOUDFLARE_API_TOKEN (Workers edit + zone DNS edit),
+# CLOUDFLARE_ACCOUNT_ID, PORTAL_PROXY_SECRET (any long random string; set the SAME value as PORTAL_PROXY_SECRET in Netlify); repository variable ORIGIN_HOST (e.g. effdesk.netlify.app).
+# Nothing from an issue or pull request is used in a command.
+on:
+  push:
+    branches: [main]
+    paths: ['cloudflare/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Publish the worker
+        working-directory: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PORTAL_PROXY_SECRET: ${{ secrets.PORTAL_PROXY_SECRET }}
+          ORIGIN_HOST: ${{ vars.ORIGIN_HOST }}
+        run: |
+          npx --yes wrangler@3 deploy --var ORIGIN_HOST:"$ORIGIN_HOST"
+          printf '%s' "$PORTAL_PROXY_SECRET" | npx --yes wrangler@3 secret put PORTAL_PROXY_SECRET
