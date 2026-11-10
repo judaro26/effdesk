@@ -3,11 +3,12 @@
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
   function start(doc, fetchFn, nav) {
-    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '';
+    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', pending = [];
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
     var api = function (action, extra) { return post('/api/tickets', Object.assign({ orgId: orgId, action: action }, extra || {})); };
     var say = function (t, isBad) { note = t; bad = !!isBad; draw(); };
+    var size = function (n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
     var when = function (s) { try { return new Date(s).toLocaleString(); } catch (e) { return String(s); } };
     function boot() {
       return post('/api/me').then(function (r) {
@@ -19,7 +20,7 @@
       });
     }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
-    function open(n) { return api('get', { number: n }).then(function (r) { if (!r.ok) return say(r.body.error, true); current = r.body; creating = false; settings = null; draw(); }); }
+    function open(n) { pending = []; return api('get', { number: n }).then(function (r) { if (!r.ok) return say(r.body.error, true); current = r.body; creating = false; settings = null; draw(); }); }
     function listPane() {
       var q = el('input', { type: 'search', 'aria-label': 'Search tickets', placeholder: 'Search subject, person or #', value: filter.q });
       q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { filter.q = q.value.trim(); refresh(); } });
@@ -29,18 +30,30 @@
       var rows = list.length ? list.map(function (t) { return el('button', { class: 'row', type: 'button', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number), onclick: function () { open(t.number); } }, el('b', {}, '#' + t.number + ' ' + t.subject), el('span', { class: 'm' }, t.status + ' · ' + t.priority + ' · ' + (t.requester_name || t.requester_email))); }) : [el('p', { class: 'm' }, 'No tickets here.')];
       return el('div', { class: 'card' }, el('button', { class: 'btn', type: 'button', 'data-new': '1', onclick: function () { creating = true; current = null; draw(); } }, 'New ticket'), el('div', { style: 'margin-top:8px' }, q), tabs, el('div', {}, rows));
     }
+    function picker(t) {
+      var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' });
+      input.addEventListener('change', function () {
+        var files = [].slice.call(input.files || []).slice(0, 5 - pending.length), next = Promise.resolve();
+        files.forEach(function (f) { next = next.then(function () {
+          if (f.size > 5 * 1024 * 1024) return say(f.name + ' is over 5 MB.', true);
+          return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + '&ticket=' + t.number + '&name=' + encodeURIComponent(f.name) + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); }); });
+        }); });
+        next.then(function () { draw(); });
+      });
+      return el('div', {}, input, pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
+    }
     function sel(label, value, opts, onchange) { var s = el('select', { 'aria-label': label }, opts.map(function (o) { var op = el('option', { value: o[0] }, o[1]); if (o[0] === value) op.setAttribute('selected', 'selected'); return op; })); s.value = value; s.addEventListener('change', function () { onchange(s.value); }); return s; }
     function ticketPane() {
       var t = current.ticket, body = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a reply or an internal note…' });
       var update = function (patch) { api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return Promise.all([open(t.number), refresh()]); }); };
-      var send = function (action, status) { if (!body.value.trim()) return say('Write a message first.', true); api(action, { number: t.number, body: body.value, status: status }).then(function (r) { if (!r.ok) return say(r.body.error, true); var n = ''; if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : ''; return Promise.all([open(t.number), refresh()]).then(function () { if (n) say(n, true); }); }); };
+      var send = function (action, status) { if (!body.value.trim()) return say('Write a message first.', true); var ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : []; api(action, { number: t.number, body: body.value, status: status, attachmentIds: ids }).then(function (r) { if (!r.ok) return say(r.body.error, true); var n = ''; if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : ''; pending = []; return Promise.all([open(t.number), refresh()]).then(function () { if (n) say(n, true); }); }); };
       var tags = el('input', { 'aria-label': 'Tags', value: t.tags.join(', '), placeholder: 'tags, comma separated' }); tags.addEventListener('change', function () { update({ tags: tags.value }); });
       return el('div', { class: 'card' }, el('h2', {}, '#' + t.number + ' ' + t.subject), el('p', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · opened ' + when(t.created_at)),
         el('div', { class: 'bar' }, sel('Status', t.status, [['open', 'Open'], ['pending', 'Pending'], ['solved', 'Solved'], ['closed', 'Closed']], function (v) { update({ status: v }); }),
           sel('Priority', t.priority, [['low', 'Low'], ['normal', 'Normal'], ['high', 'High'], ['urgent', 'Urgent']], function (v) { update({ priority: v }); }),
           sel('Assignee', t.assignee_id || '', [['', 'Unassigned']].concat(agents.map(function (a) { return [a.id, a.name || a.email]; })), function (v) { update({ assigneeId: v || null }); }), tags),
-        current.messages.map(function (m) { return el('div', { class: 'msg-b ' + m.kind, 'data-kind': m.kind }, el('div', { class: 'm' }, (m.kind === 'note' ? 'Internal note · ' : '') + m.author_name + ' · ' + when(m.created_at)), el('div', {}, m.body)); }),
-        body, el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Reply'), el('button', { class: 'btn', type: 'button', 'data-solve': '1', onclick: function () { send('reply', 'solved'); } }, 'Reply and solve'), el('button', { class: 'btn l', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note')));
+        current.messages.map(function (m) { return el('div', { class: 'msg-b ' + m.kind, 'data-kind': m.kind }, el('div', { class: 'm' }, (m.kind === 'note' ? 'Internal note · ' : '') + m.author_name + ' · ' + when(m.created_at)), el('div', {}, m.body), (m.attachments || []).length ? el('div', { class: 'files' }, m.attachments.map(function (a) { return el('a', { href: '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')'); })) : null); }),
+        body, picker(t), el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Reply'), el('button', { class: 'btn', type: 'button', 'data-solve': '1', onclick: function () { send('reply', 'solved'); } }, 'Reply and solve'), el('button', { class: 'btn l', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note')));
     }
     function newPane() {
       var f = {}; ['subject', 'requesterName', 'requesterEmail'].forEach(function (k) { f[k] = el('input', { 'aria-label': k, placeholder: { subject: 'Subject', requesterName: 'Requester name', requesterEmail: 'Requester email' }[k], maxlength: '200' }); });

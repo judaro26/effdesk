@@ -3,11 +3,12 @@ import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url
 import { check, done } from './lib/check.js';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub = f => fs.readFileSync(path.join(root, 'public', f), 'utf8'), tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z' };
-const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z' }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
+const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
 const calls = [];
 const fetchFn = async (url, opts) => {
-  const b = opts && opts.body ? JSON.parse(opts.body) : null; calls.push([url, b]);
+  const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
+  if (/^\/api\/attachments\?/.test(url)) return /big/.test(url) ? { ok: false, status: 413, json: async () => ({ error: 'Files can be up to 5 MB each.' }) } : ok({ attachment: { id: 'up1', filename: decodeURIComponent(url.match(/name=([^&]*)/)[1]), size: 3 } });
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test' }, organizations: [{ id: 'o1', name: 'Acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
@@ -29,7 +30,11 @@ check('the first load asks for active tickets in the right organization', calls.
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $$('.msg-b').length === 2 && $$('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($$('.msg-b')[1].textContent));
 check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b').textContent) && /<b>broken<\/b>/.test($('h2').textContent));
+check('a message shows its files as download links for this organization', $$('.msg-b')[0].querySelector('a[data-file=f1]').getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\.jpg \(2 KB\)/.test($('a[data-file=f1]').textContent));
+const att = $('input[data-attach]'); Object.defineProperty(att, 'files', { value: [new w.File(['abc'], 'pic.png', { type: 'image/png' })], configurable: true }); att.dispatchEvent(new w.Event('change')); await tick(40);
+check('choosing a file uploads it to this ticket and shows it waiting to be sent', calls.some(c => /^\/api\/attachments\?org=o1&ticket=7&name=pic\.png&type=image%2Fpng/.test(c[0])) && !!$('[data-pending=up1]'));
 $('textarea').value = 'On our way'; $('[data-reply]').click(); await tick();
+check('the reply sends the waiting files\' ids, and the list is cleared afterwards', calls.some(c => c[1] && c[1].action === 'reply' && c[1].attachmentIds && c[1].attachmentIds.join() === 'up1') && !$('[data-pending]'));
 check('Reply posts the text to the reply action', calls.some(c => c[1] && c[1].action === 'reply' && c[1].number === 7 && c[1].body === 'On our way' && !c[1].status));
 $('textarea').value = 'Done'; $('[data-solve]').click(); await tick();
 check('Reply and solve sends the status too', calls.some(c => c[1] && c[1].action === 'reply' && c[1].status === 'solved'));

@@ -33,7 +33,14 @@ Under **Email settings** in the desk, an owner or admin sets:
 - Outgoing limit per organization per 24 hours: Free 50, Team 500, Suite 2,000, Pro 5,000.
 - If the mail provider fails, the agent's reply is still saved and the desk says the email was not sent.
 
+## Attachments
+- Files live in Netlify Blobs (nothing to set up: Netlify provides it). The table `attachments` is the index.
+- Agents attach up to 5 files of 5 MB each to a reply; they are emailed as real attachments.
+- Incoming files are kept up to 10 MB each and 25 MB per email; anything skipped is listed on the ticket ("Not stored: ...").
+- Storage per organization: Free 500 MB, Team 5 GB, Suite 20 GB, Pro 100 GB.
+- Downloads need a signed-in member of the organization, are always sent as an attachment (never shown inside our pages) and are sandboxed.
+- Needs `RESEND_API_KEY` with full access, because the key also lists and downloads the received files.
+
 ## Not yet built
-- **Attachments** in incoming mail are not stored (the ticket notes their names). Outgoing attachments are not supported.
 - **An organization's own sending domain** (mail from support@theirdomain.com itself, with their SPF and DKIM). This is a natural Pro feature using Resend's domains API.
 - Changing a support address later breaks private reply addresses in emails already sent.
