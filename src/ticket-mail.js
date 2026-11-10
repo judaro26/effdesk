@@ -1,0 +1,145 @@
+// src/ticket-mail.js: EMAIL FOR TICKETS. Out: an agent's public reply is emailed to the requester. In: Resend posts a customer's email to a webhook, which becomes a new ticket or a reply on an existing one.
+// Reply modes (set per organization): 'ticket' = the customer's reply comes back into the ticket (Reply-To is a private address for that ticket); 'custom' = Reply-To is an address the organization chose (for example its own support mailbox); 'none' = a no-reply address.
+import crypto from 'crypto';
+import { withOrg } from './db.js';
+import { inboundDomain } from './config.js';
+import { getEntitlements } from './billing.js';
+import { mailLimit } from './plans.js';
+import { createTicket, addRequesterMessage, ticketByMessageId, messageSeen } from './tickets.js';
+
+export const MODES = ['ticket', 'custom', 'none'];
+const RESERVED = new Set(['admin', 'administrator', 'postmaster', 'abuse', 'no-reply', 'noreply', 'mailer-daemon', 'root', 'webmaster', 'hostmaster', 'security', 'support', 'help', 'info', 'billing', 'sales', 'effdesk', 'www', 'mail', 'test']);
+const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000\r\n]/g, ' ').trim().slice(0, max);
+const isEmail = s => /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(s) && s.length <= 254;
+const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const fail = (error, status = 400) => ({ ok: false, status, error });
+const tokenSecret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET || '');
+export const ticketToken = (env, orgId, number) => crypto.createHmac('sha256', tokenSecret(env)).update(`ticket:${orgId}:${number}`).digest('hex').slice(0, 12);
+const tokenOk = (env, orgId, number, tok) => { const want = Buffer.from(ticketToken(env, orgId, number)), got = Buffer.from(String(tok || '')); return !!tokenSecret(env) && want.length === got.length && crypto.timingSafeEqual(want, got); };
+
+// ---------- settings ----------
+export const suggestInbox = slug => String(slug || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+export async function getMailSettings(pool, orgId, env = process.env) {
+  const domain = inboundDomain(env);
+  return withOrg(pool, orgId, async c => {
+    const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox || '';
+    const s = (await c.query('select reply_mode, reply_to, from_name, signature from mail_settings where org_id = $1', [orgId])).rows[0] || { reply_mode: 'ticket', reply_to: null, from_name: '', signature: '' };
+    const slug = (await c.query('select slug from "organization" where id = $1', [orgId])).rows[0]?.slug;
+    return { ok: true, domain, inbox, suggestedInbox: inbox || suggestInbox(slug), address: inbox ? `${inbox}@${domain}` : '', replyMode: s.reply_mode, replyTo: s.reply_to || '', fromName: s.from_name, signature: s.signature };
+  });
+}
+export async function saveMailSettings(pool, orgId, input, env = process.env) {
+  const inbox = String(input.inbox || '').toLowerCase().trim(), mode = MODES.includes(input.replyMode) ? input.replyMode : null;
+  if (!mode) return fail('Choose how customers can reply.');
+  if (!/^[a-z0-9][a-z0-9-]{2,31}$/.test(inbox)) return fail('The address needs 3 to 32 letters, numbers or dashes.');
+  if (RESERVED.has(inbox)) return fail('That address is reserved. Choose another.');
+  const replyTo = clean(input.replyTo, 254).toLowerCase();
+  if (mode === 'custom' && !isEmail(replyTo)) return fail('Enter the email address replies should go to.');
+  if (mode === 'custom' && replyTo.endsWith('@' + inboundDomain(env))) return fail('Use your own address here, or choose "replies come back into the ticket".');
+  try {
+    await withOrg(pool, orgId, async c => {
+      await c.query('insert into inbox_directory (inbox, org_id) values ($1,$2) on conflict (org_id) do update set inbox = excluded.inbox', [inbox, orgId]);
+      await c.query(`insert into mail_settings (org_id, reply_mode, reply_to, from_name, signature) values ($1,$2,$3,$4,$5) on conflict (org_id) do update set reply_mode = excluded.reply_mode, reply_to = excluded.reply_to, from_name = excluded.from_name, signature = excluded.signature, updated_at = now()`, [orgId, mode, mode === 'custom' ? replyTo : null, clean(input.fromName, 100), String(input.signature || '').replace(/\u0000/g, '').slice(0, 1000)]);
+    });
+  } catch (e) { if (e.code === '23505') return fail('That address is already taken. Choose another.', 409); throw e; }
+  return getMailSettings(pool, orgId, env);
+}
+
+// ---------- outgoing ----------
+// Emails an agent's public reply to the requester. Never throws: the reply is already saved, the result says what happened ('sent', 'failed' or 'skipped' with why).
+export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId) {
+  const domain = inboundDomain(env);
+  try {
+    const data = await withOrg(pool, orgId, async c => {
+      const t = (await c.query('select id, number, subject, requester_email, requester_name from tickets where org_id = $1 and number = $2', [orgId, number])).rows[0]; if (!t) return null;
+      const m = (await c.query('select id, body, author_name from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
+      const settings = (await c.query('select reply_mode, reply_to, from_name, signature from mail_settings where org_id = $1', [orgId])).rows[0];
+      const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
+      const orgName = (await c.query('select name from "organization" where id = $1', [orgId])).rows[0]?.name || '';
+      const sentToday = (await c.query("select count(*)::int n from ticket_messages where org_id = $1 and delivery = 'sent' and created_at > now() - interval '24 hours'", [orgId])).rows[0].n;
+      const prev = (await c.query("select message_id from ticket_messages where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at desc limit 5", [orgId, t.id])).rows.map(r => r.message_id);
+      return { t, m, settings, inbox, orgName, sentToday, prev };
+    });
+    const mark = (d, mid) => withOrg(pool, orgId, c => c.query('update ticket_messages set delivery = $3, message_id = coalesce($4, message_id) where org_id = $1 and id = $2', [orgId, messageRowId, d, mid || null]));
+    if (!data || !data.m) return { delivery: 'skipped', why: 'missing' };
+    if (!data.inbox) { await mark('skipped'); return { delivery: 'skipped', why: 'no-inbox' }; }
+    const ent = await getEntitlements(pool, orgId);
+    if (data.sentToday >= mailLimit(ent)) { await mark('skipped'); return { delivery: 'skipped', why: 'limit' }; }
+    const { t, m, settings, inbox, orgName } = data, mode = settings?.reply_mode || 'ticket', display = clean(settings?.from_name, 100) || orgName || 'Support';
+    const mid = `<m${m.id}.${crypto.randomBytes(8).toString('hex')}@${domain}>`;
+    const from = mode === 'none' ? `${display.replace(/[<>"]/g, '')} <no-reply@${domain}>` : `${display.replace(/[<>"]/g, '')} <${inbox}@${domain}>`;
+    const replyTo = mode === 'ticket' ? `${inbox}+${t.number}.${ticketToken(env, orgId, t.number)}@${domain}` : mode === 'custom' ? settings.reply_to : undefined;
+    const sig = settings?.signature ? `\n\n-- \n${settings.signature}` : '', foot = mode === 'none' ? '\n\n(This address does not receive replies.)' : '';
+    const text = `${m.body}${sig}${foot}`;
+    const html = `<div style="white-space:pre-wrap">${esc(m.body)}</div>${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+    const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
+    try { await mailer.ticketMail({ from, to: t.requester_email, replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers }); }
+    catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
+    await mark('sent', mid); return { delivery: 'sent' };
+  } catch (e) { console.warn('ticket mail error:', e.message); return { delivery: 'failed' }; }
+}
+
+// ---------- incoming ----------
+export function stripQuoted(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n'); let cut = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim(), nx = (lines[i + 1] || '').trim();
+    if (/^on .{5,300} wrote:?$/i.test(l) || (/^on .{5,300}[^:]$/i.test(l) && /^.{0,100}wrote:$/i.test(nx)) || /^-{2,}\s*(original message|forwarded message)\s*-{2,}$/i.test(l) || /^_{10,}$/.test(l) || (/^from:\s.+/i.test(l) && /^(sent|date):/i.test(nx))) { cut = i; break; }
+  }
+  let kept = lines.slice(0, cut); while (kept.length && (kept[kept.length - 1].trim() === '' || kept[kept.length - 1].trim().startsWith('>'))) kept.pop();
+  const out = kept.join('\n').trim(); return out || String(text || '').trim();
+}
+const htmlToText = h => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
+const hdr = (h, k) => { if (!h) return ''; const key = Object.keys(h).find(x => x.toLowerCase() === k); const v = key ? h[key] : ''; return Array.isArray(v) ? v.join(' ') : String(v || ''); };
+export function isAutomated(headers, from) {
+  const auto = hdr(headers, 'auto-submitted').toLowerCase().trim(), prec = hdr(headers, 'precedence').toLowerCase().trim();
+  return (auto && auto !== 'no') || /^(bulk|junk|list|auto_reply)$/.test(prec) || !!hdr(headers, 'x-auto-response-suppress') || !!hdr(headers, 'list-id') || /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply)@/i.test(from);
+}
+export const parseAddress = s => { const m = String(s || '').match(/^\s*(?:"?([^"<]*)"?\s*)?<([^>]+)>\s*$/); return m ? { name: clean(m[1], 100), email: m[2].trim().toLowerCase() } : { name: '', email: String(s || '').trim().toLowerCase() }; };
+
+// email = { from, to[], receivedFor[], messageId, subject, text, html, headers, authentication, attachments[] } → { ok, action } or { dropped: why }
+export async function handleInbound(pool, env, email) {
+  const domain = inboundDomain(env), from = parseAddress(hdr(email.headers, 'from') || email.from);
+  if (!isEmail(from.email)) return { dropped: 'bad-sender' };
+  if (from.email.endsWith('@' + domain)) return { dropped: 'loop' };
+  let target = null;
+  for (const a of [...(email.to || []), ...(email.receivedFor || [])]) {
+    const m = String(parseAddress(a).email).match(/^([a-z0-9-]+)(?:\+(\d{1,9})\.([0-9a-f]{12}))?@(.+)$/); if (!m || m[4] !== domain) continue;
+    const row = (await pool.query('select org_id from inbox_directory where inbox = $1', [m[1]])).rows[0]; if (row) { target = { orgId: row.org_id, number: m[2] ? Number(m[2]) : 0, tok: m[3] }; break; }
+  }
+  if (!target) return { dropped: 'unknown-inbox' };
+  const orgId = target.orgId;
+  if (isAutomated(email.headers, from.email)) return { dropped: 'automated' };
+  if (email.authentication && email.authentication.dmarc === 'fail') return { dropped: 'auth-failed' };
+  if (email.messageId && await messageSeen(pool, orgId, email.messageId)) return { dropped: 'duplicate' };
+  const recent = (await withOrg(pool, orgId, c => c.query("select count(*)::int n from tickets where org_id = $1 and channel = 'email' and created_at > now() - interval '1 hour'", [orgId]))).rows[0].n;
+  if (recent >= 200) return { dropped: 'rate' };
+  let body = stripQuoted(email.text || htmlToText(email.html)); const att = (email.attachments || []).length;
+  if (att) body += `\n\n[${att} attachment${att > 1 ? 's' : ''} not stored: ${(email.attachments || []).map(a => clean(a.filename, 80)).join(', ')}]`;
+  if (!body.trim()) return { dropped: 'empty' };
+  const subject = clean(email.subject, 200).replace(/^\s*\[#\d+\]\s*/, '') || '(no subject)';
+  let number = target.number && tokenOk(env, orgId, target.number, target.tok) ? target.number : 0;
+  if (!number) {                                    // no private address: a reply is recognised by the Message-ID it answers, and only from the person who opened the ticket
+    const irt = hdr(email.headers, 'in-reply-to').trim(), found = irt ? await ticketByMessageId(pool, orgId, irt) : null;
+    if (found && found.requester_email === from.email) number = found.number;
+  }
+  if (number) {
+    const r = await addRequesterMessage(pool, orgId, number, { body, authorName: from.name || from.email, messageId: email.messageId });
+    if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened };
+    if (!r.closed) return { dropped: 'no-ticket' };
+    const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
+    return f.ok ? { ok: true, action: 'followup', number: f.ticket.number } : { dropped: 'invalid' };
+  }
+  const t = await createTicket(pool, orgId, null, { subject, body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
+  return t.ok ? { ok: true, action: 'created', number: t.ticket.number } : { dropped: 'invalid' };
+}
+
+// Resend signs webhooks with Svix: svix-id, svix-timestamp and svix-signature ("v1,<base64 hmac of id.timestamp.body>"); the secret is "whsec_" + base64
+export function verifySvix(raw, headers, secret, now = Date.now()) {
+  try {
+    const id = headers.get('svix-id'), ts = headers.get('svix-timestamp'), sigs = String(headers.get('svix-signature') || '');
+    if (!secret || !id || !ts || !sigs || Math.abs(now / 1000 - Number(ts)) > 300) return false;
+    const key = Buffer.from(String(secret).replace(/^whsec_/, ''), 'base64'), want = crypto.createHmac('sha256', key).update(`${id}.${ts}.${raw}`).digest();
+    return sigs.split(' ').some(p => { const [v, s] = p.split(','); if (v !== 'v1' || !s) return false; const got = Buffer.from(s, 'base64'); return got.length === want.length && crypto.timingSafeEqual(got, want); });
+  } catch { return false; }
+}

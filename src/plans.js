@@ -34,3 +34,7 @@ export function seatCheck(ent, used) {
   return { ok, used, limit: ent.seats === Infinity ? null : ent.seats, plan: ent.plan, reason: ok ? '' : ent.plan === 'free' ? `The free plan includes ${FREE_SEATS} agents. Upgrade to add more.` : `All ${ent.seats} paid agent seats are in use. Add seats to invite more people.` };
 }
 export const priceOf = (plan, interval, seats) => (PLANS[plan] ? PLANS[plan].price[interval] * seats : 0);
+
+// outgoing ticket emails an organization may send per rolling 24 hours (stops a stolen account from being used to send spam)
+export const MAIL_PER_DAY = { free: 50, team: 500, suite: 2000, pro: 5000 };
+export const mailLimit = ent => MAIL_PER_DAY[ent.plan] || MAIL_PER_DAY.free;

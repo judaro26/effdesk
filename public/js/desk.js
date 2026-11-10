@@ -3,7 +3,7 @@
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
   function start(doc, fetchFn, nav) {
-    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false;
+    var main = doc.getElementById('main'), orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
     var api = function (action, extra) { return post('/api/tickets', Object.assign({ orgId: orgId, action: action }, extra || {})); };
@@ -15,11 +15,11 @@
         orgs = r.body.organizations; doc.getElementById('who').textContent = r.body.user.email;
         var want = new URLSearchParams(nav.search || '').get('org'); var o = orgs.filter(function (x) { return x.id === want; })[0] || orgs[0];
         if (!o) { main.textContent = ''; main.appendChild(el('p', {}, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
-        orgId = o.id; return Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); });
+        orgId = o.id; role = o.role; return Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); });
       });
     }
     function refresh() { return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
-    function open(n) { return api('get', { number: n }).then(function (r) { if (!r.ok) return say(r.body.error, true); current = r.body; creating = false; draw(); }); }
+    function open(n) { return api('get', { number: n }).then(function (r) { if (!r.ok) return say(r.body.error, true); current = r.body; creating = false; settings = null; draw(); }); }
     function listPane() {
       var q = el('input', { type: 'search', 'aria-label': 'Search tickets', placeholder: 'Search subject, person or #', value: filter.q });
       q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { filter.q = q.value.trim(); refresh(); } });
@@ -33,7 +33,7 @@
     function ticketPane() {
       var t = current.ticket, body = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a reply or an internal note…' });
       var update = function (patch) { api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return Promise.all([open(t.number), refresh()]); }); };
-      var send = function (action, status) { if (!body.value.trim()) return say('Write a message first.', true); api(action, { number: t.number, body: body.value, status: status }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; return Promise.all([open(t.number), refresh()]); }); };
+      var send = function (action, status) { if (!body.value.trim()) return say('Write a message first.', true); api(action, { number: t.number, body: body.value, status: status }).then(function (r) { if (!r.ok) return say(r.body.error, true); var n = ''; if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : ''; return Promise.all([open(t.number), refresh()]).then(function () { if (n) say(n, true); }); }); };
       var tags = el('input', { 'aria-label': 'Tags', value: t.tags.join(', '), placeholder: 'tags, comma separated' }); tags.addEventListener('change', function () { update({ tags: tags.value }); });
       return el('div', { class: 'card' }, el('h2', {}, '#' + t.number + ' ' + t.subject), el('p', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · opened ' + when(t.created_at)),
         el('div', { class: 'bar' }, sel('Status', t.status, [['open', 'Open'], ['pending', 'Pending'], ['solved', 'Solved'], ['closed', 'Closed']], function (v) { update({ status: v }); }),
@@ -47,12 +47,27 @@
       var body = el('textarea', { 'aria-label': 'First message', placeholder: 'What is the request?' });
       return el('div', { class: 'card' }, el('h2', {}, 'New ticket'), f.subject, ' ', f.requesterName, ' ', f.requesterEmail, body, el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: function () { api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); note = ''; return Promise.all([open(r.body.ticket.number), refresh()]); }); } }, 'Create ticket'), el('button', { class: 'btn l', type: 'button', onclick: function () { creating = false; draw(); } }, 'Cancel')));
     }
+    function mailPane() {
+      var m = settings, f = {};
+      f.inbox = el('input', { 'aria-label': 'Support address', value: m.inbox || m.suggestedInbox, maxlength: '32' });
+      f.mode = sel('Replies', m.replyMode, [['ticket', 'Customer replies come back into the ticket'], ['custom', 'Customer replies go to my own address'], ['none', 'No-reply: customers cannot reply']], function (v) { m.replyMode = v; m.inbox = f.inbox.value; m.fromName = f.fromName.value; m.signature = f.sig.value; m.replyTo = f.replyTo.value; draw(); });
+      f.replyTo = el('input', { 'aria-label': 'Reply-to address', type: 'email', placeholder: 'support@yourcompany.com', value: m.replyTo || '' });
+      f.fromName = el('input', { 'aria-label': 'Sender name', placeholder: 'Sender name (for example Acme Support)', value: m.fromName || '', maxlength: '100' });
+      f.sig = el('textarea', { 'aria-label': 'Signature', placeholder: 'Signature added to every reply', maxlength: '1000' }); f.sig.value = m.signature || '';
+      var ro = role === 'owner' || role === 'admin';
+      return el('div', { class: 'card' }, el('h2', {}, 'Email settings'),
+        el('p', { class: 'm' }, 'Customers write to ' + (m.inbox || m.suggestedInbox) + '@' + m.domain + '. Forward your existing support mailbox there to bring that mail in too.'),
+        el('div', { class: 'bar' }, f.inbox, el('span', { class: 'm' }, '@' + m.domain)), el('div', { class: 'bar' }, f.mode), m.replyMode === 'custom' ? el('div', { class: 'bar' }, f.replyTo) : null,
+        el('div', { class: 'bar' }, f.fromName), f.sig,
+        ro ? el('div', { class: 'bar' }, el('button', { class: 'btn', type: 'button', 'data-mail-save': '1', onclick: function () { api('mail-save', { inbox: f.inbox.value, replyMode: m.replyMode, replyTo: f.replyTo.value, fromName: f.fromName.value, signature: f.sig.value }).then(function (r) { if (!r.ok) return say(r.body.error, true); settings = r.body; say('Email settings saved.'); }); } }, 'Save'), el('button', { class: 'btn l', type: 'button', onclick: function () { settings = null; draw(); } }, 'Close')) : el('p', { class: 'm' }, 'Only an owner or an admin can change these.'));
+    }
     function draw() {
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg' + (bad ? ' err' : ''), role: 'status' }, note));
       var orgSel = orgs.length > 1 ? sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; current = null; Promise.all([api('agents'), refresh()]).then(function (x) { agents = x[0].body.agents || []; draw(); }); }) : null;
       main.appendChild(el('h1', {}, 'Tickets')); if (orgSel) main.appendChild(orgSel);
-      main.appendChild(el('div', { class: 'desk' }, listPane(), creating ? newPane() : current ? ticketPane() : el('div', { class: 'card' }, el('p', { class: 'm' }, 'Pick a ticket, or create a new one.'))));
+      main.appendChild(el('p', {}, el('button', { class: 'btn l', type: 'button', 'data-mail': '1', onclick: function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); settings = r.body; current = null; creating = false; draw(); }); } }, 'Email settings')));
+      main.appendChild(el('div', { class: 'desk' }, listPane(), settings ? mailPane() : creating ? newPane() : current ? ticketPane() : el('div', { class: 'card' }, el('p', { class: 'm' }, 'Pick a ticket, or create a new one.'))));
     }
     return boot();
   }

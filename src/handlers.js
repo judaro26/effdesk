@@ -3,6 +3,7 @@ import { PRODUCT, platformAdmins } from './config.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
+import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress } from './ticket-mail.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
@@ -62,7 +63,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 }
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
-export async function tickets(req, { pool, auth }) {
+export async function tickets(req, { pool, auth, mailer, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
@@ -74,12 +75,38 @@ export async function tickets(req, { pool, auth }) {
     case 'list': r = await listTickets(pool, orgId, actor, b); break;
     case 'get': r = await getTicket(pool, orgId, actor, b.number); break;
     case 'create': r = await createTicket(pool, orgId, actor, b); break;
-    case 'reply': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status }); break;
+    case 'reply': {
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
+      if (r.ok && mailer) { const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id); r.email = d.delivery; r.emailWhy = d.why; }
+      break;
+    }
+    case 'mail-get': r = await getMailSettings(pool, orgId, env); break;
+    case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true }); break;
     case 'update': r = await updateTicket(pool, orgId, actor, b.number, b.patch || {}); break;
     case 'agents': r = { ok: true, agents: await listAgents(pool, orgId) }; break;
     default: return json(400, { error: 'Unknown action.' });
   }
   return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
+}
+
+// customers' email, posted by Resend (event email.received). The signature is checked on the exact bytes, the full message is fetched with our key, and anything we cannot use is acknowledged so it is not retried forever.
+export async function inboundEmail(req, { pool, env = process.env, fetchFn = fetch, now = Date.now() }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' });
+  if (!verifySvix(raw, req.headers, env.RESEND_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
+  let ev; try { ev = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
+  if (!ev || ev.type !== 'email.received' || !ev.data || !ev.data.email_id) return json(200, { ok: true, ignored: true });
+  const evId = req.headers.get('svix-id');
+  if ((await pool.query("select 1 from webhook_events where id = $1 and provider = 'resend'", [evId])).rowCount) return json(200, { ok: true, duplicate: true });
+  let full;
+  try {
+    const r = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(ev.data.email_id)}`, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
+    if (!r.ok) throw new Error('status ' + r.status); full = await r.json();
+  } catch (e) { console.warn('could not fetch the received email:', e.message); return json(502, { error: 'Could not fetch the message.' }); }
+  const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
+  await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
+  if (res.dropped) console.log('inbound email dropped:', res.dropped);
+  return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
 }
 export const _json = json;

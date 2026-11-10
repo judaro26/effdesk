@@ -19,7 +19,7 @@ export async function createTicket(pool, orgId, actor, input) {
   return withOrg(pool, orgId, async c => {
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
     const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags) values ($1,$2,$3,$4,$5,$6,$7,$8) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags)])).rows[0];
-    await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body) values ($1,$2,$3,$4,$5,$6)', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body]);
+    await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6,$7)', [orgId, t.id, 'requester', null, clean(input.requesterName, 100) || email, body, input.messageId ? clean(input.messageId, 300) : null]);
     return { ok: true, ticket: t };
   });
 }
@@ -86,4 +86,24 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
 
 export async function listAgents(pool, orgId) {
   return (await pool.query('select u.id, u.name, u.email, m.role from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 order by u.name', [orgId])).rows;
+}
+
+// ---- used by the inbound email webhook (no signed-in agent) ----
+// a message from the requester: a solved or pending ticket becomes open again; a closed ticket cannot be reopened (the caller then starts a follow-up ticket)
+export async function addRequesterMessage(pool, orgId, number, { body, authorName, messageId }) {
+  const text = clean(body, 20000); if (!text) return fail('Empty message.');
+  return withOrg(pool, orgId, async c => {
+    const t = (await c.query('select id, status from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    if (!t) return fail('No such ticket.', 404);
+    if (t.status === 'closed') return { ok: false, status: 409, closed: true, error: 'The ticket is closed.' };
+    await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id) values ($1,$2,$3,$4,$5,$6)', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null]);
+    await c.query("update tickets set status = 'open', solved_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
+    return { ok: true, reopened: t.status !== 'open' };
+  });
+}
+export async function ticketByMessageId(pool, orgId, messageId) {
+  return withOrg(pool, orgId, async c => (await c.query('select t.number, t.requester_email from ticket_messages m join tickets t on t.id = m.ticket_id and t.org_id = m.org_id where m.org_id = $1 and m.message_id = $2', [orgId, String(messageId || '')])).rows[0] || null);
+}
+export async function messageSeen(pool, orgId, messageId) {
+  return withOrg(pool, orgId, async c => (await c.query('select 1 from ticket_messages where org_id = $1 and message_id = $2', [orgId, String(messageId || '')])).rowCount > 0);
 }

@@ -8,7 +8,7 @@ Own repo, own Neon database, own sign-in (Better Auth), organizations and invita
 ## Phase 1: tickets core (first slice done: tickets, messages and notes, per-organization numbering, filters and search, assignment, tags, the agent desk page at /desk.html; still to come: attachments, queues, macros, saved views, plan gating)
 Postgres schema for tickets, messages, attachments (object storage), queues, labels, macros, views; a repository layer with every query scoped by `org_id`; the agent portal screens; plan gating (`has(entitlements, 'sla')` and so on). Exit: an agent in a free organization can create and answer tickets in the browser.
 
-## Phase 2: email in and out
+## Phase 2: email in and out (first slice done, see docs/EMAIL.md: inbound webhook, threading, three reply modes, limits; still to come: attachments, an organization's own sending domain, bounce handling)
 A per-organization reply address and inbound email webhook (Resend inbound or Postmark), outbound ticket notifications from the organization's own name, bounce and abuse handling, rate limits per plan. Exit: a customer writes to support@theirdomain and the agent answers from EffDesk.
 
 ## Phase 3: help center and customer portal

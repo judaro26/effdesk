@@ -9,3 +9,6 @@ export const PRODUCT = {
 };
 // platform operators (can grant licences): a comma separated list of emails in PLATFORM_ADMIN_EMAILS
 export const platformAdmins = () => String(process.env.PLATFORM_ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+
+// the domain that receives customers' email and sends ticket email (set up in Resend, see docs/EMAIL.md)
+export const inboundDomain = (env = process.env) => String(env.INBOUND_DOMAIN || 'in.effdesk.com').toLowerCase();
