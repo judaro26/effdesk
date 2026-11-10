@@ -5,7 +5,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub 
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }];
-const calls = []; const ALLF = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers']; let FEATURES = ALLF.slice();
+const calls = []; const ALLF = ['themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : null; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
@@ -26,6 +26,9 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'rules-list') return ok({ ok: true, rules: [{ id: 8, name: 'Refunds are urgent', event: 'created', conditions: [{ field: 'subject', op: 'contains', value: 'refund' }], actions: [{ type: 'set_priority', value: 'urgent' }], once: true, active: true }] });
   if (b.action === 'rule-save') return b.name ? ok({ ok: true, id: 9 }) : { ok: false, status: 400, json: async () => ({ error: 'Give the rule a name.' }) };
   if (b.action === 'rule-delete') return ok({ ok: true });
+  if (b.action === 'tokens-list') return ok({ ok: true, tokens: [{ id: 2, name: 'Zapier', prefix: 'abc123', created_at: new Date().toISOString(), last_used_at: null }] });
+  if (b.action === 'token-create') return b.name ? ok({ ok: true, id: 3, token: 'effk.o1.secretsecret' }) : { ok: false, status: 400, json: async () => ({ error: 'Give the token a name' }) };
+  if (b.action === 'token-delete') return ok({ ok: true });
   if (b.action === 'webhooks-list') return ok({ ok: true, events: ['ticket.created', 'message.customer', 'ticket.mentioned'], webhooks: [{ id: 3, url: 'https://hooks.example.org/x', events: ['ticket.created'], active: true, last_status: '200', last_at: new Date().toISOString() }] });
   if (b.action === 'webhook-save') return /^https:/.test(b.url) ? ok({ ok: true, id: 4, secret: 'whsec_abc' }) : { ok: false, status: 400, json: async () => ({ error: 'Use a public https address' }) };
   if (b.action === 'webhook-delete') return ok({ ok: true });
@@ -214,6 +217,10 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   X('[data-rule-new]').click(); await tick(); X('[data-rule-save]').click(); await tick(); check('a rule without a name is explained and nothing is lost', /Give the rule a name/.test(X('.msg').textContent));
   X('[data-cond-add]').click(); await tick(); X('[data-act-add]').click(); await tick(); X('input[aria-label="Rule name"]').value = 'Tag it'; X('input[aria-label="Rule name"]').dispatchEvent(new xw.Event('input')); X('input[aria-label="Action value"]').value = 'billing'; X('input[aria-label="Action value"]').dispatchEvent(new xw.Event('input')); X('[data-rule-save]').click(); await tick(20);
   check('a new rule is sent with its name, condition and action', calls.some(c => c[1] && c[1].action === 'rule-save' && c[1].name === 'Tag it' && c[1].conditions.length === 1 && c[1].actions[0].type === 'add_tag' && c[1].actions[0].value === 'billing'));
+  X('[data-manage-tab=api]').click(); await tick(20);
+  check('the API tab lists tokens by name and prefix, never the secret', /Zapier/.test(X('[data-token-row]').textContent) && /abc123/.test(X('[data-token-row]').textContent));
+  X('[data-token-create]').click(); await tick(); check('a token needs a name', /Give the token a name/.test(X('.msg').textContent));
+  X('input[aria-label="Token name"]').value = 'CRM'; X('[data-token-create]').click(); await tick(20); check('a new token is shown once', /effk\.o1\.secretsecret/.test(X('[data-token]').textContent) && calls.some(c => c[1] && c[1].action === 'token-create' && c[1].name === 'CRM'));
   X('[data-manage-tab=integrations]').click(); await tick(20);
   check('the Integrations tab lists the webhooks with their last delivery', /hooks\.example\.org/.test(X('[data-hook]').textContent) && /200/.test(X('[data-hook]').textContent));
   X('input[aria-label="Webhook address"]').value = 'http://bad.example.org'; X('[data-hook-save]').click(); await tick(); check('a bad address is explained and no secret is shown', /public https/.test(X('.msg').textContent) && !X('[data-secret]'));

@@ -21,6 +21,7 @@ import { dashboard } from './dashboard.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
+import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
@@ -114,6 +115,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'rules-list': if ((g = adminOnly() || need('triggers'))) return g; r = await listRules(pool, orgId); break;
     case 'rule-save': if ((g = adminOnly() || need('triggers'))) return g; r = await saveRule(pool, orgId, b); break;
     case 'rule-delete': if ((g = adminOnly() || need('triggers'))) return g; if (!(await deleteRule(pool, orgId, b.id))) return json(404, { error: 'No such rule.' }); r = { ok: true }; break;
+    case 'tokens-list': if ((g = adminOnly() || need('api'))) return g; r = await listTokens(pool, orgId); break;
+    case 'token-create': if ((g = adminOnly() || need('api'))) return g; r = await createToken(pool, orgId, actor.id, b.name); break;
+    case 'token-delete': if ((g = adminOnly() || need('api'))) return g; if (!(await deleteToken(pool, orgId, b.id))) return json(404, { error: 'No such token.' }); r = { ok: true }; break;
     case 'webhooks-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listHooks(pool, orgId); break;
     case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
     case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
@@ -362,3 +366,31 @@ export async function workspace(req, { pool, auth, env = process.env }) {
   return r.ok ? json(200, { ok: true, existing: r.existing, organization: r.org }) : json(r.status || 400, { error: r.error, taken: !!r.taken });
 }
 export const _json = json;
+
+// THE REST API (docs/API.md): /api/v1/tickets, authenticated with a bearer token made under Manage > API. Same rules as the desk, and it starts the same webhooks and automations.
+export async function apiV1(req, { pool, mailer, env = process.env }) {
+  const who = await authenticate(pool, req.headers.get('authorization')).catch(() => null);
+  if (!who) return json(401, { error: 'Send a valid API token: Authorization: Bearer effk.…' });
+  const orgId = who.orgId, ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'api')) return json(402, { error: 'The API is part of the Suite plan.', upgrade: true });
+  const actor = { id: null, name: 'API: ' + who.name, email: '' }, u = new URL(req.url), parts = u.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean), m = req.method;
+  let b = {}; if (m === 'POST' || m === 'PATCH') { const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' }); try { b = raw ? JSON.parse(raw) : {}; } catch { return json(400, { error: 'The body must be JSON.' }); } }
+  const out = r => r.ok ? json(r.status === 201 ? 201 : 200, r.body || r) : json(r.status || 400, { error: r.error });
+  if (parts[0] !== 'tickets') return json(404, { error: 'Not found.' });
+  const n = parts[1] ? Number(parts[1]) : 0; if (parts[1] && !/^\d{1,9}$/.test(parts[1])) return json(404, { error: 'Not found.' });
+  if (!parts[1]) {
+    if (m === 'GET') { const q = Object.fromEntries(u.searchParams); delete q.assignee; const r = await listTickets(pool, orgId, actor, { status: q.status, q: q.q, tag: q.tag, limit: q.limit, offset: q.offset }); return r.ok ? json(200, { tickets: r.tickets, counts: r.counts }) : out(r); }
+    if (m === 'POST') { const r = await createTicket(pool, orgId, actor, { ...b, channel: 'api' }); if (!r.ok) return out(r); await maybeTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); return json(201, { ticket: r.ticket }); }
+    return json(405, { error: 'Method not allowed.' });
+  }
+  if (!parts[2]) {
+    if (m === 'GET') { const r = await getTicket(pool, orgId, actor, n); return r.ok ? json(200, { ticket: r.ticket, messages: r.messages.filter(x => x.kind !== 'note' || b.notes === true).map(({ id, kind, author_name, body, created_at }) => ({ id, kind, author: author_name, body, createdAt: created_at })) }) : out(r); }
+    if (m === 'PATCH') { const patch = {}; for (const k of ['status', 'priority', 'type', 'tags', 'assigneeId', 'queueId', 'cc']) if (b[k] !== undefined) patch[k] = b[k]; const r = await updateTicket(pool, orgId, actor, n, patch); if (r.ok) await emitHook(pool, orgId, 'ticket.updated', n, { changes: Object.keys(patch) }); return r.ok ? json(200, { ticket: r.ticket }) : out(r); }
+    return json(405, { error: 'Method not allowed.' });
+  }
+  if (parts[2] === 'comments' && !parts[3] && m === 'POST') {
+    const internal = b.public === false, r = await addMessage(pool, orgId, actor, n, { body: b.body, internal, status: internal ? undefined : b.status }); if (!r.ok) return out(r);
+    if (!internal && mailer) { const d = await sendTicketReply(pool, mailer, env, orgId, n, r.message.id, []); r.email = d.delivery; await emitHook(pool, orgId, 'message.agent', n, { message: { author: actor.name, body: String(b.body || '').slice(0, 2000) } }); if (b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, n); }
+    return json(201, { message: { id: r.message.id, kind: r.message.kind }, email: r.email || null });
+  }
+  return json(404, { error: 'Not found.' });
+}

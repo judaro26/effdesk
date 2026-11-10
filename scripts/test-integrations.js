@@ -57,4 +57,10 @@ const bad = await emit(pool, acme.id, 'ticket.created', t1.number, {}, { fetchFn
 check('a listener that is down never breaks the desk, and shows as an error', bad.sent === 1 && (await A(olivia, 'webhooks-list')).body.webhooks[0].last_status === 'error');
 check('another organization cannot see or delete these webhooks', (await B(otto, 'webhooks-list')).status === 402 && (await A(olivia, 'webhook-delete', { id: 999 })).status === 404);
 check('a webhook can be deleted', (await A(olivia, 'webhook-delete', { id: saved.body.id })).status === 200 && (await A(olivia, 'webhooks-list')).body.webhooks.length === 0);
+const sl = await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://hooks.slack.com/services/T000/B000/XXXX', events: ['ticket.created'] });
+check('a Slack webhook only accepts Slack addresses, and has no secret', sl.status === 200 && sl.body.secret === undefined && (await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400 && (await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400);
+const tm = await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://contoso.webhook.office.com/webhookb2/abc', events: ['ticket.created'] });
+const chatSent = []; await emit(pool, acme.id, 'ticket.created', t1.number, {}, { fetchFn: async (u, init) => { chatSent.push({ u, init }); return { status: 200 }; } });
+const slackMsg = chatSent.find(x => /slack/.test(x.u)), teamsMsg = chatSent.find(x => /office/.test(x.u));
+check('Slack gets a short text message without our signature; Teams gets a card', tm.status === 200 && /New ticket: #1 Boiler/.test(JSON.parse(slackMsg.init.body).text) && !slackMsg.init.headers['X-EffDesk-Signature'] && JSON.parse(teamsMsg.init.body).attachments[0].contentType === 'application/vnd.microsoft.card.adaptive' && /Boiler/.test(teamsMsg.init.body));
 done();
