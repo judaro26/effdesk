@@ -78,6 +78,8 @@ const page = (me, routes, openCheckout) => { const dom = new JSDOM(pub('welcome.
 const ME = { status: 200, body: { user: { email: 'j@x.co', emailVerified: true }, organizations: [], pendingWorkspace: { company: 'Acme Rentals', slug: 'acme' } } };
 let p = page(null, { '/api/me': { status: 401, body: {} } }); await p.run(); await tick();
 check('without a session the welcome page sends people to sign in', p.went[0] === '/auth.html?mode=signin');
+p = page(null, { '/api/me': { status: 401, body: {} } }); p.w.sessionStorage.setItem('effdesk.signedIn', String(Date.now())); await p.run(); await tick();
+check('right after signing in, a missing session is explained instead of looping back to sign-in', p.went.length === 0 && /session did not stay/.test(p.w.document.getElementById('main').textContent) && p.w.sessionStorage.getItem('effdesk.signedIn') === null);
 p = page(null, { '/api/me': { status: 200, body: { user: { email: 'j@x.co', emailVerified: true }, organizations: [{ id: 'o1', plan: 'free' }], pendingWorkspace: null } } }); await p.run(); await tick();
 check('a person who already has a workspace is sent to their desk (every sign-in goes through here)', p.went[0] === '/desk.html?org=o1');
 p = page(null, { '/api/me': { status: 200, body: { user: { email: 'j@x.co', emailVerified: true }, organizations: [], pendingWorkspace: null } } }); await p.run(); await tick();

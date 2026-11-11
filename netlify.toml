@@ -98,6 +98,95 @@
   force = true
 
 
+# the same pages without .html, the welcome and admin pages, and the desk's own addresses also belong to the app host (a sign-in on the apex would put the session cookie on the wrong host)
+[[redirects]]
+  from = "https://effdesk.com/auth"
+  to = "https://app.effdesk.com/auth"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/app"
+  to = "https://app.effdesk.com/app"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/desk"
+  to = "https://app.effdesk.com/desk"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/welcome"
+  to = "https://app.effdesk.com/welcome"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/welcome.html"
+  to = "https://app.effdesk.com/welcome.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/admin"
+  to = "https://app.effdesk.com/admin"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://effdesk.com/admin.html"
+  to = "https://app.effdesk.com/admin.html"
+  status = 301
+  force = true
+
+
+
+[[redirects]]
+  from = "https://www.effdesk.com/auth"
+  to = "https://app.effdesk.com/auth"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/app"
+  to = "https://app.effdesk.com/app"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/desk"
+  to = "https://app.effdesk.com/desk"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/welcome"
+  to = "https://app.effdesk.com/welcome"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/welcome.html"
+  to = "https://app.effdesk.com/welcome.html"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/admin"
+  to = "https://app.effdesk.com/admin"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.effdesk.com/admin.html"
+  to = "https://app.effdesk.com/admin.html"
+  status = 301
+  force = true
+
+
+
 # scripts, styles and pictures are reused by the browser for a few minutes (and refreshed in the background), so pages open without a round trip per file
 [[headers]]
   for = "/js/*"

@@ -22,6 +22,11 @@ const mkFetch = routes => { const calls = []; const f = async (url, opts) => { c
 const run = async (mode, routes, fill, extra = '') => { const w = page('auth.html', '', 'js/auth.js'), f = mkFetch(routes), nav = { search: `?mode=${mode}${extra}`, went: [], go(u) { this.went.push(u); } }; w.EffDeskAuth.start(w.document, f, nav); const D = w.document; Object.entries(fill || {}).forEach(([id, v]) => { const e = D.getElementById(id); if (e.type === 'checkbox') e.checked = v; else e.value = v; }); D.getElementById('f').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30); return { D, f, nav, msg: D.getElementById('msg').textContent }; };
 let r = await run('signin', { '/api/auth/sign-in/email': { status: 200, body: { user: {} } } }, { email: 'a@b.co', password: 'correct horse battery' });
 check('signing in posts the details and goes to the welcome page, which sends people where they belong', r.f.calls[0][0] === '/api/auth/sign-in/email' && r.f.calls[0][1].email === 'a@b.co' && r.nav.went[0] === '/welcome.html');
+check('while it signs you in the button is off and the page says so, and it says what happened when it is done', /Signed in/.test(r.msg) && r.D.getElementById('go').disabled === true);
+r = await run('signin', { '/api/auth/sign-in/email': { status: 403, body: { message: 'Invalid origin', code: 'INVALID_ORIGIN' } } }, { email: 'a@b.co', password: 'correct horse battery' });
+check('a refused sign-in says why in plain words and turns the button back on', /not allowed from this web address/.test(r.msg) && r.D.getElementById('go').disabled === false && r.nav.went.length === 0);
+r = await run('signin', { '/api/auth/sign-in/email': { status: 401, body: { message: 'x' } } }, { email: 'a@b.co', password: 'wrong' });
+check('wrong details turn the button back on too', /did not work/.test(r.msg) && r.D.getElementById('go').disabled === false);
 r = await run('signin', { '/api/auth/sign-in/email': { status: 401, body: {} } }, { email: 'a@b.co', password: 'nope nope nope' });
 check('a wrong password says so and goes nowhere', /did not work/.test(r.msg) && r.nav.went.length === 0);
 r = await run('signin', { '/api/auth/sign-in/email': { status: 429, body: {} } }, { email: 'a@b.co', password: 'x' });

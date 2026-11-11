@@ -16,6 +16,13 @@ export const signupContext = new AsyncLocalStorage();
 export function siteOrigins(baseURL) {
   try { const u = new URL(baseURL); if (u.protocol !== 'https:') return []; const root = u.hostname.replace(/^(app|www)\./, ''); return [...new Set(['https://' + root, 'https://www.' + root, 'https://app.' + root])]; } catch { return []; }
 }
+// every address this site answers on, from the settings that name it (APP_URL, DESK_BASE_DOMAIN, COOKIE_DOMAIN, PORTAL_DOMAIN): the apex, www, app and, for the workspace domain, every workspace address. A wildcard does not match the apex itself, so the apex is listed on its own.
+export function trustedFor(env = process.env, baseURL = '') {
+  const roots = new Set(); const add = h => { h = String(h || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^[.*]+/, '').replace(/[/:].*$/, ''); if (h && h.includes('.')) roots.add(h.replace(/^(app|www)\./, '')); };
+  [env.DESK_BASE_DOMAIN, env.COOKIE_DOMAIN, env.PORTAL_DOMAIN].forEach(add); try { const u = new URL(baseURL); if (u.protocol === 'https:') add(u.hostname); } catch { }
+  const out = []; for (const r of roots) out.push('https://' + r, 'https://www.' + r, 'https://app.' + r, 'https://*.' + r);
+  return out;
+}
 export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SECRET, baseURL = PRODUCT.appUrl, requireVerified = process.env.REQUIRE_EMAIL_VERIFICATION !== 'false', cookieDomain = process.env.COOKIE_DOMAIN || '' }) {
   const seatGuard = async orgId => { const s = await checkSeat(pool, orgId); if (!s.ok) throw new APIError('FORBIDDEN', { message: s.reason, code: 'SEATS_FULL' }); };
   return {
@@ -25,7 +32,7 @@ export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SEC
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: !!process.env.NETLIFY, maxAge: 60 } },
     advanced: { ipAddress: { ipAddressHeaders: ['x-nf-client-connection-ip', 'x-forwarded-for'] }, useSecureCookies: /^https:/.test(baseURL), defaultCookieAttributes: { sameSite: 'lax', httpOnly: true }, ...(cookieDomain ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } : {}) },
     // with a cookie domain set (for example .effdesk.com) every workspace address (acme.effdesk.com) shares the one sign-in
-    trustedOrigins: [...siteOrigins(baseURL), ...(process.env.DESK_BASE_DOMAIN ? ['https://*.' + process.env.DESK_BASE_DOMAIN.replace(/^\./, '')] : []), ...(cookieDomain ? ['https://*' + cookieDomain] : []), ...(process.env.ORIGIN_HOST ? ['https://' + process.env.ORIGIN_HOST] : [])],
+    trustedOrigins: [...new Set([...siteOrigins(baseURL), ...trustedFor(process.env, baseURL)]), ...(process.env.DESK_BASE_DOMAIN ? ['https://*.' + process.env.DESK_BASE_DOMAIN.replace(/^\./, '')] : []), ...(cookieDomain ? ['https://*' + cookieDomain] : []), ...(process.env.ORIGIN_HOST ? ['https://' + process.env.ORIGIN_HOST] : [])],
     rateLimit: { enabled: true, window: 60, max: 60, storage: 'database', customRules: { '/sign-in/email': { window: 60, max: 8 }, '/sign-up/email': { window: 60, max: 5 }, '/request-password-reset': { window: 300, max: 5 } } },
     plugins: [
       ssoPlugin({ pool, env: { BETTER_AUTH_SECRET: secret }, baseURL }),

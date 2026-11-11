@@ -32,7 +32,8 @@
     var verifyEmail = '';
     function showDone(email, slug) { verifyEmail = email; $('f').hidden = true; $('done').hidden = false; $('doneemail').textContent = email; $('doneslug').textContent = '(' + slug + ')'; doc.title = 'Check your email | EffDesk'; }
     $('resend').addEventListener('click', function () { $('resend').disabled = true; post('/send-verification-email', { email: verifyEmail, callbackURL: '/welcome.html' }).then(function (r) { $('donemsg').textContent = r.ok ? 'Sent again. It can take a minute to arrive.' : fail(r); $('donemsg').className = 'msg' + (r.ok ? '' : ' err'); setTimeout(function () { $('resend').disabled = false; }, 30000); }).catch(function () { $('donemsg').textContent = 'Could not reach the server. Try again.'; $('donemsg').className = 'msg err'; $('resend').disabled = false; }); });
-    var fail = function (r) { return r.status === 429 ? 'Too many attempts. Wait a minute and try again.' : r.status === 403 && /verif/i.test(String(r.body.message || '')) ? 'Check your email and confirm your address first.' : r.status === 401 ? 'Those details did not work.' : (r.body && r.body.message) || 'That did not work. Try again.'; };
+    var signedIn = function () { try { root.sessionStorage.setItem('effdesk.signedIn', String(Date.now())); } catch (e) { } };           // lets the next page tell "signed in but the browser dropped the session" from "never signed in"
+    var fail = function (r) { return r.status === 403 && r.body && r.body.code === 'INVALID_ORIGIN' ? 'Sign-in is not allowed from this web address. Open app.effdesk.com and try again.' : r.status === 429 ? 'Too many attempts. Wait a minute and try again.' : r.status === 403 && /verif/i.test(String(r.body.message || '')) ? 'Check your email and confirm your address first.' : r.status === 401 ? 'Those details did not work.' : (r.body && r.body.message) || 'That did not work. Try again.'; };
     $('f').addEventListener('submit', function (e) {
       e.preventDefault(); msg('');
       var email = $('email').value.trim(), pw = $('password').value, p;
@@ -45,16 +46,18 @@
         $('go').disabled = true; msg('Creating your account…');
         p = fetchFn('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ name: $('name').value.trim(), email: email, password: pw, company: $('company').value.trim(), slug: slug }) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { $('go').disabled = false; if (!r.ok) { if (j.code === 'SLUG_TAKEN') { slugOk = false; $('slugnote').className = 'm err'; $('slugnote').textContent = j.message; return msg(j.message, true); } return msg(r.status === 422 || /exists|already/i.test(String(j.message || '')) ? 'There is already an account with that email. Sign in instead.' : r.status === 429 ? 'Too many attempts. Wait a minute and try again.' : j.message || 'That did not work. Try again.', true); } msg(''); showDone(email, j.slug || slug); }); });
       } else if (mode === 'signin') {
-        p = post('/sign-in/email', { email: email, password: pw }).then(function (r) { if (r.ok && r.body.twoFactorRedirect) { mode = 'twofactor'; draw(); return msg('Enter the 6-digit code.'); } if (!r.ok) return msg(fail(r), true); nav.go('/welcome.html'); });
+        $('go').disabled = true; msg('Signing you in…');
+        p = post('/sign-in/email', { email: email, password: pw }).then(function (r) { if (r.ok && r.body.twoFactorRedirect) { $('go').disabled = false; mode = 'twofactor'; draw(); return msg('Enter the 6-digit code.'); } if (!r.ok) { $('go').disabled = false; return msg(fail(r), true); } signedIn(); msg('Signed in. Opening your workspace…'); nav.go('/welcome.html'); }, function (e) { $('go').disabled = false; throw e; });
       } else if (mode === 'twofactor') {
-        p = post('/two-factor/verify-totp', { code: $('code').value.trim() }).then(function (r) { if (!r.ok) return msg('That code did not work.', true); nav.go('/welcome.html'); });
+        $('go').disabled = true; msg('Checking the code…');
+        p = post('/two-factor/verify-totp', { code: $('code').value.trim() }).then(function (r) { if (!r.ok) { $('go').disabled = false; return msg('That code did not work.', true); } signedIn(); msg('Signed in. Opening your workspace…'); nav.go('/welcome.html'); }, function (e) { $('go').disabled = false; throw e; });
       } else if (mode === 'forgot') {
         p = post('/request-password-reset', { email: email, redirectTo: '/auth.html?mode=reset' }).then(function () { msg('If there is an account with that email, a reset link is on its way.'); });
       } else {
         if (pw.length < 10) return msg('Use at least 10 characters for the password.', true);
         p = post('/reset-password', { newPassword: pw, token: token }).then(function (r) { if (!r.ok) return msg('That link has expired. Ask for a new one.', true); msg('Password changed. You can sign in now.'); nav.go('/auth.html?mode=signin'); });
       }
-      return p && p.catch(function () { msg('Could not reach the server. Try again.', true); });
+      return p && p.catch(function () { $('go').disabled = false; msg('Could not reach the server. Try again.', true); });
     });
     draw(); if (qs.get('sso_error')) msg(qs.get('sso_error'), true);
   }

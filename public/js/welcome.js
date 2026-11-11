@@ -11,7 +11,11 @@
     var clear = function () { while (main.firstChild) main.removeChild(main.firstChild); };
     function route() {
       return call('GET', '/api/me').then(function (r) {
-        if (r.status === 401) return nav.go('/auth.html?mode=signin');
+        if (r.status === 401) {
+          var just = 0; try { just = Number(root.sessionStorage.getItem('effdesk.signedIn')) || 0; root.sessionStorage.removeItem('effdesk.signedIn'); } catch (e) { }
+          if (just && Date.now() - just < 60000) { clear(); main.appendChild(el('h1', {}, 'You were signed in, but the session did not stay')); main.appendChild(el('p', {}, 'Your browser did not keep the sign-in. This happens when cookies are blocked for this site or when the page was opened from a different web address. Open app.effdesk.com, allow cookies, and sign in again.')); main.appendChild(el('p', {}, el('a', { class: 'btn', href: 'https://app.effdesk.com/auth.html?mode=signin' }, 'Go to app.effdesk.com'))); return; }
+          return nav.go('/auth.html?mode=signin');
+        }
         if (!r.ok || !r.body || !r.body.user) return failed();
         me = r.body; doc.getElementById('who').textContent = me.user.email;
         if (!me.user.emailVerified) { clear(); main.appendChild(el('h1', {}, 'Confirm your email first')); main.appendChild(el('p', {}, 'Open the link we emailed you, then come back.')); return; }
