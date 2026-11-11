@@ -1,6 +1,7 @@
 // src/ticket-mail.js: EMAIL FOR TICKETS. Out: an agent's public reply is emailed to the requester. In: Resend posts a customer's email to a webhook, which becomes a new ticket or a reply on an existing one.
 // Reply modes (set per organization): 'ticket' = the customer's reply comes back into the ticket (Reply-To is a private address for that ticket); 'custom' = Reply-To is an address the organization chose (for example its own support mailbox); 'none' = a no-reply address.
 import crypto from 'crypto';
+import sanitizeHtml from 'sanitize-html';
 import { withOrg } from './db.js';
 import { inboundDomain } from './config.js';
 import { getEntitlements } from './billing.js';
@@ -50,7 +51,7 @@ export async function saveMailSettings(pool, orgId, input, env = process.env) {
 
 // ---------- outgoing ----------
 // Emails an agent's public reply to the requester. Never throws: the reply is already saved, the result says what happened ('sent', 'failed' or 'skipped' with why).
-export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId, files = []) {
+export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId, files = [], options = {}) {
   const domain = inboundDomain(env);
   try {
     const data = await withOrg(pool, orgId, async c => {
@@ -73,8 +74,10 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const from = mode === 'none' ? `${display.replace(/[<>"]/g, '')} <no-reply@${domain}>` : `${display.replace(/[<>"]/g, '')} <${inbox}@${domain}>`;
     const replyTo = mode === 'ticket' ? `${inbox}+${t.number}.${ticketToken(env, orgId, t.number)}@${domain}` : mode === 'custom' ? settings.reply_to : undefined;
     const sig = settings?.signature ? `\n\n-- \n${settings.signature}` : '', foot = mode === 'none' ? '\n\n(This address does not receive replies.)' : '';
-    const text = `${m.body}${sig}${foot}`;
-    const html = `${fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+    const textBody = options.html ? String(options.html).replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim() : m.body;
+    const text = `${textBody}${sig}${foot}`;
+    const safeCustomHtml = options.html ? sanitizeHtml(String(options.html), { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: { '*': { 'color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'text-align': [/^(left|right|center)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/] } } }) : null;
+    const html = `${safeCustomHtml || fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
     let providerId; try { providerId = await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
