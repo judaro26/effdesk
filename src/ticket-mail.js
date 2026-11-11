@@ -22,13 +22,20 @@ const EMAIL_ALLOWED_STYLES = { '*': {
   'padding-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
   'margin': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
   'margin-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
-  'width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'height': [/^[0-9.]+(px|pt|em|rem|%)$/],
+  'width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-height': [/^[0-9.]+(px|pt|em|rem|%)$/],
   'border': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
   'border-top': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-right': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
   'border-bottom': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-left': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
-  'border-radius': [/^[0-9.]+(px|pt|em|rem|%)$/]
+  'border-radius': [/^[0-9.]+(px|pt|em|rem|%)$/], 'border-collapse': [/^(collapse|separate)$/], 'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\s+[0-9.]+(px|pt|em|rem))?$/], 'box-sizing': [/^(border-box|content-box)$/], 'float': [/^(left|right|none)$/], 'clear': [/^(both|left|right|none)$/], 'list-style-type': [/^(disc|circle|square|decimal|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$/]
 } };
 
+const INBOUND_EMAIL_TAGS = ['a','abbr','b','blockquote','br','caption','center','code','div','em','font','h1','h2','h3','h4','hr','i','img','li','ol','p','pre','section','small','span','strong','sub','sup','table','tbody','td','tfoot','th','thead','tr','u','ul'];
+const INBOUND_EMAIL_ATTRS = { '*': ['style','class','align','valign','width','height','bgcolor'], a: ['href','name','target','title'], img: ['src','alt','width','height','title'], td: ['colspan','rowspan','align','valign','width','bgcolor'], th: ['colspan','rowspan','align','valign','width','bgcolor'], table: ['width','cellpadding','cellspacing','border','align','bgcolor'], font: ['color','face','size'] };
+export function cleanInboundHtml(html) {
+  if (!html) return '';
+  return sanitizeHtml(String(html).slice(0, 100000), { allowedTags: INBOUND_EMAIL_TAGS, allowedAttributes: INBOUND_EMAIL_ATTRS, allowedStyles: EMAIL_ALLOWED_STYLES, allowedSchemes: ['http','https','mailto','cid'], allowedSchemesAppliedToAttributes: ['href','src'], allowProtocolRelative: false, transformTags: { a: (tag, a) => ({ tagName: 'a', attribs: /^https?:|^mailto:/i.test(a.href || '') ? { href: a.href, target: '_blank', rel: 'noopener noreferrer' } : {} }), img: (tag, a) => ({ tagName: 'img', attribs: { src: a.src || '', alt: String(a.alt || '').slice(0,300), width: a.width || '', height: a.height || '' } }) }, disallowedTagsMode: 'discard' });
+}
+const htmlText = html => sanitizeHtml(String(html || ''), { allowedTags: [], allowedAttributes: {} }).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 const fmtHtml = t => globalThis.EffFormat.html(t);          // tables, ``` code, --- lines and links, with everything escaped first
 
 export const MODES = ['ticket', 'custom', 'none'];
@@ -117,7 +124,7 @@ export function stripQuoted(text) {
   let kept = lines.slice(0, cut); while (kept.length && (kept[kept.length - 1].trim() === '' || kept[kept.length - 1].trim().startsWith('>'))) kept.pop();
   const out = kept.join('\n').trim(); return out || String(text || '').trim();
 }
-const htmlToText = h => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/ /g, ' ').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"').replace(/&/g, '&').replace(/\n{3,}/g, '\n\n').trim();
+const htmlToText = h => htmlText(String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li|h[1-6])>/gi, '\n'));
 const hdr = (h, k) => { if (!h) return ''; const key = Object.keys(h).find(x => x.toLowerCase() === k); const v = key ? h[key] : ''; return Array.isArray(v) ? v.join(' ') : String(v || ''); };
 export function isAutomated(headers, from) {
   const auto = hdr(headers, 'auto-submitted').toLowerCase().trim(), prec = hdr(headers, 'precedence').toLowerCase().trim();
@@ -150,7 +157,10 @@ export async function handleInbound(pool, env, email) {
   if (email.messageId && await messageSeen(pool, orgId, email.messageId)) return { dropped: 'duplicate' };
   const recent = (await withOrg(pool, orgId, c => c.query("select count(*)::int n from tickets where org_id = $1 and channel = 'email' and created_at > now() - interval '1 hour'", [orgId]))).rows[0].n;
   if (recent >= 200) return { dropped: 'rate' };
-  let body = stripQuoted(email.text || htmlToText(email.html)); const att = (email.attachments || []).length;
+  const htmlBody = cleanInboundHtml(email.html);
+  let body = stripQuoted(email.text || htmlToText(email.html)).replace(/\[image:\s*[^\]]+\]/gmi, '').replace(/\n{3,}/g, '\n\n').trim();
+  if (!body && htmlBody) body = stripQuoted(htmlToText(email.html)).replace(/\n{3,}/g, '\n\n').trim();
+  const att = (email.attachments || []).length;
   if (!body.trim() && att) body = '(no message, see the attached files)';
   if (!body.trim()) return { dropped: 'empty' };
   if (target.side) {                                // the reply of someone a side conversation was written to
@@ -165,13 +175,13 @@ export async function handleInbound(pool, env, email) {
     if (found && found.requester_email === from.email) number = found.number;
   }
   if (number) {
-    const r = await addRequesterMessage(pool, orgId, number, { body, authorName: from.name || from.email, messageId: email.messageId });
+    const r = await addRequesterMessage(pool, orgId, number, { body, htmlBody, authorName: from.name || from.email, messageId: email.messageId });
     if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened, orgId, messageRowId: r.messageRowId, summary: body };
     if (!r.closed) return { dropped: 'no-ticket' };
-    const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
+    const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, htmlBody, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
     return f.ok ? { ok: true, action: 'followup', number: f.ticket.number, orgId, messageRowId: f.messageRowId } : { dropped: 'invalid' };
   }
-  const t = await createTicket(pool, orgId, null, { subject, body, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
+  const t = await createTicket(pool, orgId, null, { subject, body, htmlBody, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });
   return t.ok ? { ok: true, action: 'created', number: t.ticket.number, orgId, messageRowId: t.messageRowId } : { dropped: 'invalid' };
 }
 
