@@ -567,18 +567,16 @@
               var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing…' });
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
-              // Attempt to load the rich editor if it is available in the global scope
-              if (window.EffEditor) {
-                  // We pass a dummy 't' (ticket) object for the second param since auto-replies don't have attachments yet
-                  return window.EffEditor.enhance(document, ta, { onImages: function() {} });
-              }
-              return ta;
+              // Wrap the textarea in a div so it has a parentNode, then pass to the built-in editor() function
+              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, ta);
+              editor(ta, null); 
+              return box;
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
-        var isRich = a.type === 'auto_reply' && window.EffEditor;
-        return el('div', { class: 'bar', 'data-act': String(i), style: isRich ? 'flex-wrap: wrap; align-items: flex-start;' : '' }, 
+        var isRich = a.type === 'auto_reply';
+        return el('div', { class: 'bar', 'data-act': String(i), style: isRich ? 'flex-wrap: wrap;' : '' }, 
             t, 
-            el('div', { style: isRich ? 'flex: 1 1 100%; margin-top: 10px; margin-bottom: 10px;' : 'flex: 1;' }, v), 
+            el('div', { style: isRich ? 'flex: 1 1 100%;' : 'flex: 1;' }, v), 
             el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×')
         );
       var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
