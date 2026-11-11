@@ -12,7 +12,8 @@ export const cleanName = n => { const s = String(n || 'file').replace(/[\u0000-\
 const cleanType = t => /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(String(t || '').split(';')[0].trim()) ? String(t).split(';')[0].trim().toLowerCase() : 'application/octet-stream';
 const fail = (error, status = 400) => ({ ok: false, status, error });
 const limitFor = ent => ent.storageBytes ? ent.storageBytes : ent.license ? STORAGE_BYTES.pro : STORAGE_BYTES[ent.plan] || STORAGE_BYTES.free;
-export async function storageUsed(pool, orgId) { return withOrg(pool, orgId, async c => Number((await c.query('select coalesce(sum(size),0)::bigint n from attachments where org_id = $1', [orgId])).rows[0].n)); }
+export async function storageUsed(pool, orgId) { return withOrg(pool, orgId, async c => Number((await c.query('select (coalesce((select sum(size) from attachments where org_id = $1),0) + coalesce((select sum(size) from help_images where org_id = $1),0))::bigint n', [orgId])).rows[0].n)); }
+export const limitForOrg = async (pool, orgId) => limitFor(await getEntitlements(pool, orgId));
 
 // bytes in, an index row out (the row waits, with no message, until a reply claims it)
 export async function saveUpload(pool, store, orgId, actor, { filename, contentType, bytes, ticketNumber }) {

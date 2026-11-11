@@ -9,28 +9,50 @@ export const T = {
 export const LANG_NAMES = { en: 'English', es: 'Español' };
 const date = (d, lang) => { try { return new Date(d).toLocaleDateString(lang === 'es' ? 'es' : 'en', { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return ''; } };
 
-export function layout({ org, lang, title, body, base, signedIn }) {
-  const t = T[lang];
-  return `<!doctype html>\n<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} | ${esc(org.name)}</title><link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/help.css"></head><body>
-<header><div class="in"><a class="brand" href="${base}?lang=${lang}">${esc(org.name)} <span>${esc(t.help)}</span></a><nav><a href="${base}/tickets?lang=${lang}">${esc(t.myTickets)}</a>${signedIn ? `<form method="post" action="${base}/tickets/logout?lang=${lang}" class="inline"><button class="btn l" type="submit">${esc(t.signout)}</button></form>` : ''}</nav></div></header>
-<main class="doc">${body}</main>
+const H = {
+  en: { hero: 'How can we help?', heroSub: 'Search our articles or browse by topic.', general: 'General', popular: 'Popular articles', onPage: 'On this page', related: 'Related articles', count: n => n + (n === 1 ? ' article' : ' articles'), more: 'See all', contact: 'Still need help?', contactSub: 'Send us a request and we will get back to you.', submit: 'Submit a request', skip: 'Skip to content', topics: 'Browse by topic', status: 'System status', crumbHome: 'Help center' },
+  es: { hero: '¿Cómo podemos ayudarte?', heroSub: 'Busca en nuestros artículos o explora por tema.', general: 'General', popular: 'Artículos populares', onPage: 'En esta página', related: 'Artículos relacionados', count: n => n + (n === 1 ? ' artículo' : ' artículos'), more: 'Ver todos', contact: '¿Sigues necesitando ayuda?', contactSub: 'Envíanos una solicitud y te responderemos.', submit: 'Enviar una solicitud', skip: 'Ir al contenido', topics: 'Explora por tema', status: 'Estado del sistema', crumbHome: 'Centro de ayuda' },
+};
+export const HT = lang => H[lang] || H.en;
+const HEX = /^#[0-9a-fA-F]{6}$/;
+// look = { theme, accent } (already checked against the plan); hero = html placed above the page column
+export function layout({ org, lang, title, body, base, signedIn, hero = '', wide = false, statusLink = false }) {
+  const t = T[lang], h = HT(lang), look = org.look || {}, theme = /^[a-z]{3,12}$/.test(look.theme || '') ? look.theme : 'classic', accent = HEX.test(look.accent || '') ? look.accent : '';
+  return `<!doctype html>\n<html lang="${lang}" data-htheme="${theme}"${accent ? ` style="--accent:${accent};--accent-d:${accent}"` : ''}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} | ${esc(org.name)}</title><link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/help.css"></head><body class="hc-body">
+<a class="skip" href="#content">${esc(h.skip)}</a>
+<header class="hc-head"><div class="in"><a class="brand" href="${base}?lang=${lang}">${esc(org.name)} <span>${esc(t.help)}</span></a><nav>${statusLink ? `<a href="${base}/status">${esc(h.status)}</a>` : ''}<a href="${base}/tickets?lang=${lang}">${esc(t.myTickets)}</a>${signedIn ? `<form method="post" action="${base}/tickets/logout?lang=${lang}" class="inline"><button class="btn l" type="submit">${esc(t.signout)}</button></form>` : `<a class="btn sm" href="${base}/requests/new?lang=${lang}">${esc(h.submit)}</a>`}</nav></div></header>
+${hero}<main id="content" class="${wide ? 'hc-main' : 'doc'}">${body}</main>
 <footer><div class="in"><span class="m">${esc(org.name)}</span><span class="m">Powered by EffDesk</span></div></footer>
 </body></html>`;
 }
-export const searchBox = (base, lang, q = '') => `<form method="get" action="${base}/search" class="search" role="search"><input type="hidden" name="lang" value="${lang}"><input type="search" name="q" value="${esc(q)}" placeholder="${esc(T[lang].searchPh)}" aria-label="${esc(T[lang].search)}" maxlength="100"><button class="btn" type="submit">${esc(T[lang].search)}</button></form>`;
+export const searchBox = (base, lang, q = '', big = false) => `<form method="get" action="${base}/search" class="search${big ? ' big' : ''}" role="search"><input type="hidden" name="lang" value="${lang}"><input type="search" name="q" value="${esc(q)}" placeholder="${esc(T[lang].searchPh)}" aria-label="${esc(T[lang].search)}" maxlength="100"><button class="btn" type="submit">${esc(T[lang].search)}</button></form>`;
 const langLinks = (base, lang, path) => `<p class="m">${esc(T[lang].lang)}: ${Object.keys(LANG_NAMES).map(l => l === lang ? `<strong>${LANG_NAMES[l]}</strong>` : `<a href="${base}${path}?lang=${l}">${LANG_NAMES[l]}</a>`).join(' · ')}</p>`;
 
-export function homePage({ org, lang, base, articles }) {
-  const t = T[lang], list = articles.length ? `<ul class="list">${articles.map(a => `<li><a href="${base}/a/${esc(a.slug)}?lang=${lang}">${esc(a.title)}</a><span class="m">${esc(a.excerpt.replace(/[#*`\[\]]/g, ''))}…</span></li>`).join('')}</ul>` : `<p class="m">${esc(t.none)}</p>`;
-  return layout({ org, lang, title: t.help, base, body: `<h1>${esc(t.help)}</h1>${searchBox(base, lang)}${langLinks(base, lang, '')}<h2>${esc(t.articles)}</h2>${list}<p class="m">${esc(t.needHelp)}</p>${requestLink(base, lang)}` });
+const plainEx = x => esc(String(x || '').replace(/[#*`\[\]<>]/g, '')) + '…';
+const initialOf = n => esc(String(n || '?').trim().slice(0, 1).toUpperCase());
+const link = (base, lang, a) => `${base}/a/${esc(a.slug)}?lang=${a.lang || lang}`;
+export function homePage({ org, lang, base, articles, statusLink = false }) {
+  const t = T[lang], h = HT(lang), look = org.look || {};
+  const groups = new Map(); for (const a of articles) { const k = a.category || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); }
+  const cats = [...groups.entries()].sort((x, y) => (x[0] === '') - (y[0] === '') || x[0].localeCompare(y[0]));
+  const popular = [...articles].filter(a => Number(a.views) > 0).sort((a, b) => b.views - a.views).slice(0, 6);
+  const hero = `<section class="hc-hero"><div class="in"><h1>${esc(look.hero_title || h.hero)}</h1><p>${esc(look.hero_subtitle || h.heroSub)}</p>${searchBox(base, lang, '', true)}</div></section>`;
+  const grid = cats.length ? `<h2 class="hc-h">${esc(h.topics)}</h2><div class="hc-cats">${cats.map(([k, list]) => `<section class="hc-cat"><div class="ic" aria-hidden="true">${initialOf(k || h.general)}</div><h3>${esc(k || h.general)}</h3><p class="m">${esc(h.count(list.length))}</p><ul>${list.slice(0, 4).map(a => `<li><a href="${link(base, lang, a)}">${esc(a.title)}</a></li>`).join('')}</ul>${list.length > 4 ? `<a class="more" href="${base}/search?q=&amp;cat=${encodeURIComponent(k)}&amp;lang=${lang}">${esc(h.more)} (${list.length})</a>` : ''}</section>`).join('')}</div>` : `<p class="m hc-empty">${esc(t.none)}</p>`;
+  const pop = popular.length ? `<h2 class="hc-h">${esc(h.popular)}</h2><ul class="hc-pop">${popular.map(a => `<li><a href="${link(base, lang, a)}"><strong>${esc(a.title)}</strong><span class="m">${plainEx(a.excerpt)}</span></a></li>`).join('')}</ul>` : '';
+  const cta = `<section class="hc-cta"><div><h2>${esc(h.contact)}</h2><p>${esc(h.contactSub)}</p></div><a class="btn" href="${base}/requests/new?lang=${lang}">${esc(h.submit)}</a></section>`;
+  return layout({ org, lang, title: t.help, base, hero, wide: true, statusLink, body: `${grid}${pop}${langLinks(base, lang, '')}${cta}` });
 }
-export function searchPage({ org, lang, base, q, results }) {
+export function searchPage({ org, lang, base, q, results, statusLink = false }) {
   const t = T[lang];
-  return layout({ org, lang, title: t.search, base, body: `<h1>${esc(t.help)}</h1>${searchBox(base, lang, q)}${results.length ? `<h2>${esc(t.results)} “${esc(q)}”</h2><ul class="list">${results.map(a => `<li><a href="${base}/a/${esc(a.slug)}?lang=${a.lang}">${esc(a.title)}</a><span class="m">${esc(a.excerpt.replace(/[#*`\[\]]/g, ''))}…</span></li>`).join('')}</ul>` : `<p>${esc(t.noResults)} “${esc(q)}”.</p>`}<p><a href="${base}?lang=${lang}">${esc(t.backHelp)}</a></p>` });
+  return layout({ org, lang, title: t.search, base, statusLink, wide: true, body: `<div class="hc-narrow"><h1>${esc(t.help)}</h1>${searchBox(base, lang, q)}${results.length ? `<h2>${esc(t.results)} “${esc(q)}”</h2><ul class="hc-results">${results.map(a => `<li><a href="${link(base, lang, a)}"><strong>${esc(a.title)}</strong>${a.category ? `<span class="chip">${esc(a.category)}</span>` : ''}<span class="m">${plainEx(a.excerpt)}</span></a></li>`).join('')}</ul>` : `<p>${esc(t.noResults)} “${esc(q)}”.</p>`}<p><a href="${base}?lang=${lang}">${esc(t.backHelp)}</a></p></div>` });
 }
-export function articlePage({ org, lang, base, a, html, translations, voted }) {
-  const t = T[a.lang] || T[lang];
-  return layout({ org, lang: a.lang, title: a.title, base, body: `<p><a href="${base}?lang=${a.lang}">← ${esc(t.backHelp)}</a></p>${searchBox(base, a.lang)}<article><h1>${esc(a.title)}</h1><p class="m">${esc(t.updated)} ${esc(date(a.updated_at, a.lang))}</p>${html}</article>${translations.length ? `<p class="m">${esc(t.otherLang)}: ${translations.map(x => `<a href="${base}/a/${esc(x.slug)}?lang=${x.lang}">${LANG_NAMES[x.lang]}</a>`).join(' · ')}</p>` : ''}<hr>${voted ? `<p>${esc(t.thanks)}</p>` : `<form method="post" action="${base}/a/${esc(a.slug)}/vote?lang=${a.lang}" class="inline"><span>${esc(t.helpful)}</span> <button class="btn l" name="v" value="yes" type="submit">${esc(t.yes)}</button> <button class="btn l" name="v" value="no" type="submit">${esc(t.no)}</button></form>`}` });
+export function articlePage({ org, lang, base, a, html, toc = [], related = [], translations, voted, statusLink = false }) {
+  const t = T[a.lang] || T[lang], h = HT(a.lang);
+  const crumbs = `<nav class="hc-crumbs" aria-label="Breadcrumb"><a href="${base}?lang=${a.lang}">${esc(h.crumbHome)}</a>${a.category ? `<span aria-hidden="true">›</span><span>${esc(a.category)}</span>` : ''}</nav>`;
+  const tocHtml = toc.length > 1 ? `<aside class="hc-toc" aria-label="${esc(h.onPage)}"><strong>${esc(h.onPage)}</strong><ul>${toc.map(x => `<li class="l${x.level}"><a href="#${esc(x.id)}">${esc(x.text)}</a></li>`).join('')}</ul></aside>` : '';
+  const rel = related.length ? `<section class="hc-related"><h2>${esc(h.related)}</h2><ul>${related.map(x => `<li><a href="${link(base, a.lang, x)}">${esc(x.title)}</a></li>`).join('')}</ul></section>` : '';
+  const vote = voted ? `<p class="hc-vote">${esc(t.thanks)}</p>` : `<form method="post" action="${base}/a/${esc(a.slug)}/vote?lang=${a.lang}" class="hc-vote"><span>${esc(t.helpful)}</span> <button class="btn l" name="v" value="yes" type="submit">${esc(t.yes)}</button> <button class="btn l" name="v" value="no" type="submit">${esc(t.no)}</button></form>`;
+  return layout({ org, lang: a.lang, title: a.title, base, statusLink, wide: true, body: `${crumbs}<div class="hc-art"><div class="hc-col">${searchBox(base, a.lang)}<article class="hc-article"><h1>${esc(a.title)}</h1><p class="m">${esc(t.updated)} ${esc(date(a.updated_at, a.lang))}</p>${html}</article>${translations.length ? `<p class="m">${esc(t.otherLang)}: ${translations.map(x => `<a href="${base}/a/${esc(x.slug)}?lang=${x.lang}">${LANG_NAMES[x.lang]}</a>`).join(' · ')}</p>` : ''}${vote}${rel}</div>${tocHtml}</div>` });
 }
 export function signinPage({ org, lang, base, sent, bad }) {
   const t = T[lang];

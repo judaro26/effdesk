@@ -16,7 +16,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
-  if (b.action === 'article-get') return ok({ article: { id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', body: 'Use the portal.' } });
+  if (b.action === 'article-get') return ok({ article: { id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', body: 'Use the portal.', format: 'text', editHtml: '<p>Use the portal.</p>', category: 'Billing' } });
   if (b.action === 'article-save') return b.title ? ok({ ok: true, id: 'a2', slug: 's' }) : { ok: false, status: 400, json: async () => ({ error: 'Give the article a title.' }) };
   if (b.action === 'init') return ok({ statuses: [{ id: 5, name: 'Waiting on vendor', category: 'pending', tickets: 0 }], fields: FEATURES.includes('custom_fields') ? [{ id: 1, key: 'order_number', label: 'Order number', type: 'text', options: [] }] : [], theme: 'classic', avatar: 'data:image/png;base64,iVBORw0KGgo=', agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test', avatar: 'data:image/png;base64,iVBORw0KGgo=' }, { id: 'u2', name: 'Bo', email: 'bo@acme.test' }], features: FEATURES, labels: [{ name: 'heat', n: 2 }, { name: 'boiler', n: 1 }], queues: [{ id: 5, name: 'Maintenance', active: 2 }], clients: [{ id: 9, name: 'Initech', domain: 'initech.com', share_tickets: false, tickets: 3 }], macros: [{ id: 3, name: 'Thanks', body: 'Thanks, {{name}}. -{{agent}}', status: 'solved', priority: 'low', add_tags: ['thanks'] }], views: [{ id: 7, name: 'Hot', shared: false, mine: true, filter: { status: 'open', tag: 'heat' } }], admin: true, plan: 'pro', notify: true, sla: { low: { firstResponseMin: null, resolveMin: null }, normal: { firstResponseMin: 60, resolveMin: 480 }, high: { firstResponseMin: 15, resolveMin: null }, urgent: { firstResponseMin: null, resolveMin: null } } });
   if (b.action === 'report') return ok({ days: b.days, total: 12, truncated: false, perDay: [{ day: '2026-11-08', created: 4, solved: 2 }, { day: '2026-11-09', created: 8, solved: 5 }], byStatus: [{ name: 'open', n: 7 }, { name: 'solved', n: 5 }], byPriority: [{ name: 'normal', n: 12 }], byChannel: [{ name: 'email', n: 9 }, { name: 'web', n: 3 }], byType: [], byQueue: [{ name: 'Maintenance', n: 6 }], solvedBy: [{ name: 'Ann', n: 5 }], labels: [{ name: 'heat', n: 4 }], firstReply: { avgMin: 125, medianMin: 90, answered: 10 }, resolution: { avgMin: 1500, medianMin: 1200, solved: 5 }, sla: { judged: 10, met: 8, rate: 80, breached: 2 } });
@@ -67,7 +67,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'create') return ok({ ticket: { ...T, number: 8, subject: b.subject } });
   return ok({ ok: true });
 };
-const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/desk.js'));
+const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/desk.js'));
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), $$ = s => [...w.document.querySelectorAll(s)];
@@ -165,9 +165,9 @@ check('sending the template posts its name, language and variables and closes th
 $('[data-help]').click(); await tick();
 check('Help center lists articles with status, language, views and votes, and links to the public page', $$('[data-article]').length === 1 && /Published · English · 5 views · 2 helpful, 1 not/.test($('[data-article]').textContent) && $('[data-view-help]').getAttribute('href') === '/help/acme');
 $('[data-article=a1]').click(); await tick();
-check('opening an article shows its text for editing, and its language cannot be changed', $('textarea').value === 'Use the portal.' && $('select[aria-label=Language]').hasAttribute('disabled') && $('input[aria-label=Published]').checked);
+check('opening an article shows its text for editing, and its language cannot be changed', $('[data-article-editor]').textContent === 'Use the portal.' && $('input[aria-label=Category]').value === 'Billing' && $('select[aria-label=Language]').hasAttribute('disabled') && $('input[aria-label=Published]').checked);
 $('input[aria-label=Title]').value = 'Pay rent online'; $('[data-article-save]').click(); await tick();
-check('saving sends title, text, language and status', calls.some(c => c[1] && c[1].action === 'article-save' && c[1].id === 'a1' && c[1].title === 'Pay rent online' && c[1].body === 'Use the portal.' && c[1].lang === 'en' && c[1].status === 'published') && /Article saved/.test($('.msg').textContent));
+check('saving sends title, text, language and status', calls.some(c => c[1] && c[1].action === 'article-save' && c[1].id === 'a1' && c[1].title === 'Pay rent online' && c[1].body === '<p>Use the portal.</p>' && c[1].format === 'html' && c[1].category === 'Billing' && c[1].lang === 'en' && c[1].status === 'published') && /Article saved/.test($('.msg').textContent));
 $('[data-article-new]').click(); await tick();
 check('a new article can be a translation of an existing one', [...$$('select[aria-label="Translation of"] option')].some(o => /Translation of: Pay rent/.test(o.textContent)));
 $('[data-article-save]').click(); await tick();

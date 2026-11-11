@@ -5,7 +5,8 @@
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["migrations/**"]
+  external_node_modules = ["pdfjs-dist"]
+  included_files = ["migrations/**", "node_modules/pdfjs-dist/legacy/build/**"]
 
 [[headers]]
   for = "/*"

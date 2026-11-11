@@ -7,6 +7,9 @@ import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
 import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
 import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, MAX_UPLOAD, cleanName } from './attachments.js';
+import { effectiveHelpSettings, getHelpSettings, saveHelpSettings, saveHelpImage, readHelpImage, MAX_IMAGE } from './help.js';
+import { clean as cleanHtml, withToc } from './html-clean.js';
+import { pdfToArticle, MAX_PDF } from './pdf-import.js';
 import { orgBySlug, listArticles, getArticle, saveArticle, deleteArticle, publishedList, publicArticle, countView, vote as voteArticle, searchArticles, renderBody, LANGS } from './help.js';
 import { COOKIE, SESSION_SECONDS, sessionCookie, readSession, csrfFor, csrfOk, requestLink, consumeLink, myTickets, myTicket, myReply } from './portal.js';
 import * as pages from './help-pages.js';
@@ -110,12 +113,12 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
-const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
+const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
-  const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
+  const b = await readJson(req, 450000); if (!b) return json(400, { error: 'That request could not be read.' });
   const orgId = String(b.orgId || ''); let role = orgId && await roleIn(pool, s.user.id, orgId), support = false;
   // the platform owner may look in, read-only; every visit is logged for the customer (support-enter)
   if (!role && orgId && s.user.emailVerified && platformAdmins().includes(String(s.user.email).toLowerCase())) {
@@ -288,7 +291,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     }
     case 'delete-file': if (!store || !(await deleteFile(pool, store, orgId, b.id))) return json(404, { error: 'No such file.' }); r = { ok: true }; break;
     case 'article-list': r = await listArticles(pool, orgId); break;
-    case 'article-get': r = await getArticle(pool, orgId, b.id); break;
+    case 'article-get': r = await getArticle(pool, orgId, b.id); if (r.ok) r.article.editHtml = r.article.format === 'html' ? r.article.body : renderBody(r.article.body); break;
+    case 'help-settings-get': r = { ok: true, settings: await getHelpSettings(pool, orgId), paid: planHas(ent, 'themes'), import: planHas(ent, 'article_import') }; break;
+    case 'help-settings-save': if ((g = adminOnly())) return g; r = await saveHelpSettings(pool, orgId, ent, b); break;
     case 'article-save': r = await saveArticle(pool, orgId, actor, b); break;
     case 'article-delete': if (!(await deleteArticle(pool, orgId, b.id))) return json(404, { error: 'No such article.' }); r = { ok: true }; break;
     case 'migrate-check': case 'migrate-run': {
@@ -410,6 +415,29 @@ export async function attachmentUpload(req, { pool, auth, store }) {
   const r = await saveUpload(pool, store, orgId, { id: s.user.id }, { filename: u.searchParams.get('name'), contentType: u.searchParams.get('type') || req.headers.get('content-type'), bytes, ticketNumber: u.searchParams.get('ticket') });
   return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }
+// pictures for articles (POST /api/help-assets/image?org=…) and a PDF turned into an article (POST /api/help-assets/pdf?org=…, Team plan and up)
+export async function helpAssets(req, { pool, auth, store }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
+  if (!role) return json(403, { error: 'You are not part of that organization.' });
+  if (role !== 'owner' && role !== 'admin' && role !== 'member') return json(403, { error: 'You cannot edit articles.' });
+  const kind = u.pathname.split('/').pop(), limit = kind === 'pdf' ? MAX_PDF : MAX_IMAGE;
+  if (Number(req.headers.get('content-length') || 0) > limit + 1024) return json(413, { error: kind === 'pdf' ? 'PDF files can be up to 5 MB.' : 'Pictures can be up to 4 MB each.' });
+  const slug = (await pool.query('select slug from "organization" where id = $1', [orgId])).rows[0]?.slug; if (!slug) return json(404, { error: 'No such organization.' });
+  const bytes = Buffer.from(await req.arrayBuffer()); annotate({ org: orgId, user: s.user.id, action: 'help-assets:' + kind });
+  const urlOf = id => `/help/${slug}/img/${id}`;
+  if (kind === 'image') { const r = await saveHelpImage(pool, store, orgId, bytes); return r.ok ? json(200, { ok: true, id: r.id, url: urlOf(r.id) }) : json(r.status || 400, { error: r.error }); }
+  if (kind === 'pdf') {
+    const ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'article_import')) return json(402, { error: 'Turning a PDF into an article is part of the Team plan. Upgrade to use it.', upgrade: true });
+    const r = await pdfToArticle(bytes); if (!r.ok) return json(r.status || 400, { error: r.error });
+    const urls = []; for (const img of r.images) { const x = await saveHelpImage(pool, store, orgId, img.bytes); urls.push(x.ok ? urlOf(x.id) : null); }
+    const html = r.html.replace(/<figure><img src="img:(\d+)" alt=""><\/figure>/g, (m, n) => urls[Number(n)] ? `<figure><img src="${urls[Number(n)]}" alt=""></figure>` : '');
+    const warnings = [...r.warnings]; if (urls.some(x => !x)) warnings.push('Some pictures could not be stored (storage full or too large).');
+    return json(200, { ok: true, title: r.title, html: cleanHtml(html), pages: r.pages, pictures: urls.filter(Boolean).length, warnings });
+  }
+  return json(404, { error: 'Not found.' });
+}
 // a file is always downloaded, never shown inside our pages, and the browser may not guess its type
 export async function attachmentDownload(req, { pool, auth, store }) {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
@@ -435,7 +463,7 @@ export async function ticketExport(req, { pool, auth }) {
 }
 
 // THE PUBLIC HELP CENTER AND CUSTOMER PORTAL: /help/<organization>/… (server-rendered pages, no script)
-const html = (status, body, extra) => new Response(body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Language', ...(extra || {}) } });
+const html = (status, body, extra) => new Response(body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Language', 'Content-Security-Policy': "default-src 'self'; script-src 'none'; img-src 'self' https: data:; media-src https:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.loom.com; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; object-src 'none'", ...(extra || {}) } });
 const redirect = (to, extra) => new Response(null, { status: 303, headers: { Location: to, 'Cache-Control': 'no-store', ...(extra || {}) } });
 const cookieOf = (req, name) => { const m = String(req.headers.get('cookie') || '').split(/;\s*/).map(x => x.split('=')).find(x => x[0] === name); return m ? m.slice(1).join('=') : ''; };
 const pickLang = (req, u) => { const q = u.searchParams.get('lang'); if (LANGS.includes(q)) return q; const a = String(req.headers.get('accept-language') || '').toLowerCase(); const best = a.split(',').map(x => x.trim().slice(0, 2)).find(x => LANGS.includes(x)); return best || 'en'; };
@@ -446,18 +474,25 @@ export function portalOrigin(req, env, slug) {
   if (!sec || !got || got.length !== sec.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(sec))) return '';
   try { const u = new URL(pub); return u.protocol === 'https:' && u.hostname.split('.')[0] === slug && !u.port && u.pathname === '/' ? u.origin : ''; } catch { return ''; }
 }
-export async function helpCenter(req, { pool, mailer, env = process.env, now = Date.now() }) {
+export async function helpCenter(req, { pool, mailer, store, env = process.env, now = Date.now() }) {
   const u = new URL(req.url), parts = u.pathname.replace(/^\/help\/?/, '').split('/').filter(Boolean).map(x => { try { return decodeURIComponent(x); } catch { return ''; } });
   const org = parts[0] ? await orgBySlug(pool, parts[0]) : null, lang = pickLang(req, u), post = req.method === 'POST';
   if (req.method !== 'GET' && !post) return json(405, { error: 'Method not allowed.' });
   if (!org) return html(404, pages.notFoundPage({ org: { name: 'Help center' }, lang, base: '/help' }));
   annotate({ org: org.id });
+  const look = await effectiveHelpSettings(pool, org.id), statusLink = look.status; org.look = look;
   const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:', portal = portalOrigin(req, env, org.slug);
   const form = async () => { const t = await req.text(); if (t.length > 40000) return new URLSearchParams(); return new URLSearchParams(t); };
   if (post) { const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' }); }
   const cookie = cookieOf(req, COOKIE), sess = readSession(env, cookie, org.id, now);
   const setCookie = v => `${COOKIE}=${v}; Path=/help; HttpOnly; SameSite=Lax; Max-Age=${v ? SESSION_SECONDS : 0}${secure ? '; Secure' : ''}`;
   const notFound = () => html(404, pages.notFoundPage({ org, lang, base }), {});
+  // pictures used in articles: public, served only with the type found in the bytes
+  if (rest[0] === 'img' && rest.length === 2) {
+    if (post) return json(405, { error: 'Method not allowed.' });
+    const img = store ? await readHelpImage(pool, store, org.id, rest[1]) : null; if (!img) return new Response('Not found', { status: 404 });
+    return new Response(img.bytes, { status: 200, headers: { 'Content-Type': img.type, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'public, max-age=86400', 'Cross-Origin-Resource-Policy': 'cross-origin' } });
+  }
   // the workspace's own status page (Team plan and up): /help/<slug>/status, /status/json, /status/feed.xml, /status/incidents/<n>
   if (rest[0] === 'status') {
     if (post) return json(405, { error: 'Method not allowed.' });
@@ -470,8 +505,8 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     return notFound();
   }
   // help center
-  if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, articles: await publishedList(pool, org.id, lang) }));
-  if (rest[0] === 'search' && !post) { const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, q, results: await searchArticles(pool, org.id, q, lang) })); }
+  if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, statusLink, articles: await publishedList(pool, org.id, lang) }));
+  if (rest[0] === 'search' && !post) { const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, statusLink, q, results: u.searchParams.has('cat') ? (await publishedList(pool, org.id, lang)).filter(x => x.category === String(u.searchParams.get('cat') || '').slice(0, 60)) : await searchArticles(pool, org.id, q, lang) })); }
   if (rest[0] === 'a' && rest[1]) {
     const found = await publicArticle(pool, org.id, rest[1], lang); if (!found) return notFound();
     const a = found.article;
@@ -479,7 +514,8 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
     if (post) return json(405, { error: 'Method not allowed.' });
     if (found.better) return redirect(`${base}/a/${found.better.slug}?lang=${found.better.lang}`);
     await countView(pool, org.id, a.id);
-    return html(200, pages.articlePage({ org, lang, base, a, html: renderBody(a.body), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
+    const rich = a.format === 'html' ? withToc(cleanHtml(a.body)) : { html: renderBody(a.body), toc: [] };
+    return html(200, pages.articlePage({ org, lang, base, a, statusLink, html: rich.html, toc: rich.toc, related: (await publishedList(pool, org.id, a.lang)).filter(x => x.category === a.category && x.id !== a.id).slice(0, 5), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
   }
   // the search box for a customer's own website: a small JSON answer any page may ask for (published articles only)
   if (rest[0] === 'api' && rest[1] === 'search' && !post) {

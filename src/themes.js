@@ -14,3 +14,5 @@ export const THEMES = [
 export const themeById = id => THEMES.find(t => t.id === id) || null;
 // the theme a person gets to see: their saved choice if their plan allows it, otherwise the default
 export const usableTheme = (id, hasThemes) => { const t = themeById(id); return t && (!t.premium || hasThemes) ? t.id : 'classic'; };
+// the help center: Classic is free, every other look needs the Team plan
+export const themeIsFree = id => id === 'classic';
