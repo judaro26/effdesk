@@ -12,13 +12,19 @@
     function route() {
       return call('GET', '/api/me').then(function (r) {
         if (r.status === 401) return nav.go('/auth.html?mode=signin');
+        if (!r.ok || !r.body || !r.body.user) return failed();
         me = r.body; doc.getElementById('who').textContent = me.user.email;
         if (!me.user.emailVerified) { clear(); main.appendChild(el('h1', {}, 'Confirm your email first')); main.appendChild(el('p', {}, 'Open the link we emailed you, then come back.')); return; }
         if (me.pendingWorkspace && me.pendingWorkspace.ownerWorkspace) return create(null);          // our own workspace: no plan to choose, it gets the lifetime licence
         if (me.pendingWorkspace) return draw();
         if (me.organizations.length) return nav.go('/desk.html?org=' + encodeURIComponent(me.organizations[0].id));
         nav.go('/app.html');
-      });
+      }).catch(failed);
+    }
+    function failed() {                                     // never sit on "Loading…" for ever: say so and offer a retry
+      clear(); main.appendChild(el('h1', {}, 'We could not load your account'));
+      main.appendChild(el('p', {}, 'Something went wrong on our side, or your connection dropped. Try again in a moment.'));
+      main.appendChild(el('p', {}, el('button', { class: 'btn', type: 'button', 'data-retry-me': '1', onclick: function () { clear(); main.appendChild(el('p', { class: 'm' }, 'Loading…')); route(); } }, 'Try again'), ' ', el('a', { class: 'btn l', href: '/auth.html?mode=signin' }, 'Sign in again')));
     }
     function chooseFree() { create(null); }
     function create(paid) {
