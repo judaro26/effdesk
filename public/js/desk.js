@@ -567,6 +567,7 @@
               var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing…' });
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
+              
               // Wrap the textarea in a div so it has a parentNode, then pass to the built-in editor() function
               var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, ta);
               editor(ta, null); 
