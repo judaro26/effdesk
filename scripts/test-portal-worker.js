@@ -23,5 +23,5 @@ let dseen; const dorigin = async (u, init) => { dseen = { u, init }; return new 
 const dr = await handle(new Request('https://mdv.effdesk.com/api/auth/sign-in/email', { method: 'POST', body: '{}', headers: { origin: 'https://mdv.effdesk.com' } }), ENVW, dorigin);
 check('the desk paths go to the app untouched, with the app host as origin', dseen.u === 'https://effdesk.netlify.app/api/auth/sign-in/email' && dseen.init.headers.get('origin') === 'https://effdesk.netlify.app' && dseen.init.headers.get('x-forwarded-host') === 'mdv.effdesk.com' && !dseen.init.headers.get('x-effdesk-secret'));
 check('their redirects stay on the workspace address and the sign-in cookie is host-only', dr.headers.get('location') === 'https://mdv.effdesk.com/agent/1/tickets' && !/Domain=/i.test(dr.headers.get('set-cookie')));
-check('desk paths are listed, the help center is everything else', ['/agent/12/tickets', '/desk.html', '/api/tickets', '/js/desk.js'].every(isDeskPath) && !['/', '/a/x', '/search', '/tickets'].some(isDeskPath));
+check('desk paths are listed, the help center is everything else', ['/agent/12/tickets', '/desk.html', '/api/tickets', '/js/desk.js', '/brand/mark.svg', '/css/desk.css', '/apple-touch-icon.png'].every(isDeskPath) && !['/', '/a/x', '/search', '/tickets'].some(isDeskPath));
 done();
