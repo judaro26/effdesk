@@ -564,14 +564,14 @@
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
           : a.type === 'auto_reply' ? (function() {
-              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing…' });
+              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing… You can use formatted text or paste an HTML email template.' });
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
               
-              // Keep the element returned by editor(): EffEditor hides the source
-              // textarea and returns the visible rich-text toolbar and editing area.
-              var richEditor = editor(ta, null);
-              return el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, richEditor);
+              // Wrap the textarea in a div so it has a parentNode, then pass to the built-in editor() function
+              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, ta);
+              editor(ta, null); 
+              return box;
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
         
