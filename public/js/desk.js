@@ -563,9 +563,24 @@
         var v = RULE_ENUM[a.type.replace('set_', '')] ? sel('Action value', a.value, [['', 'Choose…']].concat(RULE_ENUM[a.type.replace('set_', '')].map(function (x) { return [x, x]; })), function (x) { a.value = x; })
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
-          : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : a.type === 'auto_reply' ? 'Hi {{name}}, thanks for writing…' : 'text');
-        return el('div', { class: 'bar', 'data-act': String(i) }, t, v, el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×'));
-      });
+          : a.type === 'auto_reply' ? (function() {
+              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing…' });
+              ta.value = a.value || '';
+              ta.addEventListener('input', function () { a.value = ta.value; });
+              // Attempt to load the rich editor if it is available in the global scope
+              if (window.EffEditor) {
+                  // We pass a dummy 't' (ticket) object for the second param since auto-replies don't have attachments yet
+                  return window.EffEditor.enhance(document, ta, { onImages: function() {} });
+              }
+              return ta;
+          })()
+          : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
+        var isRich = a.type === 'auto_reply' && window.EffEditor;
+        return el('div', { class: 'bar', 'data-act': String(i), style: isRich ? 'flex-wrap: wrap; align-items: flex-start;' : '' }, 
+            t, 
+            el('div', { style: isRich ? 'flex: 1 1 100%; margin-top: 10px; margin-bottom: 10px;' : 'flex: 1;' }, v), 
+            el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×')
+        );
       var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
       var on = el('input', { type: 'checkbox', 'aria-label': 'Rule is on' }); on.checked = rd.active !== false; on.addEventListener('change', function () { rd.active = on.checked; });
       return el('div', { class: 'mlist' }, el('div', { class: 'page', style: 'padding:12px 0' }, name, ev,
