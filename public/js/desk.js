@@ -568,10 +568,10 @@
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
               
-              // Wrap the textarea in a div so it has a parentNode, then pass to the built-in editor() function
-              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, ta);
-              editor(ta, null); 
-              return box;
+              // Keep the element returned by editor(): EffEditor hides the source
+              // textarea and returns the visible rich-text toolbar and editing area.
+              var richEditor = editor(ta, null);
+              return el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, richEditor);
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
         
