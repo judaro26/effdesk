@@ -37,4 +37,36 @@ check('pasted HTML is cleaned when it goes back into the editor', ed.getHtml() =
 $(ed, '[data-cmd=source]').click(); $(ed, '.ae-src').value = '<p>Saved from source</p>'; check('saving while in the HTML view still takes what is in the box', ed.getHtml() === '<p>Saved from source</p>');
 const pf = $(ed, '[data-pdf-file]'); Object.defineProperty(pf, 'files', { value: [new w.File(['%PDF-'], 'guide.pdf', { type: 'application/pdf' })], configurable: true }); pf.dispatchEvent(new w.Event('change')); await tick();
 check('importing a PDF fills the editor, suggests the title and says what to do next', pdfs.join() === 'guide.pdf' && /From PDF/.test(ed.getHtml()) && /<figure><img/.test(ed.getHtml()) && titled === 'Guide' && says.some(s => /Imported 2 pages and 1 picture/.test(s[0]) && /Check it over/.test(s[0])));
+
+// ---- word-processor features
+const ed2 = mk({ html: '<p>Hello</p>' });
+check('the ribbon has fonts, sizes, colours, alignment, indent, spacing and table tools', ['fontName', 'fontSize', 'foreColor', 'hiliteColor', 'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull', 'indent', 'outdent', 'lineHeight', 'subscript', 'superscript', 'table-row+', 'table-col+', 'table-del'].every(c => !!$(ed2, `[data-cmd="${c}"]`)) && $(ed2, '[data-cmd=fontName]').options.length > 10);
+check('formatting is cleaned like on the server: good values stay, risky ones go', ed2.clean('<p style="color:#c00;text-align:center;font-size:20px;position:fixed;background:url(https://e.test/x);font-family:Georgia, serif;margin-left:-4px">a</p>') === '<p style="color:#c00;text-align:center;font-size:20px;font-family:Georgia, serif">a</p>');
+check('pasted <font> tags become styled spans', ed2.clean('<font color="#00f" face="Arial" size="5">d</font>') === '<span style="color:#00f;font-family:Arial;font-size:24px">d</span>');
+check('table widths and borders survive', /<table style="width:100%;border:1px solid #ccc">/.test(ed2.clean('<table style="width:100%;border:1px solid #ccc"><tr><td style="vertical-align:top;position:absolute">c</td></tr></table>')) && /<td style="vertical-align:top">/.test(ed2.clean('<table><tr><td style="vertical-align:top;position:absolute">c</td></tr></table>')));
+// the table tools
+ed2.setHtml('<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>');
+const cellSel = c => { const r = w.document.createRange(); r.selectNodeContents(c); const sel = w.getSelection(); sel.removeAllRanges(); sel.addRange(r); };
+cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-row+"]').click();
+check('add a row', ed2.area.querySelectorAll('tbody tr').length === 2 && ed2.area.querySelectorAll('tbody tr')[1].children.length === 2);
+cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-col+"]').click();
+check('add a column (header and body)', ed2.area.querySelectorAll('thead th').length === 3 && ed2.area.querySelector('tbody tr').children.length === 3);
+cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-col-"]').click(); cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-row-"]').click();
+check('remove a column and a row', ed2.area.querySelectorAll('thead th').length === 2 && ed2.area.querySelectorAll('tbody tr').length === 1);
+cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-striped"]').click(); check('stripes toggle', ed2.area.querySelector('table').classList.contains('tbl-striped'));
+cellSel(ed2.area.querySelector('td')); $(ed2, '[data-cmd="table-del"]').click(); check('delete the table', !ed2.area.querySelector('table'));
+// insert a table of a chosen size
+cellSel(ed2.area.querySelector('p') || ed2.area); $(ed2, '[data-cmd=table]').click(); $(ed2, '.ae-dlg input').value = '4 x 3'; $(ed2, '[data-dialog-ok]').click();
+check('a table of the chosen size is inserted with a header row', ed2.area.querySelectorAll('th').length === 4 && ed2.area.querySelectorAll('tbody tr').length === 2 || /<th>Heading<\/th>/.test(ed2.getHtml()));
+// picture effects
+ed2.setHtml('<figure><img src="/help/acme/img/123e4567-e89b-12d3-a456-426614174000" alt="x"></figure>'); ed2.area.querySelector('img').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const bar2 = ed2.el.querySelector('[data-image-bar]');
+bar2.querySelector('[data-img-size=img-m]').click(); bar2.querySelector('[data-img-align=img-left]').click(); bar2.querySelector('[data-img-effect=img-round]').click(); bar2.querySelector('[data-img-effect=img-shadow]').click();
+const im = ed2.area.querySelector('img');
+check('a picture can be sized, placed and given effects', ['img-m', 'img-left', 'img-round', 'img-shadow'].every(c => im.classList.contains(c)) && /class="[^"]*img-round/.test(ed2.getHtml()));
+bar2.querySelector('[data-img-size=img-l]').click(); bar2.querySelector('[data-img-effect=img-round]').click();
+check('choosing another size replaces the first, and an effect toggles off', im.classList.contains('img-l') && !im.classList.contains('img-m') && !im.classList.contains('img-round'));
+bar2.querySelector('[data-img-caption]').click(); check('a caption can be added', !!ed2.area.querySelector('figure figcaption'));
+bar2.querySelector('[data-img-caption]').click(); check('and taken away', !ed2.area.querySelector('figcaption'));
+check('the word count follows the text', /^\d+ words$/.test($(ed2, '.ae-words').textContent));
 done();

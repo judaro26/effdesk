@@ -94,4 +94,13 @@ await P('/help/acme/a/billing-basics', { headers: { 'user-agent': 'Googlebot/2.1
 check('crawlers do not count as readers', (await pool.query('select views from help_articles where id = $1', [sv.body.id])).rows[0].views === views0 + 1);
 let last = 200; for (let i = 0; i < 62; i++) last = (await P('/help/acme/search?q=billing', { headers: { 'x-nf-client-connection-ip': '7.7.7.7' } })).status;
 check('searching is limited per visitor, and another visitor is not affected', last === 429 && (await P('/help/acme/search?q=billing', { headers: { 'x-nf-client-connection-ip': '8.8.4.4' } })).status === 200);
+
+// ---- word-processor formatting reaches readers exactly
+const wp = await A(olivia, 'article-save', { title: 'Formatting', body: '<p style="text-align:center;color:#c00;font-size:22px">Centred</p><table style="width:100%"><tr><th>A</th></tr><tr><td style="background-color:#eef2f7">1</td></tr></table><figure><img src="' + up.body.url + '" class="img-round img-shadow img-left" alt="p"><figcaption>Cap</figcaption></figure><p style="position:fixed;top:0">x</p>', format: 'html', status: 'published', category: 'Billing' });
+const wph = await (await P('/help/acme/a/formatting')).text();
+check('colours, sizes, alignment, table shading and picture effects arrive as written', /<p style="text-align:center;color:#c00;font-size:22px">Centred<\/p>/.test(wph) && /<td style="background-color:#eef2f7">/.test(wph) && /class="img-round img-shadow img-left"/.test(wph) && /<figcaption>Cap<\/figcaption>/.test(wph));
+check('tables sit in a box that scrolls on phones, and nothing can be positioned over the page', /<div class="tbl-wrap"><table style="width:100%">/.test(wph) && !/position/.test(wph.split('<article')[1] || ''));
+const txt = await A(olivia, 'article-save', { title: 'Plain text', body: 'First line\nSecond line\n\n![Screenshot](' + up.body.url + ')', status: 'published' });
+const txth = await (await P('/help/acme/a/plain-text')).text();
+check('a plain text article keeps its line breaks and shows pictures', /First line<br>Second line/.test(txth) && new RegExp('<img src="' + up.body.url + '" alt="Screenshot"').test(txth));
 done();

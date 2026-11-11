@@ -61,7 +61,8 @@ export async function searchArticles(pool, orgId, q, lang) {
 // ---------- the article text → safe HTML ----------
 // Escape everything first, then allow: # ## ### headings, - or * lists, 1. lists, blank-line paragraphs, **bold**, *italic*, `code`, [text](https://link) and ```code blocks```.
 const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const inline = t => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>').replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (m, text, href) => `<a href="${href}" rel="nofollow noopener noreferrer">${text}</a>`);
+const IMG_OK = /^(https:\/\/[^\s)"'<>]+|\/help\/[a-z0-9-]{1,60}\/img\/[a-f0-9-]{36})$/;
+const inline = t => esc(t).replace(/!\[([^\]]{0,200})\]\(([^\s)]+)\)/g, (m, alt, src) => IMG_OK.test(src.replace(/&amp;/g, '&')) ? `<img src="${src}" alt="${alt}" loading="lazy">` : m).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>').replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (m, text, href) => `<a href="${href}" rel="nofollow noopener noreferrer">${text}</a>`);
 export function renderBody(src) {
   const lines = String(src || '').replace(/\r\n/g, '\n').split('\n'), out = []; let list = null, para = [], code = null;
   const flushP = () => { if (para.length) { out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; } }, flushL = () => { if (list) { out.push(`</${list}>`); list = null; } };

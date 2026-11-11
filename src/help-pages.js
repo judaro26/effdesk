@@ -28,7 +28,7 @@ ${hero}<main id="content" class="${wide ? 'hc-main' : 'doc'}">${body}</main>
 export const searchBox = (base, lang, q = '', big = false) => `<form method="get" action="${base}/search" class="search${big ? ' big' : ''}" role="search"><input type="hidden" name="lang" value="${lang}"><input type="search" name="q" value="${esc(q)}" placeholder="${esc(T[lang].searchPh)}" aria-label="${esc(T[lang].search)}" maxlength="100"><button class="btn" type="submit">${esc(T[lang].search)}</button></form>`;
 const langLinks = (base, lang, path) => `<p class="m">${esc(T[lang].lang)}: ${Object.keys(LANG_NAMES).map(l => l === lang ? `<strong>${LANG_NAMES[l]}</strong>` : `<a href="${base}${path}?lang=${l}">${LANG_NAMES[l]}</a>`).join(' · ')}</p>`;
 
-const plainEx = x => esc(String(x || '').replace(/[#*`\[\]<>]/g, '')) + '…';
+const plainEx = x => { const t = String(x || '').replace(/[#*`\[\]<>]/g, '').trim(); return esc(t) + (t.length >= 150 ? '…' : ''); };
 const initialOf = n => esc(String(n || '?').trim().slice(0, 1).toUpperCase());
 const link = (base, lang, a) => `${base}/a/${esc(a.slug)}?lang=${a.lang || lang}`;
 export function homePage({ org, lang, base, articles, statusLink = false }) {
