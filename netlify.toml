@@ -1,5 +1,5 @@
 [build]
-  command = "node scripts/migrate-on-build.js"
+  command = "node scripts/migrate-on-build.js && (node scripts/minify-assets.js || echo minify skipped)"
   publish = "public"
   functions = "netlify/functions"
 

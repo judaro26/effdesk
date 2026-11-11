@@ -7,7 +7,7 @@ export function getPool(url = process.env.DATABASE_URL) {
   if (pool) return pool;
   if (!url) throw new Error('DATABASE_URL is not set');
   url = explicitSsl(url);
-  pool = new pg.Pool({ connectionString: url, max: 5, idleTimeoutMillis: 10000, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true } });
+  pool = new pg.Pool({ connectionString: url, max: 10, idleTimeoutMillis: 10000, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true } });
   return pool;
 }
 export const makePool = url => new pg.Pool({ connectionString: explicitSsl(url), max: 5 });

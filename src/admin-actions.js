@@ -1,4 +1,5 @@
 // src/admin-actions.js: EVERYTHING THE PLATFORM OWNER CAN DO from the admin console, behind one door (POST /api/admin/do { action, ... }, platform owners only; see handlers.js). Every change is written to the platform audit log with who did it.
+import { dropEntitlements } from './billing.js';
 import crypto from 'node:crypto';
 import { listErrors, setResolved, deleteError, openCount, recordError } from './errors.js';
 import * as status from './status.js';
@@ -61,12 +62,14 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
       const on = feats(b.featuresOn), off = feats(b.featuresOff).filter(f => !on.includes(f));
       await pool.query(`insert into org_overrides (org_id, seat_limit, mail_per_day, storage_mb, ai_monthly, features_on, features_off, note, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         on conflict (org_id) do update set seat_limit = $2, mail_per_day = $3, storage_mb = $4, ai_monthly = $5, features_on = $6, features_off = $7, note = $8, updated_at = now(), updated_by = $9`, [o.id, seat, mail, mb, ai, on, off, clean(b.note, 2000), actor]);
+      dropEntitlements(o.id);
       await audit(pool, actor, 'customer.settings', o.slug, { seat, mail, mb, ai, on, off }); return { ok: true };
     }
     case 'customer-suspend': {
       const o = await orgBySlug(pool, b.slug); if (!o) return fail('No such customer.', 404); const on = b.suspended === true, why = clean(b.reason, 200);
       if (on && !why) return fail('Say why, so the customer is told.');
       await pool.query(`insert into org_overrides (org_id, suspended, suspended_reason, updated_by) values ($1,$2,$3,$4) on conflict (org_id) do update set suspended = $2, suspended_reason = $3, updated_at = now(), updated_by = $4`, [o.id, on, on ? why : '', actor]);
+      dropEntitlements(o.id);
       await audit(pool, actor, on ? 'customer.suspend' : 'customer.restore', o.slug, { why }); return { ok: true };
     }
     // ----- people

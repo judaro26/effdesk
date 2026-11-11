@@ -31,3 +31,10 @@ What was slow and why: the report counted tickets per day with 60 scans of the t
 - A per-workspace ticket counter table (list tabs currently count with a group-by, about 20 ms at 100,000 tickets).
 - Move email sending and webhooks to a queue (Netlify background functions) once volume makes them noticeable.
 - Full-text search (`tsvector`) when searching message bodies.
+
+## Speed measures (Nov 2026)
+- Scripts and stylesheets are minified at deploy time (`scripts/minify-assets.js`, about 22% smaller before compression); the files in git stay readable. If minifying fails the deploy continues with the originals.
+- Sign-in is built lazily per function instance, so the public help center, chat and health checks start without loading it.
+- Each instance remembers a workspace's plan for 10 seconds (`ENT_CACHE_MS`, off outside Netlify; cleared at once by admin changes, licences and Paddle events on the same instance) and the session for 60 seconds (Better Auth cookie cache).
+- Anonymous help pages are cached at the Netlify CDN for 60 seconds.
+- Database pool: 10 connections per instance. `node scripts/profile-queries.js` prints how many queries the main requests make.

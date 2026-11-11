@@ -7,7 +7,14 @@ export async function getSubscription(db, orgId) {
   return (await db.query('select * from subscriptions where org_id = $1', [orgId])).rows[0] || null;
 }
 // the plan and the owner's per-customer settings in ONE round trip
+// a workspace's plan is read on almost every request: each server instance remembers it for a few seconds (only on the real server; tests and scripts always read the database)
+const entCache = new Map(), ENT_MS = () => Number(process.env.ENT_CACHE_MS ?? (process.env.NETLIFY ? 10000 : 0));
+export const dropEntitlements = orgId => { if (orgId) entCache.delete(orgId); else entCache.clear(); };
 export async function getEntitlements(db, orgId) {
+  const ttl = ENT_MS(), hit = ttl && entCache.get(orgId); if (hit && Date.now() - hit.at < ttl) return hit.v;
+  const v = await readEntitlements(db, orgId); if (ttl) { if (entCache.size > 2000) entCache.clear(); entCache.set(orgId, { at: Date.now(), v }); } return v;
+}
+async function readEntitlements(db, orgId) {
   const row = (await db.query('select s.*, ov.seat_limit, ov.mail_per_day, ov.storage_mb, ov.ai_monthly, ov.features_on, ov.features_off, ov.suspended, ov.suspended_reason from (select $1::text as oid) x left join subscriptions s on s.org_id = x.oid left join org_overrides ov on ov.org_id = x.oid', [orgId])).rows[0];
   return applyOverrides(entitlements(row && row.org_id ? row : null), row && (row.seat_limit != null || row.mail_per_day != null || row.storage_mb != null || row.ai_monthly != null || row.suspended || (row.features_on && row.features_on.length) || (row.features_off && row.features_off.length)) ? row : null);
 }
@@ -58,6 +65,7 @@ export async function applyPaddleEvent(db, event, env = process.env) {
     on conflict (org_id) do update set plan = $2, interval = $3, seats_paid = $4, status = $5, paddle_customer_id = $6, paddle_subscription_id = $7, current_period_end = $8, paddle_event_at = $9, updated_at = now()
     where subscriptions.paddle_event_at is null or subscriptions.paddle_event_at <= $9`,
   [orgId, plan, interval, seats, status, d.customer_id || null, d.id || null, d.current_billing_period && d.current_billing_period.ends_at ? new Date(d.current_billing_period.ends_at) : null, at]);
+  dropEntitlements(orgId);
   return { ok: true, why: r.rowCount ? 'applied' : 'stale', orgId, plan, seats, status };
 }
 // what the checkout overlay needs: which price, how many seats, and our organization id so the event comes back with it

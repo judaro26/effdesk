@@ -66,7 +66,7 @@ export async function me(req, { pool, auth, env = process.env }) {
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const orgs = (await pool.query(`select o.id, o.name, o.slug, m.role from member m join "organization" o on o.id = m."organizationId" where m."userId" = $1 order by o.name`, [s.user.id])).rows;
   const out = [];
-  for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, suspended: ent.suspended ? ent.suspendedReason || true : undefined, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
+  await Promise.all(orgs.map(async (o, i) => { const [ent, used] = await Promise.all([getEntitlements(pool, o.id), seatsUsed(pool, o.id)]); out[i] = { ...o, suspended: ent.suspended ? ent.suspendedReason || true : undefined, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }; }));
   const pend0 = await pendingOf(pool, s.user.id), pend = pend0 && { ...pend0, ownerWorkspace: ownerWorkspaces(env)[pend0.slug] === String(s.user.email).toLowerCase() };
   const agentNumber = Number((await pool.query('select agent_number from "user" where id = $1', [s.user.id])).rows[0]?.agent_number) || null;
   return json(200, { deskBase: String(env.DESK_BASE_DOMAIN || '').toLowerCase().replace(/^\./, ''), user: { id: s.user.id, agentNumber, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend, banner: publicBanner(await platformSettings(pool)) });
