@@ -579,6 +579,7 @@
             el('div', { style: isRich ? 'flex: 1 1 100%;' : 'flex: 1;' }, v), 
             el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×')
         );
+      }); // <-- This closing bracket was missing
       var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
       var on = el('input', { type: 'checkbox', 'aria-label': 'Rule is on' }); on.checked = rd.active !== false; on.addEventListener('change', function () { rd.active = on.checked; });
       return el('div', { class: 'mlist' }, el('div', { class: 'page', style: 'padding:12px 0' }, name, ev,
