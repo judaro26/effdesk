@@ -10,7 +10,7 @@ const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
+const ticketCols = 'custom, id, number, subject, status, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -42,6 +42,7 @@ export async function createTicket(pool, orgId, actor, input) {
 export async function listTickets(pool, orgId, actor, q = {}) {
   const where = ['org_id = $1'], args = [orgId], add = (sql, v) => { args.push(v); where.push(sql.replace('$#', '$' + args.length)); };
   if (STATUSES.includes(q.status)) add('status = $#', q.status);
+  if (/^\d{1,12}$/.test(String(q.cstatus || ''))) add('custom_status_id = $#', Number(q.cstatus));
   else if (q.status === 'active') where.push("status in ('open','pending')");
   if (q.assignee === 'me') add('assignee_id = $#', actor.id); else if (q.assignee === 'none') where.push('assignee_id is null'); else if (q.assignee) add('assignee_id = $#', clean(q.assignee, 64));
   if (q.tag) add('$# = any(tags)', clean(q.tag, 30).toLowerCase());
@@ -91,10 +92,15 @@ export async function addMessage(pool, orgId, actor, number, { body, internal, s
 // status, priority, assignee (an organization member or null), tags, type, queue, client and CC; every change is written to the ticket's timeline
 export async function updateTicket(pool, orgId, actor, number, patch) {
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, status, custom_status_id, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = $${args.length}`); };
-    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when $${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); if (patch.status !== t.status) notes.push(['status', `Status ${t.status} → ${patch.status}`]); }
+    let label = null, cs = null;
+    if (patch.customStatusId !== undefined && patch.customStatusId !== null && patch.customStatusId !== '') {
+      cs = (await c.query('select id, name, category from ticket_statuses where org_id = $1 and id = $2', [orgId, Number(patch.customStatusId) || 0])).rows[0]; if (!cs) return fail('That status does not exist.');
+      patch = { ...patch, status: cs.category }; label = cs.name; set('custom_status_id', cs.id);
+    } else if (patch.status !== undefined && t.custom_status_id) set('custom_status_id', null);
+    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when $${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
     if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) return fail('That priority does not exist.'); set('priority', patch.priority); if (patch.priority !== t.priority) notes.push(['priority', `Priority ${t.priority} → ${patch.priority}`]); }
     if (patch.assigneeId !== undefined) {
       if (patch.assigneeId === null || patch.assigneeId === '') { set('assignee_id', null); if (t.assignee_id) notes.push(['assignee', 'Unassigned']); }

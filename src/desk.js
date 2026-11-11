@@ -212,3 +212,17 @@ export const extras = (pool, orgId, actor, ticket) => withOrg(pool, orgId, async
   const merged = (await c.query('select number, subject from tickets where org_id = $1 and merged_into = $2 order by number', [orgId, ticket.number])).rows;
   return { followers, following: followers.some(f => f.user_id === actor.id), events, sides, client, problem, incidents, merged };
 });
+
+// ----- custom ticket statuses: a name the workspace chooses, always inside one of the four built-in categories
+const CATEGORIES = ['open', 'pending', 'solved', 'closed'];
+export const listStatuses = (pool, orgId) => withOrg(pool, orgId, async c => ({ ok: true, statuses: (await c.query('select s.id, s.name, s.category, s.position, (select count(*)::int from tickets t where t.org_id = s.org_id and t.custom_status_id = s.id) tickets from ticket_statuses s where s.org_id = $1 order by s.position, s.id', [orgId])).rows }));
+export const saveStatus = (pool, orgId, { id, name, category, position }) => withOrg(pool, orgId, async c => {
+  const n = clean(name, 40); if (!n) return fail('Give the status a name.'); if (!CATEGORIES.includes(category)) return fail('Choose which built-in status it counts as: open, pending, solved or closed.');
+  if (CATEGORIES.includes(n.toLowerCase())) return fail('That name is already a built-in status.');
+  try {
+    if (id) { const r = await c.query('update ticket_statuses set name = $3, category = $4 where org_id = $1 and id = $2 returning id', [orgId, idOf(id), n, category]); if (!r.rowCount) return fail('No such status.', 404); await c.query('update tickets set status = $3, solved_at = case when $3 in (\'solved\',\'closed\') then coalesce(solved_at, now()) else null end where org_id = $1 and custom_status_id = $2 and status <> $3', [orgId, idOf(id), category]); return { ok: true, id: r.rows[0].id }; }
+    if ((await c.query('select count(*)::int n from ticket_statuses where org_id = $1', [orgId])).rows[0].n >= 20) return fail('An organization can have up to 20 custom statuses.');
+    return { ok: true, id: (await c.query('insert into ticket_statuses (org_id, name, category, position) values ($1,$2,$3,(select coalesce(max(position),0)+1 from ticket_statuses where org_id = $1)) returning id', [orgId, n, category])).rows[0].id };
+  } catch (e) { if (e.code === '23505') return fail('There is already a status with that name.', 409); throw e; }
+});
+export const deleteStatus = (pool, orgId, id) => withOrg(pool, orgId, async c => (await c.query('delete from ticket_statuses where org_id = $1 and id = $2', [orgId, idOf(id)])).rowCount ? { ok: true } : fail('No such status.', 404));

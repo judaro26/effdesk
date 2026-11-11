@@ -110,7 +110,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -141,9 +141,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, active: true, always: true, entries: await recentEntries(pool, orgId) }; break;
     case 'init': {
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
-      const [agents, labels, queues, clients, macros, views] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }]);
+      const [agents, labels, queues, clients, macros, views, statuses] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }, planHas(ent, 'queues') ? desk.listStatuses(pool, orgId) : { statuses: [] }]);
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
@@ -216,6 +216,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'queue-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveQueue(pool, orgId, b); break;
+    case 'status-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveStatus(pool, orgId, b); break;
+    case 'status-delete': if ((g = adminOnly() || need('queues'))) return g; r = await desk.deleteStatus(pool, orgId, b.id); break;
     case 'queue-delete': if ((g = adminOnly() || need('queues'))) return g; r = await desk.deleteQueue(pool, orgId, b.id); break;
     case 'labels': r = await desk.labelsInUse(pool, orgId); break;
     case 'follow': r = await desk.follow(pool, orgId, actor, b.number, b.on !== false); break;
@@ -243,7 +245,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const num = r.ticket.number, first = b.firstKind === 'agent' || b.firstKind === 'note' ? b.firstKind : 'requester';
       if (store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, num, r.messageRowId, b.attachmentIds);
       if (b.patch && typeof b.patch === 'object') {                      // the properties set on the form: assignee, queue, type, tags, cc, status
-        const pt = b.patch; if (pt.custom !== undefined && (g = need('custom_fields'))) return g; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
+        const pt = b.patch; if (pt.custom !== undefined && (g = need('custom_fields'))) return g; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g; if (pt.customStatusId !== undefined && pt.customStatusId !== null && pt.customStatusId !== '' && (g = need('queues'))) return g;
         const u = await updateTicket(pool, orgId, actor, num, pt); if (!u.ok) r.warning = u.error; else {
           if (u.ticket) r.ticket = u.ticket;
           if (pt.assigneeId && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, num, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
@@ -348,7 +350,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'bulk': {
       if ((g = need('bulk_actions'))) return g;
       const nums = [...new Set((Array.isArray(b.numbers) ? b.numbers : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, 100), p = b.patch || {}; if (!nums.length) return json(400, { error: 'Choose some tickets first.' });
-      const patch = {}; for (const k of ['status', 'priority', 'assigneeId']) if (p[k] !== undefined) patch[k] = p[k];
+      const patch = {}; for (const k of ['status', 'priority', 'assigneeId', 'customStatusId']) if (p[k] !== undefined) patch[k] = p[k]; if (patch.customStatusId !== undefined && (g = need('queues'))) return g;
       if (!Object.keys(patch).length && !p.addTag) return json(400, { error: 'Choose what to change.' });
       let done = 0, failed = 0, firstError = '';
       for (const n of nums) {
