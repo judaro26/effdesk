@@ -110,7 +110,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'article-list', 'article-get', 'mail-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -218,6 +218,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'queue-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveQueue(pool, orgId, b); break;
     case 'status-save': if ((g = adminOnly() || need('queues'))) return g; r = await desk.saveStatus(pool, orgId, b); break;
     case 'status-delete': if ((g = adminOnly() || need('queues'))) return g; r = await desk.deleteStatus(pool, orgId, b.id); break;
+    case 'wstatus-list': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.adminList(pool, orgId); break;
+    case 'wstatus-component-save': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.saveComponent(pool, b, orgId); break;
+    case 'wstatus-component-delete': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.deleteComponent(pool, b.id, orgId); break;
+    case 'wstatus-incident-create': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.createIncident(pool, actor.email || actor.name || 'agent', b, orgId); break;
+    case 'wstatus-incident-update': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.postUpdate(pool, actor.email || actor.name || 'agent', b.id, b, orgId); break;
+    case 'wstatus-incident-delete': if ((g = adminOnly() || need('queues'))) return g; r = await statusSvc.deleteIncident(pool, b.id, orgId); break;
     case 'queue-delete': if ((g = adminOnly() || need('queues'))) return g; r = await desk.deleteQueue(pool, orgId, b.id); break;
     case 'labels': r = await desk.labelsInUse(pool, orgId); break;
     case 'follow': r = await desk.follow(pool, orgId, actor, b.number, b.on !== false); break;
@@ -452,6 +458,17 @@ export async function helpCenter(req, { pool, mailer, env = process.env, now = D
   const cookie = cookieOf(req, COOKIE), sess = readSession(env, cookie, org.id, now);
   const setCookie = v => `${COOKIE}=${v}; Path=/help; HttpOnly; SameSite=Lax; Max-Age=${v ? SESSION_SECONDS : 0}${secure ? '; Secure' : ''}`;
   const notFound = () => html(404, pages.notFoundPage({ org, lang, base }), {});
+  // the workspace's own status page (Team plan and up): /help/<slug>/status, /status/json, /status/feed.xml, /status/incidents/<n>
+  if (rest[0] === 'status') {
+    if (post) return json(405, { error: 'Method not allowed.' });
+    if (!planHas(await getEntitlements(pool, org.id), 'queues')) return notFound();
+    const sb = `${base}/status`, brand = { name: org.name, home: base }, hdr = (type, extra = {}) => ({ 'content-type': type, 'cache-control': 'public, max-age=30', ...extra });
+    if (rest.length === 1) return new Response(statusSvc.renderPage(await statusSvc.overview(pool, Date.now(), org.id), { base: sb, title: org.name + ' status', json: sb + '/json', brand }), { status: 200, headers: hdr('text/html; charset=utf-8') });
+    if (rest[1] === 'json' && rest.length === 2) return new Response(JSON.stringify(statusSvc.renderJson(await statusSvc.overview(pool, Date.now(), org.id), org.name)), { status: 200, headers: hdr('application/json', { 'access-control-allow-origin': '*' }) });
+    if (rest[1] === 'feed.xml' && rest.length === 2) return new Response(statusSvc.renderFeed(await statusSvc.overview(pool, Date.now(), org.id), u.origin, { path: sb, name: org.name }), { status: 200, headers: hdr('application/atom+xml; charset=utf-8') });
+    if (rest[1] === 'incidents' && /^\d+$/.test(rest[2] || '') && rest.length === 3) { const i = await statusSvc.getIncident(pool, rest[2], org.id); return i ? new Response(statusSvc.renderIncident(i, sb, brand), { status: 200, headers: hdr('text/html; charset=utf-8') }) : notFound(); }
+    return notFound();
+  }
   // help center
   if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, articles: await publishedList(pool, org.id, lang) }));
   if (rest[0] === 'search' && !post) { const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, q, results: await searchArticles(pool, org.id, q, lang) })); }
