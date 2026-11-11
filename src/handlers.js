@@ -395,7 +395,17 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
     if (!r.ok) throw new Error('status ' + r.status); full = await r.json();
   } catch (e) { console.warn('could not fetch the received email:', e.message); return json(502, { error: 'Could not fetch the message.' }); }
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
-  if (res.ok && res.messageRowId && store && (full.attachments || ev.data.attachments || []).length) await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id);
+  if (res.ok && res.messageRowId) {
+    let stored = { inline: [] };
+    if (store && (full.attachments || ev.data.attachments || []).length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id) || stored;
+    await withOrg(pool, res.orgId, async c => {
+      const row = (await c.query('select html_body from ticket_messages where org_id = $1 and id = $2', [res.orgId, res.messageRowId])).rows[0];
+      let html = String(row?.html_body || '');
+      for (const file of stored.inline || []) if (file.contentId) html = html.replace(new RegExp('cid:' + file.contentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '/api/attachments/' + encodeURIComponent(file.id) + '?org=' + encodeURIComponent(res.orgId) + '&inline=1');
+      html = html.replace(/<img\b(?=[^>]*\bsrc=[\"']cid:[^\"']*[\"'])[^>]*>/gi, m => { const alt = (m.match(/\balt=[\"']([^\"']*)[\"']/i) || [])[1]; return alt ? '<span>' + alt.replace(/[&<>]/g, '') + '</span>' : ''; });
+      if (row) await c.query('update ticket_messages set html_body = $3 where org_id = $1 and id = $2', [res.orgId, res.messageRowId, html || null]);
+    });
+  }
   await pool.query("insert into webhook_events (id, provider, type) values ($1,'resend','email.received') on conflict do nothing", [evId]);
   if (res.ok && (res.action === 'created' || res.action === 'followup')) { await maybeTriggers(pool, mailer, env, res.orgId, 'created', res.number, res.summary || ''); await emitHook(pool, res.orgId, 'ticket.created', res.number); }
   if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
@@ -447,7 +457,9 @@ export async function attachmentDownload(req, { pool, auth, store }) {
   const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const f = await readFile(pool, store, orgId, u.pathname.split('/').pop()); if (!f) return json(404, { error: 'No such file.' });
-  return new Response(f.bytes, { status: 200, headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });
+  const inline = u.searchParams.get('inline') === '1', type = String(f.content_type || '').toLowerCase();
+  if (inline && !['image/png','image/jpeg','image/gif','image/webp'].includes(type)) return json(415, { error: 'This file type cannot be displayed inline.' });
+  return new Response(f.bytes, { status: 200, headers: { 'Content-Type': inline ? type : 'application/octet-stream', 'Content-Disposition': inline ? 'inline' : `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });
 }
 
 // a ticket's thread or one message, to print (PDF) or as an .eml file: GET /api/ticket-export?org=…&number=…&format=print|eml[&message=…][&notes=1]
