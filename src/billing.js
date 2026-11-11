@@ -1,12 +1,16 @@
 // src/billing.js: WHAT AN ORGANIZATION MAY DO (plan, seats, licence) AND HOW PADDLE'S EVENTS CHANGE IT.
 // Paddle (merchant of record) takes the payment and handles sales tax; we only keep the plan, the number of seats paid for and the status.
 import crypto from 'crypto';
-import { entitlements, seatCheck, SEAT_ROLES, PAID_PLANS, INTERVALS } from './plans.js';
+import { entitlements, applyOverrides, seatCheck, SEAT_ROLES, PAID_PLANS, INTERVALS } from './plans.js';
 
 export async function getSubscription(db, orgId) {
   return (await db.query('select * from subscriptions where org_id = $1', [orgId])).rows[0] || null;
 }
-export async function getEntitlements(db, orgId) { return entitlements(await getSubscription(db, orgId)); }
+// the plan and the owner's per-customer settings in ONE round trip
+export async function getEntitlements(db, orgId) {
+  const row = (await db.query('select s.*, ov.seat_limit, ov.mail_per_day, ov.storage_mb, ov.ai_monthly, ov.features_on, ov.features_off, ov.suspended, ov.suspended_reason from (select $1::text as oid) x left join subscriptions s on s.org_id = x.oid left join org_overrides ov on ov.org_id = x.oid', [orgId])).rows[0];
+  return applyOverrides(entitlements(row && row.org_id ? row : null), row && (row.seat_limit != null || row.mail_per_day != null || row.storage_mb != null || row.ai_monthly != null || row.suspended || (row.features_on && row.features_on.length) || (row.features_off && row.features_off.length)) ? row : null);
+}
 // seats in use: members plus invitations still waiting (a seat is reserved when someone is invited)
 export async function seatsUsed(db, orgId) {
   const r = await db.query(`select (select count(*) from member where "organizationId" = $1 and role = any($2))::int

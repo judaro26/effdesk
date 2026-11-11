@@ -1,0 +1,15 @@
+/* the public status page */
+.status{max-width:760px}.status h1{font-size:30px;margin:12px 0 18px}.status h2{font-size:18px;margin:32px 0 10px}
+.banner{padding:18px 20px;border-radius:12px;font-size:18px;font-weight:700;border:1px solid transparent}
+.banner.ok{background:#e4f6ea;color:#14502d;border-color:#b5e2c4}.banner.warn{background:#fff4d6;color:#5b4300;border-color:#ecd28a}.banner.bad{background:#fde8ea;color:#8a1c27;border-color:#f3b8bf}.banner.maint{background:#e6effa;color:#163f6e;border-color:#b6cdea}
+.comps{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}.comp{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card)}.comp:last-child{border-bottom:0}
+.ch{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.st{font-weight:600;font-size:14px;white-space:nowrap}
+.st-operational{color:#1a7f45}.st-maintenance{color:#2864a8}.st-degraded{color:#a06a00}.st-partial_outage{color:#c25400}.st-major_outage{color:#c42a3b}
+.bars{display:flex;gap:2px;height:30px;margin:10px 0 4px}.bars i{flex:1 1 0;min-width:2px;border-radius:2px;background:#3fae6a}
+.bars .b-maintenance{background:#4b86c8}.bars .b-degraded{background:#e0a21b}.bars .b-partial_outage{background:#ee7a2b}.bars .b-major_outage{background:#d9384a}
+.bl{display:flex;justify-content:space-between;font-size:12px}
+.inc{border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:12px 16px;margin:10px 0;background:var(--card)}.inc h3{margin:0 0 2px;font-size:16px}.inc h3 a{text-decoration:none;color:inherit}
+.inc.impact-minor{border-left-color:#e0a21b}.inc.impact-major{border-left-color:#ee7a2b}.inc.impact-critical{border-left-color:#d9384a}.inc.impact-none{border-left-color:#4b86c8}
+.upd{list-style:none;margin:8px 0 0;padding:0}.upd li{padding:8px 0;border-top:1px solid var(--line)}.upd p{margin:4px 0 0;line-height:1.55}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;background:#eef1f3;color:#33414a;font-size:12px;font-weight:600}.pill.s-resolved,.pill.s-completed{background:#e4f6ea;color:#14502d}.pill.s-investigating{background:#fde8ea;color:#8a1c27}.pill.s-identified{background:#fff0d9;color:#7a4500}.pill.s-monitoring{background:#e6effa;color:#163f6e}
+@media (prefers-color-scheme:dark){.banner.ok{background:#12301f;color:#9fe0b7;border-color:#1f5c3a}.banner.warn{background:#3a2f0e;color:#f0d98c;border-color:#6b5517}.banner.bad{background:#3d1a20;color:#f4b3bb;border-color:#6e2a34}.banner.maint{background:#14283f;color:#a9cbf1;border-color:#27496f}.pill{background:#2b343a;color:#cfd8dd}}

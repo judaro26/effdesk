@@ -55,8 +55,17 @@
         if (!o) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
         if (hostSlug && o.slug !== hostSlug) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'You are not a member of the workspace ' + hostSlug + '. Ask an owner to invite you, or ', el('a', { href: 'https://app.' + base + '/app.html' }, 'open your own workspaces'), '.')); return; }
         if (base && !hostSlug && o.slug && !support0(nav) && nav.go) { var np = r.body.user.agentNumber; return nav.go('https://' + o.slug + '.' + base + '/agent/' + (np || 0) + '/tickets' + (pm && pm[2] ? '/' + pm[2] : '')); }
+        announce(r.body.banner);
+        if (o.suspended && !support0(nav)) { main.textContent = ''; main.appendChild(el('div', { class: 'pad', 'data-suspended': '1', role: 'alert' }, el('h2', {}, 'This workspace is suspended'), el('p', {}, typeof o.suspended === 'string' ? o.suspended : 'Access has been paused.'), el('p', { class: 'm' }, 'Write to support@effdesk.com to get it back.'))); return; }
         orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')) || (pm && Number(pm[2])) || 0; myNo = r.body.user.agentNumber || ''; return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); return goHome(); });
       });
+    }
+    // the platform owner's announcement, shown above everything and never rewritten by a page
+    function announce(bn) {
+      var old = doc.getElementById('announcement'); if (old) old.remove(); if (!bn || !bn.text) return;
+      var bar = el('div', { id: 'announcement', class: 'announce ' + (bn.tone === 'warn' || bn.tone === 'danger' ? bn.tone : 'info'), role: 'status', 'data-announcement': '1' }, bn.text);
+      if (bn.link) bar.appendChild(el('span', {}, ' ', el('a', { href: bn.link, target: '_blank', rel: 'noopener' }, 'Details')));
+      doc.body.insertBefore(bar, doc.body.firstChild);
     }
     function supportBar() {
       if (!doc.getElementById('supportbar')) { var bar = el('div', { id: 'supportbar', class: 'supportbar', role: 'status', 'data-support-bar': '1' }, 'Support view: you are looking at this workspace with the customer’s permission. It is read-only and every visit is logged for them. ', el('a', { href: '/admin.html#customers' }, 'Back to the admin page')); doc.body.insertBefore(bar, doc.body.firstChild); }

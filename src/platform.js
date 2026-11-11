@@ -16,6 +16,7 @@ export async function customers(pool, now = Date.now()) {
       (select u.email from member m join "user" u on u.id = m."userId" where m."organizationId" = o.id and m.role = 'owner' order by m."createdAt" limit 1) as owner_email,
       (select count(*)::int from member m where m."organizationId" = o.id) as agents,
       (select count(*)::int from invitation i where i."organizationId" = o.id and i.status = 'pending' and i."expiresAt" > now()) as invites,
+      (select suspended from org_overrides ov where ov.org_id = o.id) as suspended,
       (select max(se."updatedAt") from session se join member m on m."userId" = se."userId" where m."organizationId" = o.id) as last_active
     from "organization" o left join subscriptions s on s.org_id = o.id order by o."createdAt" desc limit 500`)).rows;
   const out = [];
@@ -29,7 +30,7 @@ export async function customers(pool, now = Date.now()) {
         (select count(*)::int from api_tokens where org_id = $1) tokens,
         (select count(*)::int from webhooks where org_id = $1) hooks,
         (select count(*)::int from triggers where org_id = $1 and active) rules`, [o.id])).rows[0]);
-    const row = { id: o.id, name: o.name, slug: o.slug, createdAt: o.created_at, owner: o.owner_email, plan: o.license ? 'licence' : o.plan, status: o.license ? 'licence' : (o.status || 'none'), interval: o.interval, seatsPaid: o.seats_paid || 0, agents: o.agents, invites: o.invites, lastActive: o.last_active, periodEnd: o.current_period_end,
+    const row = { suspended: !!o.suspended, id: o.id, name: o.name, slug: o.slug, createdAt: o.created_at, owner: o.owner_email, plan: o.license ? 'licence' : o.plan, status: o.license ? 'licence' : (o.status || 'none'), interval: o.interval, seatsPaid: o.seats_paid || 0, agents: o.agents, invites: o.invites, lastActive: o.last_active, periodEnd: o.current_period_end,
       tickets: { total: u.total, last30: u.last30, last: u.last_ticket }, articles: u.articles, emailSetUp: u.inbox > 0, apiTokens: u.tokens, webhooks: u.hooks, rules: u.rules };
     row.health = health({ ...row, plan: o.license ? 'pro' : o.plan, status: o.status }, now); out.push(row);
   }

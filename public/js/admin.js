@@ -1,4 +1,4 @@
-// public/js/admin.js: THE PLATFORM OWNER'S PAGE: give or take back a lifetime licence, and import the old desk's data (the export file of the mdv console) in batches. The server refuses anyone who is not the platform owner. Draws text only.
+// public/js/admin.js: THE PLATFORM OWNER'S CONSOLE (shell, overview, customers, licences, import; the other tools are in admin-panels.js). Give or take back a lifetime licence, and import the old desk's data (the export file of the mdv console) in batches. The server refuses anyone who is not the platform owner. Draws text only.
 (function (root) {
   'use strict';
   var BATCH = 100;
@@ -25,13 +25,16 @@
     }
     var ago = function (v) { if (!v) return 'never'; var d = Math.round((Date.now() - new Date(v).getTime()) / 86400000); return d < 1 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; };
     var HEALTH = { healthy: 'Healthy', free: 'Free', heavy: 'Heavy use', stalled: 'Stalled', past_due: 'Past due', canceled: 'Canceled' };
-    var SECTIONS = [['Monitor', [['overview', 'Overview'], ['customers', 'Customers']]], ['Manage', [['licence', 'Lifetime licences']]], ['Data', [['import', 'Import old desk']]]], section = 'overview';
+    var SECTIONS = [['Monitor', [['overview', 'Overview'], ['customers', 'Customers'], ['errors', 'Errors'], ['status', 'Status page']]], ['Manage', [['licence', 'Lifetime licences'], ['users', 'People'], ['settings', 'Settings']]], ['Platform', [['logging', 'Logging'], ['activity', 'Activity']]], ['Data', [['import', 'Import old desk']]]], section = 'overview';
+    var act = function (action, body) { return call('POST', '/api/admin/do', Object.assign({ action: action }, body || {})).catch(function () { return { ok: false, status: 0, body: { error: 'The server could not be reached.' } }; }); };
+    var P = root.EffDeskAdminPanels ? root.EffDeskAdminPanels.make({ el: el, act: act, say: function (t, b) { say(t, b); }, doc: doc }) : null;
     var ids = []; SECTIONS.forEach(function (g) { g[1].forEach(function (x) { ids.push(x[0]); }); });
     var fromHash = function () { var h = String(root.location && root.location.hash || '').replace('#', ''); return ids.indexOf(h) >= 0 ? h : 'overview'; };
     var needsAttention = function (c) { return c.health === 'past_due' || c.health === 'stalled'; };
     function show(id) {
       section = id; [].slice.call(doc.querySelectorAll('[data-panel]')).forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== id; });
       [].slice.call(doc.querySelectorAll('[data-nav]')).forEach(function (a) { if (a.getAttribute('data-nav') === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+      if (P && P.panels[id]) P.panels[id].load();
     }
     function tile(label, value, tone) { return el('div', { class: 'tile' + (tone ? ' ' + tone : '') }, el('div', { class: 'tv' }, String(value)), el('div', { class: 'tl' }, label)); }
     function overviewPanel() {
@@ -43,6 +46,7 @@
       var att = people.customers.filter(needsAttention);
       box.appendChild(el('h3', { style: 'margin-top:24px' }, 'Needs attention'));
       box.appendChild(att.length ? el('ul', { class: 't', 'data-attention': '1' }, att.map(function (c) { return el('li', {}, el('strong', {}, c.name), ' ', el('span', { class: 'm' }, c.slug + ' · ' + (HEALTH[c.health] || c.health) + ' · last active ' + ago(c.lastActive))); })) : el('p', { class: 'm' }, 'Nothing needs attention right now.'));
+      if (P) box.insertBefore(P.health(), box.children[1] || null);
       return box;
     }
     function customersCard() {
@@ -76,6 +80,7 @@
       box.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable', 'data-people': '1' }, el('thead', {}, el('tr', {}, ['Name', 'Email', 'Role', 'Last active'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.people.map(function (p) { return el('tr', {}, el('td', {}, p.name || ''), el('td', {}, p.email), el('td', {}, p.role), el('td', {}, ago(p.lastActive))); })))));
       box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Support view'));
       box.appendChild(el('p', {}, el('a', { class: 'btn', href: '/desk.html?org=' + encodeURIComponent(d.customer.id) + '&support=1', 'data-open-support': '1' }, 'Open support view (read-only)'), ' ', el('span', { class: 'm' }, 'Read-only. Each visit is recorded in the customer\u2019s audit log.')));
+      if (P) { box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Settings for this customer')); box.appendChild(P.customerControls(d.customer.slug)); }
       if (d.entries.length) box.appendChild(el('ul', { class: 't' }, d.entries.map(function (e) { return el('li', { class: 'm' }, new Date(e.at).toLocaleString() + ' · ' + e.action.replace('support.', '').replace('-', ' ') + ' · ' + (e.who || '')); })));
       return box;
     }
@@ -103,7 +108,7 @@
         el('button', { class: 'btn l', type: 'button', 'data-check': '1', onclick: go(true) }, 'Check first'), ' ', el('button', { class: 'btn', type: 'button', 'data-import': '1', onclick: go(false) }, 'Import')));
       var panel = function (id, child) { return el('section', { 'data-panel': id, hidden: 'hidden' }, child); };
       main.appendChild(el('h1', {}, 'Platform admin'));
-      main.appendChild(el('div', { class: 'adm' }, nav, el('div', { class: 'admbody' }, panel('overview', overviewPanel()), panel('customers', customersCard()), panel('licence', licence), panel('import', imp), log)));
+      main.appendChild(el('div', { class: 'adm' }, nav, el('div', { class: 'admbody' }, panel('overview', overviewPanel()), panel('customers', customersCard()), panel('licence', licence), panel('import', imp), P ? Object.keys(P.panels).map(function (k) { return panel(k, P.panels[k].el); }) : null, log)));
       drawList(); syncTabs(); show(section);
     }
     if (root.addEventListener) root.addEventListener('hashchange', function () { show(fromHash()); });

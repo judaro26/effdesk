@@ -27,6 +27,19 @@ export function entitlements(sub) {
   if (!good) return { plan: 'free', license: null, seats: FREE_SEATS, features: new Set(PLANS.free.features), paid: false };
   return { plan: sub.plan, license: null, seats: Number(sub.seats_paid), features: new Set(PLANS[sub.plan].features), paid: true, interval: sub.interval || null };
 }
+// the platform owner's per-customer settings (admin console > customer): limits above the plan's, single features on or off, a suspension
+export function applyOverrides(ent, ov) {
+  if (!ov) return ent;
+  const out = { ...ent, features: new Set(ent.features) };
+  if (ov.seat_limit != null) out.seats = Number(ov.seat_limit);
+  if (ov.mail_per_day != null) out.mailPerDay = Number(ov.mail_per_day);
+  if (ov.storage_mb != null) out.storageBytes = Number(ov.storage_mb) * 1048576;
+  if (ov.ai_monthly != null) out.aiMonthly = Number(ov.ai_monthly);
+  for (const f of ov.features_on || []) out.features.add(f);
+  for (const f of ov.features_off || []) out.features.delete(f);
+  if (ov.suspended) { out.suspended = true; out.suspendedReason = String(ov.suspended_reason || ''); }
+  return out;
+}
 export const has = (ent, feature) => ent.features.has(feature);
 // can one more agent be added? (used = members + pending invitations)
 export function seatCheck(ent, used) {
@@ -37,4 +50,4 @@ export const priceOf = (plan, interval, seats) => (PLANS[plan] ? PLANS[plan].pri
 
 // outgoing ticket emails an organization may send per rolling 24 hours (stops a stolen account from being used to send spam)
 export const MAIL_PER_DAY = { free: 50, team: 500, suite: 2000, pro: 5000 };
-export const mailLimit = ent => MAIL_PER_DAY[ent.plan] || MAIL_PER_DAY.free;
+export const mailLimit = ent => ent.mailPerDay || MAIL_PER_DAY[ent.plan] || MAIL_PER_DAY.free;

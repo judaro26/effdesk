@@ -24,6 +24,10 @@ import { report as buildReport, reportCsv } from './reports.js';
 import { dashboard } from './dashboard.js';
 import { getSso, saveSso, deleteSso } from './sso.js';
 import * as wa from './whatsapp.js';
+import { recordBrowserError } from './errors.js';
+import * as statusSvc from './status.js';
+import * as adminActions from './admin-actions.js';
+import { settings as platformSettings, publicBanner } from './platform-settings.js';
 import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
@@ -57,10 +61,10 @@ export async function me(req, { pool, auth, env = process.env }) {
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
   const orgs = (await pool.query(`select o.id, o.name, o.slug, m.role from member m join "organization" o on o.id = m."organizationId" where m."userId" = $1 order by o.name`, [s.user.id])).rows;
   const out = [];
-  for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
+  for (const o of orgs) { const ent = await getEntitlements(pool, o.id), used = await seatsUsed(pool, o.id); out.push({ ...o, suspended: ent.suspended ? ent.suspendedReason || true : undefined, plan: ent.plan, license: ent.license, seats: ent.seats === Infinity ? null : ent.seats, seatsUsed: used, features: [...ent.features] }); }
   const pend0 = await pendingOf(pool, s.user.id), pend = pend0 && { ...pend0, ownerWorkspace: ownerWorkspaces(env)[pend0.slug] === String(s.user.email).toLowerCase() };
   const agentNumber = Number((await pool.query('select agent_number from "user" where id = $1', [s.user.id])).rows[0]?.agent_number) || null;
-  return json(200, { deskBase: String(env.DESK_BASE_DOMAIN || '').toLowerCase().replace(/^\./, ''), user: { id: s.user.id, agentNumber, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend });
+  return json(200, { deskBase: String(env.DESK_BASE_DOMAIN || '').toLowerCase().replace(/^\./, ''), user: { id: s.user.id, agentNumber, email: s.user.email, name: s.user.name, twoFactor: !!s.user.twoFactorEnabled, emailVerified: !!s.user.emailVerified }, organizations: out, pendingWorkspace: pend, banner: publicBanner(await platformSettings(pool)) });
 }
 
 // the plan an owner or admin picked → the details the Paddle checkout needs
@@ -124,6 +128,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   if (role === 'light' && !LIGHT_OK.has(String(b.action))) return json(403, { error: 'Light agents can read tickets and add internal notes. Ask an admin to make you a full agent.' });
   // the plan and the custom role are looked up side by side (each is a trip to the database)
   const isAdmin = role === 'owner' || role === 'admin', [ent, cr] = await Promise.all([getEntitlements(pool, orgId), role === 'member' && !support ? customRoleOf(pool, orgId, s.user.id) : null]), perm = permFor(String(b.action));
+  // a workspace the platform owner has suspended can be looked at by support, nothing else
+  if (ent.suspended && !support) return json(403, { error: 'This workspace is suspended' + (ent.suspendedReason ? ': ' + ent.suspendedReason : '') + '. Contact support to get it back.', suspended: true });
   // a custom role limits what a full agent may change
   if (cr && perm && !cr.permissions.includes(perm)) return json(403, { error: `Your role (${cr.name}) does not allow this. Ask an admin.` });
   // a feature of a higher plan: refuse with the name of the plan that has it
@@ -380,6 +386,7 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
   if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
+  logInfo('inbound_email', { action: res.action, dropped: res.dropped, org: res.orgId, ticket: res.number });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
 }
@@ -533,6 +540,7 @@ export async function workspaceCheck(req, { pool, env = process.env, now = Date.
 export async function signup(req, { pool, auth, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const b = await readJson(req); if (!b) return json(400, { message: 'That request could not be read.' });
+  const ps = await platformSettings(pool); if (!ps.signups.open) return json(403, { message: ps.signups.message || 'New sign-ups are paused right now. Please try again soon.', code: 'SIGNUPS_PAUSED' });
   const company = cleanCompany(b.company), st = await slugStatus(pool, b.slug, { email: String(b.email || ''), env });
   if (company.length < 2) return json(400, { message: 'Enter your company name.', code: 'COMPANY' });
   if (!st.available) return json(409, { message: st.reason, code: 'SLUG_TAKEN' });
@@ -541,6 +549,7 @@ export async function signup(req, { pool, auth, env = process.env }) {
   if (!r.ok) return new Response(await r.text(), { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   const u = (await pool.query(`select id from "user" where lower(email) = $1 and "emailVerified" = false and "createdAt" > now() - interval '1 minute' and not exists (select 1 from pending_signups where user_id = "user".id)`, [String(b.email || '').trim().toLowerCase()])).rows[0];       // only an account created by THIS request: an existing address (Better Auth answers the same way, to avoid revealing it) must never get its pending workspace changed
   if (u && !(await holdSlug(pool, u.id, company, st.slug))) { await pool.query('delete from "user" where id = $1', [u.id]); return json(409, { message: 'That address was just taken. Choose another.', code: 'SLUG_TAKEN' }); }
+  logInfo('signup', { slug: st.slug, ok: true });
   return json(200, { ok: true, slug: st.slug });
 }
 // after the confirmation link: create the workspace the person asked for (POST), or choose another address first (PATCH { slug })
@@ -608,5 +617,43 @@ export async function whatsappWebhook(req, { pool, mailer, store, env = process.
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const raw = await req.text(); if (raw.length > 200000) return json(413, { error: 'Too large.' });
   const r = await wa.handleWebhook(pool, env, raw, req.headers.get('x-hub-signature-256'), mailer, { store, fetchFn });
+  logInfo('whatsapp_webhook', { ok: r.ok, handled: r.handled, why: r.ok ? undefined : r.error });
   return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
+}
+
+// a script error reported by a browser (public, capped): see src/errors.js
+export async function clientLog(req, { pool, mailer, env = process.env }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const raw = await req.text(); if (raw.length > 4000) return json(413, { error: 'Too large.' });
+  let b; try { b = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
+  const r = await recordBrowserError(pool, mailer, env, b); return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
+}
+// is it up: checks the database and answers quickly. No secrets, nothing about customers.
+export async function health(req, { pool, env = process.env }) {
+  const t0 = Date.now(); let db = true; try { await pool.query('select 1'); } catch { db = false; }
+  return new Response(JSON.stringify({ ok: db, db, ms: Date.now() - t0, time: new Date().toISOString(), deploy: String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12) || undefined }), { status: db ? 200 : 503, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+}
+
+// the public status page: /status, /status/incidents/:id, /status/feed.xml and /api/status (JSON, readable from any website)
+export async function statusPublic(req, { pool, env = process.env }) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return json(405, { error: 'Method not allowed.' });
+  const u = new URL(req.url), p = u.pathname.replace(/\/+$/, ''), origin = siteBase(req, env), hdr = (type, extra = {}) => ({ 'content-type': type, 'cache-control': 'public, max-age=30', ...extra });
+  if (p === '/api/status') return new Response(JSON.stringify(statusSvc.renderJson(await statusSvc.overview(pool))), { status: 200, headers: hdr('application/json', { 'access-control-allow-origin': '*' }) });
+  if (p === '/status/feed.xml') return new Response(statusSvc.renderFeed(await statusSvc.overview(pool), origin), { status: 200, headers: hdr('application/atom+xml; charset=utf-8') });
+  const m = p.match(/^\/status\/incidents\/(\d+)$/);
+  if (m) { const i = await statusSvc.getIncident(pool, m[1]); return i ? new Response(statusSvc.renderIncident(i), { status: 200, headers: hdr('text/html; charset=utf-8') }) : new Response('Not found', { status: 404 }); }
+  if (p === '/status') return new Response(statusSvc.renderPage(await statusSvc.overview(pool)), { status: 200, headers: hdr('text/html; charset=utf-8') });
+  return new Response('Not found', { status: 404 });
+}
+
+// the platform owner's console: one door for everything in src/admin-actions.js. Owners only (verified email on the PLATFORM_ADMIN_EMAILS list); changes are written to the platform audit log.
+export async function adminDo(req, { pool, auth, mailer, env = process.env }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  if (!s.user.emailVerified || !platformAdmins().includes(String(s.user.email).toLowerCase())) return json(403, { error: 'Only the platform owner can do that.' });
+  const b = await readJson(req, 60000); if (!b) return json(400, { error: 'That request could not be read.' });
+  const action = String(b.action || ''); annotate({ user: s.user.id, action: 'admin:' + action });
+  const r = await adminActions.run(action, b, { pool, mailer, env, actor: String(s.user.email).toLowerCase() });
+  if (r.ok && adminActions.MUTATING.has(action) && !action.startsWith('customer-') && !action.startsWith('user-')) await adminActions.audit(pool, String(s.user.email).toLowerCase(), action, b.id ?? b.slug ?? null, {});
+  return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }

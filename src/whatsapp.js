@@ -9,6 +9,7 @@ import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
 import { notifyTicket } from './notify.js';
+import { info as logInfo, warn as logWarn } from './log.js';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const WINDOW_MS = 24 * 3600 * 1000;
@@ -131,8 +132,9 @@ export async function sendReply(pool, env, orgId, number, messageId, body, fetch
   try {
     const r = await fetchFn(`${GRAPH}/${acc.phone_number_id}/messages`, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to: w.phone, type: 'text', text: { body: String(body).slice(0, 4000), preview_url: false } }) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { const msg = clean(j.error && (j.error.error_user_msg || j.error.message), 300) || 'WhatsApp answered ' + r.status; await record('fail:' + crypto.randomUUID(), 'failed', msg); return { delivery: 'failed', why: msg }; }
+    if (!r.ok) { const msg = clean(j.error && (j.error.error_user_msg || j.error.message), 300) || 'WhatsApp answered ' + r.status; await record('fail:' + crypto.randomUUID(), 'failed', msg); logWarn('whatsapp_out', { org: orgId, ok: false, why: msg }); return { delivery: 'failed', why: msg }; }
     const wamid = j.messages && j.messages[0] && j.messages[0].id; if (wamid) await record(wamid, 'sent');
+    logInfo('whatsapp_out', { org: orgId, ok: true });
     return { delivery: 'sent' };
   } catch (e) { const msg = 'Could not reach WhatsApp.'; await record('fail:' + crypto.randomUUID(), 'failed', msg).catch(() => { }); return { delivery: 'failed', why: msg }; }
 }

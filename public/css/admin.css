@@ -1,0 +1,57 @@
+/* admin.css: THE PLATFORM CONSOLE. Loaded after site.css; only the admin page uses it. */
+body{background:var(--bg)}
+main{max-width:1280px}
+header{background:var(--card)}
+main>h1{font-size:22px;margin:22px 0 14px;letter-spacing:-.01em}
+.adm{display:grid;grid-template-columns:232px minmax(0,1fr);gap:28px;align-items:start}
+.admnav{position:sticky;top:14px;display:flex;flex-direction:column;gap:16px;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.navhead{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 4px 10px;letter-spacing:0;text-transform:none}
+.admnav a{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;color:var(--ink);text-decoration:none;font-size:15px;border:1px solid transparent}
+.admnav a:hover{background:var(--bg)}
+.admnav a[aria-current=page]{background:var(--bg);border-color:var(--line);box-shadow:inset 3px 0 0 var(--accent);font-weight:650}
+.admbody{min-width:0}
+.admbody h2{font-size:20px;margin:0}.admbody h3{font-size:15px;margin:22px 0 8px}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.card{padding:18px;border-radius:14px}
+.stack{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.row,.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.bar input,.bar select{min-width:0;flex:1 1 200px;max-width:340px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px;min-width:0;max-width:100%}
+textarea{width:100%;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible,.subtab:focus-visible,.admnav a:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{padding:8px 14px;border-radius:9px;font-size:14px}
+.btn.danger{border-color:#cc3340;color:#cc3340;background:transparent}
+.btn.danger[data-suspend]{background:#cc3340;color:#fff}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--ink);font-weight:650;cursor:pointer;text-align:left}.linkbtn:hover{text-decoration:underline}
+.fld{display:flex;flex-direction:column;gap:4px;margin:10px 0;min-width:0}.fld input,.fld select,.fld textarea{width:100%}.fl{font-size:13px;font-weight:600;color:var(--muted)}.fh{font-size:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.feats{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.feat{margin:4px 0;text-transform:capitalize}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:14px;margin:4px 12px 4px 0}
+.checks{display:flex;flex-wrap:wrap;margin:4px 0 10px}
+.tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.tile{border-radius:14px}.tile .tv{font-size:26px;letter-spacing:-.02em}
+.tile.warn{border-color:#cc3340;background:color-mix(in srgb,#cc3340 7%,var(--card))}
+.health{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+.hitem{display:flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);text-decoration:none;font-size:14px}.hitem:hover{border-color:var(--accent)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--muted)}.dot.ok{background:#2e9e5b}.dot.warn{background:#e8a317}.dot.bad{background:#cc3340}.dot.off{background:var(--line);box-shadow:inset 0 0 0 1px var(--muted)}
+.srow{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}.srow .dot{margin-top:6px}
+.chip{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}.chip.bad{border-color:#cc3340;color:#cc3340}.chip.info{border-color:#3b82c4;color:#3b82c4}
+.erow{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+.ehead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:2px}.etitle{flex:1 1 260px;min-width:0;overflow-wrap:anywhere}
+.edetail pre{margin:8px 0;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:auto;font-size:12px;max-width:100%}
+.crow{display:grid;grid-template-columns:minmax(120px,1fr) minmax(120px,1.4fr) 170px auto auto auto;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.crow.add{border-style:dashed}.upd{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.upd input{flex:1 1 220px}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.msg{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;max-width:min(560px,calc(100vw - 32px));margin:0;padding:10px 16px;border-radius:12px;background:var(--ink);color:var(--bg);font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.msg:empty{display:none}.msg.err{background:#cc3340;color:#fff}
+.admbody section>.msg.err,.stack>.msg.err,.card>.msg.err{position:static;transform:none;max-width:none;box-shadow:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}.adtable th,.adtable td{padding:10px 12px}.adtable tr:first-child td{border-top:0}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+@media (max-width:900px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.crow{grid-template-columns:1fr 1fr}.crow>*{min-width:0}}
+@media (max-width:760px){
+  main{padding:0 14px}.adm{grid-template-columns:minmax(0,1fr);gap:14px}
+  .admnav{position:sticky;top:0;z-index:20;flex-direction:row;gap:6px;overflow-x:auto;border-radius:12px;padding:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .navgroup{display:flex;flex-wrap:nowrap;gap:4px;flex:none}.admnav{flex-wrap:nowrap}.navhead{display:none}.admnav a{white-space:nowrap;padding:8px 12px}
+  .admnav a[aria-current=page]{box-shadow:inset 0 -3px 0 var(--accent)}
+  .grid2,.grid4{grid-template-columns:minmax(0,1fr)}.crow{grid-template-columns:minmax(0,1fr)}
+  .btn,input,select{min-height:42px}.bar input,.bar select{flex:1 1 100%;max-width:none}
+}

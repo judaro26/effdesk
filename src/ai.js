@@ -23,12 +23,13 @@ async function chat(env, system, user, fetchFn, max = 700) {
   return out;
 }
 // count one use; refuse when the month's cap is reached
+const capFor = async (pool, env, orgId) => { const r = (await pool.query('select ai_monthly from org_overrides where org_id = $1', [orgId])).rows[0]; return r && r.ai_monthly != null ? r.ai_monthly : cap(env); };   // the owner can raise, lower or switch off one customer's allowance
 async function spend(pool, env, orgId) {
   const n = (await withOrg(pool, orgId, c => c.query('insert into ai_usage (org_id, month, calls) values ($1,$2,1) on conflict (org_id, month) do update set calls = ai_usage.calls + 1 returning calls', [orgId, month()]))).rows[0].calls;
-  if (n > cap(env)) { await withOrg(pool, orgId, c => c.query('update ai_usage set calls = calls - 1 where org_id = $1 and month = $2', [orgId, month()])); return false; }
+  if (n > await capFor(pool, env, orgId)) { await withOrg(pool, orgId, c => c.query('update ai_usage set calls = calls - 1 where org_id = $1 and month = $2', [orgId, month()])); return false; }
   return true;
 }
-export async function usage(pool, env, orgId) { const r = (await withOrg(pool, orgId, c => c.query('select calls from ai_usage where org_id = $1 and month = $2', [orgId, month()]))).rows[0]; return { used: r ? r.calls : 0, cap: cap(env), configured: !!env.OPENAI_API_KEY }; }
+export async function usage(pool, env, orgId) { const r = (await withOrg(pool, orgId, c => c.query('select calls from ai_usage where org_id = $1 and month = $2', [orgId, month()]))).rows[0]; return { used: r ? r.calls : 0, cap: await capFor(pool, env, orgId), configured: !!env.OPENAI_API_KEY }; }
 const guard = async (pool, env, orgId) => { if (!env.OPENAI_API_KEY) return fail('AI assist is not switched on for this server yet.', 503); if (!(await spend(pool, env, orgId))) return fail('This month\'s AI assists are used up. They reset on the first of the month.', 429); return null; };
 const problem = e => e && e.code === 'busy' ? fail('The AI service is busy. Try again in a moment.', 503) : fail('The AI service could not answer. Try again.', 502);
 const transcript = (messages, withNotes) => messages.filter(m => m.kind === 'requester' || m.kind === 'agent' || (withNotes && m.kind === 'note')).slice(-14).map(m => `[${m.kind === 'requester' ? 'Customer' : m.kind === 'agent' ? 'Agent' : 'Internal note'}${m.author_name ? ' ' + m.author_name : ''}]\n${clean(m.body, 1500)}`).join('\n\n');

@@ -43,3 +43,9 @@ Add a **monitor** in Axiom for `level == 'error'` (alert to email or Slack) and 
 ## Notes
 - Sending happens after the answer leaves (`context.waitUntil`) and can never fail or slow a request; a down log service changes nothing for visitors.
 - Logging in the browser (front-end errors) is not included yet: it needs a small public endpoint with rate limits.
+
+## Errors, status page and the owner console (added)
+- **Errors**: every crash, 5xx, `console.error` and browser script error becomes one row per kind (fingerprint) with a count, listed at `/admin.html#errors`. New kinds, kinds that come back after being resolved, and kinds still happening an hour later are emailed to `PLATFORM_ADMIN_EMAILS`. Rows hold no customer content. Search the logs for the request id shown on each row.
+- **Axiom**: set `AXIOM_TOKEN` and `AXIOM_DATASET=effdesk` in Netlify (and `AXIOM_DOMAIN` only for the EU region), redeploy, then use *Logging → Send a test log line* in the console. It shows what Axiom answered.
+- **Status page**: public at `/status` (JSON `/api/status`, feed `/status/feed.xml`). Manage components, incidents and maintenance at `/admin.html#status`. The page shows the worst of a component's own status, open incidents, maintenance in progress and a live database check, so it is only as accurate as what you post.
+- **Owner console**: customers (plan limits, feature switches, suspend with a reason), people (sign out, verify), announcement banner, pause sign-ups, activity log.
