@@ -84,4 +84,14 @@ const old2 = await (await P('/help/acme/a/old-style')).text(); check('an old tex
 const rel = await (await P('/help/acme/a/billing-basics')).text(); check('related articles come from the same category only', !/Old style/.test(rel.split('hc-related')[1] || ''));
 check('a topic page lists its articles', /Old style/.test(await (await P('/help/acme/search?cat=Getting%20started&q=')).text()) && !/Billing basics/.test((await (await P('/help/acme/search?cat=Getting%20started&q=')).text()).split('<ul class="hc-results">')[1] || ''));
 check('search finds words inside the HTML but not tag names', /Billing basics/.test(await (await P('/help/acme/search?q=Pay+online')).text()) && !/Billing basics/.test(await (await P('/help/acme/search?q=iframe')).text()));
+
+// ---- hardening
+const cross = async (headers) => (await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: olivia.cookie, ...headers }, body: JSON.stringify({ orgId: acme.id, action: 'init' }) }), CTX)).status;
+check('a signed-in action sent from another website or subdomain is refused, our own pages are fine', await cross({ origin: 'https://evil.test' }) === 401 && await cross({ 'sec-fetch-site': 'same-site' }) === 401 && await cross({ origin: 'http://x', 'sec-fetch-site': 'same-origin' }) === 200);
+const cached = await P('/help/acme'); check('anonymous help pages may be cached at the edge for a minute, signed-in ones never', /s-maxage=60/.test(cached.headers.get('netlify-cdn-cache-control') || '') && !(await P('/help/acme', { headers: { cookie: 'eff_portal=x' } })).headers.get('netlify-cdn-cache-control'));
+const views0 = (await pool.query('select views from help_articles where id = $1', [sv.body.id])).rows[0].views;
+await P('/help/acme/a/billing-basics', { headers: { 'user-agent': 'Googlebot/2.1' } }); await P('/help/acme/a/billing-basics', { headers: { 'user-agent': 'Mozilla/5.0 (iPhone)' } });
+check('crawlers do not count as readers', (await pool.query('select views from help_articles where id = $1', [sv.body.id])).rows[0].views === views0 + 1);
+let last = 200; for (let i = 0; i < 62; i++) last = (await P('/help/acme/search?q=billing', { headers: { 'x-nf-client-connection-ip': '7.7.7.7' } })).status;
+check('searching is limited per visitor, and another visitor is not affected', last === 429 && (await P('/help/acme/search?q=billing', { headers: { 'x-nf-client-connection-ip': '8.8.4.4' } })).status === 200);
 done();

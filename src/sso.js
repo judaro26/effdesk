@@ -3,6 +3,7 @@
 //   callback  /api/auth/sso/callback: checks the answer (state, signature, issuer, audience, nonce, a verified email in the company's domains), creates the person if new, makes them a member and signs them in
 // A person who already has an EffDesk account is only signed in by SSO if they already belong to that organization (or were created by it); otherwise the owner must invite them first, so a provider can never take over an account that is not its own.
 // With "require SSO" on, the email and password form refuses the company's domains.
+import { guardedFetch, publicAddress } from './guard.js';
 import crypto from 'crypto';
 import { createAuthEndpoint, createAuthMiddleware, APIError } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
@@ -16,6 +17,8 @@ export const seal = (secret, text) => { const iv = crypto.randomBytes(12), c = c
 export const unseal = (secret, sealed) => { const [iv, tag, enc] = String(sealed).split('.').map(x => Buffer.from(x, 'base64')), d = crypto.createDecipheriv('aes-256-gcm', key(secret), iv); d.setAuthTag(tag); return Buffer.concat([d.update(enc), d.final()]).toString('utf8'); };
 const b64u = b => Buffer.from(b).toString('base64url');
 const sign = (secret, text) => crypto.createHmac('sha256', secret).update('sso-state:' + text).digest('base64url');
+// calls to a customer's identity provider never go to internal addresses and never follow redirects (on the real server; a local test provider is allowed elsewhere)
+const outbound = (url, init) => process.env.NETLIFY ? guardedFetch(url, init) : fetch(url, { ...init, redirect: 'manual' });
 const okUrl = u => { try { const x = new URL(u); return x.protocol === 'https:' || (x.protocol === 'http:' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(x.hostname)); } catch { return false; } };
 const domainOf = e => String(e || '').toLowerCase().split('@')[1] || '';
 const DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -46,8 +49,9 @@ export async function deleteSso(pool, orgId) { await pool.query('delete from sso
 const docs = new Map();
 export async function discover(issuer) {
   const hit = docs.get(issuer); if (hit && Date.now() - hit.at < 600000) return hit.doc;
-  const r = await fetch(issuer + '/.well-known/openid-configuration', { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const r = await outbound(issuer + '/.well-known/openid-configuration', { signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error('HTTP ' + r.status);
   const d = await r.json(); if (!d.authorization_endpoint || !d.token_endpoint || !d.jwks_uri || !okUrl(d.authorization_endpoint) || !okUrl(d.token_endpoint) || !okUrl(d.jwks_uri)) throw new Error('not an OpenID Connect provider');
+  if (process.env.NETLIFY) for (const k of ['authorization_endpoint', 'token_endpoint', 'jwks_uri']) if (!(await publicAddress(new URL(d[k]).hostname))) throw new Error('the provider points at a private address');
   if (d.issuer && String(d.issuer).replace(/\/+$/, '') !== issuer) throw new Error('the provider names a different issuer');
   docs.set(issuer, { at: Date.now(), doc: d }); return d;
 }
@@ -89,7 +93,7 @@ export function ssoPlugin({ pool, env = process.env, baseURL }) {
         let claims;
         try {
           const doc = await discover(p.issuer);
-          const tr = await fetch(doc.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: String(q.code || ''), redirect_uri: baseURL + '/api/auth/sso/callback', client_id: p.client_id, client_secret: unseal(secret(), p.client_secret_enc), code_verifier: st.v }), signal: AbortSignal.timeout(10000) });
+          const tr = await outbound(doc.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: String(q.code || ''), redirect_uri: baseURL + '/api/auth/sso/callback', client_id: p.client_id, client_secret: unseal(secret(), p.client_secret_enc), code_verifier: st.v }), signal: AbortSignal.timeout(10000) });
           const tj = await tr.json(); if (!tr.ok || !tj.id_token) throw new Error('no token');
           claims = (await jwtVerify(tj.id_token, createRemoteJWKSet(new URL(doc.jwks_uri)), { issuer: doc.issuer || p.issuer, audience: p.client_id })).payload;
           if (claims.nonce !== st.n) throw new Error('nonce');

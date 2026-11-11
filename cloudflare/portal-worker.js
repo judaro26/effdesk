@@ -11,7 +11,7 @@ export const fixCookie = c => String(c).replace(/;\s*Path=\/help\b[^;]*/i, '; Pa
 // the agent desk on a workspace address: these paths go to the app untouched (sign-in, desk, API, scripts), everything else is the customer help center. The sign-in cookie the app sets has no Domain, so it belongs to that one address only.
 export const isDeskPath = p => /^\/(agent(\/|$)|desk\.html$|auth\.html$|app\.html$|welcome\.html$|accept-invitation|api\/|js\/|css\/|favicon|robots\.txt$)/.test(p);
 async function passDesk(request, url, env, fetchFn) {
-  const publicOrigin = 'https://' + url.hostname, h = new Headers(request.headers); h.set('host', env.ORIGIN_HOST); h.set('x-forwarded-host', url.hostname); h.delete('cf-connecting-ip');
+  const publicOrigin = 'https://' + url.hostname, h = new Headers(request.headers); h.set('host', env.ORIGIN_HOST); h.set('x-forwarded-host', url.hostname); h.delete('x-effdesk-client-ip'); if (request.headers.get('cf-connecting-ip')) h.set('x-effdesk-client-ip', request.headers.get('cf-connecting-ip')); h.delete('cf-connecting-ip');
   if (h.get('origin')) h.set('origin', 'https://' + env.ORIGIN_HOST); if (h.get('referer')) h.set('referer', h.get('referer').split(publicOrigin).join('https://' + env.ORIGIN_HOST));
   const res = await fetchFn(`https://${env.ORIGIN_HOST}${url.pathname}${url.search}`, { method: request.method, headers: h, redirect: 'manual', body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer() });
   const out = new Headers(res.headers), loc = out.get('location'); if (loc && loc.startsWith('https://' + env.ORIGIN_HOST)) out.set('location', publicOrigin + loc.slice(('https://' + env.ORIGIN_HOST).length));

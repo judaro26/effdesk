@@ -20,7 +20,8 @@ export async function authenticate(pool, header) {
   const m = /^Bearer\s+(effk\.[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{20,64})$/.exec(String(header || '')); if (!m) return null;
   const orgId = m[1].split('.')[1];
   return withOrg(pool, orgId, async c => {
-    const r = (await c.query('update api_tokens set last_used_at = now() where org_id = $1 and hash = $2 returning name', [orgId, sha(m[1])])).rows[0];
+    const r = (await c.query('select name, last_used_at < now() - interval \'1 minute\' or last_used_at is null as stale from api_tokens where org_id = $1 and hash = $2', [orgId, sha(m[1])])).rows[0];
+    if (r && r.stale) await c.query('update api_tokens set last_used_at = now() where org_id = $1 and hash = $2', [orgId, sha(m[1])]);       // one write a minute at most, not one per call
     return r ? { orgId, name: r.name } : null;
   });
 }

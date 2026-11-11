@@ -3,6 +3,7 @@
 import { info as logInfo } from './log.js';
 import crypto from 'node:crypto';
 import { withOrg } from './db.js';
+import { publicAddress, guardedFetch } from './guard.js';
 export const EVENTS = ['ticket.created', 'ticket.updated', 'message.agent', 'message.customer', 'ticket.mentioned'];
 export const MAX_HOOKS = 10;
 export const KINDS = ['json', 'slack', 'teams'];
@@ -23,9 +24,10 @@ export function safeUrl(v) {
 export async function listHooks(pool, orgId) {
   return withOrg(pool, orgId, async c => ({ ok: true, events: EVENTS, webhooks: (await c.query('select id, url, kind, events, active, last_status, last_at from webhooks where org_id = $1 order by id', [orgId])).rows }));
 }
-export async function saveHook(pool, orgId, b) {
+export async function saveHook(pool, orgId, b, { lookup } = {}) {
   const kind = KINDS.includes(b.kind) ? b.kind : 'json';
   const url = safeUrl(b.url); if (!url) return { ok: false, status: 400, error: 'Use a public https address, for example https://hooks.example.com/effdesk.' };
+  if (!(await publicAddress(new URL(url).hostname, lookup, { allowUnresolved: true }))) return { ok: false, status: 400, error: 'That address does not resolve to a public server. Use a public https address.' };
   if (!hostOkFor(kind, url)) return { ok: false, status: 400, error: kind === 'slack' ? 'That is not a Slack webhook address (it starts with https://hooks.slack.com/).' : 'That is not a Microsoft Teams webhook address.' };
   const events = [...new Set((Array.isArray(b.events) ? b.events : []).filter(e => EVENTS.includes(e)))]; if (!events.length) return { ok: false, status: 400, error: 'Choose at least one event.' };
   return withOrg(pool, orgId, async c => {
@@ -38,7 +40,7 @@ export async function saveHook(pool, orgId, b) {
 }
 export async function deleteHook(pool, orgId, id) { return withOrg(pool, orgId, async c => (await c.query('delete from webhooks where org_id = $1 and id = $2', [orgId, Number(id) || 0])).rowCount > 0); }
 // tell every active webhook that listens for this event. Never throws; each call has a 5 second limit.
-export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = fetch, now = Date.now() } = {}) {
+export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = guardedFetch, now = Date.now() } = {}) {
   try {
     const data = await withOrg(pool, orgId, async c => ({
       hooks: (await c.query('select id, url, secret, kind from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,

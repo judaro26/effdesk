@@ -37,6 +37,7 @@ import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { info as logInfo, annotate } from './log.js';
+import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
 import { getRouting, saveRouting, setAvailable, myAvailability } from './routing.js';
@@ -53,7 +54,8 @@ import { PLANS, has as planHas } from './plans.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
-const session = async (auth, req) => { try { return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
+// a signed-in action must come from our own pages: a request that a browser marks as coming from another website or subdomain is refused (cookies alone are not proof)
+const session = async (auth, req) => { try { if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(req)) return null; return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
 const roleIn = async (pool, userId, orgId) => (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [userId, orgId])).rows[0]?.role || '';
 const audit = (pool, orgId, actorId, action, target, meta) => { logInfo('audit', { org: orgId, actor: actorId, action, target }); return auditWrite(pool, orgId, actorId, action, target, meta); };
 const auditWrite = (pool, orgId, actorId, action, target, meta) => withOrg(pool, orgId, c => c.query('insert into audit_log (org_id, actor_id, action, target, meta) values ($1,$2,$3,$4,$5)', [orgId, actorId, action, target || null, JSON.stringify(meta || {})]));
@@ -505,21 +507,26 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
     return notFound();
   }
   // help center
-  if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, statusLink, articles: await publishedList(pool, org.id, lang) }));
-  if (rest[0] === 'search' && !post) { const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, statusLink, q, results: u.searchParams.has('cat') ? (await publishedList(pool, org.id, lang)).filter(x => x.category === String(u.searchParams.get('cat') || '').slice(0, 60)) : await searchArticles(pool, org.id, q, lang) })); }
+  // anonymous readers' pages may sit in the CDN for a minute (one database trip per minute, not per visitor); signed-in portal readers and filtered views never do
+  const edge = !cookie && !u.searchParams.has('voted') ? { 'Netlify-CDN-Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300', 'Netlify-Vary': 'header=Accept-Language|x-effdesk-portal,cookie=eff_portal' } : {};
+  const ip = clientIp(req, env);
+  if (!rest.length && !post) return html(200, pages.homePage({ org, lang, base, statusLink, articles: await publishedList(pool, org.id, lang) }), edge);
+  if (rest[0] === 'search' && !post) { if (await rateLimit(pool, 'hs:' + ip, 60, 60, now)) return html(429, pages.notFoundPage({ org, lang, base }), { 'Retry-After': '60' }); const q = String(u.searchParams.get('q') || '').slice(0, 100); return html(200, pages.searchPage({ org, lang, base, statusLink, q, results: u.searchParams.has('cat') ? (await publishedList(pool, org.id, lang)).filter(x => x.category === String(u.searchParams.get('cat') || '').slice(0, 60)) : await searchArticles(pool, org.id, q, lang) })); }
   if (rest[0] === 'a' && rest[1]) {
     const found = await publicArticle(pool, org.id, rest[1], lang); if (!found) return notFound();
     const a = found.article;
+    if (post && rest[2] === 'vote' && await rateLimit(pool, 'hv:' + ip, 20, 600, now)) return redirect(`${base}/a/${a.slug}?lang=${a.lang}`);
     if (post && rest[2] === 'vote') { const f = await form(); const seen = cookieOf(req, 'eff_hv').split('.').includes(a.id.slice(0, 8)); if (!seen && (f.get('v') === 'yes' || f.get('v') === 'no')) await voteArticle(pool, org.id, a.id, f.get('v') === 'yes'); return redirect(`${base}/a/${a.slug}?lang=${a.lang}&voted=1`, { 'Set-Cookie': `eff_hv=${[...cookieOf(req, 'eff_hv').split('.').filter(Boolean), a.id.slice(0, 8)].slice(-30).join('.')}; Path=/help; Max-Age=2592000; SameSite=Lax${secure ? '; Secure' : ''}` }); }
     if (post) return json(405, { error: 'Method not allowed.' });
     if (found.better) return redirect(`${base}/a/${found.better.slug}?lang=${found.better.lang}`);
-    await countView(pool, org.id, a.id);
+    if (!/bot|crawl|spider|slurp|preview|monitor|curl|wget|python|go-http|headless/i.test(req.headers.get('user-agent') || 'bot') && !/prefetch/i.test(req.headers.get('sec-purpose') || req.headers.get('purpose') || '')) await countView(pool, org.id, a.id);       // bots and prefetches are not readers
     const rich = a.format === 'html' ? withToc(cleanHtml(a.body)) : { html: renderBody(a.body), toc: [] };
-    return html(200, pages.articlePage({ org, lang, base, a, statusLink, html: rich.html, toc: rich.toc, related: (await publishedList(pool, org.id, a.lang)).filter(x => x.category === a.category && x.id !== a.id).slice(0, 5), translations: found.translations, voted: u.searchParams.get('voted') === '1' }));
+    return html(200, pages.articlePage({ org, lang, base, a, statusLink, html: rich.html, toc: rich.toc, related: (await publishedList(pool, org.id, a.lang)).filter(x => x.category === a.category && x.id !== a.id).slice(0, 5), translations: found.translations, voted: u.searchParams.get('voted') === '1' }), edge);
   }
   // the search box for a customer's own website: a small JSON answer any page may ask for (published articles only)
   if (rest[0] === 'api' && rest[1] === 'search' && !post) {
     const hdr = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60', 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' };
+    if (await rateLimit(pool, 'hs:' + ip, 60, 60, now)) return new Response(JSON.stringify({ ok: false, error: 'Slow down.' }), { status: 429, headers: { ...hdr, 'Retry-After': '60' } });
     const q = String(u.searchParams.get('q') || '').slice(0, 100), found = await searchArticles(pool, org.id, q, lang);
     return new Response(JSON.stringify({ ok: true, name: org.name, results: found.slice(0, 6).map(a => ({ title: a.title, excerpt: String(a.excerpt || '').replace(/[#*`\[\]]/g, '').slice(0, 140), url: `${portal || PRODUCT.appUrl}${base}/a/${a.slug}?lang=${a.lang}` })), request: `${portal || PRODUCT.appUrl}${base}/requests/new?lang=${lang}` }), { status: 200, headers: hdr });
   }
@@ -584,11 +591,9 @@ export async function importData(req, { pool, auth }) {
 }
 
 // ---- registration and the first workspace ----
-const hits = new Map();            // a light per-address limit for the public availability check (per function instance)
-const tooMany = (ip, now, max = 40) => { const w = (hits.get(ip) || []).filter(t => now - t < 60000); w.push(now); hits.set(ip, w); if (hits.size > 5000) hits.clear(); return w.length > max; };
 export async function workspaceCheck(req, { pool, env = process.env, now = Date.now() }) {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed.' });
-  if (tooMany(String(req.headers.get('x-forwarded-for') || 'x').split(',')[0].trim(), now)) return json(429, { error: 'Too many checks. Wait a minute.' });
+  if (await rateLimit(pool, 'wc:' + clientIp(req, env), 40, 60, now)) return json(429, { error: 'Too many checks. Wait a minute.' });
   const q = new URL(req.url).searchParams; return json(200, await slugStatus(pool, q.get('slug'), { email: q.get('email') || '', env }));
 }
 // registration: checks the company and address, creates the account through Better Auth (so its limits and rules all apply), and holds the address for the person
@@ -599,7 +604,7 @@ export async function signup(req, { pool, auth, env = process.env }) {
   const company = cleanCompany(b.company), st = await slugStatus(pool, b.slug, { email: String(b.email || ''), env });
   if (company.length < 2) return json(400, { message: 'Enter your company name.', code: 'COMPANY' });
   if (!st.available) return json(409, { message: st.reason, code: 'SLUG_TAKEN' });
-  const headers = new Headers({ 'content-type': 'application/json' }); for (const h of ['x-forwarded-for', 'origin', 'referer', 'user-agent']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
+  const headers = new Headers({ 'content-type': 'application/json' }); for (const h of ['x-forwarded-for', 'x-nf-client-connection-ip', 'origin', 'referer', 'user-agent']) if (req.headers.get(h)) headers.set(h, req.headers.get(h));
   const r = await signupContext.run({ company }, () => auth.handler(new Request(new URL('/api/auth/sign-up/email', req.url), { method: 'POST', headers, body: JSON.stringify({ name: b.name, email: b.email, password: b.password, callbackURL: '/welcome.html' }) })));
   if (!r.ok) return new Response(await r.text(), { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   const u = (await pool.query(`select id from "user" where lower(email) = $1 and "emailVerified" = false and "createdAt" > now() - interval '1 minute' and not exists (select 1 from pending_signups where user_id = "user".id)`, [String(b.email || '').trim().toLowerCase()])).rows[0];       // only an account created by THIS request: an existing address (Better Auth answers the same way, to avoid revealing it) must never get its pending workspace changed
@@ -680,6 +685,7 @@ export async function whatsappWebhook(req, { pool, mailer, store, env = process.
 export async function clientLog(req, { pool, mailer, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const raw = await req.text(); if (raw.length > 4000) return json(413, { error: 'Too large.' });
+  if (await rateLimit(pool, 'cl:' + clientIp(req, env), 20, 60)) return json(429, { error: 'Too many reports.' });
   let b; try { b = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
   const r = await recordBrowserError(pool, mailer, env, b); return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
 }
