@@ -14,7 +14,7 @@ export const MODES = ['ticket', 'custom', 'none'];
 const RESERVED = new Set(['admin', 'administrator', 'postmaster', 'abuse', 'no-reply', 'noreply', 'mailer-daemon', 'root', 'webmaster', 'hostmaster', 'security', 'support', 'help', 'info', 'billing', 'sales', 'effdesk', 'www', 'mail', 'test']);
 const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000\r\n]/g, ' ').trim().slice(0, max);
 const isEmail = s => /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(s) && s.length <= 254;
-const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc = v => String(v == null ? '' : v).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
 const fail = (error, status = 400) => ({ ok: false, status, error });
 const tokenSecret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET || '');
 export const ticketToken = (env, orgId, number) => crypto.createHmac('sha256', tokenSecret(env)).update(`ticket:${orgId}:${number}`).digest('hex').slice(0, 12);
@@ -94,7 +94,7 @@ export function stripQuoted(text) {
   let kept = lines.slice(0, cut); while (kept.length && (kept[kept.length - 1].trim() === '' || kept[kept.length - 1].trim().startsWith('>'))) kept.pop();
   const out = kept.join('\n').trim(); return out || String(text || '').trim();
 }
-const htmlToText = h => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
+const htmlToText = h => String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/ /g, ' ').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"').replace(/&/g, '&').replace(/\n{3,}/g, '\n\n').trim();
 const hdr = (h, k) => { if (!h) return ''; const key = Object.keys(h).find(x => x.toLowerCase() === k); const v = key ? h[key] : ''; return Array.isArray(v) ? v.join(' ') : String(v || ''); };
 export function isAutomated(headers, from) {
   const auto = hdr(headers, 'auto-submitted').toLowerCase().trim(), prec = hdr(headers, 'precedence').toLowerCase().trim();
@@ -114,7 +114,15 @@ export async function handleInbound(pool, env, email) {
   }
   if (!target) return { dropped: 'unknown-inbox' };
   const orgId = target.orgId;
-  if (isAutomated(email.headers, from.email)) return { dropped: 'automated' };
+
+  // Allow verification emails to bypass the automated spam filter
+  const isVerificationEmail = [
+    'forwarding-noreply@google.com',
+    'noreply@notify.cloudflare.com'
+  ].includes(from.email.toLowerCase());
+
+  if (!isVerificationEmail && isAutomated(email.headers, from.email)) return { dropped: 'automated' };
+  
   if (email.authentication && email.authentication.dmarc === 'fail') return { dropped: 'auth-failed' };
   if (email.messageId && await messageSeen(pool, orgId, email.messageId)) return { dropped: 'duplicate' };
   const recent = (await withOrg(pool, orgId, c => c.query("select count(*)::int n from tickets where org_id = $1 and channel = 'email' and created_at > now() - interval '1 hour'", [orgId]))).rows[0].n;
