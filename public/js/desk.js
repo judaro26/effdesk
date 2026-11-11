@@ -573,13 +573,23 @@
               return box;
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
+        
         var isRich = a.type === 'auto_reply';
-        return el('div', { class: 'bar', 'data-act': String(i), style: isRich ? 'flex-wrap: wrap;' : '' }, 
+        return el('div', { class: 'bar', 'data-act': String(i), style: isRich ? 'flex-wrap: wrap; align-items: flex-start;' : '' }, 
             t, 
             el('div', { style: isRich ? 'flex: 1 1 100%;' : 'flex: 1;' }, v), 
             el('button', { type: 'button', class: 'btn l sm', 'aria-label': 'Remove action', onclick: function () { rd.actions.splice(i, 1); again(); } }, '×')
         );
-      }); // <-- This closing bracket was missing
+      }); // <-- This closing bracket was missing!
+      
+      var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
+      var on = el('input', { type: 'checkbox', 'aria-label': 'Rule is on' }); on.checked = rd.active !== false; on.addEventListener('change', function () { rd.active = on.checked; });
+      return el('div', { class: 'mlist' }, el('div', { class: 'page', style: 'padding:12px 0' }, name, ev,
+        el('h3', {}, 'If all of these are true'), conds, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-cond-add': '1', onclick: function () { if (rd.conditions.length < 8) rd.conditions.push({ field: 'priority', op: 'is', value: 'normal' }); again(); } }, 'Add condition')),
+        el('h3', {}, 'Then do'), acts, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-act-add': '1', onclick: function () { if (rd.actions.length < 6) rd.actions.push({ type: 'add_tag', value: '' }); again(); } }, 'Add action')),
+        el('label', { class: 'm' }, once, ' Run only once per ticket'), el('label', { class: 'm' }, on, ' Rule is on'),
+        el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-rule-save': '1', onclick: function () { api('rule-save', rd).then(function (r) { if (!r.ok) return say(r.body.error, true); rd = null; rules = null; say('Automation saved.'); }); } }, 'Save automation'), el('button', { type: 'button', class: 'btn l', onclick: function () { rd = null; again(); } }, 'Cancel'))));
+    }
       var once = el('input', { type: 'checkbox', 'aria-label': 'Run once per ticket' }); once.checked = rd.once !== false; once.addEventListener('change', function () { rd.once = once.checked; });
       var on = el('input', { type: 'checkbox', 'aria-label': 'Rule is on' }); on.checked = rd.active !== false; on.addEventListener('change', function () { rd.active = on.checked; });
       return el('div', { class: 'mlist' }, el('div', { class: 'page', style: 'padding:12px 0' }, name, ev,
