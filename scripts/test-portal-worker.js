@@ -13,6 +13,7 @@ check('the worker asks the app for that organization\'s page and sends the secre
 check('the visitor sees links on their own address', body === '<a href="/a/1">x</a><form action="/tickets" method="post"></form><a href="/">home</a>');
 seen = null; await handle(new Request('https://rooster.effdesk.com/'), ENVW, origin);
 check('the front page is the help center home', seen.u === 'https://effdesk.netlify.app/help/rooster');
+{ let hit = false; const rr = await handle(new Request('https://rooster.effdesk.com/help/rooster?lang=es'), ENVW, async () => { hit = true; return new Response('x'); }); check('an old-style /help/<workspace> address is sent to the clean one instead of a 404', !hit && rr.status === 301 && rr.headers.get('location') === '/?lang=es'); const r2 = await handle(new Request('https://rooster.effdesk.com/help/rooster/a/1'), ENVW, origin); check('and so is a deeper one', r2.headers.get('location') === '/a/1'); }
 let passed = false; await handle(new Request('https://app.effdesk.com/x'), ENVW, async () => { passed = true; return new Response('ok'); });
 check('app.effdesk.com is not touched', passed);
 check('an unconfigured worker says so instead of guessing', (await handle(new Request('https://rooster.effdesk.com/'), { PORTAL_DOMAIN: 'effdesk.com' }, origin)).status === 503);

@@ -73,9 +73,10 @@ export function logged(name, handler) {
     return res;
   };
 }
+// Node's own warnings (deprecations, pg's SSL notice) printed with console.error are logged but not tracked as errors.
 // warnings and errors printed with console.warn / console.error also become log lines (the existing code uses them)
 let patched = false;
 export function captureConsole() {
   if (patched) return; patched = true;
-  for (const lvl of ['warn', 'error']) { const orig = console[lvl].bind(console); console[lvl] = (...a) => { orig(...a); const s = store.getStore(); if (s && !(typeof a[0] === 'string' && a[0].startsWith('{"_time"'))) { const line = { _time: new Date(sinks.now()).toISOString(), level: lvl, event: 'console', message_text: a.map(x => typeof x === 'string' ? x : x instanceof Error ? x.message : JSON.stringify(scrub(x))).join(' ').slice(0, 300), ...base(sinks.env()), request_id: s.id, fn: s.fn }; if (lvl === 'error') s.errs.push(line); s.lines.push(line); } }; }
+  for (const lvl of ['warn', 'error']) { const orig = console[lvl].bind(console); console[lvl] = (...a) => { orig(...a); const s = store.getStore(); if (s && !(typeof a[0] === 'string' && a[0].startsWith('{"_time"'))) { const line = { _time: new Date(sinks.now()).toISOString(), level: lvl, event: 'console', message_text: a.map(x => typeof x === 'string' ? x : x instanceof Error ? x.message : JSON.stringify(scrub(x))).join(' ').slice(0, 300), ...base(sinks.env()), request_id: s.id, fn: s.fn }; if (lvl === 'error' && !/^\(node:\d+\) \w*Warning/.test(line.message_text)) s.errs.push(line); s.lines.push(line); } }; }
 }

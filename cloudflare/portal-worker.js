@@ -22,6 +22,8 @@ export async function handle(request, env, fetchFn = fetch) {
   if (!slug) return fetchFn(request);                                                              // not a portal name: leave it alone
   if (!env.ORIGIN_HOST || !env.PORTAL_PROXY_SECRET) return new Response('Portal is not configured.', { status: 503 });
   if (isDeskPath(url.pathname)) return passDesk(request, url, env, fetchFn);
+  // an old-style address such as rooster.effdesk.com/help/rooster would be sent on as /help/rooster/help/rooster: send visitors to the clean address instead
+  if ((request.method === 'GET' || request.method === 'HEAD') && (url.pathname === '/help/' + slug || url.pathname.startsWith('/help/' + slug + '/'))) return new Response(null, { status: 301, headers: { Location: (url.pathname.slice(('/help/' + slug).length) || '/') + url.search, 'Cache-Control': 'no-store' } });
   const publicOrigin = 'https://' + url.hostname, path = '/help/' + slug + (url.pathname === '/' ? '' : url.pathname);
   const h = new Headers(request.headers); h.set('host', env.ORIGIN_HOST); h.set('x-effdesk-portal', publicOrigin); h.set('x-effdesk-secret', env.PORTAL_PROXY_SECRET); h.delete('cf-connecting-ip');
   if (h.get('origin')) h.set('origin', 'https://' + env.ORIGIN_HOST);
