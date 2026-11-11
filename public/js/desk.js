@@ -564,7 +564,7 @@
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
           : a.type === 'auto_reply' ? (function() {
-              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Hi {{name}}, thanks for writing… You can use formatted text or paste an HTML email template.' });
+              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Paste HTML email template or write a formatted reply (up to 20,000 characters). Use {{name}} for the customer first name and {{ticket_number}} for the ticket reference. The ticket number is also added automatically to every automated reply email.' });
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
               
