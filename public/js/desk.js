@@ -1,4 +1,4 @@
-// public/js/desk.js: the agent desk, laid out like a help-desk console: an icon rail, ticket tabs, a Views tab with filters, queues and saved views, a ticket in three columns (properties, conversation, requester/client/linked/side conversations/timeline), Manage (queues, clients, macros), Email settings, Help center, and the profile menu with themes. Draws text only.
+// public/js/desk.js: the agent desk, laid out like a help-desk console: an icon rail, ticket tabs, an All Tickets tab with filters, queues and saved views, a ticket in three columns (properties, conversation, requester/client/linked/side conversations/timeline), Manage (queues, clients, macros), Email settings, Help center, and the profile menu with themes. Draws text only.
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'solved', 'closed'];
@@ -129,7 +129,7 @@
     qBox.addEventListener('focus', function () { if (qBox.value.trim().length >= 2 && qItems.length) qDraw(); });
 
     // ── keyboard shortcuts ──
-    var SHORTCUTS = [['/', 'Search tickets'], ['c', 'New ticket'], ['j / k', 'Next / previous ticket in the list'], ['o', 'Open the highlighted ticket'], ['r', 'Reply to the customer'], ['m', 'Write an internal note'], ['g then h', 'Go to Home'], ['g then v', 'Go to Views'], ['Ctrl or ⌘ + Enter', 'Send what you wrote'], ['?', 'Show this list'], ['Esc', 'Close this list or leave the search']];
+    var SHORTCUTS = [['/', 'Search tickets'], ['c', 'New ticket'], ['j / k', 'Next / previous ticket in the list'], ['o', 'Open the highlighted ticket'], ['r', 'Reply to the customer'], ['m', 'Write an internal note'], ['g then h', 'Go to Home'], ['g then v', 'Go to All Tickets'], ['Ctrl or ⌘ + Enter', 'Send what you wrote'], ['?', 'Show this list'], ['Esc', 'Close this list or leave the search']];
     var helpEl = null;
     // while a message is on its way the send buttons and the text box are locked, so it cannot go out twice
     function paintSending() { Array.prototype.forEach.call(root.document.querySelectorAll('[data-reply],[data-note],.compose textarea,.split select'), function (n) { if (sending) { n.setAttribute('disabled', 'disabled'); } else { n.removeAttribute('disabled'); } }); var b = root.document.querySelector('[data-reply]'); if (b) { if (sending) { b.setAttribute('data-label', b.textContent); b.textContent = 'Sending…'; } else if (b.getAttribute('data-label')) { b.textContent = b.getAttribute('data-label'); b.removeAttribute('data-label'); } } }
@@ -186,7 +186,7 @@
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
-      rail.appendChild(item('tickets', 'Tickets', 'data-nav', goViews));
+      rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
       if (isAdmin || support) rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
@@ -196,7 +196,7 @@
       while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
       var onViews = !home && !current && !creating && !settings && !articles && !manage && !profile && !report;
       tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-home-tab': '1', 'aria-selected': String(home), onclick: goHome }, 'Home'));
-      tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-views': '1', 'aria-selected': String(onViews), onclick: goViews }, 'Views'));
+      tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-views': '1', 'aria-selected': String(onViews), onclick: goViews }, 'All Tickets'));
       openTabs.forEach(function (t) {
         var on = !!current && current.ticket.number === t.number;
         tabsEl.appendChild(el('span', { class: 'tab has-x', 'aria-selected': String(on) },
@@ -246,7 +246,7 @@
         tr.addEventListener('click', function () { open(t.number); }); tr.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(t.number); });
         return tr;
       });
-      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {}, (has('bulk_actions') ? [''] : []).concat(['Status', 'Ticket', 'Subject', 'Requester', 'Priority', 'Assignee'].concat(has('sla') ? ['SLA'] : [], ['Updated'])).map(function (h, i) { if (has('bulk_actions') && i === 0) { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return el('th', {}, all); } return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
+      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, el('div', { class: 'views-head' }, el('div', {}, el('h2', {}, 'All Tickets'), el('p', { class: 'm' }, 'Browse, filter and manage every ticket in this workspace.')), el('button', { type: 'button', class: 'btn l sm', 'data-list-refresh': '1', onclick: function () { var b = main.querySelector('[data-list-refresh]'); if (b) { b.disabled = true; b.textContent = 'Refreshing…'; } refresh().then(function () { say('Ticket list refreshed.'); }); } }, '↻ Refresh')) , bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {}, (has('bulk_actions') ? [''] : []).concat(['Status', 'Ticket', 'Subject', 'Requester', 'Priority', 'Assignee'].concat(has('sla') ? ['SLA'] : [], ['Updated'])).map(function (h, i) { if (has('bulk_actions') && i === 0) { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return el('th', {}, all); } return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
     }
 
     // upload files for a ticket (t) or, while writing a new ticket, before it exists (t = null); they wait as chips until the message is sent
