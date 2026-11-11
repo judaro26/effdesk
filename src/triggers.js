@@ -6,6 +6,7 @@
 import { withOrg } from './db.js';
 import { updateTicket, addMessage } from './tickets.js';
 import { sendTicketReply } from './ticket-mail.js';
+import sanitizeHtml from 'sanitize-html';
 export const EVENTS = ['created', 'customer_reply', 'time'];
 const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
 export const FIELDS = { priority: ['is', 'is_not'], status: ['is', 'is_not'], channel: ['is', 'is_not'], type: ['is', 'is_not'], tag: ['is', 'is_not'], subject: ['contains'], message: ['contains'], sender_domain: ['is'], hours_idle: ['gte'] };
@@ -72,8 +73,11 @@ async function apply(pool, mailer, env, orgId, rule, t) {
       const r = await updateTicket(pool, orgId, actor, t.number, patch); if (r.ok) Object.assign(t, { priority: r.ticket.priority, status: r.ticket.status, type: r.ticket.type });
     } else if (a.type === 'add_note') await addMessage(pool, orgId, actor, t.number, { body: a.value, internal: true });
     else if (a.type === 'auto_reply') {
-      const first = String(t.requester_name || '').split(' ')[0] || 'there', r = await addMessage(pool, orgId, actor, t.number, { body: a.value.replace(/\{\{\s*name\s*\}\}/g, first), internal: false });
-      if (r.ok && mailer) await sendTicketReply(pool, mailer, env, orgId, t.number, r.message.id, []);
+      const first = String(t.requester_name || '').split(' ')[0] || 'there', body = a.value.replace(/\{\{\s*name\s*\}\}/g, first);
+      const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote)\b/i.test(body);
+      const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: { '*': { 'color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'text-align': [/^(left|right|center)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/] } } }) : null;
+      const r = await addMessage(pool, orgId, actor, t.number, { body, internal: false });
+      if (r.ok && mailer) await sendTicketReply(pool, mailer, env, orgId, t.number, r.message.id, [], safeHtml ? { html: safeHtml } : {});
     }
   }
 }
