@@ -45,7 +45,7 @@ export async function deleteFile(pool, store, orgId, id) {
 }
 // the files of an incoming email (Resend lists them with a short-lived download link). Returns what could not be kept, so the ticket can say so.
 export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumber, messageRowId, emailId) {
-  const skipped = [];
+  const skipped = [], inline = [];
   try {
     const r = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}/attachments?limit=20`, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
     if (!r.ok) throw new Error('status ' + r.status);
@@ -60,11 +60,12 @@ export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumbe
         const bytes = Buffer.from(await d.arrayBuffer()); if (bytes.length > MAX_INBOUND_FILE) { skipped.push(`${name} (too large)`); continue; }
         const id = crypto.randomUUID(); await store.set(`${orgId}/${id}`, bytes); total += bytes.length; used += bytes.length;
         await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size) values ($1,$2,$3,$4,$5,$6,$7)', [id, orgId, ticket.id, messageRowId, name, cleanType(a.content_type), bytes.length]));
+        if (a.content_id || a.contentId) inline.push({ contentId: String(a.content_id || a.contentId).replace(/^<|>$/g, ''), id, contentType: cleanType(a.content_type) });
       } catch (e) { console.warn('attachment not stored:', e.message); skipped.push(`${name} (could not be fetched)`); }
     }
   } catch (e) { console.warn('attachments not listed:', e.message); skipped.push('attachments (could not be fetched)'); }
   if (skipped.length) await withOrg(pool, orgId, c => c.query("insert into ticket_messages (org_id, ticket_id, kind, body) select $1, id, 'system', $3 from tickets where org_id = $1 and number = $2", [orgId, ticketNumber, `Not stored: ${skipped.join(', ')}.`]));
-  return skipped;
+  return { skipped, inline };
 }
 
 // one file that arrived with a customer's message by some route other than email (WhatsApp media): same size and storage rules as email attachments; returns { ok, id } or { ok: false, why }
