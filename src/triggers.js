@@ -1,12 +1,32 @@
 // src/triggers.js: TRIGGERS AND AUTOMATIONS. A rule is "when <event>, if <all conditions>, do <actions>".
 //   Events: created (a new ticket), customer_reply (the customer wrote again), time (checked every hour: for tickets that have sat idle, such as "solved for 7 days -> closed").
 //   Conditions (all must hold): priority / status / channel / type  is, is_not;  tag  is, is_not;  subject / message  contains;  sender_domain  is;  hours_idle  gte (time rules).
-//   Actions, in order: set_priority, set_status, set_type, add_tag, assign (an agent id, or "none"), set_queue, add_note (internal), auto_reply (public, {{name}} is the requester's first name).
+//   Actions, in order: set_priority, set_status, set_type, add_tag, assign (an agent id, or "none"), set_queue, add_note (internal), auto_reply (public; {{name}}, {{ticket_number}}, and {{ticket_subject}} are available).
 //   Rules run only on these events and their actions do not start other rules, so they cannot loop. "once" (the default) means a rule runs one time per ticket.
 import { withOrg } from './db.js';
 import { updateTicket, addMessage } from './tickets.js';
 import { sendTicketReply } from './ticket-mail.js';
 import sanitizeHtml from 'sanitize-html';
+
+const EMAIL_ALLOWED_STYLES = { '*': {
+  'color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i],
+  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/],
+  'font-size': [/^[0-9.]+(px|pt|em|rem|%)$/], 'line-height': [/^[0-9.]+(px|pt|em|rem|%)?$/], 'font-family': [/^[a-zA-Z0-9 ,"'_-]+$/],
+  'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
+  'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
+  'display': [/^(block|inline|inline-block|table|table-row|table-cell)$/], 'box-sizing': [/^(border-box|content-box)$/], 'border-collapse': [/^(collapse|separate)$/],
+  'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\s+[0-9.]+(px|pt|em|rem))?$/],
+  'padding': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+  'padding-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
+  'margin': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+  'margin-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
+  'width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'height': [/^[0-9.]+(px|pt|em|rem|%)$/],
+  'border': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+  'border-top': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-right': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+  'border-bottom': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-left': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+  'border-radius': [/^[0-9.]+(px|pt|em|rem|%)$/]
+} };
+
 export const EVENTS = ['created', 'customer_reply', 'time'];
 const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
 export const FIELDS = { priority: ['is', 'is_not'], status: ['is', 'is_not'], channel: ['is', 'is_not'], type: ['is', 'is_not'], tag: ['is', 'is_not'], subject: ['contains'], message: ['contains'], sender_domain: ['is'], hours_idle: ['gte'] };
@@ -24,7 +44,7 @@ export function normalize(b) {
   if (event === 'time' && !conditions.some(c => c.field === 'hours_idle')) return { error: 'A timed rule needs an "hours idle" condition.' };
   const actions = []; for (const a of (Array.isArray(b.actions) ? b.actions : []).slice(0, 6)) {
     const type = String(a.type || ''); if (!ACTIONS.includes(type)) return { error: 'One of the actions is not valid.' };
-    let value = clean(type === 'add_note' || type === 'auto_reply' ? a.value : String(a.value || '').toLowerCase(), type === 'add_note' || type === 'auto_reply' ? 2000 : 80); if (!value) return { error: 'Fill in every action.' };
+    let value = clean(type === 'add_note' || type === 'auto_reply' ? a.value : String(a.value || '').toLowerCase(), type === 'add_note' || type === 'auto_reply' ? 20000 : 80); if (!value) return { error: 'Fill in every action.' };
     if (type === 'set_priority' && !ENUM.priority.includes(value)) return { error: 'That priority does not exist.' }; if (type === 'set_status' && !ENUM.status.includes(value)) return { error: 'That status does not exist.' }; if (type === 'set_type' && !ENUM.type.includes(value)) return { error: 'That type does not exist.' };
     if (type === 'assign') value = clean(a.value, 80); actions.push({ type, value });
   }
@@ -73,11 +93,16 @@ async function apply(pool, mailer, env, orgId, rule, t) {
       const r = await updateTicket(pool, orgId, actor, t.number, patch); if (r.ok) Object.assign(t, { priority: r.ticket.priority, status: r.ticket.status, type: r.ticket.type });
     } else if (a.type === 'add_note') await addMessage(pool, orgId, actor, t.number, { body: a.value, internal: true });
     else if (a.type === 'auto_reply') {
-      const first = String(t.requester_name || '').split(' ')[0] || 'there', body = a.value.replace(/\{\{\s*name\s*\}\}/g, first);
+      const first = String(t.requester_name || '').split(' ')[0] || 'there', ticketNumber = String(t.number), ticketSubject = String(t.subject || ''), body = a.value.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*ticket_number\s*\}\}/g, ticketNumber).replace(/\{\{\s*ticket_subject\s*\}\}/g, ticketSubject);
       const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote)\b/i.test(body);
-      const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: { '*': { 'color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i,/^[a-z]+$/i], 'text-align': [/^(left|right|center)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/] } } }) : null;
+      const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], table: ['role','width','cellpadding','cellspacing','border','align'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
       const r = await addMessage(pool, orgId, actor, t.number, { body, internal: false });
-      if (r.ok && mailer) await sendTicketReply(pool, mailer, env, orgId, t.number, r.message.id, [], safeHtml ? { html: safeHtml } : {});
+      if (r.ok && mailer) {
+        // Always include a visible reference in the email body, even if the template omits the variable.
+        const ref = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px 0"><tr><td style="padding:10px 14px;background-color:#eef4fa;border-left:4px solid #2878b9;color:#18324b;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px"><strong>Ticket reference: #${ticketNumber}</strong></td></tr></table>`;
+        const replyHtml = safeHtml ? ref + safeHtml : `<p>Ticket reference: #${ticketNumber}</p><p>${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`;
+        await sendTicketReply(pool, mailer, env, orgId, t.number, r.message.id, [], { html: replyHtml });
+      }
     }
   }
 }
