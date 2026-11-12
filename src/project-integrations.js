@@ -256,19 +256,41 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     } catch(e) { return fail(409,e.message); }
   }
   if(req.method==='POST' && path.endsWith('/create-issue')) {
-    const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,project=clean(b.projectId,100),title=clean(b.title,500),description=String(b.description||'').slice(0,20000);
+    const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,templateId=Number(b.templateId)||0; let project=clean(b.projectId,100),title=clean(b.title,500),description=String(b.description||'').slice(0,20000),template=null,templateFields=[];
     if(!PROVIDERS.has(p)||!n||!project||!title) return fail(400,'Complete the project/team and issue title.');
     try {
       const ticket=(await withOrg(pool,org,db=>db.query('select number,subject,status,priority,requester_name,requester_email from tickets where org_id=$1 and number=$2',[org,n]))).rows[0];
       if(!ticket) return fail(404,'EffDesk ticket not found.');
+      if(templateId) {
+        template=(await withOrg(pool,org,db=>db.query('select * from project_issue_templates where org_id=$1 and id=$2 and provider=$3 and active=true',[org,templateId,p]))).rows[0];
+        if(!template) return fail(404,'That issue template is unavailable.');
+        project=template.project_id;
+        templateFields=Array.isArray(template.form_config?.fields)?template.form_config.fields:[];
+        const submitted=b.fields&&typeof b.fields==='object'?b.fields:{};
+        const values={};
+        templateFields.forEach(f=>{
+          if(f.defaultValue!==undefined&&f.defaultValue!=='') values[f.id]=f.defaultValue;
+          if(f.mapping) {
+            const mapped={'ticket.subject':ticket.subject,'ticket.description':description,'ticket.number':String(ticket.number),'ticket.requester_name':ticket.requester_name||'','ticket.requester_email':ticket.requester_email||'','ticket.priority':ticket.priority||''}[f.mapping];
+            if(mapped!==undefined&&mapped!=='') values[f.id]=mapped;
+          }
+        });
+        Object.assign(values,submitted);
+        b.fields=values;
+        if(values.title!==undefined) title=clean(values.title,500);
+        if(values.description!==undefined) description=String(values.description).slice(0,20000);
+        if(template.provider==='jira') b.issueTypeId=template.issue_type_id;
+      }
+      if(!project||!title) return fail(400,'Complete the project/team and issue title.');
       const token=await tokenFor(pool,env,org,p); let ext;
       if(p==='linear') {
         const input={teamId:project,title,description:description||'EffDesk ticket #'+n};
-        if(b.priority!==undefined&&b.priority!==null&&b.priority!=='') input.priority=Math.max(0,Math.min(4,Number(b.priority)));
-        if(b.projectId2) input.projectId=clean(b.projectId2,100);
-        if(b.stateId) input.stateId=clean(b.stateId,100);
-        if(b.assigneeId) input.assigneeId=clean(b.assigneeId,100);
-        if(Array.isArray(b.labelIds)) input.labelIds=b.labelIds.map(x=>clean(x,100)).filter(Boolean).slice(0,20);
+        const values=b.fields&&typeof b.fields==='object'?b.fields:{}; const requiredMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]==='')).map(f=>f.name||f.id); if(requiredMissing.length) return fail(400,'Complete the required fields: '+requiredMissing.join(', ')+'.');
+        const priorityValue=values.priority!==undefined?values.priority:b.priority; if(priorityValue!==undefined&&priorityValue!==null&&priorityValue!=='') input.priority=Math.max(0,Math.min(4,Number(priorityValue)));
+        if(values.projectId2||b.projectId2) input.projectId=clean(values.projectId2||b.projectId2,100);
+        if(values.stateId||b.stateId) input.stateId=clean(values.stateId||b.stateId,100);
+        if(values.assigneeId||b.assigneeId) input.assigneeId=clean(values.assigneeId||b.assigneeId,100);
+        if(Array.isArray(values.labelIds||b.labelIds)) input.labelIds=(values.labelIds||b.labelIds).map(x=>clean(x,100)).filter(Boolean).slice(0,20);
         const d=await apiCall(p,token,'POST','mutation CreateIssue($input:IssueCreateInput!){ issueCreate(input:$input){ success issue { id identifier title url team { id } } } }',{input});
         if(!d.issueCreate?.success||!d.issueCreate.issue) throw new Error('Linear did not create the issue.');
         const x=d.issueCreate.issue; ext={id:x.id,key:x.identifier,url:x.url,projectId:x.team?.id||project};
