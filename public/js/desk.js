@@ -626,7 +626,7 @@
               if(ui.fields.assigneeId!==undefined)ui.assigneeId=ui.fields.assigneeId;
               if(ui.fields.projectId2!==undefined)ui.projectId2=ui.fields.projectId2;
               if(ui.fields.stateId!==undefined)ui.stateId=ui.fields.stateId;
-              if(Array.isArray(ui.fields.labelIds))ui.labelIds=ui.fields.labelIds;
+              if(Array.isArray(ui.fields.labelIds))ui.labelIds=ui.fields.labelIds;else if(typeof ui.fields.labelIds==='string')ui.labelIds=ui.fields.labelIds.split(',').map(function(x){return x.trim();}).filter(Boolean);
             }
           }
           if(ui.projectId)loadOptions(ui.projectId,ui.issueTypeId||'').then(redraw).catch(function(e){ui.error=e.message;redraw();});else redraw();
@@ -749,7 +749,7 @@
             if(ui.provider==='jira'&&ui.options.fields){
               ui.options.fields.forEach(function(field){
                 var cfg=templateField(field.id);if(ui.template&&!cfg)return;
-                var val=ui.fields[field.id];if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}
+                var val=ui.fields[field.id];if(field.type==='array'&&typeof val==='string')val=val.split(',').map(function(x){return x.trim();}).filter(Boolean);if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}
                 var control;
                 if(field.allowedValues&&field.allowedValues.length){
                   control=el('select',{'aria-label':field.name,'multiple':field.type==='array'},(field.type==='array'?[]:[el('option',{value:''},'— Select —')]).concat(field.allowedValues.map(function(v){return el('option',{value:v.id||v.name},v.name);})));
