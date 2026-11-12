@@ -18,7 +18,7 @@ export const STYLES = {
   'line-height': [/^(?:[1-3](?:\.\d{1,2})?|(?:1[0-9]\d|2\d\d|300)%)$/],
   'letter-spacing': [/^-?(?:[0-5](?:\.\d)?)px$/], 'margin-left': [PX], 'margin-right': [PX], 'padding-left': [PX], 'text-indent': [PX],
   'width': [WIDTH], 'vertical-align': [/^(?:top|middle|bottom|baseline)$/i],
-  'border': [/^[0-4]px (?:solid|dashed|dotted|double|none) (?:#[0-9a-f]{3,8}|rgba?\\([\d\s,.]{5,24}\\)|[a-z]+)$/i],
+  'border': [/^[0-4]px (?:solid|dashed|dotted|double|none) (?:#[0-9a-f]{3,8}|rgba?\([\d\s,.]{5,24}\)|[a-z]+)$/i],
   'border-collapse': [/^(collapse|separate)$/i], 'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\s+[0-9.]+(px|pt|em|rem))?$/],
   'background': [/^(?:#[0-9a-f]{3,8}|[a-z]+)$/i], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/],
   'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
