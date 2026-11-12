@@ -53,7 +53,7 @@ function renderProviders(){
 }
 var templateRows=[],templateDefs=[],templateEditingId=0;
 var templateMappingOptions=[['','No mapping'],['ticket.subject','Ticket subject'],['ticket.description','Latest ticket message'],['ticket.number','Ticket number'],['ticket.requester_name','Requester name'],['ticket.requester_email','Requester email'],['ticket.priority','Ticket priority']];
-function templateCall(method,path,body){return call(method,endpoint(path),body);}
+function templateCall(method,path,body){var url=base()+path+(path.indexOf('?')>=0?'&':'?')+'org='+encodeURIComponent(org.value);return call(method,url,body);}
 function templateProvider(){return $('template-provider').value;}
 function templateProject(){return $('template-project').value;}
 function templateIssueType(){return $('template-issue-type').value;}
