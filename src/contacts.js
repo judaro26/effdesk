@@ -57,7 +57,7 @@ export const saveContact = (pool,orgId,b) => withOrg(pool,orgId,async c=>{
   return {ok:true,contact:row};
 });
 
-export const globalSearch = (pool,orgId,q='') => withOrg(pool,orgId,async c=>{
+export const globalSearch = (pool,orgId,q='',includeCustomers=true) => withOrg(pool,orgId,async c=>{
   const term=clean(q,100); if(term.length<2)return {ok:true,tickets:[],agents:[],contacts:[],companies:[]};
   const pattern=like(term),number=/^#?\d{1,9}$/.test(term)?Number(term.replace('#','')):null;
   const [tickets,agents,contacts,companies]=await Promise.all([
@@ -67,11 +67,11 @@ export const globalSearch = (pool,orgId,q='') => withOrg(pool,orgId,async c=>{
     c.query(`select u.id,u.name,u.email,m.role,p.avatar from member m join "user" u on u.id=m."userId"
       left join desk_prefs p on p.user_id=u.id where m."organizationId"=$1 and (u.name ilike $2 or u.email ilike $2)
       order by lower(u.name) limit 5`,[orgId,pattern]),
-    c.query(`select p.id,p.name,p.email,p.company_id,k.name company_name from contact_profiles p
+    includeCustomers?c.query(`select p.id,p.name,p.email,p.company_id,k.name company_name from contact_profiles p
       left join clients k on k.org_id=p.org_id and k.id=p.company_id
-      where p.org_id=$1 and (p.name ilike $2 or p.email ilike $2) order by p.last_seen_at desc limit 5`,[orgId,pattern]),
-    c.query(`select id,name,domain,notes,share_tickets from clients where org_id=$1 and (name ilike $2 or domain ilike $2)
-      order by lower(name) limit 5`,[orgId,pattern])
+      where p.org_id=$1 and (p.name ilike $2 or p.email ilike $2) order by p.last_seen_at desc limit 5`,[orgId,pattern]):Promise.resolve({rows:[]}),
+    includeCustomers?c.query(`select id,name,domain,notes,share_tickets from clients where org_id=$1 and (name ilike $2 or domain ilike $2)
+      order by lower(name) limit 5`,[orgId,pattern]):Promise.resolve({rows:[]})
   ]);
   return {ok:true,tickets:tickets.rows,agents:agents.rows,contacts:contacts.rows,companies:companies.rows};
 });
