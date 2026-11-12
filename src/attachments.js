@@ -46,16 +46,15 @@ export async function deleteFile(pool, store, orgId, id) {
 // Convert base64 data-URI images into CID placeholders before inbound HTML sanitization.
 export function prepareInlineDataImages(html) {
   const images = [];
-  const transformed = String(html || '').replace(/(<img\b[^>]*?\bsrc\s*=\s*)(["'])data:image\/(png|jpe?g|gif|webp);base64,([a-z0-9+/=\s]+)\2/gi, (match, before, quote, ext, data) => {
+  const transformed = String(html || '').replace(/<img\b[^>]*>/gi, tag => tag.replace(/\bsrc\s*=\s*(["'])data:image\/(png|jpe?g|gif|webp);base64,([^"']+)\1/i, (match, quote, ext, data) => {
     const cid = 'effdesk-' + crypto.randomUUID() + '@inline';
-    const tag = match.slice(0, match.toLowerCase().indexOf('src'));
     const alt = (tag.match(/\balt\s*=\s*(["'])(.*?)\1/i) || [])[2] || '';
     const extension = ext.toLowerCase() === 'jpeg' ? 'jpg' : ext.toLowerCase();
     const type = 'image/' + (ext.toLowerCase() === 'jpg' ? 'jpeg' : ext.toLowerCase());
     const filename = /\.(png|jpe?g|gif|webp)$/i.test(alt) ? cleanName(alt) : 'inline-image-' + (images.length + 1) + '.' + extension;
     images.push({ contentId: cid, contentType: type, filename, base64: data.replace(/\s/g, '') });
-    return before + quote + 'cid:' + cid + quote;
-  });
+    return 'src=' + quote + 'cid:' + cid + quote;
+  }));
   return { html: transformed, images };
 }
 
