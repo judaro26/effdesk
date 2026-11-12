@@ -15,3 +15,8 @@ drop policy if exists project_integration_apps_tenant on project_integration_app
 create policy project_integration_apps_tenant on project_integration_apps
   using (org_id = current_setting('app.org_id', true))
   with check (org_id = current_setting('app.org_id', true));
+
+-- Snapshot the OAuth app credentials used for each live connection so rotating
+-- the organization's configured app does not break refresh of an existing token.
+alter table project_integrations add column if not exists oauth_client_id_enc text;
+alter table project_integrations add column if not exists oauth_client_secret_enc text;
