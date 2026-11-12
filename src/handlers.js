@@ -21,6 +21,7 @@ import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, chan
 import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
+import { globalSearch, listContacts, contactForEmail, saveContact } from './contacts.js';
 import { syncTicketUpdate, syncTicketComment } from './project-integrations.js';
 import { getSla, saveSla, slaOf, slaNumbers } from './sla.js';
 import { getHours, saveHours, calendarOf } from './hours.js';
@@ -117,7 +118,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
 const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'merge', 'bulk', 'edit-message', 'delete-file']);
-const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get']);
+const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get', 'global-search', 'contact-list', 'contact-get']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
   const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
@@ -152,6 +153,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'ticket-prefs-save': r = await desk.saveTicketPreferences(pool, orgId, actor.id, b); break;
+    case 'global-search': r = await globalSearch(pool, orgId, b.q); break;
+    case 'contact-list': if ((g = need('clients'))) return g; r = await listContacts(pool, orgId, b.q); break;
+    case 'contact-get': if ((g = need('clients'))) return g; r = await contactForEmail(pool, orgId, b.email); break;
+    case 'contact-save': if ((g = need('clients'))) return g; r = await saveContact(pool, orgId, b); break;
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
       if (th && th.premium && (g = need('themes'))) return g;
