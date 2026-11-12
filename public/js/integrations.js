@@ -12,8 +12,10 @@ function applyPortalTheme(d){
  document.documentElement.setAttribute('data-theme',theme);
  if(d.paid&&/^#[0-9a-f]{6}$/i.test(st.accent||'')){document.documentElement.style.setProperty('--accent',st.accent);document.documentElement.style.setProperty('--accent-d',st.accent);}
 }
-function loadPortalTheme(){
- return call('POST','/api/tickets',{orgId:org.value,action:'help-settings-get'}).then(applyPortalTheme).catch(function(){document.documentElement.setAttribute('data-theme','classic');});
+function loadPortalTheme(workspaceId){
+ var id=workspaceId||org.value||new URLSearchParams(location.search).get('org');
+ if(!id)return Promise.resolve();
+ return call('GET',base()+'/public-theme?org='+encodeURIComponent(id)).then(applyPortalTheme).catch(function(){/* Keep the app's default theme if public workspace styling is unavailable. */});
 }
 function icon(p){
  var svg=el('svg',{viewBox:'0 0 48 48','aria-hidden':'true',focusable:'false'});
@@ -91,7 +93,7 @@ $('create').addEventListener('click',function(){
  call('POST',endpoint('/link'),body).then(function(){say('Issue created and linked successfully.');return loadLinks();}).catch(function(e){say(e.message,true);}).finally(function(){btn.disabled=false;});
 });
 provider.addEventListener('change',loadCatalog);$('ticket').addEventListener('change',loadLinks);
-org.addEventListener('change',function(){Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme()]);});
+org.addEventListener('change',function(){Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme(org.value)]);});
 credentialProvider.addEventListener('change',loadCredentialSettings);
 $('save-credentials').addEventListener('click',function(){
  var p=credentialProvider.value,clientId=$('client-id').value.trim(),clientSecret=$('client-secret').value;
@@ -99,10 +101,17 @@ $('save-credentials').addEventListener('click',function(){
  call('POST',endpoint('/app-credentials'),{provider:p,clientId:clientId,clientSecret:clientSecret}).then(function(){$('client-id').value='';$('client-secret').value='';$('credential-status').textContent='Organization OAuth credentials saved securely. You can now connect '+p+'.';}).catch(function(e){$('credential-status').textContent=e.message;});
 });
 $('reset-credentials').addEventListener('click',function(){var p=credentialProvider.value;call('DELETE',endpoint('/app-credentials'),{provider:p}).then(loadCredentialSettings).catch(function(e){$('credential-status').textContent=e.message;});});
-call('GET','/api/me').then(function(d){
+loadPortalTheme(new URLSearchParams(location.search).get('org'));
+ call('GET','/api/me').then(function(d){
  var orgs=d.organizations||[];org.replaceChildren();orgs.forEach(function(o){org.appendChild(el('option',{value:o.id},o.name+' ('+o.slug+')'));});
  var wanted=new URLSearchParams(location.search).get('org');if(wanted&&orgs.some(function(o){return o.id===wanted;}))org.value=wanted;
  if(!orgs.length){say('No workspace was found for this account.',true);return;}
  return Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme()]);
-}).catch(function(e){say(e.message,true);});
+}).catch(function(e){
+  if(/sign in first/i.test(e.message)){
+   say('Sign in to manage workspace connections and link tickets.');
+   notice.appendChild(document.createTextNode(' '));
+   notice.appendChild(el('a',{href:'/auth.html'},'Sign in to EffDesk'));
+  }else say(e.message,true);
+ });
 })();
