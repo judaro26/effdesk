@@ -276,9 +276,11 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
           }
         });
         Object.assign(values,submitted);
+        if(values.title===undefined) values.title=title;
+        if(values.description===undefined) values.description=description;
         b.fields=values;
-        if(values.title!==undefined) title=clean(values.title,500);
-        if(values.description!==undefined) description=String(values.description).slice(0,20000);
+        if(!title&&values.title!==undefined) title=clean(values.title,500);
+        if(!description&&values.description!==undefined) description=String(values.description).slice(0,20000);
         if(!title) title='[EffDesk #'+ticket.number+'] '+ticket.subject;
         if(template.provider==='jira') b.issueTypeId=template.issue_type_id;
       }
