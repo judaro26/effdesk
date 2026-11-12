@@ -134,7 +134,7 @@ function loadTemplateFieldDefinitions(saved){
 }
 function loadTemplateProjects(saved){
  var p=templateProvider(),select=$('template-project'),connected=connections.some(function(x){return x.provider===p;});
- select.replaceChildren();$('template-issue-type-wrap').hidden=true;$('template-issue-type').replaceChildren(el('option',{value:''},'Choose issue type…'));
+ select.replaceChildren();$('template-issue-type-wrap').hidden=true;$('template-issue-type').replaceChildren(el('option',{value:''},'Choose issue type…'));$('template-issue-type').replaceChildren(el('option',{value:''},'Choose issue type…'));
  if(!connected){select.appendChild(el('option',{value:''},'Connect '+names[p]+' first'));renderTemplateFields([]);return Promise.resolve();}
  select.appendChild(el('option',{value:''},'Loading projects…'));
  return templateCall('GET','/catalog?provider='+encodeURIComponent(p)).then(function(d){
@@ -212,7 +212,7 @@ $('create').addEventListener('click',function(){
  call('POST',endpoint('/link'),body).then(function(){say('Issue created and linked successfully.');return loadLinks();}).catch(function(e){say(e.message,true);}).finally(function(){btn.disabled=false;});
 });
 provider.addEventListener('change',loadCatalog);$('ticket').addEventListener('change',loadLinks);
-$('template-provider').addEventListener('change',function(){templateEditingId=0;loadTemplateProjects();});$('template-project').addEventListener('change',function(){loadTemplateFieldDefinitions();});$('template-issue-type').addEventListener('change',function(){loadTemplateFieldDefinitions();});$('template-form').addEventListener('submit',saveTemplate);$('template-cancel').addEventListener('click',resetTemplateForm);
+$('template-provider').addEventListener('change',function(){templateEditingId=0;loadTemplateProjects();});$('template-project').addEventListener('change',function(){if(templateProvider()==='jira'){$('template-issue-type').value='';$('template-issue-type-wrap').hidden=true;}loadTemplateFieldDefinitions();});$('template-issue-type').addEventListener('change',function(){loadTemplateFieldDefinitions();});$('template-form').addEventListener('submit',saveTemplate);$('template-cancel').addEventListener('click',resetTemplateForm);
 org.addEventListener('change',function(){Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme(org.value),loadTemplateList()]);});
 credentialProvider.addEventListener('change',loadCredentialSettings);
 $('save-credentials').addEventListener('click',function(){
