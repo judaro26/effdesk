@@ -33,9 +33,10 @@ check('numbers count per organization (Beta also starts at #1)', r.body.ticket.n
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
 check('opening a ticket returns it with its messages', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant');
 check('a ticket of another organization is a 404, not a leak', (await call(otto, { orgId: beta.id, action: 'get', number: 2 })).status === 404 && (await call(otto, { orgId: beta.id, action: 'get', number: 1 })).body.ticket.subject === 'Beta first');
-r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone.' });
+r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone.', html: '<p><strong>We are sending someone.</strong></p>' });
 let t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
 check('a public reply by an agent sets the first response time and moves the ticket to pending', r.status === 200 && r.body.status === 'pending' && t.ticket.first_response_at && t.messages[1].kind === 'agent' && t.messages[1].author_name === 'Ann');
+check('a rich reply stores safe HTML separately from its plain-text body', /<strong>We are sending someone.<\\/strong>/.test(t.messages[1].html_body || '') && t.messages[1].body === 'We are sending someone.');
 r = await call(olivia, { orgId: acme.id, action: 'note', number: 1, body: 'Boiler is old.' });
 t = (await call(olivia, { orgId: acme.id, action: 'get', number: 1 })).body;
 check('an internal note is stored as a note and changes neither status nor first response', r.status === 200 && t.messages[2].kind === 'note' && t.ticket.status === 'pending');
