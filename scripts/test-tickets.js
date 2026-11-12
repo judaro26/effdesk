@@ -53,6 +53,9 @@ await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assig
 const ids = async q => (await call(ann, { orgId: acme.id, action: 'list', ...q })).body.tickets.map(x => x.number).sort().join();
 check('the list filters by status, "me", "none" and a tag', await ids({ status: 'open' }) === '1,2' && await ids({ assignee: 'me' }) === '1' && await ids({ assignee: 'none' }) === '2' && await ids({ tag: 'vip' }) === '1' && await ids({ status: 'solved' }) === '');
 check('the list searches subject, requester and ticket number, and treats % and _ as plain characters', await ids({ q: 'heater' }) === '1' && await ids({ q: 'SAM@' }) === '2' && await ids({ q: '#2' }) === '2' && await ids({ q: '%' }) === '' && await ids({ q: 'tina' }) === '1');
+await pool.query("update ticket_messages set body = '<p><strong>Legacy formatted reply</strong></p>', html_body = null where org_id = $1 and ticket_id = (select id from tickets where org_id = $1 and number = 2) and kind = 'requester'", [acme.id]);
+const legacyMessage = (await call(ann, { orgId: acme.id, action: 'get', number: 2 })).body.messages[0];
+check('legacy messages with HTML in their body are returned as safe rich HTML, not literal code', /<strong>Legacy formatted reply<\\/strong>/.test(legacyMessage.html_body || '') && legacyMessage.body === 'Legacy formatted reply');
 r = await call(ann, { orgId: acme.id, action: 'list' });
 check('the list returns counts per status, and the newest activity comes first', r.body.counts.open === 2 && r.body.counts.solved === 0 && r.body.tickets[0].number === 1);
 check('the agents list holds the organization\'s members only', (await call(ann, { orgId: acme.id, action: 'agents' })).body.agents.map(a => a.email).sort().join() === 'ann@acme.test,olivia@acme.test');
