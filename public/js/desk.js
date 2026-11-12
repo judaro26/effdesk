@@ -90,7 +90,7 @@
       return api('get', { number: n }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
         if (!current || current.ticket.number !== n) { draft = ''; mode = 'reply'; pending = []; macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
-        closePanes(); current = r.body;
+        closePanes(); current = r.body; if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
         var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) hit.subject = r.body.ticket.subject; else openTabs.push({ number: n, subject: r.body.ticket.subject });
         draw(); presenceTick();
       });
