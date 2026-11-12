@@ -10,7 +10,7 @@ export const PERMS = [
   { id: 'edit', label: 'Edit messages and remove attachments', actions: ['edit-message', 'delete-file'] },
   { id: 'labels', label: 'Change labels', actions: ['labels'] },
   { id: 'macros', label: 'Manage macros and saved views', actions: ['macro-save', 'macro-delete', 'view-save', 'view-delete'] },
-  { id: 'clients', label: 'Manage clients and queues', actions: ['client-save', 'client-delete', 'client-notes', 'queue-save', 'queue-delete'] },
+  { id: 'clients', label: 'Manage clients and queues', actions: ['client-save', 'client-delete', 'client-notes', 'contact-save', 'queue-save', 'queue-delete'] },
   { id: 'articles', label: 'Write and delete help articles', actions: ['article-save', 'article-delete'] },
   { id: 'reports', label: 'See reports', actions: ['report', 'report-csv'] },
   { id: 'ai', label: 'Use AI to draft and rewrite replies', actions: ['ai-suggest', 'ai-rewrite'] },
