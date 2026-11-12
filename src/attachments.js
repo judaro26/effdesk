@@ -33,8 +33,8 @@ export async function claimUploads(pool, orgId, actor, ticketNumber, messageRowI
   const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].slice(0, MAX_PER_REPLY); if (!list.length) return [];
   return withOrg(pool, orgId, async c => (await c.query(`update attachments set message_id = $3, ticket_id = (select id from tickets where org_id = $1 and number = $2) where org_id = $1 and id = any($4::text[]) and message_id is null and uploaded_by = $5 and (ticket_id is null or ticket_id = (select id from tickets where org_id = $1 and number = $2)) returning id, filename, content_type, size`, [orgId, Number(ticketNumber) || 0, messageRowId, list, actor.id])).rows);
 }
-export async function filesOfMessage(pool, orgId, messageRowId) { return withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size from attachments where org_id = $1 and message_id = $2 order by created_at', [orgId, messageRowId])).rows); }
-export async function filesOfTicket(pool, orgId, ticketId) { return withOrg(pool, orgId, async c => (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at', [orgId, ticketId])).rows); }
+export async function filesOfMessage(pool, orgId, messageRowId) { return withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size from attachments where org_id = $1 and message_id = $2 and is_inline = false order by created_at', [orgId, messageRowId])).rows); }
+export async function filesOfTicket(pool, orgId, ticketId) { return withOrg(pool, orgId, async c => (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, ticketId])).rows); }
 export async function readFile(pool, store, orgId, id) {
   const row = await withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size from attachments where org_id = $1 and id = $2', [orgId, String(id)])).rows[0]);
   if (!row) return null; const bytes = await store.get(`${orgId}/${row.id}`); return bytes ? { ...row, bytes } : null;
@@ -43,8 +43,49 @@ export async function deleteFile(pool, store, orgId, id) {
   const gone = await withOrg(pool, orgId, async c => (await c.query('delete from attachments where org_id = $1 and id = $2 returning id', [orgId, String(id)])).rowCount);
   if (gone) await store.delete(`${orgId}/${id}`); return gone > 0;
 }
+// Convert base64 data-URI images into CID placeholders before inbound HTML sanitization.
+export function prepareInlineDataImages(html) {
+  const images = [];
+  const transformed = String(html || '').replace(/(<img\b[^>]*?\bsrc\s*=\s*)(["'])data:image\/(png|jpe?g|gif|webp);base64,([a-z0-9+/=\s]+)\2/gi, (match, before, quote, ext, data) => {
+    const cid = 'effdesk-' + crypto.randomUUID() + '@inline';
+    const tag = match.slice(0, match.toLowerCase().indexOf('src'));
+    const alt = (tag.match(/\balt\s*=\s*(["'])(.*?)\1/i) || [])[2] || '';
+    const extension = ext.toLowerCase() === 'jpeg' ? 'jpg' : ext.toLowerCase();
+    const type = 'image/' + (ext.toLowerCase() === 'jpg' ? 'jpeg' : ext.toLowerCase());
+    const filename = /\.(png|jpe?g|gif|webp)$/i.test(alt) ? cleanName(alt) : 'inline-image-' + (images.length + 1) + '.' + extension;
+    images.push({ contentId: cid, contentType: type, filename, base64: data.replace(/\s/g, '') });
+    return before + quote + 'cid:' + cid + quote;
+  });
+  return { html: transformed, images };
+}
+
+// Store embedded images as inline-only message assets, subject to the same limits as other inbound files.
+export async function storeInlineDataImages(pool, store, orgId, ticketNumber, messageRowId, images = []) {
+  const inline = [], skipped = [];
+  if (!store || !images.length) return { inline, skipped };
+  const ent = await getEntitlements(pool, orgId), room = limitFor(ent);
+  let used = await storageUsed(pool, orgId), total = 0;
+  const ticket = await withOrg(pool, orgId, async c => (await c.query('select id from tickets where org_id = $1 and number = $2', [orgId, ticketNumber])).rows[0]);
+  if (!ticket) return { inline, skipped: ['inline images (ticket missing)'] };
+  for (const img of images.slice(0, 10)) {
+    try {
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(img.contentType) || !/^[a-z0-9+/]*={0,2}$/i.test(img.base64) || img.base64.length % 4 === 1) { skipped.push(img.filename + ' (invalid image data)'); continue; }
+      const bytes = Buffer.from(img.base64, 'base64');
+      if (!bytes.length || bytes.length > MAX_INBOUND_FILE || total + bytes.length > MAX_INBOUND_TOTAL) { skipped.push(img.filename + ' (too large)'); continue; }
+      if (used + bytes.length > room) { skipped.push(img.filename + ' (storage full)'); continue; }
+      const id = crypto.randomUUID();
+      await store.set(orgId + '/' + id, bytes);
+      await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size, is_inline) values ($1,$2,$3,$4,$5,$6,$7,true)', [id, orgId, ticket.id, messageRowId, cleanName(img.filename), cleanType(img.contentType), bytes.length]));
+      used += bytes.length; total += bytes.length;
+      inline.push({ contentId: img.contentId, id, contentType: img.contentType });
+    } catch (e) { console.warn('inline email image not stored:', e.message); skipped.push(img.filename + ' (could not be stored)'); }
+  }
+  if (images.length > 10) skipped.push('additional inline images (limit is 10)');
+  return { inline, skipped };
+}
+
 // the files of an incoming email (Resend lists them with a short-lived download link). Returns what could not be kept, so the ticket can say so.
-export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumber, messageRowId, emailId, metadata = []) {
+export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumber, messageRowId, emailId, metadata = [], skipNames = []) {
   const skipped = [], inline = [];
   try {
     const r = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}/attachments?limit=20`, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
@@ -53,18 +94,20 @@ export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumbe
     const ticket = await withOrg(pool, orgId, async c => (await c.query('select id from tickets where org_id = $1 and number = $2', [orgId, ticketNumber])).rows[0]);
     for (const a of list) {
       const name = cleanName(a.filename);
+      if ((skipNames || []).some(n => String(n).toLowerCase() === name.toLowerCase())) continue;
       try {
         if (a.size > MAX_INBOUND_FILE || total + a.size > MAX_INBOUND_TOTAL) { skipped.push(`${name} (too large)`); continue; }
         if (used + a.size > room) { skipped.push(`${name} (storage full)`); continue; }
         const d = await fetchFn(a.download_url); if (!d.ok) throw new Error('download ' + d.status);
         const bytes = Buffer.from(await d.arrayBuffer()); if (bytes.length > MAX_INBOUND_FILE) { skipped.push(`${name} (too large)`); continue; }
-        const id = crypto.randomUUID(); await store.set(`${orgId}/${id}`, bytes); total += bytes.length; used += bytes.length;
-        await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size) values ($1,$2,$3,$4,$5,$6,$7)', [id, orgId, ticket.id, messageRowId, name, cleanType(a.content_type), bytes.length]));
         const detail = meta.get(String(a.id || '')) || {};
         const rawContentId = a.content_id || a.contentId || a.contentID || a.content_id_header || a.contentIdHeader || detail.content_id || detail.contentId || detail.contentID || detail.content_id_header || detail.contentIdHeader;
         const contentId = String(rawContentId || '').replace(/^\s*<|>\s*$/g, '').trim();
         const disposition = String(a.content_disposition || a.contentDisposition || detail.content_disposition || detail.contentDisposition || '').toLowerCase();
-        if (contentId && (disposition === 'inline' || !disposition)) inline.push({ contentId, id, contentType: cleanType(a.content_type || detail.content_type) });
+        const isInline = !!contentId && (disposition === 'inline' || !disposition);
+        const id = crypto.randomUUID(); await store.set(orgId + '/' + id, bytes); total += bytes.length; used += bytes.length;
+        await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size, is_inline) values ($1,$2,$3,$4,$5,$6,$7,$8)', [id, orgId, ticket.id, messageRowId, name, cleanType(a.content_type), bytes.length, isInline]));
+        if (isInline) inline.push({ contentId, id, contentType: cleanType(a.content_type || detail.content_type) });
       } catch (e) { console.warn('attachment not stored:', e.message); skipped.push(`${name} (could not be fetched)`); }
     }
   } catch (e) { console.warn('attachments not listed:', e.message); skipped.push('attachments (could not be fetched)'); }
