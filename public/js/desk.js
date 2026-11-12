@@ -347,7 +347,7 @@
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
       body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
-      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, say: say, upload: uploadHelpImage }) : null;
+      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, say: say, upload: uploadHelpImage }) : null;
       if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var after = function () { return Promise.all([open(t.number), refresh()]); };
@@ -633,7 +633,7 @@
                     if (!v) return;
                     var text = htmlPlain(rich.getHtml()); if (!text) return say('Write a message first, then choose how to rewrite it.', true);
                     aiBusy = 'automation'; draw();
-                    api('ai-rewrite', { mode: v, text: text }).then(function (r) { aiBusy = ''; if (!r.ok) return say(r.body.error || 'The AI could not answer.', true); rich.setHtml('<p>' + htmlEsc(r.body.text).replace(/\\n/g, '<br>') + '</p>'); a.value = rich.getHtml(); draw(); });
+                    api('ai-rewrite', { mode: v, text: text }).then(function (r) { aiBusy = ''; if (!r.ok) return say(r.body.error || 'The AI could not answer.', true); rich.setHtml('<p>' + htmlEsc(r.body.text).replace(/\n/g, '<br>') + '</p>'); a.value = rich.getHtml(); draw(); });
                   });
                   box.insertBefore(el('div', { class: 'bar', style: 'margin:6px 0;' }, aiMode, el('span', { class: 'm' }, 'AI tools are included with Suite and Pro. Review the result before saving.')), rich.el);
                 }
