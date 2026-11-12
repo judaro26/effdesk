@@ -152,7 +152,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first.');
       const token=await tokenFor(pool,env,org,p);
       if(p==='linear') {
-        const d=await apiCall(p,token,'POST','query SearchIssues($query:String!){ issueSearch(query:$query,first:20){ nodes { id identifier title url updatedAt state { name } team { name } project { name } } } }',{query:q});
+        const d=await apiCall(p,token,'POST','query SearchIssues($term:String!){ searchIssues(term:$term,first:20){ nodes { id identifier title url updatedAt state { name } team { id name } project { name } } } }',{term:q});
         return json(200,{items:(d.issueSearch?.nodes||[]).map(linearIssueShape)});
       }
       const safe=q.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
