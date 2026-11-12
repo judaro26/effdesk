@@ -70,7 +70,7 @@ export const globalSearch = (pool,orgId,q='') => withOrg(pool,orgId,async c=>{
     c.query(`select p.id,p.name,p.email,p.company_id,k.name company_name from contact_profiles p
       left join clients k on k.org_id=p.org_id and k.id=p.company_id
       where p.org_id=$1 and (p.name ilike $2 or p.email ilike $2) order by p.last_seen_at desc limit 5`,[orgId,pattern]),
-    c.query(`select id,name,domain from clients where org_id=$1 and (name ilike $2 or domain ilike $2)
+    c.query(`select id,name,domain,notes,share_tickets from clients where org_id=$1 and (name ilike $2 or domain ilike $2)
       order by lower(name) limit 5`,[orgId,pattern])
   ]);
   return {ok:true,tickets:tickets.rows,agents:agents.rows,contacts:contacts.rows,companies:companies.rows};
