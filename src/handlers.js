@@ -401,8 +401,17 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
     await withOrg(pool, res.orgId, async c => {
       const row = (await c.query('select html_body from ticket_messages where org_id = $1 and id = $2', [res.orgId, res.messageRowId])).rows[0];
       let html = String(row?.html_body || '');
-      for (const file of stored.inline || []) if (file.contentId) html = html.replace(new RegExp('cid:' + file.contentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '/api/attachments/' + encodeURIComponent(file.id) + '?org=' + encodeURIComponent(res.orgId) + '&inline=1');
-      html = html.replace(/<img\b(?=[^>]*\bsrc=[\"']cid:[^\"']*[\"'])[^>]*>/gi, m => { const alt = (m.match(/\balt=[\"']([^\"']*)[\"']/i) || [])[1]; return alt ? '<span>' + alt.replace(/[&<>]/g, '') + '</span>' : ''; });
+      for (const file of stored.inline || []) if (file.contentId) {
+        const cid = file.contentId.replace(/^\s*<|>\s*$/g, '').trim();
+        const escaped = cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const url = '/api/attachments/' + encodeURIComponent(file.id) + '?org=' + encodeURIComponent(res.orgId) + '&inline=1';
+        html = html.replace(new RegExp('cid:\\s*<?' + escaped + '>?', 'gi'), url);
+      }
+      // Any remaining CID means there was no matching stored attachment; never show broken provider URLs.
+      html = html.replace(/<img\b(?=[^>]*\bsrc=["']cid:[^"']*["'])[^>]*>/gi, m => {
+        const alt = (m.match(/\balt=["']([^"']*)["']/i) || [])[1];
+        return alt ? '<span>' + alt.replace(/[&<>]/g, '') + '</span>' : '';
+      });
       if (row) await c.query('update ticket_messages set html_body = $3 where org_id = $1 and id = $2', [res.orgId, res.messageRowId, html || null]);
     });
   }

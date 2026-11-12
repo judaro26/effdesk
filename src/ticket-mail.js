@@ -124,7 +124,7 @@ export function stripQuoted(text) {
   let kept = lines.slice(0, cut); while (kept.length && (kept[kept.length - 1].trim() === '' || kept[kept.length - 1].trim().startsWith('>'))) kept.pop();
   const out = kept.join('\n').trim(); return out || String(text || '').trim();
 }
-const htmlToText = h => htmlText(String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<br\s*\/?>|<\/(p|div|tr|li|h[1-6])>/gi, '\n'));
+const htmlToText = h => htmlText(String(h || '').replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<img\b[^>]*\balt=["']([^"']+)["'][^>]*>/gi, ' $1 ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h[1-6])>/gi, '\n'));
 const hdr = (h, k) => { if (!h) return ''; const key = Object.keys(h).find(x => x.toLowerCase() === k); const v = key ? h[key] : ''; return Array.isArray(v) ? v.join(' ') : String(v || ''); };
 export function isAutomated(headers, from) {
   const auto = hdr(headers, 'auto-submitted').toLowerCase().trim(), prec = hdr(headers, 'precedence').toLowerCase().trim();
