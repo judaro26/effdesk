@@ -8,6 +8,7 @@ import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { tickets, inboundEmail } from '../src/handlers.js';
 import { stripQuoted, isAutomated, verifySvix, ticketToken, handleInbound, cleanInboundHtml } from '../src/ticket-mail.js';
+import { prepareInlineDataImages } from '../src/attachments.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -103,7 +104,7 @@ await pool.query('revoke all on mail_settings from rls_tester'); await pool.quer
 // the webhook
 const now = Date.now(), evBody = id => JSON.stringify({ type: 'email.received', created_at: new Date().toISOString(), data: { email_id: id, from: 'web@example.com', to: ['acme@in.effdesk.test'], message_id: '<wh-' + id + '@m>', subject: 'Via webhook', attachments: [] } });
 const svix = (body, id = 'msg_' + crypto.randomBytes(4).toString('hex'), ts = Math.floor(now / 1000), secret = WH) => ({ 'svix-id': id, 'svix-timestamp': String(ts), 'svix-signature': 'v1,' + crypto.createHmac('sha256', Buffer.from(secret.replace(/^whsec_/, ''), 'base64')).update(`${id}.${ts}.${body}`).digest('base64') });
-const hookWith = (body, headers, fetchFn) => inboundEmail(new Request('http://x/api/webhooks/email', { method: 'POST', headers, body }), { pool, env: ENV, now, fetchFn }).then(async x => ({ status: x.status, body: await x.json() }));
+const hookWith = (body, headers, fetchFn, store) => inboundEmail(new Request('http://x/api/webhooks/email', { method: 'POST', headers, body }), { pool, env: ENV, now, fetchFn, store }).then(async x => ({ status: x.status, body: await x.json() }));
 const fakeFetch = (okRes = true) => async (u, o) => { fakeFetch.calls.push([u, o.headers.Authorization]); return okRes ? { ok: true, status: 200, json: async () => ({ from: 'Web Person <web@example.com>', to: ['acme@in.effdesk.test'], message_id: '<wh-1@m>', subject: 'Via webhook', text: 'Hello from the webhook', headers: { From: 'Web Person <web@example.com>' }, authentication: { dmarc: 'pass' }, attachments: [] }) } : { ok: false, status: 500, json: async () => ({}) }; }; fakeFetch.calls = [];
 let b = evBody('em_1'), h = svix(b);
 check('the signature check accepts a correct one and refuses a wrong key, an altered body and an old timestamp', verifySvix(b, new Headers(h), WH, now) && !verifySvix(b, new Headers(svix(b, undefined, undefined, 'whsec_' + Buffer.from('other-secret-other-secret').toString('base64'))), WH, now) && !verifySvix(b + ' ', new Headers(h), WH, now) && !verifySvix(b, new Headers(svix(b, undefined, Math.floor(now / 1000) - 3600)), WH, now) && !verifySvix(b, new Headers(), WH, now));
@@ -115,5 +116,27 @@ check('the same event delivered again is acknowledged once and not repeated', r.
 b = evBody('em_2'); h = svix(b); r = await hookWith(b, h, fakeFetch(false));
 check('if the message cannot be fetched we answer 502 so Resend retries, and the event is not marked done', r.status === 502 && (await hookWith(b, h, fakeFetch())).status === 200);
 b = JSON.stringify({ type: 'email.opened', data: {} }); r = await hookWith(b, svix(b), fakeFetch());
+
+const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/mZkAAAAASUVORK5CYII=';
+const prepared = prepareInlineDataImages('<div>just confirming<img alt="image.png" src="data:image/png;base64,' + png + '"></div>');
+check('data-URI email images become safe CID placeholders before HTML sanitization', prepared.images.length === 1 && prepared.images[0].filename === 'image.png' && /src="cid:effdesk-/.test(prepared.html) && !/data:image/.test(prepared.html));
+const imageStore = { set: async () => {}, get: async () => null, delete: async () => {} };
+const inlineId = 'em_inline', inlineEvent = evBody(inlineId), inlineHeaders = svix(inlineEvent);
+let inlineAttachmentDownloads = 0;
+const inlineFetch = async (u, o) => {
+  if (String(u).includes('/attachments?limit=20')) return { ok: true, status: 200, json: async () => ({ data: [{ id: 'att-inline', filename: 'image.png', content_type: 'image/png', size: Buffer.from(png, 'base64').length, download_url: 'https://download/inline-image' }] }) };
+  if (u === 'https://download/inline-image') { inlineAttachmentDownloads++; return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(png, 'base64') }; }
+  return { ok: true, status: 200, json: async () => ({
+    from: 'Web Person <web@example.com>', to: ['acme@in.effdesk.test'], message_id: '<' + inlineId + '@m>',
+    subject: 'Inline image', text: 'just confirming\n\n[image: image.png]', headers: { From: 'Web Person <web@example.com>' },
+    html: '<div>just confirming<div><br></div><div><img src="data:image/png;base64,' + png + '"></div></div>',
+    attachments: [{ id: 'att-inline', filename: 'image.png', content_type: 'image/png' }]
+  }) };
+};
+r = await hookWith(inlineEvent, inlineHeaders, inlineFetch, imageStore);
+const inlineTicket = (await call(olivia, { orgId: acme.id, action: 'get', number: r.body.number })).body;
+const inlineMessage = inlineTicket.messages[0];
+const inlineRows = await withOrg(pool, acme.id, c => c.query('select is_inline, filename from attachments where org_id = $1 and message_id = $2', [acme.id, inlineMessage.id]));
+check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\/api\/attachments\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'inline-image-1.png' && inlineAttachmentDownloads === 0);
 check('other event types are acknowledged and ignored', r.status === 200 && r.body.ignored === true);
 await pool.end(); done();

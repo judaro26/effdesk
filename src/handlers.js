@@ -6,7 +6,7 @@ import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddl
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
 import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
-import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, MAX_UPLOAD, cleanName } from './attachments.js';
+import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, storeInlineDataImages, prepareInlineDataImages, MAX_UPLOAD, cleanName } from './attachments.js';
 import { effectiveHelpSettings, getHelpSettings, saveHelpSettings, saveHelpImage, readHelpImage, MAX_IMAGE } from './help.js';
 import { clean as cleanHtml, withToc } from './html-clean.js';
 import { pdfToArticle, MAX_PDF } from './pdf-import.js';
@@ -394,11 +394,17 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
     const r = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(ev.data.email_id)}`, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
     if (!r.ok) throw new Error('status ' + r.status); full = await r.json();
   } catch (e) { console.warn('could not fetch the received email:', e.message); return json(502, { error: 'Could not fetch the message.' }); }
-  const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
+  const preparedInline = prepareInlineDataImages(full.html || '');
+  const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: preparedInline.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
   if (res.ok && res.messageRowId) {
     let stored = { inline: [] };
     const attachmentMetadata = full.attachments || ev.data.attachments || [];
-    if (store && attachmentMetadata.length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id, attachmentMetadata) || stored;
+    const inlineImageNames = preparedInline.images.map(x => x.filename).concat(Array.from(String(full.text || '').matchAll(/\[image:\s*([^\]]+)\]/gi), m => cleanName(m[1])));
+    if (store && attachmentMetadata.length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id, attachmentMetadata, [...new Set(inlineImageNames)]) || stored;
+    if (store && preparedInline.images.length) {
+      const embedded = await storeInlineDataImages(pool, store, res.orgId, res.number, res.messageRowId, preparedInline.images);
+      stored.inline = (stored.inline || []).concat(embedded.inline || []);
+    }
     await withOrg(pool, res.orgId, async c => {
       const row = (await c.query('select html_body from ticket_messages where org_id = $1 and id = $2', [res.orgId, res.messageRowId])).rows[0];
       let html = String(row?.html_body || '');

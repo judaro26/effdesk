@@ -87,7 +87,7 @@ export const saveClientNotes = (pool, orgId, id, notes) => withOrg(pool, orgId, 
 export const listMacros = (pool, orgId) => withOrg(pool, orgId, async c => ({ ok: true, macros: (await c.query('select id, name, body, status, priority, add_tags from macros where org_id = $1 order by lower(name)', [orgId])).rows }));
 export const saveMacro = (pool, orgId, b) => withOrg(pool, orgId, async c => {
   const name = clean(b.name, 80), body = String(b.body == null ? '' : b.body).replace(/\u0000/g, '').trim().slice(0, 5000); if (!name) return fail('Give the macro a name.'); if (!body) return fail('Write the reply the macro inserts.');
-  const status = ['open', 'pending', 'solved', 'closed'].includes(b.status) ? b.status : null, priority = ['low', 'normal', 'high', 'urgent'].includes(b.priority) ? b.priority : null;
+  const status = ['open', 'pending', 'on_hold', 'solved', 'closed'].includes(b.status) ? b.status : null, priority = ['low', 'normal', 'high', 'urgent'].includes(b.priority) ? b.priority : null;
   const tags = [...new Set((Array.isArray(b.addTags) ? b.addTags : String(b.addTags || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 10);
   try {
     if (b.id) { const r = await c.query('update macros set name = $3, body = $4, status = $5, priority = $6, add_tags = $7 where org_id = $1 and id = $2 returning id', [orgId, idOf(b.id), name, body, status, priority, tags]); if (!r.rowCount) return fail('No such macro.', 404); return { ok: true, id: r.rows[0].id }; }
@@ -209,7 +209,7 @@ export const extras = (pool, orgId, actor, ticket) => withOrg(pool, orgId, async
   let client = null;
   if (ticket.client_id) {
     const k = (await c.query('select id, name, domain, notes, share_tickets from clients where org_id = $1 and id = $2', [orgId, ticket.client_id])).rows[0];
-    if (k) client = { ...k, stats: (await c.query("select count(*)::int total, count(*) filter (where status in ('open','pending'))::int open, count(*) filter (where status in ('solved','closed'))::int solved from tickets where org_id = $1 and client_id = $2", [orgId, k.id])).rows[0], people: (await c.query('select requester_email email, max(requester_name) name, count(*)::int tickets from tickets where org_id = $1 and client_id = $2 group by requester_email order by count(*) desc limit 20', [orgId, k.id])).rows };
+    if (k) client = { ...k, stats: (await c.query("select count(*)::int total, count(*) filter (where status in ('open','pending','on_hold'))::int open, count(*) filter (where status in ('solved','closed'))::int solved from tickets where org_id = $1 and client_id = $2", [orgId, k.id])).rows[0], people: (await c.query('select requester_email email, max(requester_name) name, count(*)::int tickets from tickets where org_id = $1 and client_id = $2 group by requester_email order by count(*) desc limit 20', [orgId, k.id])).rows };
   }
   const problem = ticket.problem_number ? (await c.query('select number, subject, status from tickets where org_id = $1 and number = $2', [orgId, ticket.problem_number])).rows[0] || null : null;
   const incidents = ticket.type === 'problem' ? (await c.query('select number, subject, status from tickets where org_id = $1 and problem_number = $2 order by number', [orgId, ticket.number])).rows : [];
@@ -217,11 +217,11 @@ export const extras = (pool, orgId, actor, ticket) => withOrg(pool, orgId, async
   return { followers, following: followers.some(f => f.user_id === actor.id), events, sides, client, problem, incidents, merged };
 });
 
-// ----- custom ticket statuses: a name the workspace chooses, always inside one of the four built-in categories
-const CATEGORIES = ['open', 'pending', 'solved', 'closed'];
+// ----- custom ticket statuses: a name the workspace chooses, always inside one of the built-in categories
+const CATEGORIES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const listStatuses = (pool, orgId) => withOrg(pool, orgId, async c => ({ ok: true, statuses: (await c.query('select s.id, s.name, s.category, s.position, (select count(*)::int from tickets t where t.org_id = s.org_id and t.custom_status_id = s.id) tickets from ticket_statuses s where s.org_id = $1 order by s.position, s.id', [orgId])).rows }));
 export const saveStatus = (pool, orgId, { id, name, category, position }) => withOrg(pool, orgId, async c => {
-  const n = clean(name, 40); if (!n) return fail('Give the status a name.'); if (!CATEGORIES.includes(category)) return fail('Choose which built-in status it counts as: open, pending, solved or closed.');
+  const n = clean(name, 40); if (!n) return fail('Give the status a name.'); if (!CATEGORIES.includes(category)) return fail('Choose which built-in status it counts as: open, pending, on hold, solved or closed.');
   if (CATEGORIES.includes(n.toLowerCase())) return fail('That name is already a built-in status.');
   try {
     if (id) { const r = await c.query('update ticket_statuses set name = $3, category = $4 where org_id = $1 and id = $2 returning id', [orgId, idOf(id), n, category]); if (!r.rowCount) return fail('No such status.', 404); await c.query('update tickets set status = $3, solved_at = case when $3 in (\'solved\',\'closed\') then coalesce(solved_at, now()) else null end where org_id = $1 and custom_status_id = $2 and status <> $3', [orgId, idOf(id), category]); return { ok: true, id: r.rows[0].id }; }

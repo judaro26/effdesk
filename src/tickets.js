@@ -5,7 +5,7 @@ import { slaWhere } from './sla.js';
 import { defsOf, cleanValues } from './fields.js';
 import { clean as cleanHtml, plainOf } from './html-clean.js';
 
-export const STATUSES = ['open', 'pending', 'solved', 'closed'];
+export const STATUSES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
@@ -44,7 +44,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   const where = ['org_id = $1'], args = [orgId], add = (sql, v) => { args.push(v); where.push(sql.replace('$#', '$' + args.length)); };
   if (STATUSES.includes(q.status)) add('status = $#', q.status);
   if (/^\d{1,12}$/.test(String(q.cstatus || ''))) add('custom_status_id = $#', Number(q.cstatus));
-  else if (q.status === 'active') where.push("status in ('open','pending')");
+  else if (q.status === 'active') where.push("status in ('open','pending','on_hold')");
   if (q.assignee === 'me') add('assignee_id = $#', actor.id); else if (q.assignee === 'none') where.push('assignee_id is null'); else if (q.assignee) add('assignee_id = $#', clean(q.assignee, 64));
   if (q.tag) add('$# = any(tags)', clean(q.tag, 30).toLowerCase());
   if (q.queue === 'none') where.push('queue_id is null'); else if (/^\d{1,12}$/.test(String(q.queue || ''))) add('queue_id = $#', Number(q.queue));
@@ -59,7 +59,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   return withOrg(pool, orgId, async c => {
     const rows = (await c.query(`select ${ticketCols} from tickets where ${where.join(' and ')} order by updated_at desc, id desc limit ${limit} offset ${offset}`, args)).rows;
     const counts = Object.fromEntries((await c.query('select status, count(*)::int n from tickets where org_id = $1 group by status', [orgId])).rows.map(r => [r.status, r.n]));
-    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, solved: 0, closed: 0, ...counts } };
+    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts } };
   });
 }
 
@@ -68,8 +68,15 @@ export async function getTicket(pool, orgId, actor, number) {
     const t = (await c.query(`select ${ticketCols} from tickets where org_id = $1 and number = $2`, [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     const messages = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
-    const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at', [orgId, t.id])).rows;
-    for (const m of messages) m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
+    const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
+    for (const m of messages) {
+      // Older automations or integrations may have stored HTML markup in body before html_body existed.
+      if (!m.html_body && /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img)\b/i.test(String(m.body || ''))) {
+        const safe = cleanHtml(String(m.body).slice(0, 100000));
+        if (safe && /<\/?[a-z][^>]*>/i.test(safe)) { m.html_body = safe; m.body = plainOf(safe) || m.body; }
+      }
+      m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
+    }
     return { ok: true, ticket: t, messages };
   });
 }

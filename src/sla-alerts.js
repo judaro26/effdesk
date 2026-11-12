@@ -13,7 +13,7 @@ export async function runSlaAlerts(pool, mailer, env = process.env, nowMs = Date
       if (!has(await getEntitlements(pool, orgId), 'sla')) continue;
       const policies = (await getSla(pool, orgId)).policies; if (!Object.values(policies).some(p => p.firstResponseMin || p.resolveMin)) continue;
       const cal = await calendarOf(pool, orgId);
-      const tickets = (await withOrg(pool, orgId, c => c.query("select id, number, subject, priority, status, assignee_id, created_at, first_response_at, solved_at from tickets where org_id = $1 and status in ('open','pending') order by updated_at desc limit 2000", [orgId]))).rows;
+      const tickets = (await withOrg(pool, orgId, c => c.query("select id, number, subject, priority, status, assignee_id, created_at, first_response_at, solved_at from tickets where org_id = $1 and status in ('open','pending','on_hold') order by updated_at desc limit 2000", [orgId]))).rows;
       for (const t of tickets) {
         const s = slaOf(t, policies, nowMs, cal); if (!s) continue; const st = [s.first, s.resolve].filter(Boolean).map(x => x.state), kind = st.includes('breached') ? 'breached' : st.includes('risk') ? 'risk' : null; if (!kind) continue;
         const fresh = await withOrg(pool, orgId, async c => (await c.query('insert into sla_alerts (ticket_id, org_id, kind) values ($1,$2,$3) on conflict do nothing returning 1', [t.id, orgId, kind])).rowCount); if (!fresh) continue;

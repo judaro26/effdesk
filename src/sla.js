@@ -42,7 +42,7 @@ export function slaOf(t, policies, nowMs = Date.now(), cal = ROUND_THE_CLOCK) {
 // SQL for "active tickets whose target is past (breached) or past 80% but not over (risk)"; the policy table is joined by priority
 export function slaWhere(kind) {
   const over = f => `(p.first_response_min is not null and tickets.first_response_at is null and now() > tickets.created_at + p.first_response_min * ${f} * interval '1 minute') or (p.resolve_min is not null and tickets.solved_at is null and now() > tickets.created_at + p.resolve_min * ${f} * interval '1 minute')`;
-  const exists = cond => `tickets.status in ('open','pending') and exists (select 1 from sla_policies p where p.org_id = tickets.org_id and p.priority = tickets.priority and (${cond}))`;
+  const exists = cond => `tickets.status in ('open','pending','on_hold') and exists (select 1 from sla_policies p where p.org_id = tickets.org_id and p.priority = tickets.priority and (${cond}))`;
   if (kind === 'breached') return exists(over(1));
   if (kind === 'risk') return `${exists(over(RISK_AT))} and not (${exists(over(1))})`;
   return null;
@@ -51,6 +51,6 @@ export function slaWhere(kind) {
 // with business hours the clock cannot be done in SQL, so the tickets that match are worked out here (the 2000 most recently updated active ones) and listed by number
 export async function slaNumbers(pool, orgId, kind, cal, nowMs = Date.now()) {
   const policies = (await getSla(pool, orgId)).policies;
-  const rows = (await withOrg(pool, orgId, c => c.query("select number, priority, status, created_at, first_response_at, solved_at from tickets where org_id = $1 and status in ('open','pending') order by updated_at desc limit 2000", [orgId]))).rows;
+  const rows = (await withOrg(pool, orgId, c => c.query("select number, priority, status, created_at, first_response_at, solved_at from tickets where org_id = $1 and status in ('open','pending','on_hold') order by updated_at desc limit 2000", [orgId]))).rows;
   return rows.filter(t => { const s = slaOf(t, policies, nowMs, cal); if (!s) return false; const st = [s.first, s.resolve].filter(Boolean).map(x => x.state); return kind === 'breached' ? st.includes('breached') : !st.includes('breached') && st.includes('risk'); }).map(t => t.number);
 }

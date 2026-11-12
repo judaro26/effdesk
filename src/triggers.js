@@ -29,7 +29,7 @@ const EMAIL_ALLOWED_STYLES = { '*': {
 } };
 
 export const EVENTS = ['created', 'customer_reply', 'time'];
-const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
+const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'on_hold', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
 export const FIELDS = { priority: ['is', 'is_not'], status: ['is', 'is_not'], channel: ['is', 'is_not'], type: ['is', 'is_not'], tag: ['is', 'is_not'], subject: ['contains'], message: ['contains'], sender_domain: ['is'], hours_idle: ['gte'] };
 export const ACTIONS = ['set_priority', 'set_status', 'set_type', 'add_tag', 'assign', 'set_queue', 'add_note', 'auto_reply'];
 export const MAX_RULES = 25;
@@ -80,7 +80,7 @@ export function matches(conditions, t, msg = '', nowMs = Date.now()) {
 // the next person to give a ticket to: the full agent (not light) with the fewest open tickets; ties go to whoever was given a ticket longest ago
 export async function roundRobin(pool, orgId) {
   const rows = (await pool.query("select m.\"userId\" as id from member m where m.\"organizationId\" = $1 and m.role in ('owner','admin','member')", [orgId])).rows; if (!rows.length) return null;
-  const load = Object.fromEntries((await withOrg(pool, orgId, c => c.query("select assignee_id, count(*)::int n, max(updated_at) last from tickets where org_id = $1 and status in ('open','pending') and assignee_id is not null group by assignee_id", [orgId]))).rows.map(r => [r.assignee_id, r]));
+  const load = Object.fromEntries((await withOrg(pool, orgId, c => c.query("select assignee_id, count(*)::int n, max(updated_at) last from tickets where org_id = $1 and status in ('open','pending','on_hold') and assignee_id is not null group by assignee_id", [orgId]))).rows.map(r => [r.assignee_id, r]));
   return rows.map(r => ({ id: r.id, n: load[r.id] ? load[r.id].n : 0, last: load[r.id] ? new Date(load[r.id].last).getTime() : 0 })).sort((a, b) => a.n - b.n || a.last - b.last || (a.id < b.id ? -1 : 1))[0].id;
 }
 const TCOLS = 'id, number, subject, status, priority, channel, type, tags, requester_email, requester_name, updated_at';
