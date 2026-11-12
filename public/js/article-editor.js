@@ -28,22 +28,22 @@
     'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
     'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
     'display': [/^(block|inline|inline-block|table|table-row|table-cell)$/], 'box-sizing': [/^(border-box|content-box)$/], 'border-collapse': [/^(collapse|separate)$/],
-    'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\\s+[0-9.]+(px|pt|em|rem))?$/],
-    'padding': [/^[0-9.]+(px|pt|em|rem|%)?(\\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+    'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\s+[0-9.]+(px|pt|em|rem))?$/],
+    'padding': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
     'padding-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
-    'margin': [/^[0-9.]+(px|pt|em|rem|%)?(\\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+    'margin': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
     'margin-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
     'width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-width': [/^[0-9.]+(px|pt|em|rem|%)$/],
     'height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-height': [/^[0-9.]+(px|pt|em|rem|%)$/],
-    'border': [/^[0-9.]+px\\s+(solid|dashed|dotted|double|none)\\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
-    'border-top': [/^[0-9.]+px\\s+(solid|dashed|dotted|double|none)\\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-right': [/^[0-9.]+px\\s+(solid|dashed|dotted|double|none)\\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
-    'border-bottom': [/^[0-9.]+px\\s+(solid|dashed|dotted|double|none)\\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-left': [/^[0-9.]+px\\s+(solid|dashed|dotted|double|none)\\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border-top': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-right': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border-bottom': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-left': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
     'border-radius': [/^[0-9.]+(px|pt|em|rem|%)$/], 'float': [/^(left|right|none)$/], 'clear': [/^(both|left|right|none)$/],
     'list-style-type': [/^(disc|circle|square|decimal|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$/]
   };
   function cleanStyle(text, emailMode) {
     var out = []; String(text || '').split(';').forEach(function (d) {
-      var i = d.indexOf(':'); if (i < 0) return; var k = d.slice(0, i).trim().toLowerCase(), v = d.slice(i + 1).trim().replace(/\\s*!important$/i, '');
+      var i = d.indexOf(':'); if (i < 0) return; var k = d.slice(0, i).trim().toLowerCase(), v = d.slice(i + 1).trim().replace(/\s*!important$/i, '');
       var rules = emailMode ? (EMAIL_STYLES[k] || STYLES[k]) : STYLES[k]; if (rules && rules.some(function (re) { return re.test(v); })) out.push(k + ':' + v);
     }); return out.join(';');
   }
