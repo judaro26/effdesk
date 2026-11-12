@@ -316,8 +316,12 @@
       box.innerHTML = message.html_body;
       return box;
     }
-    function htmlPlain(html) { var box = doc.createElement('div'); box.innerHTML = String(html || '').replace(/<\\/(p|div|h[1-6]|li|tr|blockquote|pre)>/gi, '    // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
-\\n').replace(/<br\\s*\\/?\\s*>/gi, '\\n'); return String(box.innerText || box.textContent || '').replace(/\\u00a0/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim(); }
+    function htmlPlain(html) {
+      var box = doc.createElement('div'); box.innerHTML = String(html || '');
+      [].slice.call(box.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,tr,blockquote,pre')).forEach(function (n) { n.appendChild(doc.createTextNode('\n')); });
+      [].slice.call(box.querySelectorAll('br')).forEach(function (n) { n.parentNode.replaceChild(doc.createTextNode('\n'), n); });
+      return String(box.textContent || '').replace(/\u00a0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    }
     function htmlEsc(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); }
     function uploadHelpImage(file) { return fetchFn('/api/help-assets/image?org=' + encodeURIComponent(orgId), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'That picture could not be uploaded.'); return j.url; }); }); }
     // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
