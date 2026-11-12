@@ -399,7 +399,8 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   if (res.ok && res.messageRowId) {
     let stored = { inline: [] };
     const attachmentMetadata = full.attachments || ev.data.attachments || [];
-    if (store && attachmentMetadata.length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id, attachmentMetadata, preparedInline.images.map(x => x.filename)) || stored;
+    const inlineImageNames = preparedInline.images.map(x => x.filename).concat(Array.from(String(full.text || '').matchAll(/\\[image:\\s*([^\\]]+)\\]/gi), m => cleanName(m[1])));
+    if (store && attachmentMetadata.length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id, attachmentMetadata, [...new Set(inlineImageNames)]) || stored;
     if (store && preparedInline.images.length) {
       const embedded = await storeInlineDataImages(pool, store, res.orgId, res.number, res.messageRowId, preparedInline.images);
       stored.inline = (stored.inline || []).concat(embedded.inline || []);
