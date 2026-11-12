@@ -218,7 +218,7 @@ export const extras = (pool, orgId, actor, ticket) => withOrg(pool, orgId, async
 });
 
 // ----- custom ticket statuses: a name the workspace chooses, always inside one of the four built-in categories
-const CATEGORIES = ['open', 'pending', 'solved', 'closed'];
+const CATEGORIES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const listStatuses = (pool, orgId) => withOrg(pool, orgId, async c => ({ ok: true, statuses: (await c.query('select s.id, s.name, s.category, s.position, (select count(*)::int from tickets t where t.org_id = s.org_id and t.custom_status_id = s.id) tickets from ticket_statuses s where s.org_id = $1 order by s.position, s.id', [orgId])).rows }));
 export const saveStatus = (pool, orgId, { id, name, category, position }) => withOrg(pool, orgId, async c => {
   const n = clean(name, 40); if (!n) return fail('Give the status a name.'); if (!CATEGORIES.includes(category)) return fail('Choose which built-in status it counts as: open, pending, on hold, solved or closed.');
