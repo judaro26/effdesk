@@ -358,7 +358,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const pt = b.patch || {}; if (pt.custom !== undefined && (g = need('custom_fields'))) return g; if (pt.queueId !== undefined && (g = need('queues'))) return g; if (pt.clientId !== undefined && (g = need('clients'))) return g;
       const was = pt.assigneeId ? (await pool.query('select assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(b.number) || 0])).rows[0]?.assignee_id : null;
       r = await updateTicket(pool, orgId, actor, b.number, pt);
-      if (r.ok) await emitHook(pool, orgId, 'ticket.updated', b.number, { changes: Object.keys(pt) });\n      if (r.ok) await syncTicketUpdate(pool, env, orgId, b.number, pt);
+      if (r.ok) await emitHook(pool, orgId, 'ticket.updated', b.number, { changes: Object.keys(pt) });
+      if (r.ok) await syncTicketUpdate(pool, env, orgId, b.number, pt);
       if (r.ok && pt.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok && pt.assigneeId && pt.assigneeId !== was && pt.assigneeId !== actor.id) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'assigned', onlyUserId: String(pt.assigneeId), actorId: actor.id, summary: `${actor.name || actor.email} assigned it to you.` });
       break;
