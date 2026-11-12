@@ -29,7 +29,7 @@ const EMAIL_ALLOWED_STYLES = { '*': {
 } };
 
 export const EVENTS = ['created', 'customer_reply', 'time'];
-const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
+const ENUM = { priority: ['low', 'normal', 'high', 'urgent'], status: ['open', 'pending', 'on_hold', 'solved', 'closed'], channel: ['web', 'email', 'api', 'portal', 'chat'], type: ['question', 'incident', 'problem', 'task'] };
 export const FIELDS = { priority: ['is', 'is_not'], status: ['is', 'is_not'], channel: ['is', 'is_not'], type: ['is', 'is_not'], tag: ['is', 'is_not'], subject: ['contains'], message: ['contains'], sender_domain: ['is'], hours_idle: ['gte'] };
 export const ACTIONS = ['set_priority', 'set_status', 'set_type', 'add_tag', 'assign', 'set_queue', 'add_note', 'auto_reply'];
 export const MAX_RULES = 25;
