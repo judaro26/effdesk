@@ -138,9 +138,9 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         return json(200,{items:(d.issueSearch?.nodes||[]).map(linearIssueShape)});
       }
       const safe=q.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
-      const jql=/^[A-Z][A-Z0-9]+-\\d+$/i.test(q)?'key = "'+safe.toUpperCase()+'"':'text ~ "'+safe+'" ORDER BY updated DESC';
+      const jql=/^[A-Z][A-Z0-9]+-\d+$/i.test(q)?'key = "'+safe.toUpperCase()+'"':'text ~ "'+safe+'" ORDER BY updated DESC';
       const d=await apiCall(p,token,'GET','/rest/api/3/search/jql?jql='+encodeURIComponent(jql)+'&maxResults=20&fields=summary,status,priority,issuetype,project,updated',{cloudId:conn.external_workspace_id});
-      const host=String(conn.external_workspace_url||'').replace(/^https?:\\/\\//,'').replace(/\\/+$/,'');
+      const host=String(conn.external_workspace_url||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');
       return json(200,{items:(d.issues||[]).map(x=>jiraIssueShape(x,host))});
     } catch(e) { console.error('external issue search:',p,e.message); return fail(502,'Could not search '+p+'. '+e.message); }
   }
