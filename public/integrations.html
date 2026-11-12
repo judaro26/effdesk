@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>External integrations | EffDesk</title>
+<link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/desk.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<header><div class="in"><a class="brand" href="/desk.html">Eff<span>Desk</span></a><nav><a href="/desk.html">Back to tickets</a></nav></div></header>
+<main class="wrap" style="max-width:900px;margin:36px auto;padding:0 20px">
+  <h1>External project integrations</h1>
+  <p class="m">Connect Linear or Jira to create linked issues and synchronize ticket updates and comments in both directions.</p>
+  <label for="org">Workspace</label><select id="org"></select>
+  <p id="notice" class="msg" role="status" aria-live="polite"></p>
+  <section id="providers" class="tiles" aria-label="Project management providers"></section>
+  <section style="margin-top:28px">
+    <h2>Link a ticket to a new issue</h2>
+    <div class="form-grid">
+      <label>EffDesk ticket number<input id="ticket" type="number" min="1" placeholder="e.g. 1042"></label>
+      <label>Provider<select id="provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
+      <label id="target-label">Team / project<select id="target"></select></label>
+      <button id="create" type="button">Create and link issue</button>
+    </div>
+    <div id="links" aria-live="polite"></div>
+  </section>
+</main>
+<script src="/js/integrations.js" defer></script>
+</body></html>
