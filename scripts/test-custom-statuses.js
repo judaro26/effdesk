@@ -47,4 +47,6 @@ await A(olivia, 'update', { number: num, patch: { customStatusId: sid } });
 await A(olivia, 'status-save', { id: sid, name: 'Waiting on vendor', category: 'solved' }); g = (await A(olivia, 'get', { number: num })).body.ticket; check('changing a status’s category moves its tickets with it', g.status === 'solved' && g.solved_at);
 check('an unknown custom status is refused', (await A(olivia, 'update', { number: num, patch: { customStatusId: 99999 } })).status === 400);
 await A(olivia, 'status-delete', { id: sid }); g = (await A(olivia, 'get', { number: num })).body.ticket; check('deleting one keeps the tickets, in their category, with no custom name', g.status === 'solved' && g.custom_status_id === null);
+const holdStatus = await A(olivia, 'status-save', { name: 'Waiting for customer', category: 'on_hold' });
+check('workspace-defined statuses can count as On hold', holdStatus.status === 200 && (await A(olivia, 'init')).body.statuses.some(x => x.id === holdStatus.body.id && x.category === 'on_hold'));
 done();
