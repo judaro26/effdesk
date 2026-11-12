@@ -115,7 +115,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     const [clientId,clientSecret]=await oauthCredentials(pool,env,org,p); if(!clientId||!clientSecret) return fail(503,'No OAuth app is configured. Ask an EffDesk administrator to configure the platform app or enter your organization’s own OAuth credentials.');
     const state=crypto.randomBytes(32).toString('base64url');
     await pool.query('delete from project_oauth_states where expires_at < now()');
-    await pool.query('insert into project_oauth_states (state_hash,org_id,user_id,provider,expires_at) values ($1,$2,$3,$4,now()+interval \'10 minutes\')',[hash(state),org,s.user.id,p]);
+    await pool.query('insert into project_oauth_states (state_hash,org_id,user_id,provider,expires_at,oauth_client_id_enc,oauth_client_secret_enc) values ($1,$2,$3,$4,now()+interval \'10 minutes\',$5,$6)';[hash(state),org,s.user.id,p,enc(env,clientId),enc(env,clientSecret)]);
     const authUrl=p==='linear'?'https://linear.app/oauth/authorize':'https://auth.atlassian.com/authorize';
     const u=new URL(authUrl);
     Object.entries({client_id:clientId,redirect_uri:callbackUrl(env),response_type:'code',state,scope:scopes(p),...(p==='jira'?{audience:'api.atlassian.com',prompt:'consent'}:{})}).forEach(([k,v])=>u.searchParams.set(k,v));
@@ -150,11 +150,13 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
 async function oauthCallback(req,{pool,env}) {
   const u=new URL(req.url),state=clean(u.searchParams.get('state'),200),code=clean(u.searchParams.get('code'),2000);
   if(!state||!code) return new Response('OAuth authorization was cancelled or invalid.',{status:400});
-  const row=(await pool.query('delete from project_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,provider',[hash(state)])).rows[0];
+  const row=(await pool.query('delete from project_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,provider,oauth_client_id_enc,oauth_client_secret_enc',[hash(state)])).rows[0];
   if(!row) return new Response('This connection request expired. Return to EffDesk and try again.',{status:400});
   if(!['owner','admin'].includes(await member(pool,row.org_id,row.user_id))) return new Response('Only a workspace owner or admin can complete this connection.',{status:403});
-  const [clientId,clientSecret]=await oauthCredentials(pool,env,row.org_id,row.provider);
   try {
+    const [clientId,clientSecret]=row.oauth_client_id_enc&&row.oauth_client_secret_enc
+      ? [dec(env,row.oauth_client_id_enc),dec(env,row.oauth_client_secret_enc)]
+      : await oauthCredentials(pool,env,row.org_id,row.provider);
     const d=await requestToken(row.provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'authorization_code',code,redirect_uri:callbackUrl(env),client_id:clientId,client_secret:clientSecret});
     let workspaceId=null,workspaceName=null,workspaceUrl=null,webhookToken=crypto.randomBytes(32).toString('base64url'),webhookSecret=crypto.randomBytes(32).toString('base64url');
     if(row.provider==='jira') {
