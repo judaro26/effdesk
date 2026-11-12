@@ -638,6 +638,7 @@
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
         connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
         box.appendChild(tabs);
+        if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/integrations.html?org='+encodeURIComponent(orgId)},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
         var links=ui.links.filter(function(x){return x.provider===ui.provider;});
         if(links.length){
           links.forEach(function(link){
@@ -685,6 +686,7 @@
           if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.options.fields)){
             var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.addEventListener('input',function(){ui.title=titleInput.value;});
             var descInput=el('textarea',{rows:'4','aria-label':'Issue description'});descInput.value=ui.description;descInput.addEventListener('input',function(){ui.description=descInput.value;});
+            titleInput.required=true;
             box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Title *'),titleInput));
             box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Description'),descInput));
             if(ui.provider==='linear'){
@@ -706,7 +708,8 @@
                   control=el(field.type==='number'?'input':'input',{type:field.type==='number'?'number':field.type==='date'?'date':'text',value:val,'aria-label':field.name});
                   control.addEventListener('input',function(){ui.fields[field.id]=control.value;});
                 }
-                box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(field.required?' *':'')),control));
+                control.required=!!field.required;
+            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(field.required?' *':'')),control));
               });
             }
             box.appendChild(el('button',{type:'button',class:'btn sm external-create-submit',onclick:createIssue},ui.busy?'Creating…':'Create and link issue'));
