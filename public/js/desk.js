@@ -343,7 +343,7 @@
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
       body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
-      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, say: say, upload: uploadHelpImage }) : null;
+      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, say: say, upload: uploadHelpImage }) : null;
       if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var after = function () { return Promise.all([open(t.number), refresh()]); };
@@ -617,7 +617,7 @@
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
           : a.type === 'auto_reply' ? (function() {
-              var rich = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: a.value || '', canSource: has('article_import'), canImport: false, hideImport: true, emailMode: true, say: say, upload: uploadHelpImage }) : null;
+              var rich = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: a.value || '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, emailMode: true, say: say, upload: uploadHelpImage }) : null;
               var box = el('div', { style: 'width:100%;margin-top:8px;margin-bottom:8px;' },
                 el('p', { class: 'm' }, 'Compose a formatted public reply or edit its HTML source. Variables such as {{name}}, {{ticket_number}} and {{ticket_subject}} are supported.'),
                 rich ? rich.el : el('textarea', { 'aria-label': 'Action value', rows: '14', placeholder: 'Write the automated reply or paste HTML.' }));
