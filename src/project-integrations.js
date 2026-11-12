@@ -172,8 +172,8 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         return json(200,await jiraCreateMetadata(token,(await withOrg(pool,org,db=>db.query('select external_workspace_id from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]?.external_workspace_id,project,issueType));
       }
       if(!project) return fail(400,'Choose a Linear team first.');
-      const d=await apiCall(p,token,'POST','query TeamCreateOptions($id:String!){ team(id:$id){ id name projects { nodes { id name } } states { nodes { id name type } } } users(first:100){ nodes { id name email } } issueLabels(first:100){ nodes { id name } } }',{id:project});
-      return json(200,{team:d.team,users:d.users?.nodes||[],labels:d.issueLabels?.nodes||[]});
+      const d=await apiCall(p,token,'POST','query TeamCreateOptions($id:String!){ team(id:$id){ id name projects { nodes { id name } } states { nodes { id name type } } members(first:100){ nodes { id name email } } labels(first:100){ nodes { id name } } } }',{id:project});
+      return json(200,{team:d.team,users:d.team?.members?.nodes||[],labels:d.team?.labels?.nodes||[]});
     } catch(e) { console.error('external issue options:',p,e.message); return fail(502,'Could not load issue form fields. '+e.message); }
   }
   if(req.method==='POST' && path.endsWith('/unlink')) {
