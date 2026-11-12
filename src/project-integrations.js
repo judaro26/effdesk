@@ -11,6 +11,7 @@ const json = (status, body) => new Response(JSON.stringify(body), {status,header
 const fail = (status,error) => json(status,{error});
 const hash = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 const secret = env => String(env.BETTER_AUTH_SECRET || '');
+const callbackUrl = env => appBase(env) + '/api/integrations/oauth/callback';
 const appBase = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/+$/, '');
 const envKeys = (p,env) => p === 'linear' ? [env.LINEAR_CLIENT_ID,env.LINEAR_CLIENT_SECRET] : [env.JIRA_CLIENT_ID,env.JIRA_CLIENT_SECRET];
 const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access';
@@ -135,7 +136,7 @@ async function oauthCallback(req,{pool,env}) {
       const g=await apiCall('linear',d.access_token,'POST','query { viewer { id name } organization { id name } }');
       workspaceId=g.organization?.id; workspaceName=g.organization?.name;
     }
-    const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\/+$/, '');
+    const base=appBase(env);
     const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear/'+encodeURIComponent(row.org_id):base+'/api/integrations/webhook/jira/'+encodeURIComponent(row.org_id)+'?key='+encodeURIComponent(webhookToken);
     await withOrg(pool,row.org_id,c=>c.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,external_workspace_url,webhook_secret_enc,webhook_url_token_hash,webhook_url_token_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,external_workspace_url=$8,webhook_secret_enc=$9,webhook_url_token_hash=$10,webhook_url_token_enc=$11,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,workspaceUrl,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null,row.provider==='jira'?enc(env,webhookToken):null]));
     if(row.provider==='linear') { try { await apiCall('linear',d.access_token,'POST',`mutation WebhookCreate($input: WebhookCreateInput!) { webhookCreate(input:$input) { success webhook { id } } }`,{input:{url:hookUrl,secret:webhookSecret,resourceTypes:['Issue','Comment']}}); } catch(e) { console.warn('Linear webhook registration:',e.message); } }
