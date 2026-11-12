@@ -591,7 +591,7 @@
 
       // External project issues: search/link existing work or create a provider-native issue without leaving this ticket.
       function externalIssuePanel() {
-        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:t.priority==='urgent'?'1':t.priority==='high'?'2':t.priority==='low'?'4':'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''});
+        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:t.priority==='urgent'?'1':t.priority==='high'?'2':t.priority==='low'?'4':'3',assigneeId:'',projectId2:'',stateId:'',labelIds:[],fields:{},busy:false,error:''});
         var request=function(method,route,data){
           var url='/api/integrations/'+route+'?org='+encodeURIComponent(orgId);
           return fetchFn(url,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(Object.assign({orgId:orgId},data||{}))}).then(function(r){return r.json().catch(function(){return{};}).then(function(body){if(!r.ok)throw new Error(body.error||'External issue request failed.');return body;});});
@@ -605,7 +605,7 @@
         var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
         var loadCatalog=function(){
           if(ui.catalog&&ui.catalog.provider===ui.provider)return Promise.resolve(ui.catalog);
-          ui.catalog=null;ui.options=null;ui.projectId='';ui.issueTypeId='';
+          ui.catalog=null;ui.options=null;ui.projectId='';ui.projectId2='';ui.stateId='';ui.labelIds=[];ui.issueTypeId='';
           return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};return ui.catalog;});
         };
         var loadOptions=function(project,issueType){
@@ -624,7 +624,7 @@
         var createIssue=function(){
           if(!ui.projectId||!String(ui.title||'').trim())return;
           ui.busy=true;ui.error='';redraw();
-          request('POST','create-issue',{provider:ui.provider,ticketNumber:t.number,projectId:ui.projectId,projectId2:ui.projectId2,issueTypeId:ui.issueTypeId,title:ui.title,description:ui.description,priority:ui.priority,assigneeId:ui.assigneeId,fields:ui.fields}).then(function(){ui.mode='idle';ui.busy=false;ui.loaded=false;ui.catalog=null;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
+          request('POST','create-issue',{provider:ui.provider,ticketNumber:t.number,projectId:ui.projectId,projectId2:ui.projectId2,stateId:ui.stateId,labelIds:ui.labelIds,issueTypeId:ui.issueTypeId,title:ui.title,description:ui.description,priority:ui.priority,assigneeId:ui.assigneeId,fields:ui.fields}).then(function(){ui.mode='idle';ui.busy=false;ui.loaded=false;ui.catalog=null;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
         };
         loadContext();
         var box=el('div',{class:'pcard external-issues'});
@@ -692,6 +692,10 @@
             if(ui.provider==='linear'){
               var priority=el('select',{'aria-label':'Priority'},[['0','No priority'],['1','Urgent'],['2','High'],['3','Normal'],['4','Low']].map(function(x){return el('option',{value:x[0]},x[1]);}));priority.value=ui.priority;priority.addEventListener('change',function(){ui.priority=priority.value;});
               box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Priority'),priority));
+              var states=ui.options.team.states?.nodes||[];
+              if(states.length){var stateSelect=el('select',{'aria-label':'Initial status'},[el('option',{value:''},'Use team default')].concat(states.map(function(x){return el('option',{value:x.id},x.name);})));stateSelect.value=ui.stateId||'';stateSelect.addEventListener('change',function(){ui.stateId=stateSelect.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Initial status'),stateSelect));}
+              var labels=ui.options.labels||[];
+              if(labels.length){var labelSelect=el('select',{'aria-label':'Labels',multiple:'multiple'},labels.map(function(x){return el('option',{value:x.id},x.name);}));Array.from(labelSelect.options).forEach(function(o){o.selected=ui.labelIds.indexOf(o.value)>=0;});labelSelect.addEventListener('change',function(){ui.labelIds=Array.from(labelSelect.selectedOptions).map(function(o){return o.value;});});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Labels (optional)'),labelSelect));}
               var users=ui.options.users||[];
               if(users.length){var assignee=el('select',{'aria-label':'Assignee'},[el('option',{value:''},'Unassigned')].concat(users.map(function(x){return el('option',{value:x.id},x.name||x.email||'User');})));assignee.value=ui.assigneeId||'';assignee.addEventListener('change',function(){ui.assigneeId=assignee.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Assignee'),assignee));}
             }
