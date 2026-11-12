@@ -593,9 +593,16 @@
               ta.value = a.value || '';
               ta.addEventListener('input', function () { a.value = ta.value; });
               
-              // Wrap the textarea in a div so it has a parentNode, then pass to the built-in editor() function
-              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' }, ta);
-              box.appendChild(editor(ta, null));
+              // Keep automation templates as source text: unlike ticket replies, these may contain full HTML email markup.
+              // A markdown editor would rewrite that HTML, so preserve the exact saved template in an editable textarea.
+              ta.setAttribute('rows', '14');
+              ta.setAttribute('spellcheck', 'false');
+              ta.style.width = '100%';
+              ta.style.minHeight = '260px';
+              ta.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' },
+                el('p', { class: 'm' }, 'Edit the message or HTML email source below. Variables such as {{name}}, {{ticket_number}} and {{ticket_subject}} are supported.'),
+                ta);
               return box;
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
