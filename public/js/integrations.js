@@ -60,7 +60,7 @@ function templateIssueType(){return $('template-issue-type').value;}
 function setTemplateStatus(s,bad){var n=$('template-status');if(n){n.textContent=s||'';n.className='m'+(bad?' err':'');}}
 function loadTemplateList(){
  if(!org.value)return Promise.resolve();
- return templateCall('GET','/templates').then(function(d){templateRows=d.templates||[];renderTemplateList();}).catch(function(e){$('template-list').textContent=e.message;});
+ return templateCall('GET','/templates').then(function(d){templateRows=d.templates||[];$('template-form').hidden=!d.canManage;renderTemplateList();}).catch(function(e){$('template-list').textContent=e.message;});
 }
 function renderTemplateList(){
  var box=$('template-list');if(!box)return;box.replaceChildren();$('template-count').textContent=String(templateRows.length);
@@ -91,8 +91,8 @@ function renderTemplateFields(defs,saved){
  defs.forEach(function(f){
   var old=current[f.id]||{},include=old.visible!==undefined?old.visible:(f.required||f.id==='title'||f.id==='description');
   var row=el('div',{class:'template-field-row','data-template-field':f.id});
-  var use=el('input',{type:'checkbox','aria-label':'Include '+f.name});use.checked=include;
-  var required=el('input',{type:'checkbox','aria-label':'Require '+f.name});required.checked=old.required!==undefined?old.required:!!f.required;required.disabled=!include;
+  var use=el('input',{type:'checkbox','aria-label':'Include '+f.name});use.checked=include;use.disabled=!!f.required;
+  var required=el('input',{type:'checkbox','aria-label':'Require '+f.name});required.checked=!!f.required||(old.required!==undefined?old.required:false);required.disabled=!!f.required||!include;
   use.addEventListener('change',function(){required.disabled=!use.checked;if(!use.checked)required.checked=false;});
   var def=el('input',{type:'text',class:'template-field-default',maxlength:'1000','aria-label':'Default value for '+f.name,placeholder:'Default value'});def.value=old.defaultValue||'';
   var mapping=el('select',{class:'template-field-mapping','aria-label':'Map '+f.name+' from ticket'},templateMappingOptions.map(function(x){return el('option',{value:x[0]},x[1]);}));mapping.value=old.mapping||'';
