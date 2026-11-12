@@ -132,6 +132,7 @@ check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
 $('[data-new]').click(); await tick();
 check('"New ticket" shows the form', !!$('[data-create]'));
+check('new ticket forms offer the On hold status', Array.from($('select[aria-label="Submit as"]').options).some(o => o.value === 'on_hold'));
 $('[data-create]').click(); await tick();
 check('a server error is shown to the person', /requester/.test($('.msg').textContent));
 const inp = $$('.desk input[aria-label]'); const by = n => inp.find(i => i.getAttribute('aria-label') === n);
