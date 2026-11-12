@@ -13,6 +13,19 @@
   <p class="m">Connect Linear or Jira to create linked issues and synchronize ticket updates and comments in both directions.</p>
   <label for="org">Workspace</label><select id="org"></select>
   <p id="notice" class="msg" role="status" aria-live="polite"></p>
+  <section style="margin:20px 0;padding:18px;border:1px solid #ddd;border-radius:12px">
+    <h2>OAuth application credentials</h2>
+    <p class="m">Use EffDesk's shared application by default. An organization owner can optionally register its own Linear or Jira OAuth app and store its credentials here. Secrets are encrypted and never displayed again.</p>
+    <div class="form-grid">
+      <label>Provider<select id="credential-provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
+      <label>OAuth Client ID<input id="client-id" autocomplete="off" placeholder="Client ID"></label>
+      <label>OAuth Client Secret<input id="client-secret" type="password" autocomplete="new-password" placeholder="Client Secret"></label>
+      <button id="save-credentials" type="button">Save organization credentials</button>
+      <button id="reset-credentials" type="button">Use EffDesk default</button>
+    </div>
+    <p id="credential-status" class="m" role="status" aria-live="polite"></p>
+    <p class="m">OAuth redirect URL to register with either provider: <code id="oauth-redirect"></code></p>
+  </section>
   <section id="providers" class="tiles" aria-label="Project management providers"></section>
   <section style="margin-top:28px">
     <h2>Link a ticket to a new issue</h2>
