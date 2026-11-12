@@ -53,6 +53,7 @@ export const saveContact = (pool,orgId,b) => withOrg(pool,orgId,async c=>{
     on conflict(org_id,email) do update set name=excluded.name,phone=excluded.phone,title=excluded.title,
       company_id=excluded.company_id,notes=excluded.notes,updated_at=now()
     returning id,email,name,phone,title,company_id,notes`,[orgId,email,name,phone,title,companyId,notes])).rows[0];
+  await c.query('update tickets set client_id=$3 where org_id=$1 and lower(requester_email)=$2',[orgId,email,companyId]);
   return {ok:true,contact:row};
 });
 
