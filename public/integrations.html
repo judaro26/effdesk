@@ -9,11 +9,11 @@
 <body>
 <header><div class="in"><a class="brand" href="/desk.html">Eff<span>Desk</span></a><nav><a href="/desk.html">Back to tickets</a></nav></div></header>
 <main class="wrap" style="max-width:900px;margin:36px auto;padding:0 20px">
-  <h1>External project integrations</h1>
-  <p class="m">Connect Linear or Jira to create linked issues and synchronize ticket updates and comments in both directions.</p>
+  <div class="integrations-hero"><div class="integrations-hero-icon" aria-hidden="true">↗</div><div><p class="integrations-eyebrow">WORKSPACE CONNECTIONS</p><h1>External integrations</h1><p class="m">Connect your project tools to keep tickets and engineering work in sync.</p></div></div>
   <label for="org">Workspace</label><select id="org"></select>
   <p id="notice" class="msg" role="status" aria-live="polite"></p>
-  <section style="margin:20px 0;padding:18px;border:1px solid #ddd;border-radius:12px">
+  <details class="integration-advanced"><summary>Advanced · Use your own OAuth application (optional)</summary>
+  <section class="integration-credentials">
     <h2>OAuth application credentials</h2>
     <p class="m">Use EffDesk's shared application by default. An organization owner can optionally register its own Linear or Jira OAuth app and store its credentials here. Secrets are encrypted and never displayed again.</p>
     <div class="form-grid">
@@ -26,7 +26,8 @@
     <p id="credential-status" class="m" role="status" aria-live="polite"></p>
     <p class="m">OAuth redirect URL to register with either provider: <code id="oauth-redirect"></code></p><p class="m">Requested scopes — Linear: <code>read</code>, <code>write</code>, <code>issues:create</code>, <code>comments:create</code>. Jira: <code>read:jira-work</code>, <code>write:jira-work</code>, <code>read:jira-user</code>, <code>manage:jira-webhook</code>, <code>offline_access</code>.</p>
   </section>
-  <section id="providers" class="tiles" aria-label="Project management providers"></section>
+  </details>
+  <section id="providers" class="integration-provider-grid" aria-label="Project management providers"></section>
   <section style="margin-top:28px">
     <h2>Link a ticket to a new issue</h2>
     <div class="form-grid">
