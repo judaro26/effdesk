@@ -3,7 +3,7 @@
 import crypto from 'crypto';
 import sanitizeHtml from 'sanitize-html';
 import { withOrg } from './db.js';
-import { inboundDomain } from './config.js';
+import { inboundDomain, PRODUCT } from './config.js';
 import { getEntitlements } from './billing.js';
 import { mailLimit } from './plans.js';
 import { createTicket, addRequesterMessage, ticketByMessageId, messageSeen } from './tickets.js';
@@ -12,7 +12,7 @@ import '../public/js/format.js';
 
 const EMAIL_ALLOWED_STYLES = { '*': {
   'color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i],
-  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/],
+  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/], 'font-style': [/^(normal|italic)$/],
   'font-size': [/^[0-9.]+(px|pt|em|rem|%)$/], 'line-height': [/^[0-9.]+(px|pt|em|rem|%)?$/], 'font-family': [/^[a-zA-Z0-9 ,"'_-]+$/],
   'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
   'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
@@ -83,7 +83,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
   try {
     const data = await withOrg(pool, orgId, async c => {
       const t = (await c.query('select id, number, subject, requester_email, requester_name, cc from tickets where org_id = $1 and number = $2', [orgId, number])).rows[0]; if (!t) return null;
-      const m = (await c.query('select id, body, author_name from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
+      const m = (await c.query('select id, body, html_body, author_name from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
       const settings = (await c.query('select reply_mode, reply_to, from_name, signature from mail_settings where org_id = $1', [orgId])).rows[0];
       const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
       const orgName = (await c.query('select name from "organization" where id = $1', [orgId])).rows[0]?.name || '';
@@ -101,10 +101,14 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const from = mode === 'none' ? `${display.replace(/[<>"]/g, '')} <no-reply@${domain}>` : `${display.replace(/[<>"]/g, '')} <${inbox}@${domain}>`;
     const replyTo = mode === 'ticket' ? `${inbox}+${t.number}.${ticketToken(env, orgId, t.number)}@${domain}` : mode === 'custom' ? settings.reply_to : undefined;
     const sig = settings?.signature ? `\n\n-- \n${settings.signature}` : '', foot = mode === 'none' ? '\n\n(This address does not receive replies.)' : '';
-    const textBody = options.html ? String(options.html).replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim() : m.body;
+    const richHtml = options.html || m.html_body || '';
+    const textBody = richHtml ? String(richHtml).replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim() : m.body;
     const text = `${textBody}${sig}${foot}`;
-    const safeCustomHtml = options.html ? sanitizeHtml(String(options.html), { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], table: ['role','width','cellpadding','cellspacing','border','align'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
-    const html = `${safeCustomHtml || fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+    const safeCustomHtml = richHtml ? sanitizeHtml(String(richHtml), { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','img','figure','figcaption','table','thead','tbody','tr','th','td','hr','div','span','center','small','caption','colgroup','col'], allowedAttributes: { a: ['href','name','target'], img: ['src','alt','width','height','title'], table: ['role','width','cellpadding','cellspacing','border','align','bgcolor'], col: ['span'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
+    const appBase = String(PRODUCT.appUrl || '').replace(/\/$/, '');
+    const absoluteCustomHtml = safeCustomHtml ? safeCustomHtml.replace(/\b(src|href)="\/(?!\/)/g, (_, attr) => `${attr}="${appBase}/`) : null;
+    const html = `${absoluteCustomHtml || fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
     let providerId; try { providerId = await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }

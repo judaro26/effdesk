@@ -3,7 +3,7 @@
 //   Everything that enters the editor (stored text, pasted HTML, the source box, an import) passes through clean(): an inert parse with an allow-list, so nothing runs. The server cleans again before saving and before showing.
 (function (root) {
   'use strict';
-  var TAGS = 'h2 h3 h4 p br hr strong b em i u s del sub sup code pre blockquote ul ol li a img figure figcaption table thead tbody tr th td div span iframe video details summary mark kbd caption colgroup col'.split(' ');
+  var TAGS = 'h2 h3 h4 p br hr strong b em i u s del sub sup code pre blockquote ul ol li a img figure figcaption table thead tbody tr th td div span iframe video details summary mark kbd caption colgroup col center small'.split(' ');
   var ATTRS = { a: ['href', 'title'], img: ['src', 'alt', 'width', 'height'], iframe: ['src', 'title'], video: ['src', 'controls'], td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan'], col: ['span'], colgroup: ['span'] };
   var CLASSES = ['callout', 'info', 'tip', 'warning', 'danger', 'video', 'img-s', 'img-m', 'img-l', 'img-left', 'img-right', 'img-round', 'img-shadow', 'img-border', 'img-zoom', 'center', 'right', 'lead', 'steps', 'btn', 'tbl-striped', 'tbl-plain'];
   // the formatting a writer may apply (mirrors src/html-clean.js: every value must match a strict pattern)
@@ -21,10 +21,30 @@
     'border': [/^[0-4]px (?:solid|dashed|dotted) (?:#[0-9a-f]{3,8}|rgba?\([\d\s,.]{5,24}\))$/i], 'border-collapse': [/^collapse$/i]
   };
   var FONT_SIZES = { 1: '10px', 2: '13px', 3: '16px', 4: '18px', 5: '24px', 6: '32px', 7: '48px' };
-  function cleanStyle(text) {
+  var EMAIL_STYLES = {
+    'background': [/^(?:#[0-9a-f]{3,8}|[a-z]+)$/i], 'background-color': COLOR, 'color': COLOR,
+    'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/],
+    'font-size': [/^[0-9.]+(px|pt|em|rem|%)$/], 'font-family': [/^[a-zA-Z0-9 ,"'_-]+$/], 'line-height': [/^[0-9.]+(px|pt|em|rem|%)?$/],
+    'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
+    'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
+    'display': [/^(block|inline|inline-block|table|table-row|table-cell)$/], 'box-sizing': [/^(border-box|content-box)$/], 'border-collapse': [/^(collapse|separate)$/],
+    'border-spacing': [/^[0-9.]+(px|pt|em|rem)(\s+[0-9.]+(px|pt|em|rem))?$/],
+    'padding': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+    'padding-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'padding-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
+    'margin': [/^[0-9.]+(px|pt|em|rem|%)?(\s+[0-9.]+(px|pt|em|rem|%)?){0,3}$/],
+    'margin-top': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-right': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-bottom': [/^[0-9.]+(px|pt|em|rem|%)$/], 'margin-left': [/^[0-9.]+(px|pt|em|rem|%)$/],
+    'width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-width': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-width': [/^[0-9.]+(px|pt|em|rem|%)$/],
+    'height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'max-height': [/^[0-9.]+(px|pt|em|rem|%)$/], 'min-height': [/^[0-9.]+(px|pt|em|rem|%)$/],
+    'border': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border-top': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-right': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border-bottom': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i], 'border-left': [/^[0-9.]+px\s+(solid|dashed|dotted|double|none)\s+(#[0-9a-f]{3,8}|[a-z]+)$/i],
+    'border-radius': [/^[0-9.]+(px|pt|em|rem|%)$/], 'float': [/^(left|right|none)$/], 'clear': [/^(both|left|right|none)$/],
+    'list-style-type': [/^(disc|circle|square|decimal|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$/]
+  };
+  function cleanStyle(text, emailMode) {
     var out = []; String(text || '').split(';').forEach(function (d) {
       var i = d.indexOf(':'); if (i < 0) return; var k = d.slice(0, i).trim().toLowerCase(), v = d.slice(i + 1).trim().replace(/\s*!important$/i, '');
-      var rules = STYLES[k]; if (rules && rules.some(function (re) { return re.test(v); })) out.push(k + ':' + v);
+      var rules = emailMode ? (EMAIL_STYLES[k] || STYLES[k]) : STYLES[k]; if (rules && rules.some(function (re) { return re.test(v); })) out.push(k + ':' + v);
     }); return out.join(';');
   }
   var VIDEO_HOSTS = ['www.youtube-nocookie.com', 'www.youtube.com', 'player.vimeo.com', 'www.loom.com'];
@@ -68,7 +88,8 @@
           if (tag === 'a' && !okHref(n.getAttribute('href'))) { walk(n, to); continue; }
           var c = doc.createElement(tag);
           (ATTRS[tag] || []).forEach(function (a) { var v = n.getAttribute(a); if (v == null) return; if ((a === 'width' || a === 'height') && !/^\d{1,4}$/.test(v)) return; c.setAttribute(a, v); });
-          var st = cleanStyle(styleText); if (st) c.setAttribute('style', st);
+          var st = cleanStyle(styleText, opts.emailMode); if (st) c.setAttribute('style', st);
+          if (opts.emailMode) { ['align','valign','width','height','bgcolor','cellpadding','cellspacing','border'].forEach(function (a) { var v = n.getAttribute(a); if (v == null) return; if ((a === 'width' || a === 'height') && !/^\d{1,4}(%?)$/.test(v)) return; if (a === 'bgcolor' && !/^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(v)) return; if (a === 'align' && !/^(left|right|center)$/i.test(v)) return; if (a === 'valign' && !/^(top|middle|bottom)$/i.test(v)) return; if (/^(cellpadding|cellspacing|border)$/.test(a) && !/^\d{1,3}$/.test(v)) return; c.setAttribute(a, v); }); }
           var cls = (n.getAttribute('class') || '').split(/\s+/).filter(function (x) { return CLASSES.indexOf(x) >= 0; }); if (cls.length) c.setAttribute('class', cls.join(' '));
           if (tag === 'a') { c.setAttribute('rel', 'noopener noreferrer'); if (/^https?:/i.test(c.getAttribute('href'))) c.setAttribute('target', '_blank'); }
           if (tag === 'img') c.setAttribute('alt', n.getAttribute('alt') || '');
@@ -235,10 +256,10 @@
     sep(row2); button(row2, 'insertUnorderedList', 'Bulleted list', '• List'); button(row2, 'insertOrderedList', 'Numbered list', '1. List'); button(row2, 'outdent', 'Decrease indent', '⇤'); button(row2, 'indent', 'Increase indent', '⇥');
     select(row2, 'lineHeight', 'Spacing', [['1', 'Single'], ['1.15', '1.15'], ['1.5', '1.5'], ['2', 'Double']], function (v) { var b = blockOfSelection(); if (b) b.style.lineHeight = v; });
     button(row2, 'quote', 'Quote', '❝');
-    sep(row2); button(row2, 'link', 'Link (Ctrl+K)', 'Link'); button(row2, 'image', 'Picture', 'Picture'); button(row2, 'video', 'Video (YouTube, Vimeo or Loom)', 'Video'); button(row2, 'callout', 'Call-out box', 'Call-out'); button(row2, 'code', 'Code block', '{ }'); button(row2, 'table', 'Table', 'Table'); button(row2, 'rule', 'Horizontal line', '—');
+    sep(row2); button(row2, 'link', 'Link (Ctrl+K)', 'Link'); button(row2, 'image', 'Picture', 'Picture'); if (!opts.hideVideo) button(row2, 'video', 'Video (YouTube, Vimeo or Loom)', 'Video'); button(row2, 'callout', 'Call-out box', 'Call-out'); button(row2, 'code', 'Code block', '{ }'); button(row2, 'table', 'Table', 'Table'); button(row2, 'rule', 'Horizontal line', '—');
     sep(row2);
     if (opts.canSource) row2.appendChild(el('button', { type: 'button', class: 'ed-btn', title: 'Edit the HTML', 'aria-label': 'Edit the HTML', 'aria-pressed': 'false', 'data-cmd': 'source', onclick: function () { run('source'); } }, 'HTML'));
-    row2.appendChild(el('button', { type: 'button', class: 'ed-btn' + (opts.canImport ? '' : ' locked'), title: opts.canImport ? 'Turn a PDF into an article' : 'Importing a PDF is part of the Team plan', 'aria-label': 'Import a PDF', 'data-cmd': 'pdf', onclick: function () { if (!opts.canImport) return say('Importing a PDF is part of the Team plan. Upgrade to use it.', true); run('pdf'); } }, opts.canImport ? 'Import PDF' : 'Import PDF (Team)'));
+    if (!opts.hideImport) row2.appendChild(el('button', { type: 'button', class: 'ed-btn' + (opts.canImport ? '' : ' locked'), title: opts.canImport ? 'Turn a PDF into an article' : 'Importing a PDF is part of the Team plan', 'aria-label': 'Import a PDF', 'data-cmd': 'pdf', onclick: function () { if (!opts.canImport) return say('Importing a PDF is part of the Team plan. Upgrade to use it.', true); run('pdf'); } }, opts.canImport ? 'Import PDF' : 'Import PDF (Team)'));
     var words = el('span', { class: 'ae-words m', 'aria-live': 'off' }, '0 words'); row2.appendChild(words);
     tblRow.appendChild(el('span', { class: 'm' }, 'Table'));
     [['table-row+', 'Add a row below', '+ Row'], ['table-row-', 'Delete this row', '− Row'], ['table-col+', 'Add a column to the right', '+ Column'], ['table-col-', 'Delete this column', '− Column'], ['table-shade', 'Shade this cell', 'Shade cell'], ['table-striped', 'Striped rows', 'Stripes'], ['table-plain', 'Remove borders', 'No borders'], ['table-del', 'Delete the table', 'Delete table']].forEach(function (t) { button(tblRow, t[0], t[1], t[2]); });

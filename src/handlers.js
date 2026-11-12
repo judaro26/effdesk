@@ -279,13 +279,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
       const wst = await wa.windowState(pool, orgId, b.number);
       if (wst && !wst.open) return json(409, { error: 'WhatsApp only lets you reply within 24 hours of the customer\'s last message. Nothing was sent. Your text is still here.', window: true });
-      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: false, status: b.status });
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, htmlBody: b.html, internal: false, status: b.status });
       if (r.ok && wst) { const d = await wa.sendReply(pool, env, orgId, Number(b.number), r.message.id, b.body, env.__waFetch || fetch); r.whatsapp = d.delivery; r.whatsappWhy = d.why; }
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
       if (r.ok && mailer && !wst && !(await chatOpen(pool, orgId, b.number))) {
         const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
-        const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files); r.email = d.delivery; r.emailWhy = d.why;
+        const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files, { html: b.html }); r.email = d.delivery; r.emailWhy = d.why;
       }
       if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok) await emitHook(pool, orgId, 'message.agent', b.number, { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
@@ -342,7 +342,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'csat-set': if ((g = adminOnly())) return g; await setCsatOn(pool, orgId, b.on === true); r = { ok: true, csatOn: b.on === true }; break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': {
-      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true });
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, htmlBody: b.html, internal: true });
       if (r.ok) {
         const ids = (await mentionedIds(pool, orgId, b.body)).filter(i => i !== actor.id);
         for (const id of ids) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'mention', onlyUserId: id, actorId: actor.id, summary: `${actor.name || actor.email}: ${String(b.body).slice(0, 250)}` });

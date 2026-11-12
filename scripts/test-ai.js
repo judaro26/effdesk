@@ -35,6 +35,7 @@ await A(olivia, 'reply', { number: T, body: 'Sorry to hear that, we will send so
 await A(olivia, 'note', { number: T, body: 'INTERNAL: tenant is two months behind on rent' });
 await A(olivia, 'article-save', { title: 'Heater repairs', body: 'Heaters are repaired within two days. Call the office to book.', status: 'published' });
 check('the free plan cannot use AI assist', (await tk(otto, 'ai-suggest', beta.id, { number: 1 })).status === 402 && sent.length === 0);
+check('the free plan cannot use AI rewriting in message editors', (await tk(otto, 'ai-rewrite', beta.id, { mode: 'friendlier', text: 'Hello.' })).status === 402 && sent.length === 0);
 let r = await A(olivia, 'ai-suggest', { number: T });
 const call = sent[0];
 check('a suggested reply comes back as text for the agent to edit, sent to OpenAI with the key', r.status === 200 && r.body.text === reply && call.url === 'https://api.openai.com/v1/chat/completions' && call.auth === 'Bearer sk-test' && call.b.model === 'gpt-4o-mini');

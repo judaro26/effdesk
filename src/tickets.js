@@ -3,6 +3,7 @@ import { autoAssign } from './routing.js';
 import { withOrg } from './db.js';
 import { slaWhere } from './sla.js';
 import { defsOf, cleanValues } from './fields.js';
+import { clean as cleanHtml, plainOf } from './html-clean.js';
 
 export const STATUSES = ['open', 'pending', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -74,14 +75,15 @@ export async function getTicket(pool, orgId, actor, number) {
 }
 
 // a public reply (kind agent) or an internal note; a public reply by an agent is the first response, and moves an open ticket to pending
-export async function addMessage(pool, orgId, actor, number, { body, internal, status }) {
-  const text = clean(body, 20000); if (!text) return fail('Write a message first.');
+export async function addMessage(pool, orgId, actor, number, { body, htmlBody, internal, status }) {
+  const safeHtml = !internal && htmlBody ? cleanHtml(String(htmlBody).slice(0, 100000)) : htmlBody ? cleanHtml(String(htmlBody).slice(0, 100000)) : null;
+  const text = clean(body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''); if (!text) return fail('Write a message first.');
   if (status && !STATUSES.includes(status)) return fail('That status does not exist.');
   return withOrg(pool, orgId, async c => {
     const t = (await c.query('select id, status, first_response_at from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     const kind = internal ? 'note' : 'agent';
-    const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body) values ($1,$2,$3,$4,$5,$6) returning id, kind, author_id, author_name, body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text])).rows[0];
+    const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id, kind, author_id, author_name, body, html_body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text, safeHtml])).rows[0];
     const next = status || (!internal && t.status === 'open' ? 'pending' : t.status);
     await c.query(`update tickets set status = $3, first_response_at = coalesce(first_response_at, case when $4 then now() end), solved_at = case when $3 in ('solved','closed') then coalesce(solved_at, now()) else null end, updated_at = now() where org_id = $1 and id = $2`, [orgId, t.id, next, !internal]);
     await logEvent(c, orgId, t.id, who(actor), internal ? 'note' : 'reply', internal ? 'Internal note added' : 'Public reply' + (next !== t.status ? ` · status ${t.status} → ${next}` : ''));

@@ -7,10 +7,11 @@ import { withOrg } from './db.js';
 import { updateTicket, addMessage } from './tickets.js';
 import { sendTicketReply } from './ticket-mail.js';
 import sanitizeHtml from 'sanitize-html';
+import { plainOf } from './html-clean.js';
 
 const EMAIL_ALLOWED_STYLES = { '*': {
   'color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i],
-  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/],
+  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/], 'font-style': [/^(normal|italic)$/],
   'font-size': [/^[0-9.]+(px|pt|em|rem|%)$/], 'line-height': [/^[0-9.]+(px|pt|em|rem|%)?$/], 'font-family': [/^[a-zA-Z0-9 ,"'_-]+$/],
   'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
   'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
@@ -94,9 +95,10 @@ async function apply(pool, mailer, env, orgId, rule, t) {
     } else if (a.type === 'add_note') await addMessage(pool, orgId, actor, t.number, { body: a.value, internal: true });
     else if (a.type === 'auto_reply') {
       const first = String(t.requester_name || '').split(' ')[0] || 'there', ticketNumber = String(t.number), ticketSubject = String(t.subject || ''), body = a.value.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*ticket_number\s*\}\}/g, ticketNumber).replace(/\{\{\s*ticket_subject\s*\}\}/g, ticketSubject);
-      const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote)\b/i.test(body);
-      const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','table','thead','tbody','tr','th','td','hr','div','span'], allowedAttributes: { a: ['href','name','target'], table: ['role','width','cellpadding','cellspacing','border','align'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
-      const r = await addMessage(pool, orgId, actor, t.number, { body, internal: false, status: t.status });
+      const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img|figure|center)\b/i.test(body);
+      const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','img','figure','figcaption','table','thead','tbody','tr','th','td','hr','div','span','center','small','caption','colgroup','col'], allowedAttributes: { a: ['href','name','target'], img: ['src','alt','width','height','title'], table: ['role','width','cellpadding','cellspacing','border','align','bgcolor'], col: ['span'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
+      const messageText = safeHtml ? plainOf(safeHtml) : body;
+      const r = await addMessage(pool, orgId, actor, t.number, { body: messageText, htmlBody: safeHtml || undefined, internal: false, status: t.status });
       if (r.ok && mailer) {
         // Always include a visible reference in the email body, even if the template omits the variable.
         const ref = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 18px 0"><tr><td style="padding:10px 14px;background-color:#eef4fa;border-left:4px solid #2878b9;color:#18324b;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px"><strong>Ticket reference: #${ticketNumber}</strong></td></tr></table>`;
