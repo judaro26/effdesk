@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { seal, unseal } from './sso.js';
 import { withOrg } from './db.js';
 import { updateTicket, addMessage, logEvent } from './tickets.js';
+import { effectiveHelpSettings } from './help.js';
 
 const PROVIDERS = new Set(['linear','jira']);
 const clean = (v,n=500) => String(v ?? '').replace(/\u0000/g,'').trim().slice(0,n);
@@ -64,6 +65,15 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const url=new URL(req.url), path=url.pathname;
   if(path.endsWith('/oauth/callback')) return oauthCallback(req,{pool,env});
   if(path.includes('/webhook/')) { const parts=path.split('/').filter(Boolean); return receiveWebhook(req,{pool,env,provider:parts[parts.length-2]}); }
+  // Public, read-only theme data lets the integrations shell match its workspace even before sign-in. No private workspace data is exposed.
+  if(req.method==='GET' && path.endsWith('/public-theme')) {
+    const org=clean(url.searchParams.get('org'),100);
+    if(!org) return fail(400,'Choose a workspace.');
+    try {
+      const look=await effectiveHelpSettings(pool,org);
+      return json(200,{settings:{theme:look.theme,accent:look.accent},paid:!!look.paid});
+    } catch { return fail(404,'Workspace theme is unavailable.'); }
+  }
   if(!originOk(req)) return fail(403,'Cross-origin request refused.');
   const s=await getSession(auth,req); if(!s) return fail(401,'Sign in first.');
   const org=clean(url.searchParams.get('org') || (await req.clone().json().catch(()=>({}))).orgId,100);
