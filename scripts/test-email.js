@@ -122,15 +122,21 @@ const prepared = prepareInlineDataImages('<div>just confirming<img alt="image.pn
 check('data-URI email images become safe CID placeholders before HTML sanitization', prepared.images.length === 1 && prepared.images[0].filename === 'image.png' && /src="cid:effdesk-/.test(prepared.html) && !/data:image/.test(prepared.html));
 const imageStore = { set: async () => {}, get: async () => null, delete: async () => {} };
 const inlineId = 'em_inline', inlineEvent = evBody(inlineId), inlineHeaders = svix(inlineEvent);
-const inlineFetch = async (u, o) => ({ ok: true, status: 200, json: async () => ({
-  from: 'Web Person <web@example.com>', to: ['acme@in.effdesk.test'], message_id: '<' + inlineId + '@m>',
-  subject: 'Inline image', text: 'just confirming', headers: { From: 'Web Person <web@example.com>' },
-  html: '<div>just confirming<div><br></div><div><img alt="image.png" src="data:image/png;base64,' + png + '"></div></div>', attachments: []
-}) });
+let inlineAttachmentDownloads = 0;
+const inlineFetch = async (u, o) => {
+  if (String(u).includes('/attachments?limit=20')) return { ok: true, status: 200, json: async () => ({ data: [{ id: 'att-inline', filename: 'image.png', content_type: 'image/png', size: Buffer.from(png, 'base64').length, download_url: 'https://download/inline-image' }] }) };
+  if (u === 'https://download/inline-image') { inlineAttachmentDownloads++; return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(png, 'base64') }; }
+  return { ok: true, status: 200, json: async () => ({
+    from: 'Web Person <web@example.com>', to: ['acme@in.effdesk.test'], message_id: '<' + inlineId + '@m>',
+    subject: 'Inline image', text: 'just confirming\n\n[image: image.png]', headers: { From: 'Web Person <web@example.com>' },
+    html: '<div>just confirming<div><br></div><div><img src="data:image/png;base64,' + png + '"></div></div>',
+    attachments: [{ id: 'att-inline', filename: 'image.png', content_type: 'image/png' }]
+  }) };
+};
 r = await hookWith(inlineEvent, inlineHeaders, inlineFetch, imageStore);
 const inlineTicket = (await call(olivia, { orgId: acme.id, action: 'get', number: r.body.number })).body;
 const inlineMessage = inlineTicket.messages[0];
 const inlineRows = await withOrg(pool, acme.id, c => c.query('select is_inline, filename from attachments where org_id = $1 and message_id = $2', [acme.id, inlineMessage.id]));
-check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\/api\/attachments\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'image.png');
+check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\/api\/attachments\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'inline-image-1.png' && inlineAttachmentDownloads === 0);
 check('other event types are acknowledged and ignored', r.status === 200 && r.body.ignored === true);
 await pool.end(); done();
