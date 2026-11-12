@@ -415,3 +415,5 @@ html{-webkit-text-size-adjust:100%}
 .updated-calendar-hint{color:var(--d-muted);font-size:11px}
 .updated-calendar-clear{border:0;background:transparent;color:var(--accent-d);font:inherit;font-weight:600;cursor:pointer}
 @media(max-width:650px){.updated-calendar-months{grid-template-columns:1fr}.updated-calendar-popover{max-height:75vh;overflow:auto}}
+
+.integrations-page{height:auto;min-height:100vh;overflow:auto}
