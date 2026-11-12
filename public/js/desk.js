@@ -130,7 +130,7 @@
       if(item.kind==='ticket')return open(item.number);
       closePanes();home=false;current=null;creating=false;settings=null;articles=null;report=null;profile=false;
       if(item.kind==='contact')return openContact(item.email);
-      if(item.kind==='company'){manage='clients';mEdit={id:item.id,name:item.name,domain:item.domain||'',notes:item.notes||''};mDetail=true;draw();return;}
+      if(item.kind==='company'){manage='clients';mEdit={id:item.id,name:item.name,domain:item.domain||'',notes:item.notes||'',shareTickets:item.share_tickets===true};mDetail=true;draw();return;}
       if(item.kind==='agent'){manage='team';agentOpen=item.id;mDetail=true;team=null;draw();return;}
     }
     function qDraw() {
