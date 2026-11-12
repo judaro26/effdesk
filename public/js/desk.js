@@ -622,7 +622,7 @@
               });
               if(ui.fields.title!==undefined)ui.title=ui.fields.title;
               if(ui.fields.description!==undefined)ui.description=ui.fields.description;else if(!fields.some(function(f){return f.id==='description';}))ui.description='';
-              if(ui.fields.priority!==undefined)ui.priority=String(ui.fields.priority);
+              if(ui.fields.priority!==undefined){ui.priority=String(ui.fields.priority);if(ui.provider==='linear'&&!/^\d+$/.test(ui.priority)){ui.priority=({urgent:'1',high:'2',normal:'3',low:'4'})[ui.priority.toLowerCase()]||'3';ui.fields.priority=ui.priority;}}
               if(ui.fields.assigneeId!==undefined)ui.assigneeId=ui.fields.assigneeId;
               if(ui.fields.projectId2!==undefined)ui.projectId2=ui.fields.projectId2;
               if(ui.fields.stateId!==undefined)ui.stateId=ui.fields.stateId;
@@ -749,7 +749,7 @@
             if(ui.provider==='jira'&&ui.options.fields){
               ui.options.fields.forEach(function(field){
                 var cfg=templateField(field.id);if(ui.template&&!cfg)return;
-                var val=ui.fields[field.id];if(field.type==='array'&&typeof val==='string')val=val.split(',').map(function(x){return x.trim();}).filter(Boolean);if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}if(field.type==='array'&&typeof val==='string')val=val.split(',').map(function(x){return x.trim();}).filter(Boolean);
+                var val=ui.fields[field.id];if(field.type==='array'&&typeof val==='string')val=val.split(',').map(function(x){return x.trim();}).filter(Boolean);if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}if(field.type==='array'&&typeof val==='string')val=val.split(',').map(function(x){return x.trim();}).filter(Boolean);if(field.id==='priority'&&typeof val==='string'&&field.allowedValues&&field.allowedValues.length&&!field.allowedValues.some(function(v){return String(v.id)===val||String(v.name).toLowerCase()===val.toLowerCase();})){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var matched=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(matched)val=matched.id||matched.name;}
                 var control;
                 if(field.allowedValues&&field.allowedValues.length){
                   control=el('select',{'aria-label':field.name,'multiple':field.type==='array'},(field.type==='array'?[]:[el('option',{value:''},'— Select —')]).concat(field.allowedValues.map(function(v){return el('option',{value:v.id||v.name},v.name);})));
