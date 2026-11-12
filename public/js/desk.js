@@ -591,7 +591,7 @@
 
       // External project issues: search/link existing work or create a provider-native issue without leaving this ticket.
       function externalIssuePanel() {
-        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''}));
+        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''});
         var request=function(method,route,data){
           var url='/api/integrations/'+route+'?org='+encodeURIComponent(orgId);
           return fetchFn(url,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(Object.assign({orgId:orgId},data||{}))}).then(function(r){return r.json().catch(function(){return{};}).then(function(body){if(!r.ok)throw new Error(body.error||'External issue request failed.');return body;});});
