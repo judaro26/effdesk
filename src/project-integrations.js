@@ -59,7 +59,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await pool.query('select provider,external_workspace_id,external_workspace_name,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org])).rows;
+    const rows=(await pool.query('select provider,external_workspace_id,external_workspace_name,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org])).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key=stored-token':String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -109,7 +109,7 @@ async function oauthCallback(req,{pool,env}) {
   const [clientId,clientSecret]=envKeys(row.provider,env);
   try {
     const d=await requestToken(row.provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'authorization_code',code,redirect_uri:callbackUrl(env),client_id:clientId,client_secret:clientSecret});
-    let workspaceId=null,workspaceName=null,webhookToken=crypto.randomBytes(32).toString('base64url');
+    let workspaceId=null,workspaceName=null,webhookToken=crypto.randomBytes(32).toString('base64url'),webhookSecret=crypto.randomBytes(32).toString('base64url');
     if(row.provider==='jira') {
       const rr=await fetch('https://api.atlassian.com/oauth/token/accessible-resources',{headers:{authorization:'Bearer '+d.access_token,accept:'application/json'}});
       const sites=await rr.json(); const site=sites[0]; if(!site) throw new Error('No Jira Cloud site was authorized.');
@@ -118,7 +118,7 @@ async function oauthCallback(req,{pool,env}) {
       const g=await apiCall('linear',d.access_token,'POST','query { viewer { id name } organization { id name } }');
       workspaceId=g.organization?.id; workspaceName=g.organization?.name;
     }
-    await pool.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_url_token_hash) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_url_token_hash=$8,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,hash(webhookToken)]);
+    const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'');\n    const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear':base+'/api/integrations/webhook/jira?key='+encodeURIComponent(webhookToken);\n    await pool.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_secret_enc,webhook_url_token_hash) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_secret_enc=$8,webhook_url_token_hash=$9,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null]);\n    if(row.provider==='linear') { try { await apiCall('linear',d.access_token,'POST',`mutation WebhookCreate($input: WebhookCreateInput!) { webhookCreate(input:$input) { success webhook { id } } }`,{input:{url:hookUrl,secret:webhookSecret,resourceTypes:['Issue','Comment']}}); } catch(e) { console.warn('Linear webhook registration:',e.message); } }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\/$/,'');
     return Response.redirect(base+'/desk.html?org='+encodeURIComponent(row.org_id)+'&integration='+row.provider,303);
   } catch(e) { console.error('project integration OAuth:',e.message); return new Response('Could not complete the external connection. Return to EffDesk and try again.',{status:502}); }
@@ -152,13 +152,60 @@ async function receiveWebhook(req,{pool,env,provider}) {
     if(!handled) return json(200,{ok:true,duplicate:true});
     if(typeof handled==='number') {
       const issue=body.data||body.issue||body;
-      const state=clean(issue.state?.name||issue.status?.name||issue.state?.type||'',80).toLowerCase();
+      const state=clean(issue.state?.name||issue.status?.name||issue.state?.type||issue.fields?.status?.name||'',80).toLowerCase();
       const patch={};
       if(/done|complete|closed|resolved/.test(state)) patch.status='solved';
       else if(/progress|started|doing/.test(state)) patch.status='pending';
       else if(/cancel/.test(state)) patch.status='closed';
-      if(Object.keys(patch).length) await updateTicket(pool,org,{id:'integration',name:provider+' sync',email:''},handled,patch);
+      if(Object.keys(patch).length) await updateTicket(pool,org,{id:'integration',name:provider+' sync',email:''},handled,patch);\n      const comment=body.type==='Comment'?issue:body.comment||null;\n      const commentText=provider==='linear'?clean(comment?.body,8000):clean(comment?.body?.content?.[0]?.content?.map(x=>x.text||'').join(' ')||comment?.body,8000);\n      if(commentText && (body.action==='create'||body.webhookEvent==='comment_created'||body.type==='Comment')) await addMessage(pool,org,{id:'integration',name:provider+' · '+clean(comment?.user?.name||comment?.author?.displayName,100),email:''},handled,{body:'['+provider.toUpperCase()+'] '+commentText,internal:true});
     }
     return json(200,{ok:true});
   } catch(e) { console.error('project webhook sync:',e.message); return fail(500,'Webhook processing failed.'); }
+}
+
+
+// Push ticket changes and agent replies to the linked external issue. Failures are logged but never block EffDesk ticket work.
+export async function syncTicketUpdate(pool,env,org,number,patch={}) {
+  try {
+    const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,l.external_project_id,i.external_workspace_id from project_issue_links l join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
+    if(!links.rowCount) return {synced:0};
+    const t=(await pool.query('select subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(number)])).rows[0]; if(!t) return {synced:0};
+    let synced=0;
+    for(const link of links.rows) try {
+      const token=await tokenFor(pool,env,org,link.provider);
+      if(link.provider==='linear') {
+        const input={}; if(patch.subject!==undefined) input.title=t.subject;
+        if(patch.priority!==undefined) input.priority=({urgent:1,high:2,normal:3,low:4})[t.priority]||3;
+        if(patch.status!==undefined) {
+          const states=await apiCall('linear',token,'POST',`query TeamStates($id:String!){ team(id:$id){ states{nodes{id name type}} } }`,{id:link.external_project_id});
+          const want=t.status==='solved'||t.status==='closed'?'completed':t.status==='pending'?'started':'unstarted';
+          const st=states.team.states.nodes.find(x=>x.type===want); if(st) input.stateId=st.id;
+        }
+        if(Object.keys(input).length) await apiCall('linear',token,'POST',`mutation IssueUpdate($id:String!,$input:IssueUpdateInput!){ issueUpdate(id:$id,input:$input){success} }`,{id:link.external_issue_id,input});
+      } else {
+        const cloudId=link.external_workspace_id, fields={}; if(patch.subject!==undefined) fields.summary=t.subject;
+        if(patch.priority!==undefined) fields.priority={name:({urgent:'Highest',high:'High',normal:'Medium',low:'Low'})[t.priority]};
+        if(Object.keys(fields).length) await apiCall('jira',token,'PUT','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id),{cloudId,payload:{fields}});
+        if(patch.status!==undefined) {
+          const tr=await apiCall('jira',token,'GET','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id)+'/transitions',{cloudId});
+          const want=t.status==='solved'||t.status==='closed'?/done|complete|resolve|close/i:t.status==='pending'?/progress|doing/i:/to do|open|reopen/i;
+          const match=(tr.transitions||[]).find(x=>want.test(x.name)); if(match) await apiCall('jira',token,'POST','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id)+'/transitions',{cloudId,payload:{transition:{id:match.id}}});
+        }
+      }
+      await withOrg(pool,org,c=>c.query('update project_issue_links set last_synced_at=now(),updated_at=now() where org_id=$1 and provider=$2 and ticket_number=$3',[org,link.provider,Number(number)])); synced++;
+    } catch(e) { console.warn('external issue sync failed:',link.provider,e.message); }
+    return {synced};
+  } catch(e) { console.warn('external issue sync failed:',e.message); return {synced:0}; }
+}
+export async function syncTicketComment(pool,env,org,number,body) {
+  const text=clean(body,8000); if(!text) return {synced:0};
+  const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,i.external_workspace_id from project_issue_links l join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
+  let synced=0;
+  for(const link of links.rows) try {
+    const token=await tokenFor(pool,env,org,link.provider);
+    if(link.provider==='linear') await apiCall('linear',token,'POST',`mutation CommentCreate($input:CommentCreateInput!){ commentCreate(input:$input){success} }`,{input:{issueId:link.external_issue_id,body:'EffDesk agent: '+text}});
+    else await apiCall('jira',token,'POST','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id)+'/comment',{cloudId:link.external_workspace_id,payload:{body:{type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'EffDesk agent: '+text}]}]}}});
+    synced++;
+  } catch(e) { console.warn('external comment sync failed:',link.provider,e.message); }
+  return {synced};
 }
