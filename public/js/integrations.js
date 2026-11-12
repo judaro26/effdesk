@@ -89,7 +89,7 @@ function renderTemplateFields(defs,saved){
  templateDefs=defs;var rootBox=$('template-fields');rootBox.replaceChildren();
  var current={};(saved||[]).forEach(function(x){current[x.id]=x;});
  defs.forEach(function(f){
-  var old=current[f.id]||{},include=old.visible!==undefined?old.visible:(f.required||f.id==='title'||f.id==='description');
+  var old=current[f.id]||{},include=!!f.required||(old.visible!==undefined?old.visible:(f.id==='title'||f.id==='description'));
   var row=el('div',{class:'template-field-row','data-template-field':f.id});
   var use=el('input',{type:'checkbox','aria-label':'Include '+f.name});use.checked=include;use.disabled=!!f.required;
   var required=el('input',{type:'checkbox','aria-label':'Require '+f.name});required.checked=!!f.required||(old.required!==undefined?old.required:false);required.disabled=!!f.required||!include;
