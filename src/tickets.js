@@ -55,7 +55,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (q.following === 'me') add('id in (select ticket_id from ticket_followers where org_id = $1 and user_id = $#)', actor.id);
   const cf = q.columnFilters && typeof q.columnFilters === 'object' && !Array.isArray(q.columnFilters) ? q.columnFilters : {};
   if (STATUSES.includes(cf.status)) add('status = $#', cf.status);
-  if (/^\\d{1,9}$/.test(String(cf.number || ''))) add('number = $#', Number(cf.number));
+  if (/^\d{1,9}$/.test(String(cf.number || ''))) add('number = $#', Number(cf.number));
   if (cf.subject) add('subject ilike $#', '%' + clean(cf.subject, 100).replace(/[\%_]/g, m => '\\' + m) + '%');
   if (cf.requester) { const term = '%' + clean(cf.requester, 100).replace(/[\%_]/g, m => '\\' + m) + '%'; args.push(term); const i = args.length; where.push('(requester_name ilike $' + i + ' or requester_email ilike $' + i + ')'); }
   if (PRIORITIES.includes(cf.priority)) add('priority = $#', cf.priority);
