@@ -241,7 +241,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'follow': r = await desk.follow(pool, orgId, actor, b.number, b.on !== false); break;
     case 'merge': r = await desk.mergeTickets(pool, orgId, actor, b.number, b.into); break;
     case 'edit-message': r = await desk.editMessage(pool, orgId, actor, b.number, b.messageId, b.body); break;
-    case 'client-save': if ((g = adminOnly() || need('clients'))) return g; r = await desk.saveClient(pool, orgId, actor, b); break;
+    case 'client-save': if ((g = need('clients'))) return g; r = await desk.saveClient(pool, orgId, actor, b); break;
     case 'client-delete': if ((g = adminOnly() || need('clients'))) return g; r = await desk.deleteClient(pool, orgId, b.id); break;
     case 'client-notes': if ((g = need('clients'))) return g; r = await desk.saveClientNotes(pool, orgId, b.id, b.notes); break;
     case 'macro-save': if ((g = adminOnly())) return g; r = await desk.saveMacro(pool, orgId, b); break;
