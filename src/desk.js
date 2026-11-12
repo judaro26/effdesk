@@ -103,9 +103,9 @@ const VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'a
 const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'];
 
 const PERSONAL_FILTER_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following', 'sla'];
-const COLUMN_FILTER_KEYS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updatedFrom', 'updatedTo', 'sla'];
+    else if (['updatedFrom', 'updatedTo'].includes(k) && validDateOnly(v)) out.columnFilters[k] = String(v);
 const DEFAULT_TICKET_FILTERS = { status: 'active', assignee: '', q: '', columnFilters: {} };
-const validDateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v)) && !Number.isNaN(Date.parse(String(v) + 'T00:00:00Z')) && new Date(String(v) + 'T00:00:00Z').toISOString().slice(0, 10) === String(v);
+const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNaN(Date.parse(String(v) + 'T00:00:00Z')) && new Date(String(v) + 'T00:00:00Z').toISOString().slice(0, 10) === String(v);
 const cleanTicketFilters = input => {
   const out = { ...DEFAULT_TICKET_FILTERS, columnFilters: {} };
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
@@ -127,7 +127,7 @@ const cleanTicketFilters = input => {
     else if (k === 'priority' && ['low', 'normal', 'high', 'urgent'].includes(String(v))) out.columnFilters[k] = String(v);
     else if (k === 'assignee' && (v === 'none' || v === 'me' || /^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) out.columnFilters[k] = String(v);
     else if (k === 'number' && /^\d{1,9}$/.test(String(v))) out.columnFilters[k] = String(v);
-    else if (['updatedFrom', 'updatedTo'].includes(k) && /^\d{4}-\d{2}-\d{2}$/.test(String(v))) out.columnFilters[k] = String(v);
+    else if (['updatedFrom', 'updatedTo'].includes(k) && validDateOnly(v)) out.columnFilters[k] = String(v);
     else if (['subject', 'requester'].includes(k)) out.columnFilters[k] = clean(v, 100);
     else if (k === 'sla' && ['risk', 'breached'].includes(String(v))) out.columnFilters[k] = String(v);
   }
