@@ -80,10 +80,10 @@ async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
   if(!issueTypeId) return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask}))};
   const detail=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes/'+encodeURIComponent(issueTypeId),{cloudId});
   const fields=Object.entries(detail.fields||{}).map(([id,x])=>({
-    id,name:x.name,required:!!x.required,type:x.schema?.type||'string',items:x.schema?.items||'',
+    id,name:x.name,required:!!x.required,type:x.schema?.type||'string',items:x.schema?.items||'',system:x.schema?.system||'',
     allowedValues:(x.allowedValues||[]).slice(0,100).map(v=>({id:v.id??v.accountId??v.key??'',name:v.name??v.displayName??v.value??String(v.id??'')})),
     defaultValue:x.defaultValue??null
-  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution','summary'].includes(x.id));
+  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution','summary','description'].includes(x.id));
   return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask})),fields};
 }
 
@@ -209,7 +209,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         for(const [id,value] of Object.entries(values)) {
           const field=allowed.get(id); if(!field||value===null||value===''||Array.isArray(value)&&!value.length) continue;
           const choices=field.allowedValues||[];
-          const one=v=>{const found=choices.find(o=>String(o.id)===String(v)||String(o.name)===String(v));return found?(found.id?{id:found.id}:{name:found.name}):v;};
+          const one=v=>{const found=choices.find(o=>String(o.id)===String(v)||String(o.name)===String(v));if(field.system==='assignee'||field.type==='user'||field.items==='user')return {accountId:found?(found.id||found.name):v};return found?(found.id?{id:found.id}:{name:found.name}):v;};
           fields[id]=Array.isArray(value)?value.map(one):one(value);
         }
         const missing=meta.fields.filter(f=>f.required&&(fields[f.id]===undefined||fields[f.id]===null||fields[f.id]===''||(Array.isArray(fields[f.id])&&!fields[f.id].length)));
