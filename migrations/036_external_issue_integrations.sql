@@ -70,3 +70,5 @@ create table if not exists project_oauth_states (
 create index if not exists project_oauth_states_expiry on project_oauth_states(expires_at);
 
 alter table project_integrations add column if not exists webhook_url_token_enc text;
+
+alter table project_integrations add column if not exists external_workspace_url text;
