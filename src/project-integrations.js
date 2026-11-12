@@ -271,7 +271,8 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         templateFields.forEach(f=>{
           if(f.defaultValue!==undefined&&f.defaultValue!=='') values[f.id]=f.defaultValue;
           if(f.mapping) {
-            const mapped={'ticket.subject':ticket.subject,'ticket.description':description,'ticket.number':String(ticket.number),'ticket.requester_name':ticket.requester_name||'','ticket.requester_email':ticket.requester_email||'','ticket.priority':ticket.priority||''}[f.mapping];
+            let mapped={'ticket.subject':ticket.subject,'ticket.description':description,'ticket.number':String(ticket.number),'ticket.requester_name':ticket.requester_name||'','ticket.requester_email':ticket.requester_email||'','ticket.priority':ticket.priority||''}[f.mapping];
+            if(f.id==='priority'&&f.mapping==='ticket.priority'&&p==='linear') mapped=({urgent:'1',high:'2',normal:'3',low:'4'})[String(ticket.priority||'').toLowerCase()]||'';
             if(mapped!==undefined&&mapped!=='') values[f.id]=mapped;
           }
         });
