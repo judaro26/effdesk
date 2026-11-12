@@ -358,9 +358,10 @@
       var act = function (action, extra, ok) { return api(action, Object.assign({ number: t.number }, extra || {})).then(function (r) { if (!r.ok) return say(r.body.error, true); return after().then(function () { if (ok) say(ok); }); }); };
       var send = function (action, force) {
         if (sending) return;
+        var richHtml = richEditor ? richEditor.getHtml() : undefined; if (richEditor) body.value = htmlPlain(richHtml);
         draft = body.value; if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
         var status = action === 'reply' ? (sendStatus || (macroPatch && macroPatch.status) || undefined) : undefined, ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : [], mp = action === 'reply' ? macroPatch : null;
-        var req = api(action, { number: t.number, body: body.value, html: richEditor ? richEditor.getHtml() : undefined, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
+        var req = api(action, { number: t.number, body: body.value, html: richHtml, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
         sending = true; paintSending();
         var done = function () { sending = false; paintSending(); };
         req.then(function (r) {
