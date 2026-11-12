@@ -52,14 +52,14 @@ async function tokenFor(pool,env,org,provider) {
 export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const url=new URL(req.url), path=url.pathname;
   if(path.endsWith('/oauth/callback')) return oauthCallback(req,{pool,env});
-  if(path.includes('/webhook/')) return receiveWebhook(req,{pool,env,provider:path.split('/').pop()});
+  if(path.includes('/webhook/')) { const parts=path.split('/').filter(Boolean); return receiveWebhook(req,{pool,env,provider:parts[parts.length-2]}); }
   if(!originOk(req)) return fail(403,'Cross-origin request refused.');
   const s=await getSession(auth,req); if(!s) return fail(401,'Sign in first.');
   const org=clean(url.searchParams.get('org') || (await req.clone().json().catch(()=>({}))).orgId,100);
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
+    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -131,13 +131,15 @@ async function receiveWebhook(req,{pool,env,provider}) {
   const raw=await req.text(); if(raw.length>1000000) return fail(413,'Webhook too large.');
   let body; try{body=JSON.parse(raw);}catch{return fail(400,'Invalid JSON.');}
   let org, row;
+  const parts=new URL(req.url).pathname.split('/').filter(Boolean), orgId=clean(parts[parts.length-1],100);
+  if(!orgId) return fail(400,'Workspace is missing from webhook URL.');
   if(provider==='linear') {
     const sig=req.headers.get('linear-signature')||'';
-    const candidates=(await pool.query("select org_id,webhook_secret_enc from project_integrations where provider='linear' and webhook_secret_enc is not null")).rows;
+    const candidates=(await withOrg(pool,orgId,c=>c.query("select org_id,webhook_secret_enc from project_integrations where org_id=$1 and provider='linear' and webhook_secret_enc is not null",[orgId]))).rows;
     row=candidates.find(x=>{try{const k=dec(env,x.webhook_secret_enc);const want=crypto.createHmac('sha256',k).update(raw).digest('hex');return crypto.timingSafeEqual(Buffer.from(want),Buffer.from(sig));}catch{return false;}});
     if(!row) return fail(401,'Invalid webhook signature.'); org=row.org_id;
   } else {
-    const token=clean(new URL(req.url).searchParams.get('key'),200), candidates=(await pool.query("select org_id,webhook_url_token_hash from project_integrations where provider='jira'")).rows;
+    const token=clean(new URL(req.url).searchParams.get('key'),200), candidates=(await withOrg(pool,orgId,c=>c.query("select org_id,webhook_url_token_hash from project_integrations where org_id=$1 and provider='jira'",[orgId]))).rows;
     row=candidates.find(x=>token && crypto.timingSafeEqual(Buffer.from(hash(token)),Buffer.from(x.webhook_url_token_hash||'')));
     if(!row) return fail(401,'Invalid webhook token.'); org=row.org_id;
   }
