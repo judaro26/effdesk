@@ -18,12 +18,17 @@ function loadConnections(){
  return call('GET',endpoint('/connections')).then(function(d){
   providers.replaceChildren();
   ['linear','jira'].forEach(function(p){
-   var c=d.connections.find(function(x){return x.provider===p;}), card=el('article',{class:'tile'});
-   card.appendChild(el('h2',{},p==='linear'?'Linear':'Jira'));
-   card.appendChild(el('p',{class:'m'},c?'Connected to '+(c.external_workspace_name||'your workspace'):'Not connected'));
-   if(c){var dis=el('button',{type:'button'},'Disconnect');dis.addEventListener('click',function(){call('POST',endpoint('/disconnect'),{provider:p}).then(loadConnections).catch(function(e){say(e.message,true);});});card.appendChild(dis);}
-   else {var btn=el('button',{type:'button'},'Connect '+(p==='linear'?'Linear':'Jira'));btn.addEventListener('click',function(){call('POST',endpoint('/oauth/start'),{provider:p}).then(function(r){location.href=r.url;}).catch(function(e){say(e.message,true);});});card.appendChild(btn);}
-   providers.appendChild(card);
+   var c=d.connections.find(function(x){return x.provider===p;}), name=p==='linear'?'Linear':'Jira';
+   var card=el('article',{class:'integration-provider-card integration-provider-'+p});
+   var mark=el('div',{class:'integration-provider-mark '+(p==='linear'?'mark-linear':'mark-jira'),'aria-hidden':'true'},p==='linear'?'L':'J');
+   var heading=el('div',{class:'integration-provider-title'},el('div',{},el('h2',{},name),el('p',{class:'m'},p==='linear'?'Issues, teams and comments':'Projects, issues and comments')));
+   var status=el('span',{class:'integration-status '+(c?'is-connected':'is-disconnected')},c?'Connected':'Not connected');
+   card.appendChild(el('div',{class:'integration-provider-top'},mark,heading,status));
+   card.appendChild(el('p',{class:'integration-provider-description'},c?'Connected to '+(c.external_workspace_name||'your workspace')+'. Updates can synchronize between EffDesk and '+name+'.':'Connect your '+name+' workspace to create linked issues and synchronize updates.'));
+   var actions=el('div',{class:'integration-provider-actions'});
+   if(c){var dis=el('button',{type:'button',class:'btn l'},'Disconnect');dis.addEventListener('click',function(){if(!confirm('Disconnect '+name+' from this workspace?'))return;call('POST',endpoint('/disconnect'),{provider:p}).then(loadConnections).catch(function(e){say(e.message,true);});});actions.appendChild(dis);}
+   else {var btn=el('button',{type:'button',class:'btn'},'Connect '+name+' →');btn.addEventListener('click',function(){btn.disabled=true;btn.textContent='Connecting…';call('POST',endpoint('/oauth/start'),{provider:p}).then(function(r){location.href=r.url;}).catch(function(e){btn.disabled=false;btn.textContent='Connect '+name+' →';say(e.message,true);});});actions.appendChild(btn);}
+   card.appendChild(actions);providers.appendChild(card);
   });
   say('Connections loaded.');
  });

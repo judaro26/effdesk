@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -199,6 +199,7 @@
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
+      if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: '/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
       if (isAdmin || support) rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
       rail.appendChild(item('help', 'Help center', 'data-help', loadArticles));
@@ -273,6 +274,79 @@
         input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); setColumnFilter(key, input.value.trim()); input.blur(); } });
         return input;
       };
+      var updatedDateFilter = function (cf) {
+        var from = cf.updatedFrom || '', to = cf.updatedTo || '';
+        var label = !from && !to ? 'Any date' : from && to ? (from === to ? from : from + ' – ' + to) : from ? 'From ' + from : 'Through ' + to;
+        var trigger = el('button', { type: 'button', class: 'updated-date-trigger', 'aria-label': 'Choose updated date or date range', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
+          el('span', { class: 'calendar-glyph', 'aria-hidden': 'true' }, '▦'), el('span', {}, label), el('span', { class: 'calendar-chevron', 'aria-hidden': 'true' }, '▾'));
+        var popup = null, month = new Date(); month.setDate(1);
+        var formatDate = function (d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+        var close = function () {
+          if (popup && popup.parentNode) popup.parentNode.removeChild(popup);
+          popup = null; trigger.setAttribute('aria-expanded','false');
+          doc.removeEventListener('pointerdown', outside, true);
+        };
+        var outside = function (e) { if (popup && !popup.contains(e.target) && !trigger.contains(e.target)) close(); };
+        var render = function () {
+          popup.replaceChildren();
+          var head = el('div', { class: 'updated-calendar-head' },
+            el('button', { type: 'button', class: 'updated-calendar-nav', 'aria-label': 'Previous month', onclick: function () { month.setMonth(month.getMonth()-1); render(); } }, '‹'),
+            el('strong', {}, 'Select updated date'),
+            el('button', { type: 'button', class: 'updated-calendar-nav', 'aria-label': 'Next month', onclick: function () { month.setMonth(month.getMonth()+1); render(); } }, '›'));
+          popup.appendChild(head);
+          var mode = popup.dataset.mode || 'range';
+          var modes = el('div', { class: 'updated-calendar-modes' });
+          modes.appendChild(el('button', { type: 'button', class: 'updated-calendar-mode' + (mode==='range'?' active':''), onclick: function () { popup.dataset.mode='range'; render(); } }, 'Date range'));
+          modes.appendChild(el('button', { type: 'button', class: 'updated-calendar-mode' + (mode==='single'?' active':''), onclick: function () { popup.dataset.mode='single'; render(); } }, 'Single date'));
+          popup.appendChild(modes);
+          var months = el('div', { class: 'updated-calendar-months' });
+          [0,1].forEach(function (offset) {
+            var first = new Date(month.getFullYear(), month.getMonth()+offset, 1);
+            var panel = el('div', { class: 'updated-calendar-month' });
+            panel.appendChild(el('div', { class: 'updated-calendar-month-title' }, first.toLocaleDateString(undefined,{month:'long',year:'numeric'})));
+            var grid = el('div', { class: 'updated-calendar-grid' });
+            ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(function (dayName) { grid.appendChild(el('span',{class:'updated-calendar-weekday'},dayName)); });
+            var offsetDay = first.getDay(), days = new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+            for (var blank=0; blank<offsetDay; blank++) grid.appendChild(el('span',{class:'updated-calendar-empty'}));
+            for (var day=1; day<=days; day++) {
+              var value = formatDate(new Date(first.getFullYear(),first.getMonth(),day));
+              var isEndpoint = value===from || value===to;
+              var inRange = from && to && value>=from && value<=to;
+              var cls = 'updated-calendar-day' + (inRange?' selected':'') + (isEndpoint?' endpoint':'');
+              var button = el('button',{type:'button',class:cls,'aria-pressed':String(!!inRange),'aria-label':value},String(day));
+              button.addEventListener('click',function(v){return function(){
+                if (popup.dataset.mode==='single') { from=v; to=v; }
+                else if (!from || (from && to)) { from=v; to=''; }
+                else if (v<from) { to=from; from=v; }
+                else { to=v; }
+                close();
+                setColumnFilter('updatedFrom',from);
+                setColumnFilter('updatedTo',to);
+              };}(value));
+              grid.appendChild(button);
+            }
+            panel.appendChild(grid); months.appendChild(panel);
+          });
+          popup.appendChild(months);
+          var foot = el('div',{class:'updated-calendar-foot'},
+            el('span',{class:'updated-calendar-hint'},mode==='single'?'Choose one date':'Choose a start date, then an end date'),
+            el('button',{type:'button',class:'updated-calendar-clear',onclick:function(){close();setColumnFilter('updatedFrom','');setColumnFilter('updatedTo','');}},'Clear dates'));
+          popup.appendChild(foot);
+        };
+        trigger.addEventListener('click',function(e){
+          e.stopPropagation();
+          if (popup) { close(); return; }
+          popup=el('div',{class:'updated-calendar-popover',role:'dialog','aria-label':'Filter by updated date'});
+          popup.dataset.mode='range'; render();
+          var rect=trigger.getBoundingClientRect();
+          popup.style.position='fixed'; popup.style.zIndex='10000';
+          popup.style.top=Math.max(12,Math.min(rect.bottom+6,root.innerHeight-390))+'px';
+          popup.style.left=Math.max(12,Math.min(rect.left,root.innerWidth-590))+'px';
+          doc.body.appendChild(popup); trigger.setAttribute('aria-expanded','true');
+          doc.addEventListener('pointerdown',outside,true);
+        });
+        return el('div',{class:'updated-date-filter'},trigger);
+      };
       var columnControl = function (key) {
         var cf = filter.columnFilters || {}, opts;
         if (key === 'status') return sel('Filter status', cf.status || '', [['','Any status'],['open','Open'],['pending','Pending'],['on_hold','On hold'],['solved','Solved'],['closed','Closed']], function (v) { setColumnFilter(key, v); });
@@ -282,7 +356,7 @@
         if (key === 'number') return textColumnFilter('number', '#');
         if (key === 'subject') return textColumnFilter('subject', 'Contains…');
         if (key === 'requester') return textColumnFilter('requester', 'Name or email…');
-        if (key === 'updated') return el('div', { class: 'column-date-filters' }, textColumnFilter('updatedFrom', 'From', 'date'), textColumnFilter('updatedTo', 'To', 'date'));
+        if (key === 'updated') return updatedDateFilter(cf);
         return null;
       };
       var shownColumns = ticketColumns.filter(function (k) { return columnDefs[k] && (k !== 'sla' || has('sla')); });
@@ -705,7 +779,7 @@
         ['Customers', [['clients', 'Clients', 'Group requesters by company.', 'clients']]],
         ['Channels', [['helpwidget', 'Help center and search widget', 'Your public help center, request page and a search box for your website.'], ['forms', 'Request forms', 'Forms customers fill in on the help center.', 'request_forms'], ['chat', 'Live chat', 'A chat button for your website.', 'live_chat'], ['whatsapp', 'WhatsApp', 'Answer customers who message your WhatsApp number.', 'whatsapp']]],
         ['Data and compliance', [['migrate', 'Import from Zendesk or Freshdesk', 'Bring your tickets and help articles over. Customers are not emailed.'], ['audit', 'Audit log', 'Who changed what, and when.', 'audit_log'], ['export', 'Export your data', 'Download your tickets, clients, macros and articles.', 'data_export']]],
-        ['Developers', [['integrations', 'Integrations', 'Slack, Microsoft Teams and webhooks.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
+        ['Developers', [['integrations', 'Webhooks', 'Manage Slack, Microsoft Teams and outbound webhooks.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
       ];
       var flat = []; groups.forEach(function (g) { g[1].forEach(function (t) { if (!(support && t[0] === 'support')) flat.push(t); }); });
       var cur = flat.filter(function (t) { return t[0] === manage; })[0] || flat[0];
