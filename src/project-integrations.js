@@ -83,7 +83,7 @@ async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
     id,name:x.name,required:!!x.required,type:x.schema?.type||'string',items:x.schema?.items||'',
     allowedValues:(x.allowedValues||[]).slice(0,100).map(v=>({id:v.id??v.accountId??v.key??'',name:v.name??v.displayName??v.value??String(v.id??'')})),
     defaultValue:x.defaultValue??null
-  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution'].includes(x.id));
+  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution','summary'].includes(x.id));
   return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask})),fields};
 }
 
@@ -106,7 +106,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!role) return fail(403,'You are not a member of this workspace.');
   const isAdmin=['owner','admin'].includes(role);
-  const ticketOperation=path.endsWith('/ticket-context')||path.endsWith('/links')||path.endsWith('/search')||path.endsWith('/issue-options')||path.endsWith('/link-existing')||path.endsWith('/create-issue');
+  const ticketOperation=path.endsWith('/ticket-context')||path.endsWith('/links')||path.endsWith('/search')||path.endsWith('/issue-options')||path.endsWith('/catalog')||path.endsWith('/link-existing')||path.endsWith('/create-issue')||path.endsWith('/unlink');
   if(!isAdmin&&!ticketOperation) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/app-credentials')) {
     const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
@@ -157,6 +157,12 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       const d=await apiCall(p,token,'POST','query TeamCreateOptions($id:String!){ team(id:$id){ id name projects { nodes { id name } } states { nodes { id name type } } } users(first:100){ nodes { id name email } } issueLabels(first:100){ nodes { id name } } }',{id:project});
       return json(200,{team:d.team,users:d.users?.nodes||[],labels:d.issueLabels?.nodes||[]});
     } catch(e) { console.error('external issue options:',p,e.message); return fail(502,'Could not load issue form fields. '+e.message); }
+  }
+  if(req.method==='POST' && path.endsWith('/unlink')) {
+    const b=await req.json().catch(()=>({})),n=Number(b.ticketNumber)||0,id=Number(b.linkId)||0;
+    if(!n||!id) return fail(400,'Choose an external issue link.');
+    const r=await withOrg(pool,org,db=>db.query('delete from project_issue_links where org_id=$1 and ticket_number=$2 and id=$3 returning id',[org,n,id]));
+    return r.rowCount?json(200,{ok:true}):fail(404,'That external issue link was not found.');
   }
   if(req.method==='POST' && path.endsWith('/link-existing')) {
     const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,id=clean(b.issueId,200);
