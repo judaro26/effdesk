@@ -101,6 +101,48 @@ export const deleteMacro = (pool, orgId, id) => withOrg(pool, orgId, async c => 
 const VIEW_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following'];
 const VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'sla', 'updated'];
 const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'];
+
+const PERSONAL_FILTER_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following', 'sla'];
+const COLUMN_FILTER_KEYS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updatedFrom', 'updatedTo', 'sla'];
+const DEFAULT_TICKET_FILTERS = { status: 'active', assignee: '', q: '', columnFilters: {} };
+const cleanTicketFilters = input => {
+  const out = { ...DEFAULT_TICKET_FILTERS, columnFilters: {} };
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  for (const k of PERSONAL_FILTER_KEYS) {
+    const v = input[k]; if (v == null || v === '') continue;
+    if (k === 'status' && ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'].includes(String(v))) out[k] = String(v);
+    else if (k === 'assignee' && (v === 'me' || v === 'none' || /^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) out[k] = String(v);
+    else if (k === 'queue' && (v === 'none' || /^\\d{1,12}$/.test(String(v)))) out[k] = String(v);
+    else if (k === 'type' && ['question', 'incident', 'problem', 'task'].includes(String(v))) out[k] = String(v);
+    else if (k === 'client' && /^\\d{1,12}$/.test(String(v))) out[k] = String(v);
+    else if (k === 'following' && v === 'me') out[k] = 'me';
+    else if (k === 'sla' && ['risk', 'breached'].includes(String(v))) out[k] = String(v);
+    else if (['tag', 'q'].includes(k)) out[k] = clean(v, k === 'q' ? 100 : 30);
+  }
+  const cf = input.columnFilters && typeof input.columnFilters === 'object' && !Array.isArray(input.columnFilters) ? input.columnFilters : {};
+  for (const k of COLUMN_FILTER_KEYS) {
+    const v = cf[k]; if (v == null || v === '') continue;
+    if (k === 'status' && ['open', 'pending', 'on_hold', 'solved', 'closed'].includes(String(v))) out.columnFilters[k] = String(v);
+    else if (k === 'priority' && ['low', 'normal', 'high', 'urgent'].includes(String(v))) out.columnFilters[k] = String(v);
+    else if (k === 'assignee' && (v === 'none' || v === 'me' || /^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) out.columnFilters[k] = String(v);
+    else if (k === 'number' && /^\\d{1,9}$/.test(String(v))) out.columnFilters[k] = String(v);
+    else if (['updatedFrom', 'updatedTo'].includes(k) && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v))) out.columnFilters[k] = String(v);
+    else if (['subject', 'requester'].includes(k)) out.columnFilters[k] = clean(v, 100);
+    else if (k === 'sla' && ['risk', 'breached'].includes(String(v))) out.columnFilters[k] = String(v);
+  }
+  return out;
+};
+export const getTicketPreferences = (pool, orgId, userId) => withOrg(pool, orgId, async c => {
+  const row = (await c.query('select filters, columns from agent_ticket_preferences where org_id = $1 and user_id = $2', [orgId, userId])).rows[0];
+  return { ok: true, ticketPrefs: { filters: cleanTicketFilters(row?.filters), columns: Array.isArray(row?.columns) && row.columns.length ? [...new Set(row.columns.filter(k => VIEW_COLUMNS.includes(k)))] : DEFAULT_VIEW_COLUMNS } };
+});
+export const saveTicketPreferences = (pool, orgId, userId, input) => withOrg(pool, orgId, async c => {
+  const filters = cleanTicketFilters(input.filters);
+  const columns = [...new Set((Array.isArray(input.columns) ? input.columns : DEFAULT_VIEW_COLUMNS).filter(k => VIEW_COLUMNS.includes(k)))];
+  if (!columns.length) return fail('Choose at least one ticket column.');
+  await c.query('insert into agent_ticket_preferences (org_id, user_id, filters, columns, updated_at) values ($1,$2,$3,$4,now()) on conflict (org_id,user_id) do update set filters = excluded.filters, columns = excluded.columns, updated_at = now()', [orgId, userId, JSON.stringify(filters), JSON.stringify(columns)]);
+  return { ok: true, ticketPrefs: { filters, columns } };
+});
 export const listViews = (pool, orgId, actor) => withOrg(pool, orgId, async c => ({ ok: true, views: (await c.query('select id, name, owner_id, filter, columns from saved_views where org_id = $1 and (owner_id is null or owner_id = $2) order by lower(name)', [orgId, actor.id])).rows.map(v => ({ id: v.id, name: v.name, shared: v.owner_id === null, mine: v.owner_id === actor.id, filter: v.filter, columns: Array.isArray(v.columns) && v.columns.length ? v.columns : DEFAULT_VIEW_COLUMNS })) }));
 export const saveView = (pool, orgId, actor, b) => withOrg(pool, orgId, async c => {
   const name = clean(b.name, 60); if (!name) return fail('Give the view a name.');
