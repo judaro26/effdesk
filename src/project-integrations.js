@@ -72,7 +72,7 @@ function linearIssueShape(x) {
   return {id:x.id,key:x.identifier,title:x.title,url:x.url,status:x.state?.name||'',project:x.project?.name||'',team:x.team?.name||'',updatedAt:x.updatedAt};
 }
 function jiraIssueShape(x,siteHost) {
-  return {id:x.id,key:x.key,title:x.fields?.summary||x.key,url:'https://'+String(siteHost||'').replace(/^https?:\\/\\//,'').replace(/\\/+$/,'')+'/browse/'+x.key,status:x.fields?.status?.name||'',project:x.fields?.project?.name||'',issueType:x.fields?.issuetype?.name||'',updatedAt:x.fields?.updated};
+  return {id:x.id,key:x.key,title:x.fields?.summary||x.key,url:'https://'+String(siteHost||'').replace(/^https?:\/\//,'').replace(/\/+$/,'')+'/browse/'+x.key,status:x.fields?.status?.name||'',project:x.fields?.project?.name||'',issueType:x.fields?.issuetype?.name||'',updatedAt:x.fields?.updated};
 }
 async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
   const types=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes',{cloudId});
