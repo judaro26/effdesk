@@ -13,7 +13,7 @@ const hash = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 const secret = env => String(env.BETTER_AUTH_SECRET || '');
 const callbackUrl = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/$/,'') + '/api/integrations/oauth/callback';
 const envKeys = (p,env) => p === 'linear' ? [env.LINEAR_CLIENT_ID,env.LINEAR_CLIENT_SECRET] : [env.JIRA_CLIENT_ID,env.JIRA_CLIENT_SECRET];
-const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user offline_access';
+const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access';
 const b64 = v => Buffer.from(v).toString('base64url');
 const enc = (env,v) => seal(secret(env),v);
 const dec = (env,v) => unseal(secret(env),v);
@@ -38,13 +38,13 @@ async function apiCall(provider,token,method,pathOrQuery,body) {
   const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error('Jira API request failed ('+r.status+').'); return d;
 }
 async function tokenFor(pool,env,org,provider) {
-  const row=(await pool.query('select access_token_enc,refresh_token_enc,expires_at from project_integrations where org_id=$1 and provider=$2',[org,provider])).rows[0];
+  const row=(await withOrg(pool,org,c=>c.query('select access_token_enc,refresh_token_enc,expires_at from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
   if(!row) throw new Error('Connect '+provider+' first.');
   if(row.expires_at && new Date(row.expires_at).getTime()<Date.now()+60000 && row.refresh_token_enc) {
     const [id,sec]=envKeys(provider,env), refresh=dec(env,row.refresh_token_enc);
     const d=await requestToken(provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'refresh_token',refresh_token:refresh,client_id:id,client_secret:sec});
     const exp=new Date(Date.now()+Number(d.expires_in||3600)*1000);
-    await pool.query('update project_integrations set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,updated_at=now() where org_id=$1 and provider=$2',[org,provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):row.refresh_token_enc,exp]);
+    await withOrg(pool,org,c=>c.query('update project_integrations set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,updated_at=now() where org_id=$1 and provider=$2',[org,provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):row.refresh_token_enc,exp]));
     return d.access_token;
   }
   return dec(env,row.access_token_enc);
@@ -59,7 +59,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await pool.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org])).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
+    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -77,11 +77,11 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(path.endsWith('/disconnect') && req.method==='POST') {
     const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Unknown provider.');
-    await pool.query('delete from project_integrations where org_id=$1 and provider=$2',[org,p]); return json(200,{ok:true});
+    await withOrg(pool,org,c=>c.query('delete from project_integrations where org_id=$1 and provider=$2',[org,p])); return json(200,{ok:true});
   }
   if(path.endsWith('/link') && req.method==='POST') {
     const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Unknown provider.');
-    const t=(await pool.query('select number,subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(b.ticketNumber)||0])).rows[0];
+    const t=(await withOrg(pool,org,c=>c.query('select number,subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(b.ticketNumber)||0]))).rows[0];
     if(!t) return fail(404,'EffDesk ticket not found.');
     try {
       const token=await tokenFor(pool,env,org,p); let ext;
@@ -119,7 +119,7 @@ async function oauthCallback(req,{pool,env}) {
       workspaceId=g.organization?.id; workspaceName=g.organization?.name;
     }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'');
-    const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear':base+'/api/integrations/webhook/jira?key='+encodeURIComponent(webhookToken);
+    const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear/'+encodeURIComponent(row.org_id):base+'/api/integrations/webhook/jira/'+encodeURIComponent(row.org_id)+'?key='+encodeURIComponent(webhookToken);
     await pool.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_secret_enc,webhook_url_token_hash,webhook_url_token_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_secret_enc=$8,webhook_url_token_hash=$9,webhook_url_token_enc=$10,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null,row.provider==='jira'?enc(env,webhookToken):null]);
     if(row.provider==='linear') { try { await apiCall('linear',d.access_token,'POST',`mutation WebhookCreate($input: WebhookCreateInput!) { webhookCreate(input:$input) { success webhook { id } } }`,{input:{url:hookUrl,secret:webhookSecret,resourceTypes:['Issue','Comment']}}); } catch(e) { console.warn('Linear webhook registration:',e.message); } }\n    else { try { await apiCall('jira',d.access_token,'POST','/rest/api/3/webhook',{cloudId:workspaceId,payload:{webhooks:[{jqlFilter:'project is not EMPTY',events:['jira:issue_updated','comment_created'],url:hookUrl,excludeBody:false}]}}); } catch(e) { console.warn('Jira webhook registration:',e.message); } }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\/$/,'');
@@ -175,7 +175,7 @@ export async function syncTicketUpdate(pool,env,org,number,patch={}) {
   try {
     const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,l.external_project_id,i.external_workspace_id from project_issue_links l join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
     if(!links.rowCount) return {synced:0};
-    const t=(await pool.query('select subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(number)])).rows[0]; if(!t) return {synced:0};
+    const t=(await withOrg(pool,org,c=>c.query('select subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(number)]))).rows[0]; if(!t) return {synced:0};
     let synced=0;
     for(const link of links.rows) try {
       const token=await tokenFor(pool,env,org,link.provider);
