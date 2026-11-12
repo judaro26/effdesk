@@ -81,7 +81,14 @@ function renderTemplateList(){
 function templateFieldDefinitions(provider,metadata){
  var defs=[{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string',required:false}];
  if(provider==='linear'){
-  defs=defs.concat([{id:'priority',name:'Priority',type:'select'},{id:'assigneeId',name:'Assignee',type:'select'},{id:'projectId2',name:'Linear project',type:'select'},{id:'stateId',name:'Initial status',type:'select'},{id:'labelIds',name:'Labels',type:'select'}]);
+  var team=metadata&&metadata.team||{},choices=function(items){return (items||[]).map(function(x){return {id:x.id,name:x.name||x.email||x.id};});};
+  defs=defs.concat([
+   {id:'priority',name:'Priority',type:'select',choices:[{id:'0',name:'No priority'},{id:'1',name:'Urgent'},{id:'2',name:'High'},{id:'3',name:'Normal'},{id:'4',name:'Low'}]},
+   {id:'assigneeId',name:'Assignee',type:'select',choices:choices(metadata&&metadata.users)},
+   {id:'projectId2',name:'Linear project',type:'select',choices:choices(team.projects&&team.projects.nodes)},
+   {id:'stateId',name:'Initial status',type:'select',choices:choices(team.states&&team.states.nodes)},
+   {id:'labelIds',name:'Labels',type:'array',choices:choices(metadata&&metadata.labels)}
+  ]);
  }else (metadata&&metadata.fields||[]).forEach(function(x){defs.push({id:x.id,name:x.name||x.id,type:x.type||'string',required:!!x.required,allowedValues:x.allowedValues||[]});});
  return defs;
 }
@@ -94,7 +101,7 @@ function renderTemplateFields(defs,saved){
   var use=el('input',{type:'checkbox','aria-label':'Include '+f.name});use.checked=include;use.disabled=!!f.required;
   var required=el('input',{type:'checkbox','aria-label':'Require '+f.name});required.checked=!!f.required||(old.required!==undefined?old.required:false);required.disabled=!!f.required||!include;
   use.addEventListener('change',function(){required.disabled=!use.checked;if(!use.checked)required.checked=false;});
-  var def=el('input',{type:'text',class:'template-field-default',maxlength:'1000','aria-label':'Default value for '+f.name,placeholder:'Default value'});def.value=old.defaultValue||'';
+  var choices=f.choices||f.allowedValues||[],def;if(choices.length&&f.type!=='array'){def=el('select',{class:'template-field-default','aria-label':'Default value for '+f.name},[el('option',{value:''},'No default')].concat(choices.map(function(v){return el('option',{value:v.id||v.name},v.name);})));def.value=old.defaultValue||'';}else{def=el('input',{type:'text',class:'template-field-default',maxlength:'1000','aria-label':'Default value for '+f.name,placeholder:f.type==='array'?'Default values (comma separated)':'Default value'});def.value=old.defaultValue||'';}
   var mapping=el('select',{class:'template-field-mapping','aria-label':'Map '+f.name+' from ticket'},templateMappingOptions.map(function(x){return el('option',{value:x[0]},x[1]);}));mapping.value=old.mapping||'';
   row.appendChild(el('div',{class:'template-field-main'},el('label',{class:'template-field-toggle'},use,el('strong',{},f.name)),el('label',{class:'template-field-required'},required,' Required')));
   row.appendChild(el('div',{class:'template-field-settings'},def,mapping));
