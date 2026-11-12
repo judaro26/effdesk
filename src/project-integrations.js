@@ -59,7 +59,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await pool.query('select provider,external_workspace_id,external_workspace_name,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org])).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key=stored-token':String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
+    const rows=(await pool.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org])).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear'}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -122,7 +122,7 @@ async function oauthCallback(req,{pool,env}) {
     }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'');
     const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear':base+'/api/integrations/webhook/jira?key='+encodeURIComponent(webhookToken);
-    await pool.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_secret_enc,webhook_url_token_hash) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_secret_enc=$8,webhook_url_token_hash=$9,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null]);
+    await pool.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_secret_enc,webhook_url_token_hash,webhook_url_token_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_secret_enc=$8,webhook_url_token_hash=$9,webhook_url_token_enc=$10,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null,row.provider==='jira'?enc(env,webhookToken):null]);
     if(row.provider==='linear') { try { await apiCall('linear',d.access_token,'POST',`mutation WebhookCreate($input: WebhookCreateInput!) { webhookCreate(input:$input) { success webhook { id } } }`,{input:{url:hookUrl,secret:webhookSecret,resourceTypes:['Issue','Comment']}}); } catch(e) { console.warn('Linear webhook registration:',e.message); } }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\/$/,'');
     return Response.redirect(base+'/desk.html?org='+encodeURIComponent(row.org_id)+'&integration='+row.provider,303);
@@ -149,7 +149,7 @@ async function receiveWebhook(req,{pool,env,provider}) {
       const ins=await c.query('insert into project_sync_events (org_id,provider,event_id) values ($1,$2,$3) on conflict do nothing returning event_id',[org,provider,eventId]);
       if(!ins.rowCount) return false;
       const issue=body.data||body.issue||body;
-      const issueId=clean(issue.id||issue.issueId,200);
+      const issueId=clean(body.type==='Comment'?(issue.issueId||issue.issue?.id): (issue.id||issue.issueId),200);
       const link=(await c.query('select ticket_number from project_issue_links where org_id=$1 and provider=$2 and external_issue_id=$3',[org,provider,issueId])).rows[0];
       if(!link) return true;
       return link.ticket_number;
