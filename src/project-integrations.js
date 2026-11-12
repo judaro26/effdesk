@@ -66,7 +66,11 @@ async function saveIssueLink(pool,org,provider,ticketNumber,ext) {
   const exists=(await withOrg(pool,org,x=>x.query('select ticket_number from project_issue_links where org_id=$1 and provider=$2 and external_issue_id=$3',[org,provider,String(ext.id)]))).rows[0];
   if(exists && Number(exists.ticket_number)!==Number(ticketNumber)) throw new Error('That external issue is already linked to another EffDesk ticket.');
   if(exists) return;
-  await withOrg(pool,org,x=>x.query('insert into project_issue_links (org_id,provider,ticket_number,external_issue_id,external_issue_key,external_issue_url,external_project_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict (org_id,provider,external_issue_id) do nothing',[org,provider,Number(ticketNumber),String(ext.id),ext.key||null,ext.url||null,ext.projectId||null]));
+  const inserted=await withOrg(pool,org,x=>x.query('insert into project_issue_links (org_id,provider,ticket_number,external_issue_id,external_issue_key,external_issue_url,external_project_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict (org_id,provider,external_issue_id) do nothing returning id',[org,provider,Number(ticketNumber),String(ext.id),ext.key||null,ext.url||null,ext.projectId||null]));
+  if(!inserted.rowCount) {
+    const winner=(await withOrg(pool,org,x=>x.query('select ticket_number from project_issue_links where org_id=$1 and provider=$2 and external_issue_id=$3',[org,provider,String(ext.id)]))).rows[0];
+    if(winner&&Number(winner.ticket_number)!==Number(ticketNumber)) throw new Error('That external issue is already linked to another EffDesk ticket.');
+  }
 }
 function linearIssueShape(x) {
   return {id:x.id,key:x.identifier,title:x.title,url:x.url,status:x.state?.name||'',project:x.project?.name||'',team:x.team?.name||'',updatedAt:x.updatedAt};
