@@ -44,12 +44,12 @@ export async function deleteFile(pool, store, orgId, id) {
   if (gone) await store.delete(`${orgId}/${id}`); return gone > 0;
 }
 // the files of an incoming email (Resend lists them with a short-lived download link). Returns what could not be kept, so the ticket can say so.
-export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumber, messageRowId, emailId) {
+export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumber, messageRowId, emailId, metadata = []) {
   const skipped = [], inline = [];
   try {
     const r = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}/attachments?limit=20`, { headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` } });
     if (!r.ok) throw new Error('status ' + r.status);
-    const list = (await r.json()).data || [], ent = await getEntitlements(pool, orgId), room = limitFor(ent); let total = 0, used = await storageUsed(pool, orgId);
+    const list = (await r.json()).data || [], meta = new Map((Array.isArray(metadata) ? metadata : []).map(a => [String(a.id || ''), a])), ent = await getEntitlements(pool, orgId), room = limitFor(ent); let total = 0, used = await storageUsed(pool, orgId);
     const ticket = await withOrg(pool, orgId, async c => (await c.query('select id from tickets where org_id = $1 and number = $2', [orgId, ticketNumber])).rows[0]);
     for (const a of list) {
       const name = cleanName(a.filename);
@@ -60,9 +60,11 @@ export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumbe
         const bytes = Buffer.from(await d.arrayBuffer()); if (bytes.length > MAX_INBOUND_FILE) { skipped.push(`${name} (too large)`); continue; }
         const id = crypto.randomUUID(); await store.set(`${orgId}/${id}`, bytes); total += bytes.length; used += bytes.length;
         await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size) values ($1,$2,$3,$4,$5,$6,$7)', [id, orgId, ticket.id, messageRowId, name, cleanType(a.content_type), bytes.length]));
-        const rawContentId = a.content_id || a.contentId || a.contentID || a.content_id_header || a.contentIdHeader;
+        const detail = meta.get(String(a.id || '')) || {};
+        const rawContentId = a.content_id || a.contentId || a.contentID || a.content_id_header || a.contentIdHeader || detail.content_id || detail.contentId || detail.contentID || detail.content_id_header || detail.contentIdHeader;
         const contentId = String(rawContentId || '').replace(/^\s*<|>\s*$/g, '').trim();
-        if (contentId) inline.push({ contentId, id, contentType: cleanType(a.content_type) });
+        const disposition = String(a.content_disposition || a.contentDisposition || detail.content_disposition || detail.contentDisposition || '').toLowerCase();
+        if (contentId && (disposition === 'inline' || !disposition)) inline.push({ contentId, id, contentType: cleanType(a.content_type || detail.content_type) });
       } catch (e) { console.warn('attachment not stored:', e.message); skipped.push(`${name} (could not be fetched)`); }
     }
   } catch (e) { console.warn('attachments not listed:', e.message); skipped.push('attachments (could not be fetched)'); }

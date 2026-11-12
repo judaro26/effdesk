@@ -397,7 +397,8 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   const res = await handleInbound(pool, env, { from: full.from || ev.data.from, to: full.to || ev.data.to, receivedFor: full.received_for || ev.data.received_for, messageId: full.message_id || ev.data.message_id, subject: full.subject || ev.data.subject, text: full.text, html: full.html, headers: full.headers, authentication: full.authentication, attachments: full.attachments || ev.data.attachments });
   if (res.ok && res.messageRowId) {
     let stored = { inline: [] };
-    if (store && (full.attachments || ev.data.attachments || []).length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id) || stored;
+    const attachmentMetadata = full.attachments || ev.data.attachments || [];
+    if (store && attachmentMetadata.length) stored = await storeInbound(pool, store, fetchFn, env, res.orgId, res.number, res.messageRowId, ev.data.email_id, attachmentMetadata) || stored;
     await withOrg(pool, res.orgId, async c => {
       const row = (await c.query('select html_body from ticket_messages where org_id = $1 and id = $2', [res.orgId, res.messageRowId])).rows[0];
       let html = String(row?.html_body || '');
