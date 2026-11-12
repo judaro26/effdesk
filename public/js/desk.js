@@ -269,8 +269,8 @@
       };
       var textColumnFilter = function (key, placeholder, type) {
         var input = el('input', { class: 'column-filter-input', type: type || 'search', 'aria-label': 'Filter ' + key, placeholder: placeholder, value: (filter.columnFilters || {})[key] || '' });
-        input.addEventListener('input', function () { setColumnFilter(key, input.value.trim()); });
         input.addEventListener('change', function () { setColumnFilter(key, input.value.trim()); });
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); setColumnFilter(key, input.value.trim()); input.blur(); } });
         return input;
       };
       var columnControl = function (key) {
