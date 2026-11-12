@@ -551,3 +551,72 @@ html{-webkit-text-size-adjust:100%}
 .template-saved-actions{display:flex;gap:7px;margin-top:8px}
 .template-saved-actions .btn{font-size:11px}
 @media(max-width:760px){.integration-template-layout{grid-template-columns:1fr}.integration-template-builder{padding:15px}.template-field-settings{grid-template-columns:1fr}}
+
+/* Global search: clear, categorized, keyboard-friendly results */
+.qpop{width:min(560px,94vw);max-height:min(72vh,620px);overflow:auto;border-radius:15px;padding:5px;background:var(--d-panel);box-shadow:0 18px 54px rgba(0,0,0,.24)}
+.qgroup-label{padding:10px 12px 5px;color:var(--d-muted);font-size:10px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}
+.qresult{display:flex;align-items:center;gap:11px;width:100%;text-align:left;border:0;border-radius:9px;background:transparent;color:var(--d-ink);font:inherit;padding:10px 12px;cursor:pointer}
+.qresult:hover,.qresult[aria-selected=true]{background:var(--d-hover)}
+.qresult-icon{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border:1px solid var(--d-line);border-radius:9px;color:var(--accent-d);font-size:13px;font-weight:800}
+.qresult-copy{display:grid;gap:2px;min-width:0;flex:1}
+.qresult-copy strong,.qresult-copy .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qresult-copy strong{font-size:13px}.qresult-copy .m{font-size:11px}
+.qfoot{position:sticky;bottom:0;background:var(--d-panel);border-top:1px solid var(--d-line)}
+
+/* Contact directory and profile */
+.contact-workspace{max-width:1120px;margin:0 auto;padding:clamp(16px,3vw,30px)}
+.contact-page-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:22px}
+.contact-page-head h2{margin:0;font-size:25px;letter-spacing:-.035em}
+.contact-page-head p{margin:5px 0 0}
+.contact-record-type{display:inline-flex;align-items:center;padding:6px 10px;border:1px solid var(--d-line);border-radius:999px;color:var(--d-muted);font-size:10px;font-weight:850;letter-spacing:.12em}
+.contact-toolbar{display:flex;gap:10px;margin-bottom:14px}
+.contact-toolbar input{flex:1;min-width:0}
+.contact-list{display:grid;gap:8px}
+.contact-list-row{display:flex;align-items:center;gap:13px;width:100%;padding:13px 15px;border:1px solid var(--d-line);border-radius:12px;background:var(--d-panel);color:var(--d-ink);text-align:left;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s}
+.contact-list-row:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 8px 22px rgba(20,35,45,.07)}
+.contact-avatar{display:grid;place-items:center;width:54px;height:54px;flex:0 0 54px;border-radius:16px;background:color-mix(in srgb,var(--accent) 14%,var(--d-panel));color:var(--accent-d);font-size:19px;font-weight:850}
+.contact-avatar.sm{width:38px;height:38px;flex-basis:38px;border-radius:12px;font-size:13px}
+.contact-list-copy{display:grid;gap:2px;min-width:0;flex:1}
+.contact-list-copy strong,.contact-list-copy .m,.contact-list-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.contact-list-copy strong{font-size:13px}.contact-list-copy small{color:var(--d-muted);font-size:11px}
+.contact-list-arrow{font-size:24px;color:var(--d-muted)}
+.contact-profile-card{display:flex;align-items:center;gap:16px;padding:22px;border:1px solid var(--d-line);border-radius:16px;background:linear-gradient(135deg,var(--d-panel),var(--d-bg));margin-bottom:18px}
+.contact-profile-card h2{margin:0;font-size:23px;letter-spacing:-.03em}
+.contact-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:18px;border:1px solid var(--d-line);border-radius:14px;background:var(--d-panel)}
+.contact-form-grid label{display:grid;gap:6px;color:var(--d-muted);font-size:11px;font-weight:750}
+.contact-form-grid input,.contact-form-grid select,.contact-form-grid textarea{width:100%;min-width:0;background:var(--d-bg);color:var(--d-ink);font-size:13px}
+.contact-notes{grid-column:1/-1}
+.contact-ticket-list{display:grid;gap:7px}
+.contact-ticket-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;padding:11px 13px;border:1px solid var(--d-line);border-radius:10px;background:var(--d-panel);color:var(--d-ink);text-align:left;cursor:pointer}
+.contact-ticket-row strong{flex:1;min-width:160px;font-size:12px}
+.contact-ticket-row small{color:var(--d-muted);font-size:11px}
+.contact-page-head>.btn{flex-shrink:0}
+.requester-card{padding:10px}
+.requester-profile-link{display:flex;align-items:center;gap:10px;width:100%;padding:4px;border:0;border-radius:9px;background:transparent;color:var(--d-ink);text-align:left;cursor:pointer}
+.requester-profile-link:hover{background:var(--d-hover)}
+.requester-profile-link>span:last-child{display:grid;gap:2px;min-width:0}
+.requester-profile-link strong,.requester-profile-link .m{overflow-wrap:anywhere}
+.requester-profile-link small{color:var(--accent-d);font-size:11px;font-weight:700}
+
+/* Ticket column headings: refined hierarchy, calmer controls and clear drag affordance */
+.ticket-table{border-collapse:separate;border-spacing:0}
+.ticket-table thead{position:relative;z-index:5}
+.ticket-table thead th.ticket-column-head{position:sticky;top:0;z-index:5;min-width:112px;padding:12px 13px 10px;background:linear-gradient(180deg,var(--d-panel) 0%,var(--d-bg) 100%);border-bottom:1px solid var(--d-line);box-shadow:inset 0 1px rgba(255,255,255,.22),0 3px 9px rgba(20,35,45,.045);vertical-align:top;transition:background .15s,border-color .15s}
+.ticket-table thead th.ticket-column-head:first-child{border-top-left-radius:11px}
+.ticket-table thead th.ticket-column-head:last-child{border-top-right-radius:11px}
+.ticket-column-head .column-head-label{display:inline-flex;align-items:center;min-height:19px;color:var(--d-ink);font-size:10px;font-weight:850;letter-spacing:.095em;text-transform:uppercase;white-space:nowrap}
+.ticket-column-head .column-drag-handle{display:inline-block;margin-left:7px;color:var(--d-muted);font-size:14px;opacity:.25;vertical-align:middle;transition:opacity .15s}
+.ticket-column-head:hover .column-drag-handle{opacity:.85}
+.ticket-column-head:hover{background:linear-gradient(180deg,var(--d-panel),var(--d-hover));border-bottom-color:var(--accent)}
+.ticket-column-head.dragging{opacity:.45}
+.ticket-column-head.drag-over{background:color-mix(in srgb,var(--accent) 12%,var(--d-panel));box-shadow:inset 0 0 0 2px var(--accent)}
+.ticket-column-head select,.ticket-column-head input,.ticket-column-head .updated-date-filter button{display:block;width:100%;min-width:84px;max-width:170px;height:29px;margin-top:7px;padding:4px 8px;border:1px solid var(--d-line);border-radius:7px;background:var(--d-panel);color:var(--d-muted);font-size:10px;font-weight:550;box-shadow:none}
+.ticket-column-head select:focus,.ticket-column-head input:focus,.ticket-column-head .updated-date-filter button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:1px;border-color:var(--accent)}
+.ticket-column-head .updated-date-filter button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.ticket-table tbody tr:first-child td{border-top:0}
+@media(max-width:800px){.contact-form-grid{grid-template-columns:1fr}.contact-notes{grid-column:auto}.contact-page-head{align-items:flex-start;flex-direction:column}.contact-toolbar{flex-direction:column}.ticket-table thead th.ticket-column-head{padding:9px 8px;min-width:100px}.ticket-column-head .column-head-label{font-size:9px}}
+
+.company-item .t{display:grid;gap:3px;min-width:0}
+.company-contact-link{margin:5px 5px 0 0;padding:3px 7px;border:1px solid var(--d-line);border-radius:999px;background:var(--d-bg);color:var(--accent-d);font-size:10px;cursor:pointer}
+.company-contact-link:hover{border-color:var(--accent);background:var(--d-hover)}
+.company-item .acts{align-self:center}

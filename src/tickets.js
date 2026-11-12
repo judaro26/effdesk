@@ -4,6 +4,7 @@ import { withOrg } from './db.js';
 import { slaWhere } from './sla.js';
 import { defsOf, cleanValues } from './fields.js';
 import { clean as cleanHtml, plainOf } from './html-clean.js';
+import { ensureContact } from './contacts.js';
 
 export const STATUSES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -30,8 +31,9 @@ export async function createTicket(pool, orgId, actor, input) {
   return withOrg(pool, orgId, async c => {
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
     let custom = {}; if (input.custom && Object.keys(input.custom).length) { const cv = cleanValues(await defsOf(c, orgId), input.custom); if (cv.error) return fail(cv.error); custom = cv.set; }
-    const domain = email.split('@')[1], client = (await c.query("select id from clients where org_id = $1 and domain <> '' and domain = $2", [orgId, domain])).rows[0];
+    const domain = email.split('@')[1], client = (await c.query("select id from clients where org_id = $1 and domain <> '' and domain = $2 order by id limit 1", [orgId, domain])).rows[0];
     const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' || input.channel === 'chat' || input.channel === 'whatsapp' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom)])).rows[0];
+    await ensureContact(c, orgId, { email, name: clean(input.requesterName, 100), companyId: client ? client.id : null });
     await logEvent(c, orgId, t.id, actor ? who(actor) : clean(input.requesterName, 100) || email, 'created', 'Ticket created' + (input.channel === 'email' ? ' by email' : ''));
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id', [orgId, t.id, kind, kind === 'requester' ? null : actor.id, kind === 'requester' ? clean(input.requesterName, 100) || email : who(actor), body, input.messageId ? clean(input.messageId, 300) : null, String(input.htmlBody || '').slice(0, 100000) || null])).rows[0].id;
     if ((!actor || input.channel === 'api') && input.route !== false) { const a = await autoAssign(c, orgId, t.id); if (a) { t.assignee_id = a.id; await logEvent(c, orgId, t.id, 'Routing', 'assigned', 'Assigned to ' + a.name + ' automatically'); } }
@@ -165,8 +167,9 @@ export async function listAgents(pool, orgId) {
 export async function addRequesterMessage(pool, orgId, number, { body, htmlBody, authorName, messageId }) {
   const text = clean(body, 20000); if (!text) return fail('Empty message.');
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, status, requester_email, requester_name, client_id from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
+    await ensureContact(c, orgId, { email: t.requester_email, name: t.requester_name || authorName, companyId: t.client_id });
     if (t.status === 'closed') return { ok: false, status: 409, closed: true, error: 'The ticket is closed.' };
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null, String(htmlBody || '').slice(0, 100000) || null])).rows[0].id;
     await c.query("update tickets set status = 'open', solved_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
