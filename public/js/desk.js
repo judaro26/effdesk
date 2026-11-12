@@ -621,7 +621,7 @@
                 if(mapped!==undefined&&mapped!=='')ui.fields[f.id]=mapped;
               });
               if(ui.fields.title!==undefined)ui.title=ui.fields.title;
-              if(ui.fields.description!==undefined)ui.description=ui.fields.description;
+              if(ui.fields.description!==undefined)ui.description=ui.fields.description;else if(!fields.some(function(f){return f.id==='description';}))ui.description='';
               if(ui.fields.priority!==undefined)ui.priority=String(ui.fields.priority);
               if(ui.fields.assigneeId!==undefined)ui.assigneeId=ui.fields.assigneeId;
               if(ui.fields.projectId2!==undefined)ui.projectId2=ui.fields.projectId2;
