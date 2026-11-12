@@ -274,6 +274,79 @@
         input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); setColumnFilter(key, input.value.trim()); input.blur(); } });
         return input;
       };
+      var updatedDateFilter = function (cf) {
+        var from = cf.updatedFrom || '', to = cf.updatedTo || '';
+        var label = !from && !to ? 'Any date' : from && to ? (from === to ? from : from + ' – ' + to) : from ? 'From ' + from : 'Through ' + to;
+        var trigger = el('button', { type: 'button', class: 'updated-date-trigger', 'aria-label': 'Choose updated date or date range', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' },
+          el('span', { class: 'calendar-glyph', 'aria-hidden': 'true' }, '▦'), el('span', {}, label), el('span', { class: 'calendar-chevron', 'aria-hidden': 'true' }, '▾'));
+        var popup = null, month = new Date(); month.setDate(1);
+        var formatDate = function (d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+        var close = function () {
+          if (popup && popup.parentNode) popup.parentNode.removeChild(popup);
+          popup = null; trigger.setAttribute('aria-expanded','false');
+          doc.removeEventListener('pointerdown', outside, true);
+        };
+        var outside = function (e) { if (popup && !popup.contains(e.target) && !trigger.contains(e.target)) close(); };
+        var render = function () {
+          popup.replaceChildren();
+          var head = el('div', { class: 'updated-calendar-head' },
+            el('button', { type: 'button', class: 'updated-calendar-nav', 'aria-label': 'Previous month', onclick: function () { month.setMonth(month.getMonth()-1); render(); } }, '‹'),
+            el('strong', {}, 'Select updated date'),
+            el('button', { type: 'button', class: 'updated-calendar-nav', 'aria-label': 'Next month', onclick: function () { month.setMonth(month.getMonth()+1); render(); } }, '›'));
+          popup.appendChild(head);
+          var mode = popup.dataset.mode || 'range';
+          var modes = el('div', { class: 'updated-calendar-modes' });
+          modes.appendChild(el('button', { type: 'button', class: 'updated-calendar-mode' + (mode==='range'?' active':''), onclick: function () { popup.dataset.mode='range'; render(); } }, 'Date range'));
+          modes.appendChild(el('button', { type: 'button', class: 'updated-calendar-mode' + (mode==='single'?' active':''), onclick: function () { popup.dataset.mode='single'; render(); } }, 'Single date'));
+          popup.appendChild(modes);
+          var months = el('div', { class: 'updated-calendar-months' });
+          [0,1].forEach(function (offset) {
+            var first = new Date(month.getFullYear(), month.getMonth()+offset, 1);
+            var panel = el('div', { class: 'updated-calendar-month' });
+            panel.appendChild(el('div', { class: 'updated-calendar-month-title' }, first.toLocaleDateString(undefined,{month:'long',year:'numeric'})));
+            var grid = el('div', { class: 'updated-calendar-grid' });
+            ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(function (dayName) { grid.appendChild(el('span',{class:'updated-calendar-weekday'},dayName)); });
+            var offsetDay = first.getDay(), days = new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+            for (var blank=0; blank<offsetDay; blank++) grid.appendChild(el('span',{class:'updated-calendar-empty'}));
+            for (var day=1; day<=days; day++) {
+              var value = formatDate(new Date(first.getFullYear(),first.getMonth(),day));
+              var isEndpoint = value===from || value===to;
+              var inRange = from && to && value>=from && value<=to;
+              var cls = 'updated-calendar-day' + (inRange?' selected':'') + (isEndpoint?' endpoint':'');
+              var button = el('button',{type:'button',class:cls,'aria-pressed':String(!!inRange),'aria-label':value},String(day));
+              button.addEventListener('click',function(v){return function(){
+                if (popup.dataset.mode==='single') { from=v; to=v; }
+                else if (!from || (from && to)) { from=v; to=''; }
+                else if (v<from) { to=from; from=v; }
+                else { to=v; }
+                close();
+                setColumnFilter('updatedFrom',from);
+                setColumnFilter('updatedTo',to);
+              };}(value));
+              grid.appendChild(button);
+            }
+            panel.appendChild(grid); months.appendChild(panel);
+          });
+          popup.appendChild(months);
+          var foot = el('div',{class:'updated-calendar-foot'},
+            el('span',{class:'updated-calendar-hint'},mode==='single'?'Choose one date':'Choose a start date, then an end date'),
+            el('button',{type:'button',class:'updated-calendar-clear',onclick:function(){close();setColumnFilter('updatedFrom','');setColumnFilter('updatedTo','');}},'Clear dates'));
+          popup.appendChild(foot);
+        };
+        trigger.addEventListener('click',function(e){
+          e.stopPropagation();
+          if (popup) { close(); return; }
+          popup=el('div',{class:'updated-calendar-popover',role:'dialog','aria-label':'Filter by updated date'});
+          popup.dataset.mode='range'; render();
+          var rect=trigger.getBoundingClientRect();
+          popup.style.position='fixed'; popup.style.zIndex='10000';
+          popup.style.top=Math.max(12,Math.min(rect.bottom+6,root.innerHeight-390))+'px';
+          popup.style.left=Math.max(12,Math.min(rect.left,root.innerWidth-590))+'px';
+          doc.body.appendChild(popup); trigger.setAttribute('aria-expanded','true');
+          doc.addEventListener('pointerdown',outside,true);
+        });
+        return el('div',{class:'updated-date-filter'},trigger);
+      };
       var columnControl = function (key) {
         var cf = filter.columnFilters || {}, opts;
         if (key === 'status') return sel('Filter status', cf.status || '', [['','Any status'],['open','Open'],['pending','Pending'],['on_hold','On hold'],['solved','Solved'],['closed','Closed']], function (v) { setColumnFilter(key, v); });
