@@ -721,23 +721,34 @@
           if(ui.provider==='linear'&&ui.projectId&&!ui.options){box.appendChild(el('p',{class:'m'},'Loading team fields…'));}
           if(ui.provider==='jira'&&ui.issueTypeId&&(!ui.options||!ui.options.fields)){box.appendChild(el('p',{class:'m'},'Loading required fields…'));}
           if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.options.fields)){
-            var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.addEventListener('input',function(){ui.title=titleInput.value;});
-            var descInput=el('textarea',{rows:'4','aria-label':'Issue description'});descInput.value=ui.description;descInput.addEventListener('input',function(){ui.description=descInput.value;});
-            titleInput.required=true;
-            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Title *'),titleInput));
-            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Description'),descInput));
+            var titleCfg=templateField('title');
+            if(!ui.template||titleCfg){
+              var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.required=titleCfg?!!titleCfg.required:true;titleInput.addEventListener('input',function(){ui.title=titleInput.value;ui.fields.title=titleInput.value;});
+              box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Title'+(titleInput.required?' *':'')),titleInput));
+            }
+            var descCfg=templateField('description');
+            if(!ui.template||descCfg){
+              var descInput=el('textarea',{rows:'4','aria-label':'Issue description'});descInput.value=ui.description;descInput.required=!!(descCfg&&descCfg.required);descInput.addEventListener('input',function(){ui.description=descInput.value;ui.fields.description=descInput.value;});
+              box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Description'+(descInput.required?' *':'')),descInput));
+            }
             if(ui.provider==='linear'){
-              var priority=el('select',{'aria-label':'Priority'},[['0','No priority'],['1','Urgent'],['2','High'],['3','Normal'],['4','Low']].map(function(x){return el('option',{value:x[0]},x[1]);}));priority.value=ui.priority;priority.addEventListener('change',function(){ui.priority=priority.value;});
-              box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Priority'),priority));
-              var states=ui.options.team.states?.nodes||[];
-              if(states.length){var stateSelect=el('select',{'aria-label':'Initial status'},[el('option',{value:''},'Use team default')].concat(states.map(function(x){return el('option',{value:x.id},x.name);})));stateSelect.value=ui.stateId||'';stateSelect.addEventListener('change',function(){ui.stateId=stateSelect.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Initial status'),stateSelect));}
-              var labels=ui.options.labels||[];
-              if(labels.length){var labelSelect=el('select',{'aria-label':'Labels',multiple:'multiple'},labels.map(function(x){return el('option',{value:x.id},x.name);}));Array.from(labelSelect.options).forEach(function(o){o.selected=ui.labelIds.indexOf(o.value)>=0;});labelSelect.addEventListener('change',function(){ui.labelIds=Array.from(labelSelect.selectedOptions).map(function(o){return o.value;});});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Labels (optional)'),labelSelect));}
-              var users=ui.options.users||[];
-              if(users.length){var assignee=el('select',{'aria-label':'Assignee'},[el('option',{value:''},'Unassigned')].concat(users.map(function(x){return el('option',{value:x.id},x.name||x.email||'User');})));assignee.value=ui.assigneeId||'';assignee.addEventListener('change',function(){ui.assigneeId=assignee.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Assignee'),assignee));}
+              var priorityCfg=templateField('priority');
+              if(!ui.template||priorityCfg){
+                var priority=el('select',{'aria-label':'Priority'},[['0','No priority'],['1','Urgent'],['2','High'],['3','Normal'],['4','Low']].map(function(x){return el('option',{value:x[0]},x[1]);}));priority.value=ui.priority;priority.required=!!(priorityCfg&&priorityCfg.required);priority.addEventListener('change',function(){ui.priority=priority.value;ui.fields.priority=priority.value;});
+                box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Priority'+(priority.required?' *':'')),priority));
+              }
+              var stateCfg=templateField('stateId'),states=ui.options.team.states?.nodes||[];
+              if(states.length&&(!ui.template||stateCfg)){var stateSelect=el('select',{'aria-label':'Initial status'},[el('option',{value:''},'Use team default')].concat(states.map(function(x){return el('option',{value:x.id},x.name);})));stateSelect.value=ui.stateId||'';stateSelect.required=!!(stateCfg&&stateCfg.required);stateSelect.addEventListener('change',function(){ui.stateId=stateSelect.value;ui.fields.stateId=stateSelect.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Initial status'+(stateSelect.required?' *':'')),stateSelect));}
+              var labelsCfg=templateField('labelIds'),labels=ui.options.labels||[];
+              if(labels.length&&(!ui.template||labelsCfg)){var labelSelect=el('select',{'aria-label':'Labels',multiple:'multiple'},labels.map(function(x){return el('option',{value:x.id},x.name);}));Array.from(labelSelect.options).forEach(function(o){o.selected=ui.labelIds.indexOf(o.value)>=0;});labelSelect.required=!!(labelsCfg&&labelsCfg.required);labelSelect.addEventListener('change',function(){ui.labelIds=Array.from(labelSelect.selectedOptions).map(function(o){return o.value;});ui.fields.labelIds=ui.labelIds;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Labels'+(labelSelect.required?' *':'')),labelSelect));}
+              var assigneeCfg=templateField('assigneeId'),users=ui.options.users||[];
+              if(users.length&&(!ui.template||assigneeCfg)){var assignee=el('select',{'aria-label':'Assignee'},[el('option',{value:''},'Unassigned')].concat(users.map(function(x){return el('option',{value:x.id},x.name||x.email||'User');})));assignee.value=ui.assigneeId||'';assignee.required=!!(assigneeCfg&&assigneeCfg.required);assignee.addEventListener('change',function(){ui.assigneeId=assignee.value;ui.fields.assigneeId=assignee.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Assignee'+(assignee.required?' *':'')),assignee));}
+              var projectCfg=templateField('projectId2'),projects=ui.options.team.projects?.nodes||[];
+              if(projects.length&&(!ui.template||projectCfg)){var ps=el('select',{'aria-label':'Linear project'},[el('option',{value:''},'No project')].concat(projects.map(function(x){return el('option',{value:x.id},x.name);})));ps.value=ui.projectId2||'';ps.required=!!(projectCfg&&projectCfg.required);ps.addEventListener('change',function(){ui.projectId2=ps.value;ui.fields.projectId2=ps.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Project'+(ps.required?' *':'')),ps));}
             }
             if(ui.provider==='jira'&&ui.options.fields){
               ui.options.fields.forEach(function(field){
+                var cfg=templateField(field.id);if(ui.template&&!cfg)return;
                 var val=ui.fields[field.id];if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}
                 var control;
                 if(field.allowedValues&&field.allowedValues.length){
@@ -746,11 +757,11 @@
                   else control.value=String(val);
                   control.addEventListener('change',function(){ui.fields[field.id]=field.type==='array'?Array.from(control.selectedOptions).map(function(o){return o.value;}):control.value;});
                 }else{
-                  control=el(field.type==='number'?'input':'input',{type:field.type==='number'?'number':field.type==='date'?'date':'text',value:val,'aria-label':field.name});
+                  control=el('input',{type:field.type==='number'?'number':field.type==='date'?'date':'text',value:val,'aria-label':field.name});
                   control.addEventListener('input',function(){ui.fields[field.id]=control.value;});
                 }
-                control.required=!!field.required;
-            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(field.required?' *':'')),control));
+                control.required=!!field.required||!!(cfg&&cfg.required);
+                box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(control.required?' *':'')),control));
               });
             }
             box.appendChild(el('button',{type:'button',class:'btn sm external-create-submit',onclick:createIssue},ui.busy?'Creating…':'Create and link issue'));
