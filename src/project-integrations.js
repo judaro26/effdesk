@@ -308,7 +308,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
           const field=allowed.get(id); if(!field||value===null||value===''||Array.isArray(value)&&!value.length) continue;
           const choices=field.allowedValues||[];
           const one=v=>{const found=choices.find(o=>String(o.id)===String(v)||String(o.name)===String(v));if(field.system==='assignee'||field.type==='user'||field.items==='user')return {accountId:found?(found.id||found.name):v};return found?(found.id?{id:found.id}:{name:found.name}):v;};
-          fields[id]=Array.isArray(value)?value.map(one):one(value);
+          const normalized=field.type==='array'&&typeof value==='string'?value.split(',').map(x=>x.trim()).filter(Boolean):value; fields[id]=Array.isArray(normalized)?normalized.map(one):one(normalized);
         }
         const missing=meta.fields.filter(f=>f.required&&(fields[f.id]===undefined||fields[f.id]===null||fields[f.id]===''||(Array.isArray(fields[f.id])&&!fields[f.id].length))); const templateMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]===''||(Array.isArray(values[f.id])&&!values[f.id].length))); templateMissing.forEach(f=>{if(!missing.some(x=>x.id===f.id))missing.push(f);});
         if(missing.length) return fail(400,'Complete the required fields: '+missing.map(f=>f.name).join(', ')+'.');
