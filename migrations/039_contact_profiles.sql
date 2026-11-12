@@ -35,11 +35,9 @@ select distinct on (t.org_id, lower(trim(t.requester_email)))
 from tickets t
 left join clients k on k.org_id=t.org_id and k.domain<>'' and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2))
 where t.requester_email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
-order by t.org_id, lower(trim(t.requester_email)), (t.requester_name<>'') desc, t.updated_at desc
+order by t.org_id, lower(trim(t.requester_email)), (t.requester_name<>'') desc, t.updated_at desc, k.id asc
 on conflict(org_id,email) do nothing;
 
 -- Ensure historical tickets follow the same domain-based company association.
-update tickets t set client_id=k.id
-from clients k
-where t.org_id=k.org_id and t.client_id is null and k.domain<>''
-  and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2));
+update tickets t set client_id=(select min(k.id) from clients k where k.org_id=t.org_id and k.domain<>'' and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2)))
+where t.client_id is null and exists (select 1 from clients k where k.org_id=t.org_id and k.domain<>'' and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2)));
