@@ -318,7 +318,8 @@
     }
     function htmlPlain(html) {
       var box = doc.createElement('div'); box.innerHTML = String(html || '');
-      [].slice.call(box.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,tr,blockquote,pre')).forEach(function (n) { n.appendChild(doc.createTextNode('\n')); });
+      [].slice.call(box.querySelectorAll('img')).forEach(function (n) { var alt = n.getAttribute('alt') || ''; if (alt) n.parentNode.replaceChild(doc.createTextNode('[' + alt + ']'), n); else n.parentNode.removeChild(n); });
+      [].slice.call(box.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li,tr,td,th,blockquote,pre,figcaption')).forEach(function (n) { n.appendChild(doc.createTextNode('\n')); });
       [].slice.call(box.querySelectorAll('br')).forEach(function (n) { n.parentNode.replaceChild(doc.createTextNode('\n'), n); });
       return String(box.textContent || '').replace(/\u00a0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     }
