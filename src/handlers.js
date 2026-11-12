@@ -20,7 +20,8 @@ import { source as migrationSource, Wait, Bad, PROVIDERS } from './migration-sou
 import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { validAvatar } from './avatar.js';
 import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
-import * as desk from './desk.js';\nimport { syncTicketUpdate, syncTicketComment } from './project-integrations.js';
+import * as desk from './desk.js';
+import { syncTicketUpdate, syncTicketComment } from './project-integrations.js';
 import { getSla, saveSla, slaOf, slaNumbers } from './sla.js';
 import { getHours, saveHours, calendarOf } from './hours.js';
 import { report as buildReport, reportCsv } from './reports.js';
@@ -288,7 +289,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
         for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
         const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files, { html: b.html }); r.email = d.delivery; r.emailWhy = d.why;
       }
-      if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);\n      if (r.ok && b.body) await syncTicketComment(pool, env, orgId, b.number, b.body);
+      if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
+      if (r.ok && b.body) await syncTicketComment(pool, env, orgId, b.number, b.body);
       if (r.ok) await emitHook(pool, orgId, 'message.agent', b.number, { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
