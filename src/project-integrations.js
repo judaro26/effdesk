@@ -79,15 +79,29 @@ function jiraIssueShape(x,siteHost) {
   return {id:x.id,key:x.key,title:x.fields?.summary||x.key,url:'https://'+String(siteHost||'').replace(/^https?:\/\//,'').replace(/\/+$/,'')+'/browse/'+x.key,status:x.fields?.status?.name||'',project:x.fields?.project?.name||'',issueType:x.fields?.issuetype?.name||'',updatedAt:x.fields?.updated};
 }
 async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
-  const types=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes',{cloudId});
+  const types=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes?maxResults=100',{cloudId});
   const issueTypes=types.issueTypes||[];
   if(!issueTypeId) return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask}))};
-  const detail=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes/'+encodeURIComponent(issueTypeId),{cloudId});
-  const fields=Object.entries(detail.fields||{}).map(([id,x])=>({
-    id,name:x.name,required:!!x.required,type:x.schema?.type||'string',items:x.schema?.items||'',system:x.schema?.system||'',
-    allowedValues:(x.allowedValues||[]).slice(0,100).map(v=>({id:v.id??v.accountId??v.key??'',name:v.name??v.displayName??v.value??String(v.id??'')})),
-    defaultValue:x.defaultValue??null
-  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution','summary','description'].includes(x.id));
+  const detail=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes/'+encodeURIComponent(issueTypeId)+'?maxResults=100',{cloudId});
+  // The current Jira endpoint returns a paged array of required field descriptors. The
+  // older create-meta response can enrich those descriptors with schema/options while it remains available.
+  const descriptors=Array.isArray(detail.fields)?detail.fields.map(x=>({id:x.fieldId||x.key,name:x.name,required:!!x.required})):Object.entries(detail.fields||{}).map(([id,x])=>({id,name:x.name,required:!!x.required}));
+  let richFields={};
+  try {
+    const legacy=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta?projectKeys='+encodeURIComponent(projectKey)+'&issuetypeIds='+encodeURIComponent(issueTypeId)+'&expand=projects.issuetypes.fields',{cloudId});
+    const project=(legacy.projects||[]).find(x=>x.key===projectKey);
+    const type=(project?.issuetypes||[]).find(x=>String(x.id)===String(issueTypeId));
+    richFields=type?.fields||{};
+  } catch(e) { console.warn('Jira legacy create-field enrichment unavailable:',e.message); }
+  const fields=descriptors.filter(x=>x.id&&!['project','issuetype','reporter','creator','created','updated','status','resolution','summary','description'].includes(x.id)).map(x=>{
+    const rich=richFields[x.id]||{};
+    return {
+      id:x.id,name:x.name||rich.name||x.id,required:x.required||!!rich.required,
+      type:rich.schema?.type||'string',items:rich.schema?.items||'',system:rich.schema?.system||'',
+      allowedValues:(rich.allowedValues||[]).slice(0,100).map(v=>({id:v.id??v.accountId??v.key??'',name:v.name??v.displayName??v.value??String(v.id??'')})),
+      defaultValue:rich.defaultValue??null
+    };
+  });
   return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask})),fields};
 }
 
