@@ -69,7 +69,14 @@ export async function getTicket(pool, orgId, actor, number) {
     if (!t) return fail('No such ticket.', 404);
     const messages = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
     const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
-    for (const m of messages) m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
+    for (const m of messages) {
+      // Older automations or integrations may have stored HTML markup in body before html_body existed.
+      if (!m.html_body && /<\\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img)\\b/i.test(String(m.body || ''))) {
+        const safe = cleanHtml(String(m.body).slice(0, 100000));
+        if (safe && /<\\/?[a-z][^>]*>/i.test(safe)) { m.html_body = safe; m.body = plainOf(safe) || m.body; }
+      }
+      m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
+    }
     return { ok: true, ticket: t, messages };
   });
 }
