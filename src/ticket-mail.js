@@ -105,9 +105,10 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const textBody = richHtml ? String(richHtml).replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim() : m.body;
     const text = `${textBody}${sig}${foot}`;
     const safeCustomHtml = richHtml ? sanitizeHtml(String(richHtml), { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','img','figure','figcaption','table','thead','tbody','tr','th','td','hr','div','span','center','small','caption','colgroup','col'], allowedAttributes: { a: ['href','name','target'], img: ['src','alt','width','height','title'], table: ['role','width','cellpadding','cellspacing','border','align','bgcolor'], col: ['span'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
-    const appBase = String(PRODUCT.appUrl || '').replace(/\\/$/, '');
-    const absoluteCustomHtml = safeCustomHtml ? safeCustomHtml.replace(/\\b(src|href)="\\/(?!\\/)/g, (_, attr) => `${attr}="${appBase}/`) : null;
-    const html = `${absoluteCustomHtml || fmtHtml(m.body)}`${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+    const appBase = String(PRODUCT.appUrl || '').replace(/\/$/, '');
+    const absoluteCustomHtml = safeCustomHtml ? safeCustomHtml.replace(/\b(src|href)="\/(?!\/)/g, (_, attr) => `${attr}="${appBase}/`) : null;
+    const html = `${absoluteCustomHtml || fmtHtml(m.body)}${settings?.signature ? `<p style="color:#68737d;white-space:pre-wrap">-- <br>${esc(settings.signature)}</p>` : ''}${foot ? `<p style="color:#68737d">${esc(foot.trim())}</p>` : ''}`;
+
     const headers = { 'Message-ID': mid, ...(data.prev.length ? { 'In-Reply-To': data.prev[0], References: data.prev.slice().reverse().join(' ') } : {}), 'Auto-Submitted': 'no' };
     let providerId; try { providerId = await mailer.ticketMail({ from, to: t.requester_email, ...(t.cc && t.cc.length ? { cc: t.cc } : {}), replyTo, subject: `[#${t.number}] ${t.subject}`, text, html, headers, ...(files.length ? { attachments: files.map(f => ({ filename: f.filename, content: f.bytes.toString('base64') })) } : {}) }); }
     catch (e) { console.warn('ticket mail failed:', e.message); await mark('failed'); return { delivery: 'failed' }; }
