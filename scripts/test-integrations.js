@@ -33,6 +33,17 @@ check('saving a picture works, shows in init for me and for my teammates, and ca
 check('a bad picture is refused with an explanation', (await A(ann, 'prefs-save', { avatar: 'data:image/png;base64,AAAA' })).status === 400);
 await A(ann, 'prefs-save', { avatar: PNG }); await A(ann, 'prefs-save', { theme: 'midnight' });
 check('saving a theme later does not wipe the picture', (await A(ann, 'init')).body.avatar === PNG);
+const savedTicketPrefs = await A(ann, 'ticket-prefs-save', {
+  filters: { status: 'active', q: 'heater', columnFilters: { priority: 'urgent', requester: 'Tina', number: '12', invalid: 'ignored' } },
+  columns: ['status', 'subject', 'priority']
+});
+const annTicketPrefs = (await A(ann, 'init')).body.ticketPrefs;
+const oliviaTicketPrefs = (await A(olivia, 'init')).body.ticketPrefs;
+check('ticket filters and visible columns persist per agent across init/session reloads', savedTicketPrefs.status === 200 && annTicketPrefs.filters.q === 'heater' && annTicketPrefs.filters.columnFilters.priority === 'urgent' && annTicketPrefs.filters.columnFilters.requester === 'Tina' && annTicketPrefs.columns.join() === 'status,subject,priority' && oliviaTicketPrefs.filters.q === '' && oliviaTicketPrefs.columns.includes('number'));
+await B(otto, 'ticket-prefs-save', { filters: { status: 'solved', q: 'beta' }, columns: ['number', 'updated'] });
+check('ticket preferences are isolated by both organization and agent', (await A(ann, 'init')).body.ticketPrefs.filters.q === 'heater' && (await B(otto, 'init')).body.ticketPrefs.filters.q === 'beta');
+check('invalid ticket filter values are discarded and an empty column layout is refused', (await A(ann, 'ticket-prefs-save', { filters: { status: 'javascript', columnFilters: { priority: 'root' } }, columns: [] })).status === 400 && (await A(ann, 'ticket-prefs-save', { filters: { status: 'javascript', columnFilters: { priority: 'root' } }, columns: ['status'] })).status === 200 && (await A(ann, 'init')).body.ticketPrefs.filters.status === 'active' && !('priority' in (await A(ann, 'init')).body.ticketPrefs.filters.columnFilters));
+
 
 check('handles are read from the text', JSON.stringify(handlesIn('hi @Ann, cc (@olivia) and a@b.com @ann.')) === JSON.stringify(['ann', 'olivia']));
 const t1 = (await A(olivia, 'create', { subject: 'Boiler', body: 'cold', requesterEmail: 'tina@example.com' })).body.ticket;
