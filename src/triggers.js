@@ -95,7 +95,7 @@ async function apply(pool, mailer, env, orgId, rule, t) {
     } else if (a.type === 'add_note') await addMessage(pool, orgId, actor, t.number, { body: a.value, internal: true });
     else if (a.type === 'auto_reply') {
       const first = String(t.requester_name || '').split(' ')[0] || 'there', ticketNumber = String(t.number), ticketSubject = String(t.subject || ''), body = a.value.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*ticket_number\s*\}\}/g, ticketNumber).replace(/\{\{\s*ticket_subject\s*\}\}/g, ticketSubject);
-      const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote)\b/i.test(body);
+      const hasHtml = /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img|figure|center)\b/i.test(body);
       const safeHtml = hasHtml ? sanitizeHtml(body, { allowedTags: ['p','br','strong','b','em','i','u','s','ul','ol','li','h1','h2','h3','blockquote','a','img','figure','figcaption','table','thead','tbody','tr','th','td','hr','div','span','center','small','caption','colgroup','col'], allowedAttributes: { a: ['href','name','target'], img: ['src','alt','width','height','title'], table: ['role','width','cellpadding','cellspacing','border','align','bgcolor'], col: ['span'], tr: ['align','valign'], td: ['align','valign','width','height','bgcolor','colspan','rowspan'], th: ['align','valign','width','height','bgcolor','colspan','rowspan'], '*': ['style'] }, allowedSchemes: ['http','https','mailto'], allowedStyles: EMAIL_ALLOWED_STYLES }) : null;
       const messageText = safeHtml ? plainOf(safeHtml) : body;
       const r = await addMessage(pool, orgId, actor, t.number, { body: messageText, htmlBody: safeHtml || undefined, internal: false, status: t.status });
