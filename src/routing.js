@@ -22,7 +22,7 @@ export async function myAvailability(pool, orgId, userId) { return withOrg(pool,
 export async function autoAssign(c, orgId, ticketId) {
   const s = (await c.query('select enabled, strategy, max_open from routing_settings where org_id = $1', [orgId])).rows[0]; if (!s || !s.enabled) return null;
   const rows = (await c.query(`select m."userId" as id, u.name, u.email, coalesce(a.available, true) as available, a.last_assigned_at,
-      (select count(*)::int from tickets t where t.org_id = $1 and t.assignee_id = m."userId" and t.status in ('open','pending')) as open
+      (select count(*)::int from tickets t where t.org_id = $1 and t.assignee_id = m."userId" and t.status in ('open','pending','on_hold')) as open
     from member m join "user" u on u.id = m."userId" left join agent_status a on a.org_id = $1 and a.user_id = m."userId"
     where m."organizationId" = $1 and m.role in ('owner','admin','member')`, [orgId])).rows;
   const ok = rows.filter(r => r.available && (!s.max_open || r.open < s.max_open)); if (!ok.length) return null;
