@@ -120,7 +120,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     if(!n) return fail(400,'Choose an EffDesk ticket.');
     const data=await withOrg(pool,org,async db=>{
       const connections=(await db.query('select provider,external_workspace_name,external_workspace_url from project_integrations where org_id=$1 order by provider',[org])).rows;
-      const links=(await db.query('select provider,external_issue_id,external_issue_key,external_issue_url,external_project_id,last_synced_at,created_at from project_issue_links where org_id=$1 and ticket_number=$2 order by created_at desc',[org,n])).rows;
+      const links=(await db.query('select id,provider,external_issue_id,external_issue_key,external_issue_url,external_project_id,last_synced_at,created_at from project_issue_links where org_id=$1 and ticket_number=$2 order by created_at desc',[org,n])).rows;
       return {connections,links};
     });
     return json(200,data);
