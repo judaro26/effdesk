@@ -1002,7 +1002,7 @@
         var open1 = !mClosed[g[0]];
         return el('div', { class: 'mgroup' }, el('button', { type: 'button', class: 'mgh', 'data-group': g[0], 'aria-expanded': String(open1), onclick: function () { mClosed[g[0]] = open1; draw(); } }, el('span', {}, g[0]), el('span', { class: 'chev', 'aria-hidden': 'true' }, open1 ? '▾' : '▸')), !open1 ? null : items.map(function (t) {
           var locked = t[3] && !has(t[3]);
-          return el('button', { type: 'button', class: 'mnav-i', 'data-manage-tab': t[0], 'aria-current': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; mDetail = true; draw(); } }, el('span', {}, t[1]), locked ? el('span', { class: 'mplan' }, PLAN_OF[t[3]] || 'Upgrade') : null);
+          return el('button', { type: 'button', class: 'mnav-i', 'data-manage-tab': t[0], 'aria-current': String(manage === t[0]), onclick: function () { manage = t[0]; mEdit = null; if(t[0]==='contacts'){contactProfile=null;contactRows=null;} mDetail = true; draw(); if(t[0]==='contacts')loadContacts(); } }, el('span', {}, t[1]), locked ? el('span', { class: 'mplan' }, PLAN_OF[t[3]] || 'Upgrade') : null);
         }));
       }));
       var body, afterSave = function (msg) { return loadInit().then(function () { mEdit = null; say(msg); }); };
