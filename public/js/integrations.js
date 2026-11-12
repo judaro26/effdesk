@@ -1,10 +1,19 @@
 (function(){
 'use strict';
-var $=function(id){return document.getElementById(id);}, org=$('org'), notice=$('notice'), providers=$('providers'), target=$('target'), provider=$('provider');
+var $=function(id){return document.getElementById(id);}, org=$('org'), notice=$('notice'), providers=$('providers'), target=$('target'), provider=$('provider'), credentialProvider=$('credential-provider');
 var call=function(method,path,body){return fetch(path,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().catch(function(){return{};}).then(function(data){if(!r.ok)throw new Error(data.error||'Request failed ('+r.status+').');return data;});});};
 var say=function(s,bad){notice.textContent=s||'';notice.className='msg'+(bad?' err':'');};
 var el=function(tag,attrs,text){var x=document.createElement(tag);Object.keys(attrs||{}).forEach(function(k){x.setAttribute(k,attrs[k]);});if(text!=null)x.textContent=text;return x;};
 var base=function(){return '/api/integrations';}, endpoint=function(path){return base()+path+'?org='+encodeURIComponent(org.value);};
+function loadCredentialSettings(){
+ if(!org.value)return Promise.resolve();
+ var p=credentialProvider.value;
+ $('oauth-redirect').textContent=location.origin+'/api/integrations/oauth/callback';
+ return call('GET',endpoint('/app-credentials')+'&provider='+encodeURIComponent(p)).then(function(d){
+  $('client-id').value='';$('client-secret').value='';
+  $('credential-status').textContent=d.customConfigured?'Organization-owned OAuth app is configured for '+p+'.':'Using EffDesk shared OAuth app'+(d.platformConfigured?'.':'; no shared app is configured yet. Add your own credentials to enable connection.');
+ }).catch(function(e){$('credential-status').textContent=e.message;});
+}
 function loadConnections(){
  return call('GET',endpoint('/connections')).then(function(d){
   providers.replaceChildren();
@@ -38,11 +47,23 @@ $('create').addEventListener('click',function(){
  var body={provider:p,ticketNumber:n,teamId:p==='linear'?opt.value:undefined,projectKey:p==='jira'?(opt.dataset.key||opt.value):undefined,cloudId:target.dataset.cloudId,siteHost:target.dataset.siteHost};
  call('POST',endpoint('/link'),body).then(function(d){say('Issue created and linked.');loadLinks();}).catch(function(e){say(e.message,true);});
 });
-provider.addEventListener('change',loadCatalog);$('ticket').addEventListener('change',loadLinks);org.addEventListener('change',function(){loadConnections();loadCatalog();});
+provider.addEventListener('change',loadCatalog);$('ticket').addEventListener('change',loadLinks);org.addEventListener('change',function(){loadConnections();loadCatalog();loadCredentialSettings();});
+credentialProvider.addEventListener('change',loadCredentialSettings);
+$('save-credentials').addEventListener('click',function(){
+ var p=credentialProvider.value, clientId=$('client-id').value.trim(), clientSecret=$('client-secret').value;
+ if(!clientId||!clientSecret){$('credential-status').textContent='Enter both Client ID and Client Secret.';return;}
+ call('POST',endpoint('/app-credentials'),{provider:p,clientId:clientId,clientSecret:clientSecret}).then(function(){
+  $('client-id').value='';$('client-secret').value='';$('credential-status').textContent='Organization OAuth credentials saved securely. You can now connect '+p+'.';
+ }).catch(function(e){$('credential-status').textContent=e.message;});
+});
+$('reset-credentials').addEventListener('click',function(){
+ var p=credentialProvider.value;
+ call('DELETE',endpoint('/app-credentials'),{provider:p}).then(function(){loadCredentialSettings();}).catch(function(e){$('credential-status').textContent=e.message;});
+});
 call('GET','/api/me').then(function(d){
  var orgs=d.organizations||[];org.replaceChildren();orgs.forEach(function(o){var x=el('option',{value:o.id},o.name+' ('+o.slug+')');org.appendChild(x);});
  var wanted=new URLSearchParams(location.search).get('org');if(wanted&&orgs.some(function(o){return o.id===wanted;}))org.value=wanted;
  if(!orgs.length){say('No workspace was found for this account.',true);return;}
- return Promise.all([loadConnections(),loadCatalog()]);
+ return Promise.all([loadConnections(),loadCatalog(),loadCredentialSettings()]);
 }).catch(function(e){say(e.message,true);});
 })();
