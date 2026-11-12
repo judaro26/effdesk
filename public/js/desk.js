@@ -654,7 +654,7 @@
         var createIssue=function(){
           if(!ui.projectId||!String(ui.title||'').trim())return;
           ui.busy=true;ui.error='';redraw();
-          request('POST','create-issue',{provider:ui.provider,ticketNumber:t.number,projectId:ui.projectId,projectId2:ui.projectId2,stateId:ui.stateId,labelIds:ui.labelIds,issueTypeId:ui.issueTypeId,title:ui.title,description:ui.description,priority:ui.priority,assigneeId:ui.assigneeId,fields:ui.fields}).then(function(){ui.mode='idle';ui.busy=false;ui.loaded=false;ui.catalog=null;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
+          request('POST','create-issue',{provider:ui.provider,ticketNumber:t.number,templateId:ui.templateId||undefined,projectId:ui.projectId,projectId2:ui.projectId2,stateId:ui.stateId,labelIds:ui.labelIds,issueTypeId:ui.issueTypeId,title:ui.title,description:ui.description,priority:ui.priority,assigneeId:ui.assigneeId,fields:ui.fields}).then(function(){ui.mode='idle';ui.busy=false;ui.loaded=false;ui.catalog=null;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
         };
         loadContext();
         var box=el('div',{class:'pcard external-issues'});
@@ -666,7 +666,7 @@
           return box;
         }
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
-        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
+        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
         box.appendChild(tabs);
         if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/integrations.html?org='+encodeURIComponent(orgId)},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
         var links=ui.links.filter(function(x){return x.provider===ui.provider;});
