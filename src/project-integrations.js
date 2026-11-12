@@ -257,7 +257,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(req.method==='POST' && path.endsWith('/create-issue')) {
     const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,templateId=Number(b.templateId)||0; let project=clean(b.projectId,100),title=clean(b.title,500),description=String(b.description||'').slice(0,20000),template=null,templateFields=[];
-    if(!PROVIDERS.has(p)||!n||!project||!title) return fail(400,'Complete the project/team and issue title.');
+    if(!PROVIDERS.has(p)||!n||(!templateId&&(!project||!title))) return fail(400,'Choose a ticket, project/team, and issue title or a saved template.');
     try {
       const ticket=(await withOrg(pool,org,db=>db.query('select number,subject,status,priority,requester_name,requester_email from tickets where org_id=$1 and number=$2',[org,n]))).rows[0];
       if(!ticket) return fail(404,'EffDesk ticket not found.');
@@ -279,6 +279,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         b.fields=values;
         if(values.title!==undefined) title=clean(values.title,500);
         if(values.description!==undefined) description=String(values.description).slice(0,20000);
+        if(!title) title='[EffDesk #'+ticket.number+'] '+ticket.subject;
         if(template.provider==='jira') b.issueTypeId=template.issue_type_id;
       }
       if(!project||!title) return fail(400,'Complete the project/team and issue title.');
