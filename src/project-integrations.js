@@ -59,7 +59,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
+    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -68,10 +68,10 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     try {
       const token=await tokenFor(pool,env,org,p);
       if(p==='linear') { const d=await apiCall(p,token,'POST','query { teams { nodes { id name } } }'); return json(200,{items:d.teams.nodes.map(x=>({id:x.id,name:x.name}))}); }
-      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
       if(!conn) return fail(400,'Connect Jira first.');
       const d=await apiCall(p,token,'GET','/rest/api/3/project/search?maxResults=100',{cloudId:conn.external_workspace_id});
-      return json(200,{cloudId:conn.external_workspace_id,items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
+      return json(200,{cloudId:conn.external_workspace_id,siteHost:String(conn.external_workspace_url||'').replace(/^https?:\\/\\//,'').replace(/\\/$/,''),items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
     } catch(e) { return fail(502,e.message); }
   }
   if(req.method==='GET' && path.endsWith('/links')) {
@@ -125,18 +125,18 @@ async function oauthCallback(req,{pool,env}) {
   const [clientId,clientSecret]=envKeys(row.provider,env);
   try {
     const d=await requestToken(row.provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'authorization_code',code,redirect_uri:callbackUrl(env),client_id:clientId,client_secret:clientSecret});
-    let workspaceId=null,workspaceName=null,webhookToken=crypto.randomBytes(32).toString('base64url'),webhookSecret=crypto.randomBytes(32).toString('base64url');
+    let workspaceId=null,workspaceName=null,workspaceUrl=null,webhookToken=crypto.randomBytes(32).toString('base64url'),webhookSecret=crypto.randomBytes(32).toString('base64url');
     if(row.provider==='jira') {
       const rr=await fetch('https://api.atlassian.com/oauth/token/accessible-resources',{headers:{authorization:'Bearer '+d.access_token,accept:'application/json'}});
       const sites=await rr.json(); const site=sites[0]; if(!site) throw new Error('No Jira Cloud site was authorized.');
-      workspaceId=site.id; workspaceName=site.name;
+      workspaceId=site.id; workspaceName=site.name; workspaceUrl=site.url;
     } else {
       const g=await apiCall('linear',d.access_token,'POST','query { viewer { id name } organization { id name } }');
       workspaceId=g.organization?.id; workspaceName=g.organization?.name;
     }
     const base=String(env.APP_URL||'https://app.effdesk.com').replace(/\/+$/, '');
     const hookUrl=row.provider==='linear'?base+'/api/integrations/webhook/linear/'+encodeURIComponent(row.org_id):base+'/api/integrations/webhook/jira/'+encodeURIComponent(row.org_id)+'?key='+encodeURIComponent(webhookToken);
-    await withOrg(pool,row.org_id,c=>c.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,webhook_secret_enc,webhook_url_token_hash,webhook_url_token_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,webhook_secret_enc=$8,webhook_url_token_hash=$9,webhook_url_token_enc=$10,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null,row.provider==='jira'?enc(env,webhookToken):null]));
+    await withOrg(pool,row.org_id,c=>c.query('insert into project_integrations (org_id,provider,access_token_enc,refresh_token_enc,expires_at,external_workspace_id,external_workspace_name,external_workspace_url,webhook_secret_enc,webhook_url_token_hash,webhook_url_token_enc) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (org_id,provider) do update set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,external_workspace_id=$6,external_workspace_name=$7,external_workspace_url=$8,webhook_secret_enc=$9,webhook_url_token_hash=$10,webhook_url_token_enc=$11,updated_at=now()',[row.org_id,row.provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):null,d.expires_in?new Date(Date.now()+Number(d.expires_in)*1000):null,workspaceId,workspaceName,workspaceUrl,row.provider==='linear'?enc(env,webhookSecret):null,row.provider==='jira'?hash(webhookToken):null,row.provider==='jira'?enc(env,webhookToken):null]));
     if(row.provider==='linear') { try { await apiCall('linear',d.access_token,'POST',`mutation WebhookCreate($input: WebhookCreateInput!) { webhookCreate(input:$input) { success webhook { id } } }`,{input:{url:hookUrl,secret:webhookSecret,resourceTypes:['Issue','Comment']}}); } catch(e) { console.warn('Linear webhook registration:',e.message); } }
     else { try { await apiCall('jira',d.access_token,'POST','/rest/api/3/webhook',{cloudId:workspaceId,payload:{webhooks:[{jqlFilter:'project is not EMPTY',events:['jira:issue_updated','comment_created'],url:hookUrl,excludeBody:false}]}}); } catch(e) { console.warn('Jira webhook registration:',e.message); } }
     return Response.redirect(base+'/desk.html?org='+encodeURIComponent(row.org_id)+'&integration='+row.provider,303);
