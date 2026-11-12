@@ -212,6 +212,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         const input={teamId:project,title,description:description||'EffDesk ticket #'+n};
         if(b.priority!==undefined&&b.priority!==null&&b.priority!=='') input.priority=Math.max(0,Math.min(4,Number(b.priority)));
         if(b.projectId2) input.projectId=clean(b.projectId2,100);
+        if(b.stateId) input.stateId=clean(b.stateId,100);
         if(b.assigneeId) input.assigneeId=clean(b.assigneeId,100);
         if(Array.isArray(b.labelIds)) input.labelIds=b.labelIds.map(x=>clean(x,100)).filter(Boolean).slice(0,20);
         const d=await apiCall(p,token,'POST','mutation CreateIssue($input:IssueCreateInput!){ issueCreate(input:$input){ success issue { id identifier title url team { id } } } }',{input});
