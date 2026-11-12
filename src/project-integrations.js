@@ -14,6 +14,11 @@ const secret = env => String(env.BETTER_AUTH_SECRET || '');
 const callbackUrl = env => appBase(env) + '/api/integrations/oauth/callback';
 const appBase = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/+$/, '');
 const envKeys = (p,env) => p === 'linear' ? [env.LINEAR_CLIENT_ID,env.LINEAR_CLIENT_SECRET] : [env.JIRA_CLIENT_ID,env.JIRA_CLIENT_SECRET];
+async function oauthCredentials(pool,env,org,provider) {
+  const row=(await withOrg(pool,org,c=>c.query('select client_id_enc,client_secret_enc from project_integration_apps where org_id=$1 and provider=$2',[org,provider]))).rows[0];
+  if(row) return [dec(env,row.client_id_enc),dec(env,row.client_secret_enc)];
+  return envKeys(provider,env);
+}
 const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access';
 const b64 = v => Buffer.from(v).toString('base64url');
 const enc = (env,v) => seal(secret(env),v);
@@ -42,7 +47,7 @@ async function tokenFor(pool,env,org,provider) {
   const row=(await withOrg(pool,org,c=>c.query('select access_token_enc,refresh_token_enc,expires_at from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
   if(!row) throw new Error('Connect '+provider+' first.');
   if(row.expires_at && new Date(row.expires_at).getTime()<Date.now()+60000 && row.refresh_token_enc) {
-    const [id,sec]=envKeys(provider,env), refresh=dec(env,row.refresh_token_enc);
+    const [id,sec]=await oauthCredentials(pool,env,org,provider), refresh=dec(env,row.refresh_token_enc);
     const d=await requestToken(provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'refresh_token',refresh_token:refresh,client_id:id,client_secret:sec});
     const exp=new Date(Date.now()+Number(d.expires_in||3600)*1000);
     await withOrg(pool,org,c=>c.query('update project_integrations set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,updated_at=now() where org_id=$1 and provider=$2',[org,provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):row.refresh_token_enc,exp]));
@@ -59,6 +64,12 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const org=clean(url.searchParams.get('org') || (await req.clone().json().catch(()=>({}))).orgId,100);
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
+  if(req.method==='GET' && path.endsWith('/app-credentials')) {
+    const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    const row=(await withOrg(pool,org,c=>c.query('select provider from project_integration_apps where org_id=$1 and provider=$2',[org,p]))).rows[0];
+    const [platformId,platformSecret]=envKeys(p,env);
+    return json(200,{provider:p,customConfigured:!!row,platformConfigured:!!(platformId&&platformSecret),mode:row?'custom':'platform'});
+  }
   if(req.method==='GET' && path.endsWith('/connections')) {
     const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?appBase(env)+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):appBase(env)+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
@@ -81,9 +92,22 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     return json(200,{links});
   }
   const b=await req.json().catch(()=>({}));
+  if(path.endsWith('/app-credentials') && req.method==='POST') {
+    const p=clean(b.provider,20), clientId=clean(b.clientId,500), clientSecret=clean(b.clientSecret,2000);
+    if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    if(!clientId||!clientSecret) return fail(400,'Enter both the OAuth Client ID and Client Secret.');
+    if(clientId.length<3||clientSecret.length<8) return fail(400,'The OAuth credentials do not appear valid.');
+    await withOrg(pool,org,c=>c.query('insert into project_integration_apps (org_id,provider,client_id_enc,client_secret_enc) values ($1,$2,$3,$4) on conflict (org_id,provider) do update set client_id_enc=$3,client_secret_enc=$4,updated_at=now()',[org,p,enc(env,clientId),enc(env,clientSecret)]));
+    return json(200,{ok:true,provider:p,mode:'custom'});
+  }
+  if(path.endsWith('/app-credentials') && req.method==='DELETE') {
+    const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    await withOrg(pool,org,c=>c.query('delete from project_integration_apps where org_id=$1 and provider=$2',[org,p]));
+    return json(200,{ok:true,provider:p,mode:'platform'});
+  }
   if(path.endsWith('/oauth/start') && req.method==='POST') {
     const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
-    const [clientId,clientSecret]=envKeys(p,env); if(!clientId||!clientSecret) return fail(503,'Set '+(p==='linear'?'LINEAR':'JIRA')+'_CLIENT_ID and _CLIENT_SECRET in Netlify environment variables first.');
+    const [clientId,clientSecret]=await oauthCredentials(pool,env,org,p); if(!clientId||!clientSecret) return fail(503,'No OAuth app is configured. Ask an EffDesk administrator to configure the platform app or enter your organization’s own OAuth credentials.');
     const state=crypto.randomBytes(32).toString('base64url');
     await pool.query('delete from project_oauth_states where expires_at < now()');
     await pool.query('insert into project_oauth_states (state_hash,org_id,user_id,provider,expires_at) values ($1,$2,$3,$4,now()+interval \'10 minutes\')',[hash(state),org,s.user.id,p]);
@@ -124,7 +148,7 @@ async function oauthCallback(req,{pool,env}) {
   const row=(await pool.query('delete from project_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,provider',[hash(state)])).rows[0];
   if(!row) return new Response('This connection request expired. Return to EffDesk and try again.',{status:400});
   if(!['owner','admin'].includes(await member(pool,row.org_id,row.user_id))) return new Response('Only a workspace owner or admin can complete this connection.',{status:403});
-  const [clientId,clientSecret]=envKeys(row.provider,env);
+  const [clientId,clientSecret]=await oauthCredentials(pool,env,row.org_id,row.provider);
   try {
     const d=await requestToken(row.provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'authorization_code',code,redirect_uri:callbackUrl(env),client_id:clientId,client_secret:clientSecret});
     let workspaceId=null,workspaceName=null,workspaceUrl=null,webhookToken=crypto.randomBytes(32).toString('base64url'),webhookSecret=crypto.randomBytes(32).toString('base64url');
