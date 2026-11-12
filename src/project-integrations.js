@@ -11,7 +11,7 @@ const json = (status, body) => new Response(JSON.stringify(body), {status,header
 const fail = (status,error) => json(status,{error});
 const hash = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 const secret = env => String(env.BETTER_AUTH_SECRET || '');
-const callbackUrl = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/$/,'') + '/api/integrations/oauth/callback';
+const appBase = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/+$/, '');
 const envKeys = (p,env) => p === 'linear' ? [env.LINEAR_CLIENT_ID,env.LINEAR_CLIENT_SECRET] : [env.JIRA_CLIENT_ID,env.JIRA_CLIENT_SECRET];
 const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access';
 const b64 = v => Buffer.from(v).toString('base64url');
@@ -59,7 +59,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):String(env.APP_URL||'https://app.effdesk.com').replace(/\\/$/,'')+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
+    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?appBase(env)+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):appBase(env)+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
@@ -71,7 +71,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
       if(!conn) return fail(400,'Connect Jira first.');
       const d=await apiCall(p,token,'GET','/rest/api/3/project/search?maxResults=100',{cloudId:conn.external_workspace_id});
-      return json(200,{cloudId:conn.external_workspace_id,siteHost:String(conn.external_workspace_url||'').replace(/^https?:\\/\\//,'').replace(/\\/$/,''),items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
+      return json(200,{cloudId:conn.external_workspace_id,siteHost:String(conn.external_workspace_url||'').split('://').pop().replace(/\/+$/, ''),items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
     } catch(e) { return fail(502,e.message); }
   }
   if(req.method==='GET' && path.endsWith('/links')) {
