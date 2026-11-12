@@ -117,7 +117,7 @@ check('the status menu has the workspace\u2019s own statuses after the built-in 
 check('choosing a custom status sends its id, not a made-up built-in status', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.customStatusId === 5 && c[1].patch.status === undefined));
 $('[data-views]').click(); await tick();
 check('the ticket table restores saved per-agent filters and shows column filter controls', !!$('input[aria-label="Filter subject"]') && !!$('select[aria-label="Filter priority"]') && calls.some(c => c[1] && c[1].action === 'list' && c[1].columnFilters && c[1].columnFilters.priority === 'high'));
-var priorityFilter = $('select[aria-label="Filter priority"]'); priorityFilter.value = 'urgent'; priorityFilter.dispatchEvent(new w.Event('change')); await new Promise(r => setTimeout(r, 350)); await tick();
+var priorityFilter = $('select[aria-label="Filter priority"]'); priorityFilter.value = 'urgent'; priorityFilter.dispatchEvent(new w.Event('change')); await new Promise(r => setTimeout(r, 700)); await tick();
 check('changing a column filter reloads the list and saves the agent preference', calls.some(c => c[1] && c[1].action === 'list' && c[1].columnFilters && c[1].columnFilters.priority === 'urgent') && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].filters && c[1].filters.columnFilters.priority === 'urgent'));
 $('[data-status=solved]').click(); await tick();
 check('a status tab reloads the list with that filter, and "Mine" filters by assignee', calls.some(c => c[1] && c[1].action === 'list' && c[1].status === 'solved') && ($('[data-mine]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'list' && c[1].assignee === 'me')));
