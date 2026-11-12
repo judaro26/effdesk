@@ -44,6 +44,10 @@ r = await call(olivia, { orgId: acme.id, action: 'reply', number: 1, body: 'Fixe
 t = (await call(olivia, { orgId: acme.id, action: 'get', number: 1 })).body;
 check('replying with a status solves the ticket and stamps solved_at; reopening clears it', r.body.status === 'solved' && t.ticket.solved_at && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'open' } })).body.ticket.solved_at === null);
 check('an unknown status or priority is refused', (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'weird' } })).status === 400 && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { priority: 'x' } })).status === 400);
+r = await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'on_hold' } });
+check('on-hold is a valid, unresolved ticket status and appears in its own filter', r.status === 200 && r.body.ticket.status === 'on_hold' && await ids({ status: 'on_hold' }) === '1');
+check('on-hold tickets are included in the Active filter', await ids({ status: 'active' }) === '1,2');
+await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'open' } });
 check('a ticket can be assigned to a member, not to an outsider, and unassigned', (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assigneeId: ann.user.id } })).body.ticket.assignee_id === ann.user.id && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assigneeId: otto.user.id } })).status === 400 && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assigneeId: null } })).body.ticket.assignee_id === null);
 await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assigneeId: ann.user.id, tags: ['Heat', 'vip'] } });
 const ids = async q => (await call(ann, { orgId: acme.id, action: 'list', ...q })).body.tickets.map(x => x.number).sort().join();
