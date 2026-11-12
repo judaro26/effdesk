@@ -103,7 +103,7 @@ export async function storeInbound(pool, store, fetchFn, env, orgId, ticketNumbe
         const rawContentId = a.content_id || a.contentId || a.contentID || a.content_id_header || a.contentIdHeader || detail.content_id || detail.contentId || detail.contentID || detail.content_id_header || detail.contentIdHeader;
         const contentId = String(rawContentId || '').replace(/^\s*<|>\s*$/g, '').trim();
         const disposition = String(a.content_disposition || a.contentDisposition || detail.content_disposition || detail.contentDisposition || '').toLowerCase();
-        const isInline = !!contentId && (disposition === 'inline' || !disposition);
+        const isInline = !!contentId && (disposition.startsWith('inline') || !disposition);
         const id = crypto.randomUUID(); await store.set(orgId + '/' + id, bytes); total += bytes.length; used += bytes.length;
         await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, message_id, filename, content_type, size, is_inline) values ($1,$2,$3,$4,$5,$6,$7,$8)', [id, orgId, ticket.id, messageRowId, name, cleanType(a.content_type), bytes.length, isInline]));
         if (isInline) inline.push({ contentId, id, contentType: cleanType(a.content_type || detail.content_type) });
