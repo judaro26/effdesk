@@ -2,42 +2,50 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>External integrations | EffDesk</title>
+<meta name="robots" content="noindex"><meta name="theme-color" content="#03363d"><title>External integrations | EffDesk</title>
 <link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/desk.css">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 </head>
 <body class="deskapp integrations-page">
-<header><div class="in"><a class="brand" href="/desk.html">Eff<span>Desk</span></a><nav><a href="/desk.html">Back to tickets</a></nav></div></header>
-<main class="wrap" style="max-width:900px;margin:36px auto;padding:0 20px">
-  <div class="integrations-hero"><div class="integrations-hero-icon" aria-hidden="true">↗</div><div><p class="integrations-eyebrow">WORKSPACE CONNECTIONS</p><h1>External integrations</h1><p class="m">Connect your project tools to keep tickets and engineering work in sync.</p></div></div>
-  <label for="org">Workspace</label><select id="org"></select>
-  <p id="notice" class="msg" role="status" aria-live="polite"></p>
-  <details class="integration-advanced"><summary>Advanced · Use your own OAuth application (optional)</summary>
-  <section class="integration-credentials">
-    <h2>OAuth application credentials</h2>
-    <p class="m">Use EffDesk's shared application by default. An organization owner can optionally register its own Linear or Jira OAuth app and store its credentials here. Secrets are encrypted and never displayed again.</p>
-    <div class="form-grid">
-      <label>Provider<select id="credential-provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
-      <label>OAuth Client ID<input id="client-id" autocomplete="off" placeholder="Client ID"></label>
-      <label>OAuth Client Secret<input id="client-secret" type="password" autocomplete="new-password" placeholder="Client Secret"></label>
-      <button id="save-credentials" type="button">Save organization credentials</button>
-      <button id="reset-credentials" type="button">Use EffDesk default</button>
-    </div>
-    <p id="credential-status" class="m" role="status" aria-live="polite"></p>
-    <p class="m">OAuth redirect URL to register with either provider: <code id="oauth-redirect"></code></p><p class="m">Requested scopes — Linear: <code>read</code>, <code>write</code>, <code>issues:create</code>, <code>comments:create</code>. Jira: <code>read:jira-work</code>, <code>write:jira-work</code>, <code>read:jira-user</code>, <code>manage:jira-webhook</code>, <code>offline_access</code>.</p>
+<header class="integrations-header"><div class="in"><a class="brand" href="/desk.html">Eff<span>Desk</span></a><nav><a href="/desk.html">← Back to tickets</a></nav></div></header>
+<main class="integrations-main">
+  <section class="integrations-hero">
+    <div class="integrations-hero-icon" aria-hidden="true">✳</div>
+    <div class="integrations-hero-copy"><p class="integrations-eyebrow">WORKSPACE CONNECTIONS</p><h1>Connect your tools</h1><p class="integrations-lead">Bring your engineering workflow into EffDesk. Keep tickets, issues and conversations moving together.</p></div>
   </section>
-  </details>
+  <section class="integrations-workspace">
+    <div><span class="integrations-section-kicker">MANAGING WORKSPACE</span><strong>Choose a workspace</strong></div>
+    <label class="integrations-workspace-select"><span class="sr-only">Workspace</span><select id="org" aria-label="Workspace"></select></label>
+  </section>
+  <p id="notice" class="msg integrations-notice" role="status" aria-live="polite" hidden></p>
+  <div class="integrations-section-heading"><div><span class="integrations-section-kicker">AVAILABLE CONNECTIONS</span><h2>Project management</h2><p class="m">Choose the tools your team uses. You can connect either or both.</p></div><span class="integrations-secure"><span aria-hidden="true">⌑</span> Secure OAuth</span></div>
   <section id="providers" class="integration-provider-grid" aria-label="Project management providers"></section>
-  <section style="margin-top:28px">
-    <h2>Link a ticket to a new issue</h2>
-    <div class="form-grid">
+  <details class="integration-advanced">
+    <summary><span class="integration-advanced-icon" aria-hidden="true">⚙</span><span><strong>Advanced settings</strong><small>Use your own OAuth application instead of EffDesk’s shared connection</small></span><span class="integration-optional">OPTIONAL</span></summary>
+    <section class="integration-credentials">
+      <h2>Organization OAuth credentials</h2>
+      <p class="m">EffDesk’s shared OAuth application is used by default. Only configure these fields if your organization requires its own provider application. Secrets are encrypted and never displayed again.</p>
+      <div class="integration-form-grid">
+        <label>Provider<select id="credential-provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
+        <label>OAuth Client ID<input id="client-id" autocomplete="off" placeholder="Client ID"></label>
+        <label>OAuth Client Secret<input id="client-secret" type="password" autocomplete="new-password" placeholder="Client Secret"></label>
+      </div>
+      <div class="integration-credential-actions"><button id="save-credentials" class="btn" type="button">Save credentials</button><button id="reset-credentials" class="btn l" type="button">Use EffDesk default</button></div>
+      <p id="credential-status" class="m" role="status" aria-live="polite">Using EffDesk shared OAuth app.</p>
+      <details class="integration-technical"><summary>OAuth setup details</summary><p class="m">Redirect URL: <code id="oauth-redirect">https://app.effdesk.com/api/integrations/oauth/callback</code></p><p class="m">Linear scopes: <code>read</code>, <code>write</code>, <code>issues:create</code>, <code>comments:create</code>. Jira scopes: <code>read:jira-work</code>, <code>write:jira-work</code>, <code>read:jira-user</code>, <code>manage:jira-webhook</code>, <code>offline_access</code>.</p></details>
+    </section>
+  </details>
+  <section class="integration-linker">
+    <div class="integrations-section-heading"><div><span class="integrations-section-kicker">TICKET WORKFLOW</span><h2>Link a ticket to an issue</h2><p class="m">Create a new Linear issue or Jira issue directly from an EffDesk ticket.</p></div></div>
+    <div class="integration-form-grid integration-link-form">
       <label>EffDesk ticket number<input id="ticket" type="number" min="1" placeholder="e.g. 1042"></label>
       <label>Provider<select id="provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
-      <label id="target-label">Team / project<select id="target"></select></label>
-      <button id="create" type="button">Create and link issue</button>
+      <label id="target-label">Linear team<select id="target"><option value="">Connect Linear first</option></select></label>
+      <button id="create" class="btn" type="button">Create and link issue <span aria-hidden="true">→</span></button>
     </div>
     <div id="links" aria-live="polite"></div>
   </section>
+  <footer class="integrations-footer">Your workspace connections are encrypted and scoped to the selected organization.</footer>
 </main>
 <script src="/js/integrations.js" defer></script>
 </body></html>
