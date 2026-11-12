@@ -83,13 +83,14 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(req.method==='GET' && path.endsWith('/catalog')) {
     const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
     try {
+      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      // An unconnected provider is a normal setup state, not an upstream gateway failure.
+      if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first to load its teams or projects.');
       const token=await tokenFor(pool,env,org,p);
       if(p==='linear') { const d=await apiCall(p,token,'POST','query { teams { nodes { id name } } }'); return json(200,{items:d.teams.nodes.map(x=>({id:x.id,name:x.name}))}); }
-      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
-      if(!conn) return fail(400,'Connect Jira first.');
       const d=await apiCall(p,token,'GET','/rest/api/3/project/search?maxResults=100',{cloudId:conn.external_workspace_id});
       return json(200,{cloudId:conn.external_workspace_id,siteHost:String(conn.external_workspace_url||'').split('://').pop().replace(/\/+$/, ''),items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
-    } catch(e) { return fail(502,e.message); }
+    } catch(e) { console.error('external integration catalog:',p,e.message); return fail(502,'The provider catalog could not be loaded. '+e.message); }
   }
   if(req.method==='GET' && path.endsWith('/links')) {
     const n=Number(url.searchParams.get('ticketNumber'))||0;
