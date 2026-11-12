@@ -342,7 +342,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'csat-set': if ((g = adminOnly())) return g; await setCsatOn(pool, orgId, b.on === true); r = { ok: true, csatOn: b.on === true }; break;
     case 'mail-save': if (role !== 'owner' && role !== 'admin') return json(403, { error: 'Only an owner or an admin can change the email settings.' }); r = await saveMailSettings(pool, orgId, b, env); break;
     case 'note': {
-      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, internal: true });
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, htmlBody: b.html, internal: true });
       if (r.ok) {
         const ids = (await mentionedIds(pool, orgId, b.body)).filter(i => i !== actor.id);
         for (const id of ids) await notifyTicket(pool, mailer, orgId, b.number, { kind: 'mention', onlyUserId: id, actorId: actor.id, summary: `${actor.name || actor.email}: ${String(b.body).slice(0, 250)}` });
