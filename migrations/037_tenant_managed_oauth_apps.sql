@@ -20,3 +20,7 @@ create policy project_integration_apps_tenant on project_integration_apps
 -- the organization's configured app does not break refresh of an existing token.
 alter table project_integrations add column if not exists oauth_client_id_enc text;
 alter table project_integrations add column if not exists oauth_client_secret_enc text;
+
+-- Bind each pending OAuth state to the exact app credentials used to start it.
+alter table project_oauth_states add column if not exists oauth_client_id_enc text;
+alter table project_oauth_states add column if not exists oauth_client_secret_enc text;
