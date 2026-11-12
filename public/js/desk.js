@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
-    var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -117,19 +117,39 @@
     qPop.hidden = true; qBox.parentNode.insertBefore(qWrap, qBox); qWrap.appendChild(qBox); qWrap.appendChild(qPop);
     qBox.setAttribute('role', 'combobox'); qBox.setAttribute('aria-expanded', 'false'); qBox.setAttribute('aria-controls', 'qpop'); qBox.setAttribute('aria-autocomplete', 'list');
     function qClose() { qPop.hidden = true; qItems = []; qSel = -1; qBox.setAttribute('aria-expanded', 'false'); qBox.removeAttribute('aria-activedescendant'); }
-    function qPick(i) { var t = qItems[i]; if (!t) return; var n = t.number; qClose(); qBox.value = ''; qBox.blur(); open(n); }
+    function qPick(i) {
+      var item=qItems[i];if(!item)return;qClose();qBox.value='';qBox.blur();
+      if(item.kind==='ticket')return open(item.number);
+      closePanes();home=false;current=null;creating=false;settings=null;articles=null;report=null;profile=false;
+      if(item.kind==='contact')return openContact(item.email);
+      if(item.kind==='company'){manage='clients';mEdit={id:item.id,name:item.name,domain:item.domain||''};mDetail=true;draw();return;}
+      if(item.kind==='agent'){manage='team';agentOpen=item.id;mDetail=true;team=null;draw();return;}
+    }
     function qDraw() {
-      while (qPop.firstChild) qPop.removeChild(qPop.firstChild);
-      if (!qItems.length) { qPop.appendChild(el('div', { class: 'qnone m' }, 'No tickets match. Press Enter to search everything.')); }
-      qItems.forEach(function (t, i) { qPop.appendChild(el('div', { class: 'qi', role: 'option', id: 'qi' + i, 'aria-selected': String(i === qSel), 'data-qresult': String(t.number), onmousedown: function (e) { e.preventDefault(); qPick(i); } }, el('strong', {}, '#' + t.number), ' ' + t.subject, el('span', { class: 'badge s-' + t.status }, cap(t.status)), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email))); });
-      if (qItems.length) qPop.appendChild(el('div', { class: 'qfoot m' }, 'Enter to see all results · ↑ ↓ to choose'));
-      qPop.hidden = false; qBox.setAttribute('aria-expanded', 'true');
-      if (qSel >= 0) qBox.setAttribute('aria-activedescendant', 'qi' + qSel); else qBox.removeAttribute('aria-activedescendant');
+      while(qPop.firstChild)qPop.removeChild(qPop.firstChild);
+      if(!qItems.length)qPop.appendChild(el('div',{class:'qnone m'},'No matching tickets, agents, contacts or companies.'));
+      var groups=[['ticket','Tickets'],['contact','Contacts'],['company','Companies'],['agent','Agents']];
+      groups.forEach(function(g){
+        var matches=qItems.map(function(x,i){return {item:x,index:i};}).filter(function(x){return x.item.kind===g[0];});
+        if(!matches.length)return;
+        qPop.appendChild(el('div',{class:'qgroup-label'},g[1]));
+        matches.forEach(function(x){
+          var a=x.item,title='',meta='';
+          if(a.kind==='ticket'){title='#'+a.number+' '+a.subject;meta=(a.requester_name?a.requester_name+' · ':'')+a.requester_email;}
+          else if(a.kind==='contact'){title=a.name||a.email;meta=a.email+(a.company_name?' · '+a.company_name:'');}
+          else if(a.kind==='company'){title=a.name;meta=a.domain?'@'+a.domain:'Company';}
+          else{title=a.name||a.email;meta=a.email+' · '+a.role;}
+          qPop.appendChild(el('button',{type:'button',class:'qi qresult',role:'option',id:'qi'+x.index,'aria-selected':String(x.index===qSel),onmousedown:function(e){e.preventDefault();qPick(x.index);}},el('span',{class:'qresult-icon'},a.kind==='ticket'?'#':a.kind==='contact'?'◉':a.kind==='company'?'▦':'♙'),el('span',{class:'qresult-copy'},el('strong',{},title),el('span',{class:'m'},meta)),a.kind==='ticket'?el('span',{class:'badge s-'+a.status},cap(a.status)):null));
+        });
+      });
+      if(qItems.length)qPop.appendChild(el('div',{class:'qfoot m'},'Select a result · Enter to search tickets · ↑ ↓ to choose'));
+      qPop.hidden=false;qBox.setAttribute('aria-expanded','true');
+      if(qSel>=0)qBox.setAttribute('aria-activedescendant','qi'+qSel);else qBox.removeAttribute('aria-activedescendant');
     }
     var qTimer = 0;
     qBox.addEventListener('input', function () {
       root.clearTimeout(qTimer); var v = qBox.value.trim(); if (v.length < 2) { qSeq++; return qClose(); }
-      qTimer = root.setTimeout(function () { var my = ++qSeq; api('list', { q: v, limit: 6 }).then(function (r) { if (my !== qSeq || !r.ok) return; qItems = r.body.tickets; qSel = -1; qDraw(); }); }, 200);
+      qTimer = root.setTimeout(function () { var my = ++qSeq; api('global-search', { q: v }).then(function (r) { if (my !== qSeq || !r.ok) return; var b=r.body;qItems=(b.tickets||[]).map(function(x){return Object.assign({kind:'ticket'},x);}).concat((b.contacts||[]).map(function(x){return Object.assign({kind:'contact'},x);}), (b.companies||[]).map(function(x){return Object.assign({kind:'company'},x);}), (b.agents||[]).map(function(x){return Object.assign({kind:'agent'},x);}));qSel=-1;qDraw(); }); }, 200);
     });
     qBox.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (qPop.hidden || !qItems.length) return; e.preventDefault(); qSel = (qSel + (e.key === 'ArrowDown' ? 1 : -1) + qItems.length + 1) % (qItems.length + 1); if (qSel === qItems.length) qSel = -1; qDraw(); }
