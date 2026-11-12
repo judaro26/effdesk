@@ -115,7 +115,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     const [clientId,clientSecret]=await oauthCredentials(pool,env,org,p); if(!clientId||!clientSecret) return fail(503,'No OAuth app is configured. Ask an EffDesk administrator to configure the platform app or enter your organization’s own OAuth credentials.');
     const state=crypto.randomBytes(32).toString('base64url');
     await pool.query('delete from project_oauth_states where expires_at < now()');
-    await pool.query('insert into project_oauth_states (state_hash,org_id,user_id,provider,expires_at,oauth_client_id_enc,oauth_client_secret_enc) values ($1,$2,$3,$4,now()+interval \'10 minutes\',$5,$6)';[hash(state),org,s.user.id,p,enc(env,clientId),enc(env,clientSecret)]);
+    await pool.query('insert into project_oauth_states (state_hash,org_id,user_id,provider,expires_at,oauth_client_id_enc,oauth_client_secret_enc) values ($1,$2,$3,$4,now()+interval \'10 minutes\',$5,$6)',[hash(state),org,s.user.id,p,enc(env,clientId),enc(env,clientSecret)]);
     const authUrl=p==='linear'?'https://linear.app/oauth/authorize':'https://auth.atlassian.com/authorize';
     const u=new URL(authUrl);
     Object.entries({client_id:clientId,redirect_uri:callbackUrl(env),response_type:'code',state,scope:scopes(p),...(p==='jira'?{audience:'api.atlassian.com',prompt:'consent'}:{})}).forEach(([k,v])=>u.searchParams.set(k,v));
