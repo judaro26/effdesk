@@ -19,9 +19,9 @@
   var PLAN_OF = { article_import: 'Team', sso: 'Pro', live_chat: 'Suite', whatsapp: 'Suite', custom_fields: 'Suite', light_agents: 'Team', bulk_actions: 'Team', queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team', api: 'Suite' };
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
-    var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '' }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
+    var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
-    var hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -71,8 +71,19 @@
       if (!doc.getElementById('supportbar')) { var bar = el('div', { id: 'supportbar', class: 'supportbar', role: 'status', 'data-support-bar': '1' }, 'Support view: you are looking at this workspace with the customer’s permission. It is read-only and every visit is logged for them. ', el('a', { href: '/admin.html#customers' }, 'Back to the admin page')); doc.body.insertBefore(bar, doc.body.firstChild); }
       if (!supportEntered) { supportEntered = true; api('support-enter'); }
     }
-    function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; statuses = b.statuses || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; if (support) supportBar(); views = b.views || []; labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
-    function refresh() { kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
+    function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; statuses = b.statuses || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; if (support) supportBar(); views = b.views || []; if (b.ticketPrefs) { filter = Object.assign({ status: 'active', assignee: '', q: '', columnFilters: {} }, b.ticketPrefs.filters || {}); ticketColumns = Array.isArray(b.ticketPrefs.columns) && b.ticketPrefs.columns.length ? b.ticketPrefs.columns.slice() : ticketColumns; qBox.value = filter.q || ''; ticketPrefsSig = JSON.stringify({ filters: filter, columns: ticketColumns }); } labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); }); }
+    function persistTicketPrefs() {
+      var snapshot = { filters: filter, columns: ticketColumns }, signature = JSON.stringify(snapshot);
+      if (signature === ticketPrefsSig) return;
+      root.clearTimeout(ticketPrefsTimer);
+      ticketPrefsTimer = root.setTimeout(function () {
+        api('ticket-prefs-save', snapshot).then(function (r) {
+          if (r.ok) ticketPrefsSig = signature;
+          else if (r.status !== 401) console.warn('Could not save ticket filters:', r.body.error || r.status);
+        });
+      }, 350);
+    }
+    function refresh() { persistTicketPrefs(); kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     // the address bar shows where you are, like /w/acme/agent/10042/tickets/57
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
@@ -208,7 +219,7 @@
     }
 
     // ── Views: filters, queues, saved views and the ticket table ──
-    function applyFilter(f, columns) { filter = Object.assign({ status: '', assignee: '', q: '' }, f); qBox.value = filter.q || ''; if (Array.isArray(columns) && columns.length) ticketColumns = columns.slice(); refresh(); }
+    function applyFilter(f, columns) { filter = Object.assign({ status: '', assignee: '', q: '', columnFilters: {} }, f); qBox.value = filter.q || ''; if (Array.isArray(columns) && columns.length) ticketColumns = columns.slice(); refresh(); }
     function viewsPane() {
       var n = function (s) { return s === 'active' ? (counts.open || 0) + (counts.pending || 0) + (counts.on_hold || 0) : counts[s]; };
       var flt = function (label, pressed, onclick, count, data) { var b = el('button', { type: 'button', class: 'flt', 'aria-pressed': String(pressed), onclick: onclick }, el('span', {}, label), count != null && count !== '' ? el('span', { class: 'n' }, String(count)) : null); if (data) b.setAttribute(data[0], data[1]); return b; };
@@ -250,6 +261,30 @@
         sla: { label: 'SLA', cls: 'c-sla', cell: function (t) { return t.sla && t.sla.worst !== 'ok' && t.sla.worst !== 'met' ? el('span', { class: 'sla s-' + t.sla.worst, 'data-sla-row': t.sla.worst }, t.sla.worst === 'breached' ? 'Breached' : t.sla.worst === 'missed' ? 'Missed' : 'At risk') : '—'; } },
         updated: { label: 'Updated', cls: 'when', cell: function (t) { return ago(t.updated_at); } }
       };
+      var setColumnFilter = function (key, value) {
+        filter.columnFilters = filter.columnFilters || {};
+        if (value) filter.columnFilters[key] = value; else delete filter.columnFilters[key];
+        root.clearTimeout(columnFilterTimer);
+        columnFilterTimer = root.setTimeout(refresh, 300);
+      };
+      var textColumnFilter = function (key, placeholder, type) {
+        var input = el('input', { class: 'column-filter-input', type: type || 'search', 'aria-label': 'Filter ' + key, placeholder: placeholder, value: (filter.columnFilters || {})[key] || '' });
+        input.addEventListener('input', function () { setColumnFilter(key, input.value.trim()); });
+        input.addEventListener('change', function () { setColumnFilter(key, input.value.trim()); });
+        return input;
+      };
+      var columnControl = function (key) {
+        var cf = filter.columnFilters || {}, opts;
+        if (key === 'status') return sel('Filter status', cf.status || '', [['','Any status'],['open','Open'],['pending','Pending'],['on_hold','On hold'],['solved','Solved'],['closed','Closed']], function (v) { setColumnFilter(key, v); });
+        if (key === 'priority') return sel('Filter priority', cf.priority || '', [['','Any priority'],['low','Low'],['normal','Normal'],['high','High'],['urgent','Urgent']], function (v) { setColumnFilter(key, v); });
+        if (key === 'assignee') return sel('Filter assignee', cf.assignee || '', [['','Any assignee'],['me','Me'],['none','Unassigned']].concat(agents.map(function (a) { return [a.id, a.name || a.email]; })), function (v) { setColumnFilter(key, v); });
+        if (key === 'sla') return sel('Filter SLA', cf.sla || '', [['','Any SLA'],['risk','At risk'],['breached','Breached']], function (v) { setColumnFilter(key, v); });
+        if (key === 'number') return textColumnFilter('number', '#');
+        if (key === 'subject') return textColumnFilter('subject', 'Contains…');
+        if (key === 'requester') return textColumnFilter('requester', 'Name or email…');
+        if (key === 'updated') return el('div', { class: 'column-date-filters' }, textColumnFilter('updatedFrom', 'From', 'date'), textColumnFilter('updatedTo', 'To', 'date'));
+        return null;
+      };
       var shownColumns = ticketColumns.filter(function (k) { return columnDefs[k] && (k !== 'sla' || has('sla')); });
       var rows = list.map(function (t) {
         var tr = el('tr', { class: 'row', tabindex: '0', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number) });
@@ -261,12 +296,15 @@
       var columnPicker = columnsOpen ? el('div', { class: 'column-picker', role: 'group', 'aria-label': 'Ticket columns' },
         [['status','Status'],['number','Ticket'],['subject','Subject'],['requester','Requester'],['priority','Priority'],['assignee','Assignee'],['sla','SLA'],['updated','Updated']].filter(function (x) { return x[0] !== 'sla' || has('sla'); }).map(function (x) {
           var cb = el('input', { type: 'checkbox', 'aria-label': x[1], 'data-column': x[0] }); cb.checked = ticketColumns.indexOf(x[0]) >= 0;
-          cb.addEventListener('change', function () { if (cb.checked) { if (ticketColumns.indexOf(x[0]) < 0) ticketColumns.push(x[0]); } else ticketColumns = ticketColumns.filter(function (k) { return k !== x[0]; }); draw(); });
+          cb.addEventListener('change', function () { if (cb.checked) { if (ticketColumns.indexOf(x[0]) < 0) ticketColumns.push(x[0]); } else ticketColumns = ticketColumns.filter(function (k) { return k !== x[0]; }); persistTicketPrefs(); draw(); });
           return el('label', { class: 'chk' }, cb, ' ' + x[1]);
         })) : null;
       return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, el('div', { class: 'views-head' }, el('div', {}, el('h2', {}, 'All Tickets'), el('p', { class: 'm' }, 'Browse, filter and manage every ticket in this workspace.')), el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-columns-toggle': '1', 'aria-expanded': String(columnsOpen), onclick: function () { columnsOpen = !columnsOpen; draw(); } }, 'Columns'), el('button', { type: 'button', class: 'btn l sm', 'data-list-refresh': '1', onclick: function () { var b = main.querySelector('[data-list-refresh]'); if (b) { b.disabled = true; b.textContent = 'Refreshing…'; } refresh().then(function () { say('Ticket list refreshed.'); }); } }, '↻ Refresh'))), columnPicker, bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {},
         (has('bulk_actions') ? [el('th', {}, (function () { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return all; })())] : []).concat(shownColumns.map(function (k) {
-          var th = el('th', { class: 'ticket-column-head', draggable: 'true', 'data-column-key': k, title: 'Drag to reorder ' + columnDefs[k].label }, el('span', { class: 'column-head-label' }, columnDefs[k].label), el('span', { class: 'column-drag-handle', 'aria-hidden': 'true' }, '⠿'));
+          var th = el('th', { class: 'ticket-column-head', draggable: 'true', 'data-column-key': k, title: 'Drag to reorder ' + columnDefs[k].label },
+            el('span', { class: 'column-head-label' }, columnDefs[k].label),
+            el('span', { class: 'column-drag-handle', 'aria-hidden': 'true' }, '⠿'),
+            columnControl(k));
           th.addEventListener('dragstart', function (e) { th.classList.add('dragging'); if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', k); } });
           th.addEventListener('dragend', function () { th.classList.remove('dragging'); [].slice.call(th.parentNode.children).forEach(function (x) { x.classList.remove('drag-over'); }); });
           th.addEventListener('dragover', function (e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; th.classList.add('drag-over'); });
@@ -280,7 +318,7 @@
             if (fromIndex < 0 || toIndex < 0) return;
             ordered.splice(toIndex, 0, ordered.splice(fromIndex, 1)[0]);
             ticketColumns = ordered.concat(ticketColumns.filter(function (x) { return ordered.indexOf(x) < 0; }));
-            draw();
+            persistTicketPrefs(); draw();
           });
           return th;
         }))
