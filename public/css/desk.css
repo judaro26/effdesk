@@ -615,3 +615,8 @@ html{-webkit-text-size-adjust:100%}
 .ticket-column-head .updated-date-filter button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .ticket-table tbody tr:first-child td{border-top:0}
 @media(max-width:800px){.contact-form-grid{grid-template-columns:1fr}.contact-notes{grid-column:auto}.contact-page-head{align-items:flex-start;flex-direction:column}.contact-toolbar{flex-direction:column}.ticket-table thead th.ticket-column-head{padding:9px 8px;min-width:100px}.ticket-column-head .column-head-label{font-size:9px}}
+
+.company-item .t{display:grid;gap:3px;min-width:0}
+.company-contact-link{margin:5px 5px 0 0;padding:3px 7px;border:1px solid var(--d-line);border-radius:999px;background:var(--d-bg);color:var(--accent-d);font-size:10px;cursor:pointer}
+.company-contact-link:hover{border-color:var(--accent);background:var(--d-hover)}
+.company-item .acts{align-self:center}
