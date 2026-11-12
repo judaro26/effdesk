@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
-    var hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
+    var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -588,6 +588,136 @@
         cards.push(lk);
       }
       if (x.merged.length) { cards.push(el('h3', {}, 'Merged into this ticket')); cards.push(el('div', { class: 'pcard' }, x.merged.map(function (m) { return el('div', { class: 'm' }, '#' + m.number + ' ' + m.subject); }))); }
+
+      // External project issues: search/link existing work or create a provider-native issue without leaving this ticket.
+      function externalIssuePanel() {
+        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''}));
+        var request=function(method,route,data){
+          var url='/api/integrations/'+route+'?org='+encodeURIComponent(orgId);
+          return fetchFn(url,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(Object.assign({orgId:orgId},data||{}))}).then(function(r){return r.json().catch(function(){return{};}).then(function(body){if(!r.ok)throw new Error(body.error||'External issue request failed.');return body;});});
+        };
+        var redraw=function(){if(current&&current.ticket.number===t.number)draw();};
+        var loadContext=function(){
+          if(ui.loaded||ui.loading)return;
+          ui.loading=true;
+          request('GET','ticket-context&ticketNumber='+t.number).then(function(d){ui.connections=d.connections||[];ui.links=d.links||[];ui.loaded=true;ui.loading=false;if(!ui.connections.some(function(x){return x.provider===ui.provider;}))ui.provider=ui.connections[0]?.provider||'linear';redraw();}).catch(function(e){ui.loading=false;ui.error=e.message;redraw();});
+        };
+        var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
+        var loadCatalog=function(){
+          if(ui.catalog&&ui.catalog.provider===ui.provider)return Promise.resolve(ui.catalog);
+          ui.catalog=null;ui.options=null;ui.projectId='';ui.issueTypeId='';
+          return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};return ui.catalog;});
+        };
+        var loadOptions=function(project,issueType){
+          ui.options=null;
+          return request('GET','issue-options&provider='+ui.provider+'&project='+encodeURIComponent(project||'')+'&issueType='+encodeURIComponent(issueType||'')).then(function(d){ui.options=d;return d;});
+        };
+        var runSearch=function(){
+          if(ui.query.trim().length<2)return;
+          ui.busy=true;ui.error='';ui.results=[];redraw();
+          request('GET','search&provider='+ui.provider+'&q='+encodeURIComponent(ui.query.trim())).then(function(d){ui.results=d.items||[];ui.busy=false;redraw();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
+        };
+        var linkExisting=function(issue){
+          ui.busy=true;ui.error='';redraw();
+          request('POST','link-existing',{provider:ui.provider,ticketNumber:t.number,issueId:issue.id}).then(function(){ui.mode='idle';ui.busy=false;ui.results=[];ui.loaded=false;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
+        };
+        var createIssue=function(){
+          if(!ui.projectId||!String(ui.title||'').trim())return;
+          ui.busy=true;ui.error='';redraw();
+          request('POST','create-issue',{provider:ui.provider,ticketNumber:t.number,projectId:ui.projectId,projectId2:ui.projectId2,issueTypeId:ui.issueTypeId,title:ui.title,description:ui.description,priority:ui.priority,assigneeId:ui.assigneeId,fields:ui.fields}).then(function(){ui.mode='idle';ui.busy=false;ui.loaded=false;ui.catalog=null;loadContext();}).catch(function(e){ui.busy=false;ui.error=e.message;redraw();});
+        };
+        loadContext();
+        var box=el('div',{class:'pcard external-issues'});
+        if(!ui.loaded){box.appendChild(el('p',{class:'m'},ui.loading?'Loading external connections…':ui.error||'Loading…'));return box;}
+        var connectedProviders=['linear','jira'].filter(connected);
+        if(!connectedProviders.length){
+          box.appendChild(el('p',{class:'m'},'No external project tools are connected to this workspace.'));
+          box.appendChild(el('a',{class:'btn l sm',href:'https://app.effdesk.com/integrations.html?org='+encodeURIComponent(orgId)},'Configure integrations'));
+          return box;
+        }
+        var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
+        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
+        box.appendChild(tabs);
+        var links=ui.links.filter(function(x){return x.provider===ui.provider;});
+        if(links.length){
+          links.forEach(function(link){
+            box.appendChild(el('div',{class:'external-linked-issue'},
+              el('div',{class:'external-linked-head'},el('strong',{},link.external_issue_key||'External issue'),el('span',{class:'external-sync-state'},link.last_synced_at?'Synced':'Linked')),
+              el('a',{href:link.external_issue_url||'#',target:'_blank',rel:'noopener'},link.external_issue_key||link.external_issue_id),
+              el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm||root.confirm('Unlink this issue from EffDesk? The issue will not be deleted.'))request('POST','unlink',{ticketNumber:t.number,linkId:link.id}).then(function(){ui.loaded=false;loadContext();}).catch(function(e){ui.error=e.message;redraw();});}},'Unlink')
+            ));
+          });
+        } else box.appendChild(el('p',{class:'m'},'No '+(ui.provider==='linear'?'Linear':'Jira')+' issues linked to this ticket yet.'));
+        var actions=el('div',{class:'external-issue-actions'},
+          el('button',{type:'button',class:'btn l sm',onclick:function(){ui.mode=ui.mode==='search'?'idle':'search';ui.error='';ui.results=[];redraw();}},'⌕ Search existing'),
+          el('button',{type:'button',class:'btn sm',onclick:function(){ui.mode=ui.mode==='create'?'idle':'create';ui.error='';redraw();if(ui.mode==='create')loadCatalog().then(function(){if(ui.provider==='jira'&&ui.projectId)return loadOptions(ui.projectId,'');}).then(redraw).catch(function(e){ui.error=e.message;redraw();});}},'+ Create new'));
+        box.appendChild(actions);
+        if(ui.error)box.appendChild(el('p',{class:'external-issue-error',role:'alert'},ui.error));
+        if(ui.mode==='search'){
+          var query=el('input',{type:'search',class:'external-issue-search','aria-label':'Search external issues',placeholder:'Search by issue key or title',value:ui.query});
+          query.addEventListener('input',function(){ui.query=query.value;});
+          query.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();runSearch();}});
+          box.appendChild(el('div',{class:'external-issue-search-row'},query,el('button',{type:'button',class:'btn sm',disabled:ui.busy?'disabled':null,onclick:runSearch},ui.busy?'Searching…':'Search')));
+          if(ui.results.length)ui.results.forEach(function(issue){box.appendChild(el('div',{class:'external-search-result'},el('div',{},el('strong',{},issue.key+' · '+issue.title),el('div',{class:'m'},[issue.team,issue.project,issue.status].filter(Boolean).join(' · '))),el('button',{type:'button',class:'btn l sm',disabled:ui.busy?'disabled':null,onclick:function(){linkExisting(issue);}},'Link')));});
+          else if(!ui.busy&&ui.query.length>=2)box.appendChild(el('p',{class:'m'},'No results yet. Search to find matching issues.'));
+        }
+        if(ui.mode==='create'){
+          if(!ui.catalog){box.appendChild(el('p',{class:'m'},'Loading provider projects…'));return box;}
+          var projectItems=ui.catalog.items||[];
+          var projectLabel=ui.provider==='linear'?'Linear team':'Jira project';
+          var projectSelect=el('select',{'aria-label':projectLabel},[el('option',{value:''},'Choose '+projectLabel.toLowerCase()+'…')].concat(projectItems.map(function(x){return el('option',{value:x.id},x.name+(x.key?' ('+x.key+')':''));})));
+          projectSelect.value=ui.projectId||'';
+          projectSelect.addEventListener('change',function(){ui.projectId=projectSelect.value;ui.options=null;ui.issueTypeId='';ui.fields={};if(ui.projectId)loadOptions(ui.projectId,'').then(function(d){if(ui.provider==='jira'&&d.issueTypes&&d.issueTypes.length===1){ui.issueTypeId=d.issueTypes[0].id;return loadOptions(ui.projectId,ui.issueTypeId);}}).then(redraw).catch(function(e){ui.error=e.message;redraw();});else redraw();});
+          box.appendChild(el('label',{class:'external-issue-field'},el('span',{},projectLabel),projectSelect));
+          if(ui.projectId&&ui.options&&ui.provider==='jira'&&ui.options.issueTypes){
+            var types=ui.options.issueTypes;
+            var typeSelect=el('select',{'aria-label':'Jira issue type'},[el('option',{value:''},'Choose issue type…')].concat(types.map(function(x){return el('option',{value:x.id},x.name); })));
+            typeSelect.value=ui.issueTypeId||'';
+            typeSelect.addEventListener('change',function(){ui.issueTypeId=typeSelect.value;ui.fields={};loadOptions(ui.projectId,ui.issueTypeId).then(redraw).catch(function(e){ui.error=e.message;redraw();});});
+            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Issue type'),typeSelect));
+          }
+          if(ui.provider==='linear'&&ui.options&&ui.options.team){
+            var projects=ui.options.team.projects?.nodes||[];
+            if(projects.length){var ps=el('select',{'aria-label':'Linear project'},[el('option',{value:''},'No project')].concat(projects.map(function(x){return el('option',{value:x.id},x.name);})));ps.value=ui.projectId2||'';ps.addEventListener('change',function(){ui.projectId2=ps.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Project (optional)'),ps));}
+          }
+          if(ui.provider==='linear'&&ui.projectId&&!ui.options){box.appendChild(el('p',{class:'m'},'Loading team fields…'));}
+          if(ui.provider==='jira'&&ui.issueTypeId&&(!ui.options||!ui.options.fields)){box.appendChild(el('p',{class:'m'},'Loading required fields…'));}
+          if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.options.fields)){
+            var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.addEventListener('input',function(){ui.title=titleInput.value;});
+            var descInput=el('textarea',{rows:'4','aria-label':'Issue description'});descInput.value=ui.description;descInput.addEventListener('input',function(){ui.description=descInput.value;});
+            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Title *'),titleInput));
+            box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Description'),descInput));
+            if(ui.provider==='linear'){
+              var priority=el('select',{'aria-label':'Priority'},[['0','No priority'],['1','Urgent'],['2','High'],['3','Normal'],['4','Low']].map(function(x){return el('option',{value:x[0]},x[1]);}));priority.value=ui.priority;priority.addEventListener('change',function(){ui.priority=priority.value;});
+              box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Priority'),priority));
+              var users=ui.options.users||[];
+              if(users.length){var assignee=el('select',{'aria-label':'Assignee'},[el('option',{value:''},'Unassigned')].concat(users.map(function(x){return el('option',{value:x.id},x.name||x.email||'User');})));assignee.value=ui.assigneeId||'';assignee.addEventListener('change',function(){ui.assigneeId=assignee.value;});box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Assignee'),assignee));}
+            }
+            if(ui.provider==='jira'&&ui.options.fields){
+              ui.options.fields.forEach(function(field){
+                var val=ui.fields[field.id]??(field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):field.defaultValue)||'';
+                var control;
+                if(field.allowedValues&&field.allowedValues.length){
+                  control=el('select',{'aria-label':field.name,'multiple':field.type==='array'},(field.type==='array'?[]:[el('option',{value:''},'— Select —')]).concat(field.allowedValues.map(function(v){return el('option',{value:v.id||v.name},v.name);})));
+                  if(field.type==='array'&&Array.isArray(val))Array.from(control.options).forEach(function(o){o.selected=val.indexOf(o.value)>=0;});
+                  else control.value=String(val);
+                  control.addEventListener('change',function(){ui.fields[field.id]=field.type==='array'?Array.from(control.selectedOptions).map(function(o){return o.value;}):control.value;});
+                }else{
+                  control=el(field.type==='number'?'input':'input',{type:field.type==='number'?'number':field.type==='date'?'date':'text',value:val,'aria-label':field.name});
+                  control.addEventListener('input',function(){ui.fields[field.id]=control.value;});
+                }
+                box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(field.required?' *':'')),control));
+              });
+            }
+            box.appendChild(el('button',{type:'button',class:'btn sm external-create-submit',disabled:ui.busy?'disabled':null,onclick:createIssue},ui.busy?'Creating…':'Create and link issue'));
+          }else if(ui.provider==='jira'&&!ui.issueTypeId&&ui.options)box.appendChild(el('p',{class:'m'},'Choose an issue type to load the fields required by this Jira project.'));
+          else if(ui.provider==='linear'&&ui.projectId&&!ui.options)box.appendChild(el('p',{class:'m'},'Loading team fields…'));
+        }
+        return box;
+      }
+      cards.push(el('h3', {}, 'External issues'));
+      cards.push(has('integrations')?externalIssuePanel():el('div',{class:'pcard'},lock('integrations')));
+
       cards.push(el('h3', {}, 'Side conversations'));
       if (!has('side_conversations')) cards.push(el('div', { class: 'pcard' }, lock('side_conversations')));
       else {
