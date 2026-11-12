@@ -105,6 +105,7 @@ const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'prior
 const PERSONAL_FILTER_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following', 'sla'];
 const COLUMN_FILTER_KEYS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updatedFrom', 'updatedTo', 'sla'];
 const DEFAULT_TICKET_FILTERS = { status: 'active', assignee: '', q: '', columnFilters: {} };
+const validDateOnly = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v)) && !Number.isNaN(Date.parse(String(v) + 'T00:00:00Z')) && new Date(String(v) + 'T00:00:00Z').toISOString().slice(0, 10) === String(v);
 const cleanTicketFilters = input => {
   const out = { ...DEFAULT_TICKET_FILTERS, columnFilters: {} };
   if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
