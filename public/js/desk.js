@@ -199,7 +199,7 @@
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
-      if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: '/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
+      if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
       if (isAdmin || support) rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
       rail.appendChild(item('help', 'Help center', 'data-help', loadArticles));
