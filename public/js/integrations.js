@@ -60,7 +60,7 @@ function templateIssueType(){return $('template-issue-type').value;}
 function setTemplateStatus(s,bad){var n=$('template-status');if(n){n.textContent=s||'';n.className='m'+(bad?' err':'');}}
 function loadTemplateList(){
  if(!org.value)return Promise.resolve();
- return templateCall('GET','/templates').then(function(d){templateRows=d.templates||[];$('template-form').hidden=!d.canManage;renderTemplateList();}).catch(function(e){$('template-list').textContent=e.message;});
+ return templateCall('GET','/templates').then(function(d){templateRows=d.templates||[];document.querySelector('.integration-template-layout').hidden=!d.canManage;$('template-permission').hidden=!!d.canManage;renderTemplateList();}).catch(function(e){$('template-list').textContent=e.message;});
 }
 function renderTemplateList(){
  var box=$('template-list');if(!box)return;box.replaceChildren();$('template-count').textContent=String(templateRows.length);
