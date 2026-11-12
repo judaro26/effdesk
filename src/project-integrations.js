@@ -15,11 +15,14 @@ const callbackUrl = env => appBase(env) + '/api/integrations/oauth/callback';
 const appBase = env => String(env.APP_URL || 'https://app.effdesk.com').replace(/\/+$/, '');
 const envKeys = (p,env) => p === 'linear' ? [env.LINEAR_CLIENT_ID,env.LINEAR_CLIENT_SECRET] : [env.JIRA_CLIENT_ID,env.JIRA_CLIENT_SECRET];
 async function oauthCredentials(pool,env,org,provider) {
-  const active=(await withOrg(pool,org,c=>c.query('select oauth_client_id_enc,oauth_client_secret_enc from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
-  if(active?.oauth_client_id_enc && active?.oauth_client_secret_enc) return [dec(env,active.oauth_client_id_enc),dec(env,active.oauth_client_secret_enc)];
   const configured=(await withOrg(pool,org,c=>c.query('select client_id_enc,client_secret_enc from project_integration_apps where org_id=$1 and provider=$2',[org,provider]))).rows[0];
   if(configured) return [dec(env,configured.client_id_enc),dec(env,configured.client_secret_enc)];
   return envKeys(provider,env);
+}
+async function connectionCredentials(pool,env,org,provider) {
+  const active=(await withOrg(pool,org,c=>c.query('select oauth_client_id_enc,oauth_client_secret_enc from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
+  if(active?.oauth_client_id_enc && active?.oauth_client_secret_enc) return [dec(env,active.oauth_client_id_enc),dec(env,active.oauth_client_secret_enc)];
+  return oauthCredentials(pool,env,org,provider);
 }
 const scopes = p => p === 'linear' ? 'read,write,issues:create,comments:create' : 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access';
 const b64 = v => Buffer.from(v).toString('base64url');
@@ -49,7 +52,7 @@ async function tokenFor(pool,env,org,provider) {
   const row=(await withOrg(pool,org,c=>c.query('select access_token_enc,refresh_token_enc,expires_at from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
   if(!row) throw new Error('Connect '+provider+' first.');
   if(row.expires_at && new Date(row.expires_at).getTime()<Date.now()+60000 && row.refresh_token_enc) {
-    const [id,sec]=await oauthCredentials(pool,env,org,provider), refresh=dec(env,row.refresh_token_enc);
+    const [id,sec]=await connectionCredentials(pool,env,org,provider), refresh=dec(env,row.refresh_token_enc);
     const d=await requestToken(provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'refresh_token',refresh_token:refresh,client_id:id,client_secret:sec});
     const exp=new Date(Date.now()+Number(d.expires_in||3600)*1000);
     await withOrg(pool,org,c=>c.query('update project_integrations set access_token_enc=$3,refresh_token_enc=$4,expires_at=$5,updated_at=now() where org_id=$1 and provider=$2',[org,provider,enc(env,d.access_token),d.refresh_token?enc(env,d.refresh_token):row.refresh_token_enc,exp]));
