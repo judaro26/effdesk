@@ -51,6 +51,120 @@ function renderProviders(){
   card.appendChild(foot);providers.appendChild(card);
  });
 }
+var templateRows=[],templateDefs=[],templateEditingId=0;
+var templateMappingOptions=[['','No mapping'],['ticket.subject','Ticket subject'],['ticket.description','Latest ticket message'],['ticket.number','Ticket number'],['ticket.requester_name','Requester name'],['ticket.requester_email','Requester email'],['ticket.priority','Ticket priority']];
+function templateCall(method,path,body){var url=base()+path+(path.indexOf('?')>=0?'&':'?')+'org='+encodeURIComponent(org.value);return call(method,url,body);}
+function templateProvider(){return $('template-provider').value;}
+function templateProject(){return $('template-project').value;}
+function templateIssueType(){return $('template-issue-type').value;}
+function setTemplateStatus(s,bad){var n=$('template-status');if(n){n.textContent=s||'';n.className='m'+(bad?' err':'');}}
+function loadTemplateList(){
+ if(!org.value)return Promise.resolve();
+ return templateCall('GET','/templates').then(function(d){templateRows=d.templates||[];document.querySelector('.integration-template-layout').hidden=!d.canManage;$('template-permission').hidden=!!d.canManage;renderTemplateList();}).catch(function(e){$('template-list').textContent=e.message;});
+}
+function renderTemplateList(){
+ var box=$('template-list');if(!box)return;box.replaceChildren();$('template-count').textContent=String(templateRows.length);
+ if(!templateRows.length){box.appendChild(el('p',{class:'m'},'No templates yet. Create your first form.'));return;}
+ templateRows.forEach(function(t){
+  var meta=(t.provider==='linear'?'Linear':'Jira')+' · '+(t.project_name||t.project_id)+(t.issue_type_name?' · '+t.issue_type_name:'');
+  var card=el('article',{class:'template-saved-card'},
+   el('div',{class:'template-saved-title'},el('strong',{},t.name),el('span',{class:'template-provider-tag tag-'+t.provider},t.provider==='linear'?'Linear':'Jira')),
+   el('p',{class:'m'},t.description||meta),
+   el('p',{class:'template-saved-meta'},meta),
+   el('div',{class:'template-saved-actions'},
+    el('button',{type:'button',class:'btn l sm',onclick:function(){editTemplate(t);}},'Edit'),
+    el('button',{type:'button',class:'btn l sm',onclick:function(){if(!confirm('Delete the "'+t.name+'" template? Existing linked issues will not be affected.'))return;templateCall('DELETE','/templates',{id:t.id}).then(loadTemplateList).catch(function(e){setTemplateStatus(e.message,true);});}},'Delete')
+   ));
+  box.appendChild(card);
+ });
+}
+function templateFieldDefinitions(provider,metadata){
+ var defs=[{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string',required:false}];
+ if(provider==='linear'){
+  var team=metadata&&metadata.team||{},choices=function(items){return (items||[]).map(function(x){return {id:x.id,name:x.name||x.email||x.id};});};
+  defs.push({id:'priority',name:'Priority',type:'select',choices:[{id:'0',name:'No priority'},{id:'1',name:'Urgent'},{id:'2',name:'High'},{id:'3',name:'Normal'},{id:'4',name:'Low'}]});
+  [{id:'assigneeId',name:'Assignee',type:'select',choices:choices(metadata&&metadata.users)},{id:'projectId2',name:'Linear project',type:'select',choices:choices(team.projects&&team.projects.nodes)},{id:'stateId',name:'Initial status',type:'select',choices:choices(team.states&&team.states.nodes)},{id:'labelIds',name:'Labels',type:'array',choices:choices(metadata&&metadata.labels)}].forEach(function(x){if(x.choices.length)defs.push(x);});
+ }else (metadata&&metadata.fields||[]).forEach(function(x){defs.push({id:x.id,name:x.name||x.id,type:x.type||'string',required:!!x.required,allowedValues:x.allowedValues||[]});});
+ return defs;
+}
+function renderTemplateFields(defs,saved){
+ templateDefs=defs;var rootBox=$('template-fields');rootBox.replaceChildren();
+ var current={};(saved||[]).forEach(function(x){current[x.id]=x;});
+ defs.forEach(function(f){
+  var old=current[f.id]||{},include=!!f.required||(old.visible!==undefined?old.visible:(f.id==='title'||f.id==='description'));
+  var row=el('div',{class:'template-field-row','data-template-field':f.id});
+  var use=el('input',{type:'checkbox','aria-label':'Include '+f.name});use.checked=include;use.disabled=!!f.required;
+  var required=el('input',{type:'checkbox','aria-label':'Require '+f.name});required.checked=!!f.required||(old.required!==undefined?old.required:false);required.disabled=!!f.required||!include;
+  use.addEventListener('change',function(){required.disabled=!use.checked;if(!use.checked)required.checked=false;});
+  var choices=f.choices||f.allowedValues||[],def;if(choices.length&&f.type!=='array'){def=el('select',{class:'template-field-default','aria-label':'Default value for '+f.name},[el('option',{value:''},'No default')].concat(choices.map(function(v){return el('option',{value:v.id||v.name},v.name);})));def.value=old.defaultValue||'';}else{def=el('input',{type:'text',class:'template-field-default',maxlength:'1000','aria-label':'Default value for '+f.name,placeholder:f.type==='array'?'Default values (comma separated)':'Default value'});def.value=old.defaultValue||'';}
+  var mapping=el('select',{class:'template-field-mapping','aria-label':'Map '+f.name+' from ticket'},templateMappingOptions.map(function(x){return el('option',{value:x[0]},x[1]);}));mapping.value=old.mapping||'';
+  row.appendChild(el('div',{class:'template-field-main'},el('label',{class:'template-field-toggle'},use,el('strong',{},f.name)),el('label',{class:'template-field-required'},required,' Required')));
+  row.appendChild(el('div',{class:'template-field-settings'},def,mapping));
+  row._templateField={definition:f,include:use,required:required,defaultValue:def,mapping:mapping};
+  rootBox.appendChild(row);
+ });
+ if(!defs.length)rootBox.appendChild(el('p',{class:'m'},'No configurable fields were returned by this provider.'));
+}
+function templateFieldConfig(){
+ return Array.from($('template-fields').querySelectorAll('[data-template-field]')).map(function(row){
+  var x=row._templateField,f=x.definition;
+  return {id:f.id,name:f.name,type:f.type,visible:x.include.checked,required:x.required.checked,defaultValue:x.defaultValue.value,mapping:x.mapping.value};
+ }).filter(function(x){return x.visible;});
+}
+function loadTemplateFieldDefinitions(saved){
+ var p=templateProvider(),project=templateProject(),type=templateIssueType();
+ if(!project){renderTemplateFields([{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string'}],saved);return Promise.resolve();}
+ var q='/issue-options?provider='+encodeURIComponent(p)+'&project='+encodeURIComponent(project)+(p==='jira'&&type?'&issueType='+encodeURIComponent(type):'');
+ return templateCall('GET',q).then(function(meta){
+  if(p==='jira'&&!type){
+   var types=meta.issueTypes||[],sel=$('template-issue-type-wrap'),s=$('template-issue-type');
+   sel.hidden=false;s.replaceChildren(el('option',{value:''},'Choose issue type…'));
+   types.forEach(function(x){s.appendChild(el('option',{value:x.id},x.name));});
+   if(types.length===1){s.value=types[0].id;return loadTemplateFieldDefinitions(saved);}
+   renderTemplateFields([{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string'}],saved);return;
+  }
+  $('template-issue-type-wrap').hidden=p!=='jira';
+  renderTemplateFields(templateFieldDefinitions(p,meta),saved);
+ }).catch(function(e){renderTemplateFields([]);setTemplateStatus('Could not load provider fields: '+e.message,true);});
+}
+function loadTemplateProjects(saved){
+ var p=templateProvider(),select=$('template-project'),connected=connections.some(function(x){return x.provider===p;});
+ select.replaceChildren();$('template-issue-type-wrap').hidden=true;$('template-issue-type').replaceChildren(el('option',{value:''},'Choose issue type…'));$('template-issue-type').replaceChildren(el('option',{value:''},'Choose issue type…'));
+ if(!connected){select.appendChild(el('option',{value:''},'Connect '+names[p]+' first'));renderTemplateFields([]);return Promise.resolve();}
+ select.appendChild(el('option',{value:''},'Loading projects…'));
+ return templateCall('GET','/catalog?provider='+encodeURIComponent(p)).then(function(d){
+  select.replaceChildren(el('option',{value:''},'Choose a team or project…'));
+  (d.items||[]).forEach(function(x){var o=el('option',{value:x.id},x.name+(x.key?' ('+x.key+')':''));o.dataset.name=x.name;select.appendChild(o);});
+  select.dataset.cloudId=d.cloudId||'';
+  if(saved&&saved.project_id){select.value=saved.project_id;}
+  if(select.value)return loadTemplateFieldDefinitions(saved&&saved.form_config?saved.form_config.fields:[]);
+  renderTemplateFields([{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string'}],saved&&saved.form_config?saved.form_config.fields:[]);
+ }).catch(function(e){select.replaceChildren(el('option',{value:''},'Could not load projects'));setTemplateStatus(e.message,true);});
+}
+function editTemplate(t){
+ templateEditingId=Number(t.id);$('template-id').value=t.id;$('template-provider').value=t.provider;$('template-name').value=t.name;$('template-description').value=t.description||'';
+ $('template-save').textContent='Update template';$('template-cancel').hidden=false;setTemplateStatus('Editing '+t.name+'.');
+ loadTemplateProjects(t).then(function(){
+  if(t.provider==='jira'&&t.issue_type_id){$('template-issue-type-wrap').hidden=false;$('template-issue-type').value=t.issue_type_id;return loadTemplateFieldDefinitions(t.form_config&&t.form_config.fields||[]);}
+ }).catch(function(e){setTemplateStatus(e.message,true);});
+}
+function resetTemplateForm(){
+ templateEditingId=0;$('template-form').reset();$('template-id').value='';$('template-save').textContent='Save template';$('template-cancel').hidden=true;$('template-issue-type-wrap').hidden=true;
+ loadTemplateProjects();setTemplateStatus('');
+}
+function loadTemplateBuilder(){
+ if(!$('template-form')||!org.value)return Promise.resolve();
+ return Promise.all([loadTemplateList(),loadTemplateProjects()]);
+}
+function saveTemplate(ev){
+ ev.preventDefault();var p=templateProvider(),project=$('template-project'),opt=project.options[project.selectedIndex],type=$('template-issue-type'),typeOpt=type.options[type.selectedIndex];
+ var body={id:templateEditingId||undefined,provider:p,name:$('template-name').value.trim(),description:$('template-description').value.trim(),projectId:project.value,projectName:opt&&opt.dataset.name||opt&&opt.textContent||'',issueTypeId:p==='jira'?type.value:'',issueTypeName:p==='jira'?typeOpt&&typeOpt.textContent||'':'',formConfig:{fields:templateFieldConfig(),submitLabel:'Create and link issue'}};
+ if(!body.projectId){setTemplateStatus('Choose a connected team or project first.',true);return;}
+ if(p==='jira'&&!body.issueTypeId){setTemplateStatus('Choose the Jira issue type for this template.',true);return;}
+ $('template-save').disabled=true;
+ templateCall('POST','/templates',body).then(function(){setTemplateStatus('Template saved. Agents can now use it from a ticket.');resetTemplateForm();return loadTemplateList();}).catch(function(e){setTemplateStatus(e.message,true);}).finally(function(){$('template-save').disabled=false;});
+}
+
 function loadCredentialSettings(){
  if(!org.value)return Promise.resolve();
  var p=credentialProvider.value;
@@ -62,7 +176,7 @@ function loadCredentialSettings(){
 }
 function loadConnections(){
  return call('GET',endpoint('/connections')).then(function(d){
-  connections=d.connections||[];renderProviders();loadCatalog();say('Workspace connections loaded.');
+  connections=d.connections||[];renderProviders();loadCatalog();loadTemplateBuilder();say('Workspace connections loaded.');
  }).catch(function(e){providers.replaceChildren();say('We couldn’t load workspace connections: '+e.message,true);});
 }
 function loadCatalog(){
@@ -93,7 +207,8 @@ $('create').addEventListener('click',function(){
  call('POST',endpoint('/link'),body).then(function(){say('Issue created and linked successfully.');return loadLinks();}).catch(function(e){say(e.message,true);}).finally(function(){btn.disabled=false;});
 });
 provider.addEventListener('change',loadCatalog);$('ticket').addEventListener('change',loadLinks);
-org.addEventListener('change',function(){Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme(org.value)]);});
+$('template-provider').addEventListener('change',function(){templateEditingId=0;loadTemplateProjects();});$('template-project').addEventListener('change',function(){if(templateProvider()==='jira'){$('template-issue-type').value='';$('template-issue-type-wrap').hidden=true;}loadTemplateFieldDefinitions();});$('template-issue-type').addEventListener('change',function(){loadTemplateFieldDefinitions();});$('template-form').addEventListener('submit',saveTemplate);$('template-cancel').addEventListener('click',resetTemplateForm);
+org.addEventListener('change',function(){Promise.all([loadConnections(),loadCredentialSettings(),loadPortalTheme(org.value),loadTemplateList()]);});
 credentialProvider.addEventListener('change',loadCredentialSettings);
 $('save-credentials').addEventListener('click',function(){
  var p=credentialProvider.value,clientId=$('client-id').value.trim(),clientSecret=$('client-secret').value;

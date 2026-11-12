@@ -35,6 +35,27 @@
       <details class="integration-technical"><summary>OAuth setup details</summary><p class="m">Redirect URL: <code id="oauth-redirect">https://app.effdesk.com/api/integrations/oauth/callback</code></p><p class="m">Linear scopes: <code>read</code>, <code>write</code>, <code>issues:create</code>, <code>comments:create</code>. Jira scopes: <code>read:jira-work</code>, <code>write:jira-work</code>, <code>read:jira-user</code>, <code>manage:jira-webhook</code>, <code>offline_access</code>.</p></details>
     </section>
   </details>
+  <section class="integration-template-builder" aria-labelledby="template-heading">
+    <div class="integrations-section-heading"><div><span class="integrations-section-kicker">WORKSPACE AUTOMATION</span><h2 id="template-heading">Issue templates</h2><p class="m">Build the forms agents use when creating Linear or Jira issues from a ticket. Templates are private to this workspace.</p></div></div>
+    <p id="template-permission" class="m" hidden>Only workspace owners and admins can create or edit issue templates. Agents can use active templates from tickets.</p>
+    <div class="integration-template-layout">
+      <form id="template-form" class="integration-template-form">
+        <input id="template-id" type="hidden">
+        <div class="integration-form-grid">
+          <label>Provider<select id="template-provider"><option value="linear">Linear</option><option value="jira">Jira</option></select></label>
+          <label>Template name<input id="template-name" maxlength="100" required placeholder="e.g. Customer bug report"></label>
+          <label class="template-description">Agent instructions / description<input id="template-description" maxlength="500" placeholder="When should agents use this form?"></label>
+          <label>Team / project<select id="template-project" required><option value="">Connect a provider first</option></select></label>
+          <label id="template-issue-type-wrap" hidden>Jira issue type<select id="template-issue-type"><option value="">Choose issue type…</option></select></label>
+        </div>
+        <div class="template-fields-heading"><strong>Form fields</strong><span class="m">Choose what agents see, mark required fields, and set defaults or ticket mappings.</span></div>
+        <div id="template-fields" class="template-fields"><p class="m">Choose a connected provider and project to load its fields.</p></div>
+        <div class="integration-template-actions"><button class="btn" type="submit" id="template-save">Save template</button><button class="btn l" type="button" id="template-cancel" hidden>Cancel editing</button></div>
+        <p id="template-status" class="m" role="status" aria-live="polite"></p>
+      </form>
+      <aside class="integration-template-list"><div class="template-list-heading"><strong>Saved templates</strong><span class="m" id="template-count">0</span></div><div id="template-list"><p class="m">Loading templates…</p></div></aside>
+    </div>
+  </section>
   <section class="integration-linker">
     <div class="integrations-section-heading"><div><span class="integrations-section-kicker">TICKET WORKFLOW</span><h2>Link a ticket to an issue</h2><p class="m">Create a new Linear issue or Jira issue directly from an EffDesk ticket.</p></div></div>
     <div class="integration-form-grid integration-link-form">
