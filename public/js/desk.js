@@ -30,7 +30,7 @@
     var size = function (n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
     var when = function (s) { try { return new Date(s).toLocaleString(); } catch (e) { return String(s); } };
     var ago = function (s) { var m = Math.round((Date.now() - new Date(s).getTime()) / 60000); if (!isFinite(m)) return ''; if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; if (m < 1440) return Math.round(m / 60) + ' h ago'; return Math.round(m / 1440) + ' d ago'; };
-    var cap = function (s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; };
+    var cap = function (s) { return s ? s.replace(/_/g, ' ').replace(/\\b\\w/g, function (c) { return c.toUpperCase(); }) : ''; };
     var avatarEl = function (cls, name, url) { var s = el('span', { class: 'av ' + cls, 'aria-hidden': 'true' }); if (url && /^data:image\//.test(url)) s.appendChild(el('img', { src: url, alt: '' })); else s.textContent = initial(name); return s; };
     var avatarOf = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a && a.avatar || null; };
     var paintMe = function () { var a = doc.getElementById('av'); if (!a) return; while (a.firstChild) a.removeChild(a.firstChild); if (myAvatar && /^data:image\//.test(myAvatar)) a.appendChild(el('img', { src: myAvatar, alt: '' })); else a.textContent = initial(me); };
