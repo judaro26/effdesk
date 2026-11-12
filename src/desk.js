@@ -98,7 +98,7 @@ export const saveMacro = (pool, orgId, b) => withOrg(pool, orgId, async c => {
 export const deleteMacro = (pool, orgId, id) => withOrg(pool, orgId, async c => (await c.query('delete from macros where org_id = $1 and id = $2', [orgId, idOf(id)])).rowCount ? { ok: true } : fail('No such macro.', 404));
 
 // ---------- saved views: a named filter, private to its owner or shared with the team ----------
-const VIEW_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following'];
+const VIEW_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following', 'sla'];
 const VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'sla', 'updated'];
 const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'];
 
@@ -147,6 +147,7 @@ export const listViews = (pool, orgId, actor) => withOrg(pool, orgId, async c =>
 export const saveView = (pool, orgId, actor, b) => withOrg(pool, orgId, async c => {
   const name = clean(b.name, 60); if (!name) return fail('Give the view a name.');
   const f = {}; for (const k of VIEW_KEYS) if (b.filter && b.filter[k] != null && b.filter[k] !== '') f[k] = clean(b.filter[k], 100);
+  if (b.filter && b.filter.columnFilters) f.columnFilters = cleanTicketFilters({ columnFilters: b.filter.columnFilters }).columnFilters;
   if (!Object.keys(f).length) return fail('Choose at least one filter first.');
   const columns = [...new Set((Array.isArray(b.columns) ? b.columns : DEFAULT_VIEW_COLUMNS).filter(k => VIEW_COLUMNS.includes(k)))];
   if (!columns.length) return fail('Choose at least one ticket column.');
