@@ -8,6 +8,7 @@ import { clean as cleanHtml, plainOf } from './html-clean.js';
 export const STATUSES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
+const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNaN(Date.parse(String(v) + 'T00:00:00Z')) && new Date(String(v) + 'T00:00:00Z').toISOString().slice(0, 10) === String(v);
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
@@ -62,8 +63,8 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (cf.assignee === 'me') add('assignee_id = $#', actor.id);
   else if (cf.assignee === 'none') where.push('assignee_id is null');
   else if (/^[A-Za-z0-9_-]{1,64}$/.test(String(cf.assignee || ''))) add('assignee_id = $#', String(cf.assignee));
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(cf.updatedFrom || ''))) add('updated_at >= $#::date', cf.updatedFrom);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(String(cf.updatedTo || ''))) add("updated_at < ($#::date + interval '1 day')", cf.updatedTo);
+  if (validDateOnly(cf.updatedFrom)) add('updated_at >= $#::date', cf.updatedFrom);
+  if (validDateOnly(cf.updatedTo)) add("updated_at < ($#::date + interval '1 day')", cf.updatedTo);
   const cSla = slaWhere(cf.sla); if (cSla) where.push(cSla);
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
@@ -183,8 +184,8 @@ export async function messageSeen(pool, orgId, messageId) {
   if (cf.assignee === 'me') add('assignee_id = $#', actor.id);
   else if (cf.assignee === 'none') where.push('assignee_id is null');
   else if (/^[A-Za-z0-9_-]{1,64}$/.test(String(cf.assignee || ''))) add('assignee_id = $#', String(cf.assignee));
-  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(cf.updatedFrom || ''))) add('updated_at >= $#::date', cf.updatedFrom);
-  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(cf.updatedTo || ''))) add('updated_at < ($#::date + interval \'1 day\')', cf.updatedTo);
+  if (validDateOnly(cf.updatedFrom)) add('updated_at >= $#::date', cf.updatedFrom);
+  if (validDateOnly(cf.updatedTo)) add("updated_at < ($#::date + interval '1 day')", cf.updatedTo);
   const cSla = slaWhere(cf.sla); if (cSla) where.push(cSla);
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
