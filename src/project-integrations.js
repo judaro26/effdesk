@@ -61,6 +61,32 @@ async function tokenFor(pool,env,org,provider) {
   }
   return dec(env,row.access_token_enc);
 }
+
+async function saveIssueLink(pool,org,provider,ticketNumber,ext) {
+  const exists=(await withOrg(pool,org,x=>x.query('select ticket_number from project_issue_links where org_id=$1 and provider=$2 and external_issue_id=$3',[org,provider,String(ext.id)]))).rows[0];
+  if(exists && Number(exists.ticket_number)!==Number(ticketNumber)) throw new Error('That external issue is already linked to another EffDesk ticket.');
+  if(exists) return;
+  await withOrg(pool,org,x=>x.query('insert into project_issue_links (org_id,provider,ticket_number,external_issue_id,external_issue_key,external_issue_url,external_project_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict (org_id,provider,external_issue_id) do nothing',[org,provider,Number(ticketNumber),String(ext.id),ext.key||null,ext.url||null,ext.projectId||null]));
+}
+function linearIssueShape(x) {
+  return {id:x.id,key:x.identifier,title:x.title,url:x.url,status:x.state?.name||'',project:x.project?.name||'',team:x.team?.name||'',updatedAt:x.updatedAt};
+}
+function jiraIssueShape(x,siteHost) {
+  return {id:x.id,key:x.key,title:x.fields?.summary||x.key,url:'https://'+String(siteHost||'').replace(/^https?:\\/\\//,'').replace(/\\/+$/,'')+'/browse/'+x.key,status:x.fields?.status?.name||'',project:x.fields?.project?.name||'',issueType:x.fields?.issuetype?.name||'',updatedAt:x.fields?.updated};
+}
+async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
+  const types=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes',{cloudId});
+  const issueTypes=types.issueTypes||[];
+  if(!issueTypeId) return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask}))};
+  const detail=await apiCall('jira',token,'GET','/rest/api/3/issue/createmeta/'+encodeURIComponent(projectKey)+'/issuetypes/'+encodeURIComponent(issueTypeId),{cloudId});
+  const fields=Object.entries(detail.fields||{}).map(([id,x])=>({
+    id,name:x.name,required:!!x.required,type:x.schema?.type||'string',items:x.schema?.items||'',
+    allowedValues:(x.allowedValues||[]).slice(0,100).map(v=>({id:v.id??v.accountId??v.key??'',name:v.name??v.displayName??v.value??String(v.id??'')})),
+    defaultValue:x.defaultValue??null
+  })).filter(x=>!['project','issuetype','reporter','creator','created','updated','status','resolution'].includes(x.id));
+  return {issueTypes:issueTypes.map(x=>({id:x.id,name:x.name,subtask:x.subtask})),fields};
+}
+
 export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const url=new URL(req.url), path=url.pathname;
   if(path.endsWith('/oauth/callback')) return oauthCallback(req,{pool,env});
@@ -78,13 +104,119 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const s=await getSession(auth,req); if(!s) return fail(401,'Sign in first.');
   const org=clean(url.searchParams.get('org') || (await req.clone().json().catch(()=>({}))).orgId,100);
   if(!org) return fail(400,'Choose a workspace.');
-  const role=await member(pool,org,s.user.id); if(!['owner','admin'].includes(role)) return fail(403,'Only workspace owners and admins can manage external integrations.');
+  const role=await member(pool,org,s.user.id); if(!role) return fail(403,'You are not a member of this workspace.');
+  const isAdmin=['owner','admin'].includes(role);
+  const ticketOperation=path.endsWith('/ticket-context')||path.endsWith('/links')||path.endsWith('/search')||path.endsWith('/issue-options')||path.endsWith('/link-existing')||path.endsWith('/create-issue');
+  if(!isAdmin&&!ticketOperation) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/app-credentials')) {
     const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
     const row=(await withOrg(pool,org,c=>c.query('select provider from project_integration_apps where org_id=$1 and provider=$2',[org,p]))).rows[0];
     const [platformId,platformSecret]=envKeys(p,env);
     return json(200,{provider:p,customConfigured:!!row,platformConfigured:!!(platformId&&platformSecret),mode:row?'custom':'platform'});
   }
+
+  if(req.method==='GET' && path.endsWith('/ticket-context')) {
+    const n=Number(url.searchParams.get('ticketNumber'))||0;
+    if(!n) return fail(400,'Choose an EffDesk ticket.');
+    const data=await withOrg(pool,org,async db=>{
+      const connections=(await db.query('select provider,external_workspace_name,external_workspace_url from project_integrations where org_id=$1 order by provider',[org])).rows;
+      const links=(await db.query('select provider,external_issue_id,external_issue_key,external_issue_url,external_project_id,last_synced_at,created_at from project_issue_links where org_id=$1 and ticket_number=$2 order by created_at desc',[org,n])).rows;
+      return {connections,links};
+    });
+    return json(200,data);
+  }
+  if(req.method==='GET' && path.endsWith('/search')) {
+    const p=clean(url.searchParams.get('provider'),20), q=clean(url.searchParams.get('q'),180);
+    if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    if(q.length<2) return json(200,{items:[]});
+    try {
+      const conn=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first.');
+      const token=await tokenFor(pool,env,org,p);
+      if(p==='linear') {
+        const d=await apiCall(p,token,'POST','query SearchIssues($query:String!){ issueSearch(query:$query,first:20){ nodes { id identifier title url updatedAt state { name } team { name } project { name } } } }',{query:q});
+        return json(200,{items:(d.issueSearch?.nodes||[]).map(linearIssueShape)});
+      }
+      const safe=q.replace(/\\/g,'\\\\').replace(/"/g,'\\"');
+      const jql=/^[A-Z][A-Z0-9]+-\\d+$/i.test(q)?'key = "'+safe.toUpperCase()+'"':'text ~ "'+safe+'" ORDER BY updated DESC';
+      const d=await apiCall(p,token,'GET','/rest/api/3/search/jql?jql='+encodeURIComponent(jql)+'&maxResults=20&fields=summary,status,priority,issuetype,project,updated',{cloudId:conn.external_workspace_id});
+      const host=String(conn.external_workspace_url||'').replace(/^https?:\\/\\//,'').replace(/\\/+$/,'');
+      return json(200,{items:(d.issues||[]).map(x=>jiraIssueShape(x,host))});
+    } catch(e) { console.error('external issue search:',p,e.message); return fail(502,'Could not search '+p+'. '+e.message); }
+  }
+  if(req.method==='GET' && path.endsWith('/issue-options')) {
+    const p=clean(url.searchParams.get('provider'),20), project=clean(url.searchParams.get('project'),100), issueType=clean(url.searchParams.get('issueType'),100);
+    if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    try {
+      const token=await tokenFor(pool,env,org,p);
+      if(p==='jira') {
+        if(!project) return fail(400,'Choose a Jira project first.');
+        return json(200,await jiraCreateMetadata(token,(await withOrg(pool,org,db=>db.query('select external_workspace_id from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]?.external_workspace_id,project,issueType));
+      }
+      if(!project) return fail(400,'Choose a Linear team first.');
+      const d=await apiCall(p,token,'POST','query TeamCreateOptions($id:String!){ team(id:$id){ id name projects { nodes { id name } } states { nodes { id name type } } } users(first:100){ nodes { id name email } } issueLabels(first:100){ nodes { id name } } }',{id:project});
+      return json(200,{team:d.team,users:d.users?.nodes||[],labels:d.issueLabels?.nodes||[]});
+    } catch(e) { console.error('external issue options:',p,e.message); return fail(502,'Could not load issue form fields. '+e.message); }
+  }
+  if(req.method==='POST' && path.endsWith('/link-existing')) {
+    const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,id=clean(b.issueId,200);
+    if(!PROVIDERS.has(p)||!n||!id) return fail(400,'Choose a provider, ticket, and external issue.');
+    try {
+      const conn=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      if(!conn) return fail(409,'Connect '+p+' first.');
+      const token=await tokenFor(pool,env,org,p); let ext;
+      if(p==='linear') {
+        const d=await apiCall(p,token,'POST','query IssueForLink($id:String!){ issue(id:$id){ id identifier title url updatedAt state { name } team { id name } project { name } } }',{id});
+        if(!d.issue) return fail(404,'That Linear issue could not be found.');
+        ext={id:d.issue.id,key:d.issue.identifier,url:d.issue.url,projectId:d.issue.team?.id};
+      } else {
+        const d=await apiCall(p,token,'GET','/rest/api/3/issue/'+encodeURIComponent(id)+'?fields=summary,project,issuetype,status,updated',{cloudId:conn.external_workspace_id});
+        ext={id:d.id,key:d.key,url:jiraIssueShape(d,conn.external_workspace_url).url,projectId:d.fields?.project?.key};
+      }
+      await saveIssueLink(pool,org,p,n,ext);
+      return json(200,{ok:true,issue:ext});
+    } catch(e) { return fail(409,e.message); }
+  }
+  if(req.method==='POST' && path.endsWith('/create-issue')) {
+    const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,project=clean(b.projectId,100),title=clean(b.title,500),description=String(b.description||'').slice(0,20000);
+    if(!PROVIDERS.has(p)||!n||!project||!title) return fail(400,'Complete the project/team and issue title.');
+    try {
+      const ticket=(await withOrg(pool,org,db=>db.query('select number,subject,status,priority,requester_name,requester_email from tickets where org_id=$1 and number=$2',[org,n]))).rows[0];
+      if(!ticket) return fail(404,'EffDesk ticket not found.');
+      const token=await tokenFor(pool,env,org,p); let ext;
+      if(p==='linear') {
+        const input={teamId:project,title,description:description||'EffDesk ticket #'+n};
+        if(b.priority!==undefined&&b.priority!==null&&b.priority!=='') input.priority=Math.max(0,Math.min(4,Number(b.priority)));
+        if(b.projectId2) input.projectId=clean(b.projectId2,100);
+        if(b.assigneeId) input.assigneeId=clean(b.assigneeId,100);
+        if(Array.isArray(b.labelIds)) input.labelIds=b.labelIds.map(x=>clean(x,100)).filter(Boolean).slice(0,20);
+        const d=await apiCall(p,token,'POST','mutation CreateIssue($input:IssueCreateInput!){ issueCreate(input:$input){ success issue { id identifier title url team { id } } } }',{input});
+        if(!d.issueCreate?.success||!d.issueCreate.issue) throw new Error('Linear did not create the issue.');
+        const x=d.issueCreate.issue; ext={id:x.id,key:x.identifier,url:x.url,projectId:x.team?.id||project};
+      } else {
+        const cloudId=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]?.external_workspace_id;
+        const issueTypeId=clean(b.issueTypeId,100); if(!issueTypeId) return fail(400,'Choose a Jira issue type.');
+        const meta=await jiraCreateMetadata(token,cloudId,project,issueTypeId), allowed=new Map(meta.fields.map(f=>[f.id,f]));
+        const fields={project:{key:project},issuetype:{id:issueTypeId},summary:title};
+        if(description) fields.description={type:'doc',version:1,content:description.split(/\\n{2,}/).slice(0,80).map(s=>({type:'paragraph',content:[{type:'text',text:s.slice(0,3000)}]}))};
+        const values=b.fields&&typeof b.fields==='object'?b.fields:{};
+        for(const [id,value] of Object.entries(values)) {
+          const field=allowed.get(id); if(!field||value===null||value===''||Array.isArray(value)&&!value.length) continue;
+          const choices=field.allowedValues||[];
+          const one=v=>{const found=choices.find(o=>String(o.id)===String(v)||String(o.name)===String(v));return found?(found.id?{id:found.id}:{name:found.name}):v;};
+          fields[id]=Array.isArray(value)?value.map(one):one(value);
+        }
+        const missing=meta.fields.filter(f=>f.required&&(fields[f.id]===undefined||fields[f.id]===null||fields[f.id]===''||(Array.isArray(fields[f.id])&&!fields[f.id].length)));
+        if(missing.length) return fail(400,'Complete the required fields: '+missing.map(f=>f.name).join(', ')+'.');
+        const d=await apiCall(p,token,'POST','/rest/api/3/issue',{cloudId,payload:{fields}});
+        const site=(await withOrg(pool,org,db=>db.query('select external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]?.external_workspace_url;
+        ext={id:d.id,key:d.key,url:jiraIssueShape({id:d.id,key:d.key,fields:{summary:title}},site).url,projectId:project};
+      }
+      await saveIssueLink(pool,org,p,n,ext);
+      return json(200,{ok:true,issue:ext});
+    } catch(e) { console.error('external issue creation:',p,e.message); return fail(502,'Could not create the external issue. '+e.message); }
+  }
+
   if(req.method==='GET' && path.endsWith('/connections')) {
     const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?appBase(env)+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):appBase(env)+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
@@ -152,7 +284,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         const d=await apiCall(p,token,'POST','/rest/api/3/issue',{cloudId,payload:{fields:{project:{key:projectKey},summary:'[EffDesk #'+t.number+'] '+t.subject,description:{type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'EffDesk ticket #'+t.number}]}]},issuetype:{name:'Task'}}}});
         ext={id:d.id,key:d.key,url:'https://'+clean(b.siteHost,150)+'/browse/'+d.key,projectId:projectKey};
       }
-      await withOrg(pool,org,c=>c.query('insert into project_issue_links (org_id,provider,ticket_number,external_issue_id,external_issue_key,external_issue_url,external_project_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict (org_id,provider,ticket_number) do update set external_issue_id=$4,external_issue_key=$5,external_issue_url=$6,external_project_id=$7,updated_at=now()',[org,p,t.number,ext.id,ext.identifier||ext.key||null,ext.url||null,ext.projectId||null]));
+      await saveIssueLink(pool,org,p,t.number,{id:ext.id,key:ext.identifier||ext.key||null,url:ext.url||null,projectId:ext.projectId||null});
       return json(200,{ok:true,issue:ext});
     } catch(e) { return fail(502,e.message); }
   }
