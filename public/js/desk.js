@@ -626,7 +626,7 @@
               if(ui.fields.assigneeId!==undefined)ui.assigneeId=ui.fields.assigneeId;
               if(ui.fields.projectId2!==undefined)ui.projectId2=ui.fields.projectId2;
               if(ui.fields.stateId!==undefined)ui.stateId=ui.fields.stateId;
-              if(Array.isArray(ui.fields.labelIds))ui.labelIds=ui.fields.labelIds;else if(typeof ui.fields.labelIds==='string')ui.labelIds=ui.fields.labelIds.split(',').map(function(x){return x.trim();}).filter(Boolean);
+              if(Array.isArray(ui.fields.labelIds))ui.labelIds=ui.fields.labelIds;else if(typeof ui.fields.labelIds==='string'){ui.labelIds=ui.fields.labelIds.split(',').map(function(x){return x.trim();}).filter(Boolean);ui.fields.labelIds=ui.labelIds;}
             }
           }
           if(ui.projectId)loadOptions(ui.projectId,ui.issueTypeId||'').then(redraw).catch(function(e){ui.error=e.message;redraw();});else redraw();
