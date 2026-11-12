@@ -657,8 +657,8 @@
           var query=el('input',{type:'search',class:'external-issue-search','aria-label':'Search external issues',placeholder:'Search by issue key or title',value:ui.query});
           query.addEventListener('input',function(){ui.query=query.value;});
           query.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();runSearch();}});
-          box.appendChild(el('div',{class:'external-issue-search-row'},query,el('button',{type:'button',class:'btn sm',disabled:ui.busy?'disabled':null,onclick:runSearch},ui.busy?'Searching…':'Search')));
-          if(ui.results.length)ui.results.forEach(function(issue){box.appendChild(el('div',{class:'external-search-result'},el('div',{},el('strong',{},issue.key+' · '+issue.title),el('div',{class:'m'},[issue.team,issue.project,issue.status].filter(Boolean).join(' · '))),el('button',{type:'button',class:'btn l sm',disabled:ui.busy?'disabled':null,onclick:function(){linkExisting(issue);}},'Link')));});
+          box.appendChild(el('div',{class:'external-issue-search-row'},query,el('button',{type:'button',class:'btn sm',onclick:runSearch},ui.busy?'Searching…':'Search')));
+          if(ui.results.length)ui.results.forEach(function(issue){box.appendChild(el('div',{class:'external-search-result'},el('div',{},el('strong',{},issue.key+' · '+issue.title),el('div',{class:'m'},[issue.team,issue.project,issue.status].filter(Boolean).join(' · '))),el('button',{type:'button',class:'btn l sm',onclick:function(){linkExisting(issue);}},'Link')));});
           else if(!ui.busy&&ui.query.length>=2)box.appendChild(el('p',{class:'m'},'No results yet. Search to find matching issues.'));
         }
         if(ui.mode==='create'){
@@ -695,7 +695,7 @@
             }
             if(ui.provider==='jira'&&ui.options.fields){
               ui.options.fields.forEach(function(field){
-                var val=ui.fields[field.id]??(field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):field.defaultValue)||'';
+                var val=ui.fields[field.id];if(val===undefined)val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');
                 var control;
                 if(field.allowedValues&&field.allowedValues.length){
                   control=el('select',{'aria-label':field.name,'multiple':field.type==='array'},(field.type==='array'?[]:[el('option',{value:''},'— Select —')]).concat(field.allowedValues.map(function(v){return el('option',{value:v.id||v.name},v.name);})));
@@ -709,7 +709,7 @@
                 box.appendChild(el('label',{class:'external-issue-field'},el('span',{},field.name+(field.required?' *':'')),control));
               });
             }
-            box.appendChild(el('button',{type:'button',class:'btn sm external-create-submit',disabled:ui.busy?'disabled':null,onclick:createIssue},ui.busy?'Creating…':'Create and link issue'));
+            box.appendChild(el('button',{type:'button',class:'btn sm external-create-submit',onclick:createIssue},ui.busy?'Creating…':'Create and link issue'));
           }else if(ui.provider==='jira'&&!ui.issueTypeId&&ui.options)box.appendChild(el('p',{class:'m'},'Choose an issue type to load the fields required by this Jira project.'));
           else if(ui.provider==='linear'&&ui.projectId&&!ui.options)box.appendChild(el('p',{class:'m'},'Loading team fields…'));
         }
