@@ -153,7 +153,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'ticket-prefs-save': r = await desk.saveTicketPreferences(pool, orgId, actor.id, b); break;
-    case 'global-search': r = await globalSearch(pool, orgId, b.q); break;
+    case 'global-search': r = await globalSearch(pool, orgId, b.q, planHas(ent, 'clients')); break;
     case 'contact-list': if ((g = need('clients'))) return g; r = await listContacts(pool, orgId, b.q); break;
     case 'contact-get': if ((g = need('clients'))) return g; r = await contactForEmail(pool, orgId, b.email); break;
     case 'contact-save': if ((g = need('clients'))) return g; r = await saveContact(pool, orgId, b); break;
