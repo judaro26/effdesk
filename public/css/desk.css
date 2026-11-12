@@ -500,3 +500,28 @@ html{-webkit-text-size-adjust:100%}
 /* Official EffDesk identity in the external integrations header. Keep the full-colour logo legible across every workspace theme. */
 .integrations-page header .integrations-brand{display:inline-flex;align-items:center;justify-content:center;padding:5px 9px;border-radius:10px;background:#fff;line-height:0;text-decoration:none}
 .integrations-page header .integrations-brand img{display:block;width:154px;height:40px;object-fit:contain}
+
+/* In-ticket external project issue panel */
+.external-issues{padding:11px;background:color-mix(in srgb,var(--accent) 2%,var(--d-panel))}
+.external-provider-tabs{display:flex;gap:5px;padding:3px;margin-bottom:10px;border-radius:9px;background:var(--d-bg)}
+.external-provider-tab{flex:1;min-width:0;padding:7px 5px;border:0;border-radius:7px;background:transparent;color:var(--d-muted);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.external-provider-tab.active{background:var(--d-panel);color:var(--d-ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.external-linked-issue{display:grid;gap:6px;padding:10px;margin:8px 0;border:1px solid var(--d-line);border-radius:9px;background:var(--d-bg);font-size:12px}
+.external-linked-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.external-linked-issue>a{font-weight:750;text-decoration:none;overflow-wrap:anywhere}
+.external-linked-issue>a:hover{text-decoration:underline}
+.external-sync-state{color:var(--d-muted);font-size:10px}
+.external-issue-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.external-issue-actions .btn{flex:1;min-width:0;padding:6px 7px;font-size:11px}
+.external-issue-search-row{display:flex;gap:6px;margin-top:10px}
+.external-issue-search-row input{min-width:0;flex:1;width:100%}
+.external-search-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--d-line);font-size:12px}
+.external-search-result>div{min-width:0;overflow-wrap:anywhere}
+.external-search-result .btn{flex:none}
+.external-issue-error{padding:8px 9px;border-radius:7px;background:color-mix(in srgb,#d33 10%,var(--d-panel));color:var(--d-ink);font-size:12px;overflow-wrap:anywhere}
+.external-issue-field{display:grid;gap:5px;margin:9px 0;color:var(--d-muted);font-size:11px;font-weight:700}
+.external-issue-field input,.external-issue-field select,.external-issue-field textarea{width:100%;min-width:0;background:var(--d-bg);color:var(--d-ink);font-size:12px;font-weight:400}
+.external-issue-field select[multiple]{min-height:76px}
+.external-create-submit{width:100%;margin-top:8px}
+@media(max-width:1100px){.ticket{grid-template-columns:240px minmax(0,1fr) 270px}}
+@media(max-width:850px){.ticket{grid-template-columns:220px minmax(0,1fr)}.ticket>.info{grid-column:1/-1;border-left:0;border-top:1px solid var(--d-line);max-height:none;overflow:visible}.ticket>.info .external-issues{max-width:100%}}
