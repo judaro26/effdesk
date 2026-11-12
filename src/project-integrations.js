@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import { seal, unseal } from './sso.js';
 import { withOrg } from './db.js';
-import { updateTicket, addMessage } from './tickets.js';
+import { updateTicket, addMessage, logEvent } from './tickets.js';
 
 const PROVIDERS = new Set(['linear','jira']);
 const clean = (v,n=500) => String(v ?? '').replace(/\u0000/g,'').trim().slice(0,n);
@@ -122,6 +122,7 @@ async function oauthCallback(req,{pool,env}) {
   if(!state||!code) return new Response('OAuth authorization was cancelled or invalid.',{status:400});
   const row=(await pool.query('delete from project_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,provider',[hash(state)])).rows[0];
   if(!row) return new Response('This connection request expired. Return to EffDesk and try again.',{status:400});
+  if(!['owner','admin'].includes(await member(pool,row.org_id,row.user_id))) return new Response('Only a workspace owner or admin can complete this connection.',{status:403});
   const [clientId,clientSecret]=envKeys(row.provider,env);
   try {
     const d=await requestToken(row.provider==='linear'?'https://api.linear.app/oauth/token':'https://auth.atlassian.com/oauth/token',{grant_type:'authorization_code',code,redirect_uri:callbackUrl(env),client_id:clientId,client_secret:clientSecret});
@@ -178,7 +179,11 @@ async function receiveWebhook(req,{pool,env,provider}) {
       if(/done|complete|closed|resolved/.test(state)) patch.status='solved';
       else if(/progress|started|doing/.test(state)) patch.status='pending';
       else if(/cancel/.test(state)) patch.status='closed';
+      const priority=provider==='linear'?({1:'urgent',2:'high',3:'normal',4:'low'})[Number(issue.priority)]:({highest:'urgent',high:'high',medium:'normal',low:'low',lowest:'low'})[clean(issue.fields?.priority?.name||'',30).toLowerCase()];
+      if(priority) patch.priority=priority;
       if(Object.keys(patch).length) await updateTicket(pool,org,{id:null,name:provider+' sync',email:''},handled,patch);
+      const subject=clean(provider==='linear'?issue.title:issue.fields?.summary,200);
+      if(subject) await withOrg(pool,org,async c=>{ const old=(await c.query('select subject from tickets where org_id=$1 and number=$2 for update',[org,handled])).rows[0]?.subject; if(old && old!==subject){await c.query('update tickets set subject=$3,updated_at=now() where org_id=$1 and number=$2',[org,handled,subject]); await logEvent(c,org,(await c.query('select id from tickets where org_id=$1 and number=$2',[org,handled])).rows[0].id,provider+' sync','subject','Subject updated from '+provider); } });
       const comment=body.type==='Comment'?issue:body.comment||null;
       const commentText=provider==='linear'?clean(comment?.body,8000):clean(comment?.body?.content?.[0]?.content?.map(x=>x.text||'').join(' ')||comment?.body,8000);
       if(commentText && (body.action==='create'||body.webhookEvent==='comment_created'||body.type==='Comment')) await addMessage(pool,org,{id:null,name:provider+' · '+clean(comment?.user?.name||comment?.author?.displayName,100),email:''},handled,{body:'['+provider.toUpperCase()+'] '+commentText,internal:true});
