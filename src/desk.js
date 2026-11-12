@@ -75,9 +75,11 @@ export const listClients = (pool, orgId) => withOrg(pool, orgId, async c => ({ o
 export const saveClient = (pool, orgId, actor, b) => withOrg(pool, orgId, async c => {
   const name = clean(b.name, 100), domain = clean(b.domain, 100).toLowerCase().replace(/^@/, ''); if (!name) return fail('Give the client a name.'); if (!domainOk(domain)) return fail('Enter the domain like acme.com, or leave it empty.');
   try {
-    if (b.id) { const r = await c.query('update clients set name = $3, domain = $4, share_tickets = $5 where org_id = $1 and id = $2 returning id', [orgId, idOf(b.id), name, domain, b.shareTickets === true]); if (!r.rowCount) return fail('No such client.', 404); return { ok: true, id: r.rows[0].id }; }
-    if ((await c.query('select count(*)::int n from clients where org_id = $1', [orgId])).rows[0].n >= 500) return fail('An organization can have up to 500 clients.');
-    return { ok: true, id: (await c.query('insert into clients (org_id, name, domain, share_tickets) values ($1,$2,$3,$4) returning id', [orgId, name, domain, b.shareTickets === true])).rows[0].id };
+    let id;
+    if (b.id) { const r = await c.query('update clients set name = $3, domain = $4, share_tickets = $5 where org_id = $1 and id = $2 returning id', [orgId, idOf(b.id), name, domain, b.shareTickets === true]); if (!r.rowCount) return fail('No such client.', 404); id=r.rows[0].id; }
+    else { if ((await c.query('select count(*)::int n from clients where org_id = $1', [orgId])).rows[0].n >= 500) return fail('An organization can have up to 500 clients.'); id=(await c.query('insert into clients (org_id, name, domain, share_tickets) values ($1,$2,$3,$4) returning id', [orgId, name, domain, b.shareTickets === true])).rows[0].id; }
+    if(domain){await c.query("update contact_profiles set company_id=$3,updated_at=now() where org_id=$1 and company_id is null and lower(split_part(email,'@',2))=$2",[orgId,domain,id]);await c.query("update tickets set client_id=$3 where org_id=$1 and client_id is null and lower(split_part(requester_email,'@',2))=$2",[orgId,domain,id]);}
+    return {ok:true,id};
   } catch (e) { if (e.code === '23505') return fail('There is already a client with that name.', 409); throw e; }
 });
 export const deleteClient = (pool, orgId, id) => withOrg(pool, orgId, async c => (await c.query('delete from clients where org_id = $1 and id = $2', [orgId, idOf(id)])).rowCount ? { ok: true } : fail('No such client.', 404));
