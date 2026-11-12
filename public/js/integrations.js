@@ -82,13 +82,8 @@ function templateFieldDefinitions(provider,metadata){
  var defs=[{id:'title',name:'Issue title',type:'string',required:true},{id:'description',name:'Description',type:'string',required:false}];
  if(provider==='linear'){
   var team=metadata&&metadata.team||{},choices=function(items){return (items||[]).map(function(x){return {id:x.id,name:x.name||x.email||x.id};});};
-  defs=defs.concat([
-   {id:'priority',name:'Priority',type:'select',choices:[{id:'0',name:'No priority'},{id:'1',name:'Urgent'},{id:'2',name:'High'},{id:'3',name:'Normal'},{id:'4',name:'Low'}]},
-   {id:'assigneeId',name:'Assignee',type:'select',choices:choices(metadata&&metadata.users)},
-   {id:'projectId2',name:'Linear project',type:'select',choices:choices(team.projects&&team.projects.nodes)},
-   {id:'stateId',name:'Initial status',type:'select',choices:choices(team.states&&team.states.nodes)},
-   {id:'labelIds',name:'Labels',type:'array',choices:choices(metadata&&metadata.labels)}
-  ]);
+  defs.push({id:'priority',name:'Priority',type:'select',choices:[{id:'0',name:'No priority'},{id:'1',name:'Urgent'},{id:'2',name:'High'},{id:'3',name:'Normal'},{id:'4',name:'Low'}]});
+  [{id:'assigneeId',name:'Assignee',type:'select',choices:choices(metadata&&metadata.users)},{id:'projectId2',name:'Linear project',type:'select',choices:choices(team.projects&&team.projects.nodes)},{id:'stateId',name:'Initial status',type:'select',choices:choices(team.states&&team.states.nodes)},{id:'labelIds',name:'Labels',type:'array',choices:choices(metadata&&metadata.labels)}].forEach(function(x){if(x.choices.length)defs.push(x);});
  }else (metadata&&metadata.fields||[]).forEach(function(x){defs.push({id:x.id,name:x.name||x.id,type:x.type||'string',required:!!x.required,allowedValues:x.allowedValues||[]});});
  return defs;
 }
