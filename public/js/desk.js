@@ -96,8 +96,8 @@
     function paintOthers() { var b = main.querySelector('.collide'); if (!b) return; b.textContent = othersText(); b.hidden = !others.length; b.classList.toggle('typing', others.some(function (o) { return o.typing; })); }
     function presenceTick() {
       if (!current || (doc.visibilityState && doc.visibilityState === 'hidden')) return;
-      var ta = main.querySelector('.compose textarea'), n = current.ticket.number;
-      api('presence', { number: n, typing: !!(ta && ta.value.trim()) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
+      var ta = main.querySelector('.compose textarea'), rich = main.querySelector('.compose .ae-area'), n = current.ticket.number;
+      api('presence', { number: n, typing: !!((rich && rich.textContent.trim()) || (ta && ta.value.trim())) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
     }
     root.setInterval(presenceTick, 20000);
 
