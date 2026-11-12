@@ -103,7 +103,7 @@ const VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'a
 const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'];
 
 const PERSONAL_FILTER_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following', 'sla'];
-const COLUMN_FILTER_KEYS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updatedFrom', 'updatedTo', 'sla'];
+    else if (['updatedFrom', 'updatedTo'].includes(k) && /^\d{4}-\d{2}-\d{2}$/.test(String(v))) out.columnFilters[k] = String(v);
 const DEFAULT_TICKET_FILTERS = { status: 'active', assignee: '', q: '', columnFilters: {} };
 const cleanTicketFilters = input => {
   const out = { ...DEFAULT_TICKET_FILTERS, columnFilters: {} };
@@ -112,9 +112,9 @@ const cleanTicketFilters = input => {
     const v = input[k]; if (v == null || v === '') continue;
     if (k === 'status' && ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'].includes(String(v))) out[k] = String(v);
     else if (k === 'assignee' && (v === 'me' || v === 'none' || /^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) out[k] = String(v);
-    else if (k === 'queue' && (v === 'none' || /^\\d{1,12}$/.test(String(v)))) out[k] = String(v);
+    else if (k === 'queue' && (v === 'none' || /^\d{1,12}$/.test(String(v)))) out[k] = String(v);
     else if (k === 'type' && ['question', 'incident', 'problem', 'task'].includes(String(v))) out[k] = String(v);
-    else if (k === 'client' && /^\\d{1,12}$/.test(String(v))) out[k] = String(v);
+    else if (k === 'client' && /^\d{1,12}$/.test(String(v))) out[k] = String(v);
     else if (k === 'following' && v === 'me') out[k] = 'me';
     else if (k === 'sla' && ['risk', 'breached'].includes(String(v))) out[k] = String(v);
     else if (['tag', 'q'].includes(k)) out[k] = clean(v, k === 'q' ? 100 : 30);
@@ -125,8 +125,8 @@ const cleanTicketFilters = input => {
     if (k === 'status' && ['open', 'pending', 'on_hold', 'solved', 'closed'].includes(String(v))) out.columnFilters[k] = String(v);
     else if (k === 'priority' && ['low', 'normal', 'high', 'urgent'].includes(String(v))) out.columnFilters[k] = String(v);
     else if (k === 'assignee' && (v === 'none' || v === 'me' || /^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) out.columnFilters[k] = String(v);
-    else if (k === 'number' && /^\\d{1,9}$/.test(String(v))) out.columnFilters[k] = String(v);
-    else if (['updatedFrom', 'updatedTo'].includes(k) && /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v))) out.columnFilters[k] = String(v);
+    else if (k === 'number' && /^\d{1,9}$/.test(String(v))) out.columnFilters[k] = String(v);
+    else if (['updatedFrom', 'updatedTo'].includes(k) && /^\d{4}-\d{2}-\d{2}$/.test(String(v))) out.columnFilters[k] = String(v);
     else if (['subject', 'requester'].includes(k)) out.columnFilters[k] = clean(v, 100);
     else if (k === 'sla' && ['risk', 'breached'].includes(String(v))) out.columnFilters[k] = String(v);
   }
