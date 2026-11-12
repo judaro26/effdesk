@@ -310,7 +310,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
           const one=v=>{const found=choices.find(o=>String(o.id)===String(v)||String(o.name)===String(v));if(field.system==='assignee'||field.type==='user'||field.items==='user')return {accountId:found?(found.id||found.name):v};return found?(found.id?{id:found.id}:{name:found.name}):v;};
           fields[id]=Array.isArray(value)?value.map(one):one(value);
         }
-        const missing=meta.fields.filter(f=>f.required&&(fields[f.id]===undefined||fields[f.id]===null||fields[f.id]===''||(Array.isArray(fields[f.id])&&!fields[f.id].length)));
+        const missing=meta.fields.filter(f=>f.required&&(fields[f.id]===undefined||fields[f.id]===null||fields[f.id]===''||(Array.isArray(fields[f.id])&&!fields[f.id].length))); const templateMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]===''||(Array.isArray(values[f.id])&&!values[f.id].length))); templateMissing.forEach(f=>{if(!missing.some(x=>x.id===f.id))missing.push(f);});
         if(missing.length) return fail(400,'Complete the required fields: '+missing.map(f=>f.name).join(', ')+'.');
         const d=await apiCall(p,token,'POST','/rest/api/3/issue',{cloudId,payload:{fields}});
         const site=(await withOrg(pool,org,db=>db.query('select external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]?.external_workspace_url;
