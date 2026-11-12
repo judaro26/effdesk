@@ -9,7 +9,8 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
     const n = await one(`select
       count(*) filter (where status = 'open')::int open,
       count(*) filter (where status = 'pending')::int pending,
-      count(*) filter (where status in ('open','pending') and assignee_id is null)::int unassigned,
+      count(*) filter (where status = 'on_hold')::int on_hold,
+      count(*) filter (where status in ('open','pending','on_hold') and assignee_id is null)::int unassigned,
       count(*) filter (where status in ('open','pending') and assignee_id = $2)::int mine,
       count(*) filter (where created_at >= date_trunc('day', now()))::int new_today,
       count(*) filter (where solved_at >= date_trunc('day', now()))::int solved_today,
@@ -22,7 +23,7 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
     const articles = (await one('select count(*)::int n from help_articles where org_id = $1', [orgId])).n;
     const inbox = !!(await one('select inbox from inbox_directory where org_id = $1'))?.inbox;
     const slug = (await one('select slug from "organization" where id = $1'))?.slug;
-    return { ok: true, portal: portalDomain && slug ? `https://${slug}.${portalDomain}` : '', counts: { open: n.open, pending: n.pending, unassigned: n.unassigned, mine: n.mine, newToday: n.new_today, solvedToday: n.solved_today, solvedWeek: n.solved_week, breached },
+    return { ok: true, portal: portalDomain && slug ? `https://${slug}.${portalDomain}` : '', counts: { open: n.open, pending: n.pending, on_hold: n.on_hold, unassigned: n.unassigned, mine: n.mine, newToday: n.new_today, solvedToday: n.solved_today, solvedWeek: n.solved_week, breached },
       mine, unassigned, setup: { inbox, articles: articles > 0, team: agents > 1, firstTicket: n.total > 0 } };
   });
 }
