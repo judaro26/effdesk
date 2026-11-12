@@ -81,16 +81,14 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(path.endsWith('/link') && req.method==='POST') {
     const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Unknown provider.');
-    const t=(await pool.query('select number,subject,description,status,priority from tickets where org_id=$1 and number=$2',[org,Number(b.ticketNumber)||0])).rows[0];
+    const t=(await pool.query('select number,subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(b.ticketNumber)||0])).rows[0];
     if(!t) return fail(404,'EffDesk ticket not found.');
     try {
       const token=await tokenFor(pool,env,org,p); let ext;
       if(p==='linear') {
         const teams=await apiCall(p,token,'POST',`query { teams { nodes { id name } } }`);
         const team=teams.teams.nodes.find(x=>x.id===b.teamId)||teams.teams.nodes[0]; if(!team) return fail(400,'No Linear team is available.');
-        const d=await apiCall(p,token,'POST',`mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input:$input) { success issue { id identifier url title updatedAt } } }`,{input:{teamId:team.id,title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'
-
-'+clean(t.description,8000)}});
+        const d=await apiCall(p,token,'POST',`mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input:$input) { success issue { id identifier url title updatedAt } } }`,{input:{teamId:team.id,title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\n\\n'}});
         ext=d.issueCreate.issue; ext.projectId=team.id;
       } else {
         const cloudId=clean(b.cloudId,120), projectKey=clean(b.projectKey,30); if(!cloudId||!projectKey) return fail(400,'Choose a Jira site and project.');
