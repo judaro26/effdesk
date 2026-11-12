@@ -56,7 +56,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   const cf = q.columnFilters && typeof q.columnFilters === 'object' && !Array.isArray(q.columnFilters) ? q.columnFilters : {};
   if (STATUSES.includes(cf.status)) add('status = $#', cf.status);
   if (/^\\d{1,9}$/.test(String(cf.number || ''))) add('number = $#', Number(cf.number));
-  if (cf.subject) add('subject ilike $#', '%' + clean(cf.subject, 100).replace(/[\\%_]/g, m => '\\\\' + m) + '%');
+  if (cf.subject) add('subject ilike $#', '%' + clean(cf.subject, 100).replace(/[\%_]/g, m => '\\' + m) + '%');
   if (cf.requester) { const term = '%' + clean(cf.requester, 100).replace(/[\%_]/g, m => '\\' + m) + '%'; args.push(term); const i = args.length; where.push('(requester_name ilike $' + i + ' or requester_email ilike $' + i + ')'); }
   if (PRIORITIES.includes(cf.priority)) add('priority = $#', cf.priority);
   if (cf.assignee === 'me') add('assignee_id = $#', actor.id);
@@ -65,6 +65,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(cf.updatedFrom || ''))) add('updated_at >= $#::date', cf.updatedFrom);
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(cf.updatedTo || ''))) add("updated_at < ($#::date + interval '1 day')", cf.updatedTo);
   const cSla = slaWhere(cf.sla); if (cSla) where.push(cSla);
+  const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
   const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 100), offset = Math.max(parseInt(q.offset, 10) || 0, 0);
   return withOrg(pool, orgId, async c => {
