@@ -27,3 +27,19 @@ drop policy if exists contact_profiles_tenant on contact_profiles;
 create policy contact_profiles_tenant on contact_profiles
   using (org_id = current_setting('app.org_id', true))
   with check (org_id = current_setting('app.org_id', true));
+
+-- Backfill profiles for requesters already present in the ticket history.
+insert into contact_profiles(org_id,email,name,company_id,last_seen_at)
+select distinct on (t.org_id, lower(trim(t.requester_email)))
+  t.org_id, lower(trim(t.requester_email)), coalesce(nullif(t.requester_name,''),''), k.id, max(t.updated_at) over (partition by t.org_id, lower(trim(t.requester_email)))
+from tickets t
+left join clients k on k.org_id=t.org_id and k.domain<>'' and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2))
+where t.requester_email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+order by t.org_id, lower(trim(t.requester_email)), (t.requester_name<>'') desc, t.updated_at desc
+on conflict(org_id,email) do nothing;
+
+-- Ensure historical tickets follow the same domain-based company association.
+update tickets t set client_id=k.id
+from clients k
+where t.org_id=k.org_id and t.client_id is null and k.domain<>''
+  and lower(k.domain)=lower(split_part(trim(t.requester_email),'@',2));
