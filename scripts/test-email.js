@@ -131,6 +131,6 @@ r = await hookWith(inlineEvent, inlineHeaders, inlineFetch, imageStore);
 const inlineTicket = (await call(olivia, { orgId: acme.id, action: 'get', number: r.body.number })).body;
 const inlineMessage = inlineTicket.messages[0];
 const inlineRows = await withOrg(pool, acme.id, c => c.query('select is_inline, filename from attachments where org_id = $1 and message_id = $2', [acme.id, inlineMessage.id]));
-check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\\/api\\/attachments\\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'image.png');
+check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\/api\/attachments\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'image.png');
 check('other event types are acknowledged and ignored', r.status === 200 && r.body.ignored === true);
 await pool.end(); done();
