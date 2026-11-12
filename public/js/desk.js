@@ -591,7 +591,7 @@
 
       // External project issues: search/link existing work or create a provider-native issue without leaving this ticket.
       function externalIssuePanel() {
-        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''});
+        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:t.priority==='urgent'?'1':t.priority==='high'?'2':t.priority==='low'?'4':'3',assigneeId:'',projectId2:'',fields:{},busy:false,error:''});
         var request=function(method,route,data){
           var url='/api/integrations/'+route+'?org='+encodeURIComponent(orgId);
           return fetchFn(url,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(Object.assign({orgId:orgId},data||{}))}).then(function(r){return r.json().catch(function(){return{};}).then(function(body){if(!r.ok)throw new Error(body.error||'External issue request failed.');return body;});});
@@ -697,7 +697,7 @@
             }
             if(ui.provider==='jira'&&ui.options.fields){
               ui.options.fields.forEach(function(field){
-                var val=ui.fields[field.id];if(val===undefined)val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');
+                var val=ui.fields[field.id];if(val===undefined){val=field.defaultValue&&typeof field.defaultValue==='object'?(field.defaultValue.id||field.defaultValue.name||''):(field.defaultValue||'');if(!val&&field.id==='priority'&&field.allowedValues&&field.allowedValues.length){var wanted=t.priority==='urgent'?/highest|urgent/i:t.priority==='high'?/^high/i:t.priority==='low'?/low/i:/medium|normal/i;var pickedPriority=field.allowedValues.filter(function(v){return wanted.test(v.name);})[0];if(pickedPriority)val=pickedPriority.id||pickedPriority.name;}}
                 var control;
                 if(field.allowedValues&&field.allowedValues.length){
                   control=el('select',{'aria-label':field.name,'multiple':field.type==='array'},(field.type==='array'?[]:[el('option',{value:''},'— Select —')]).concat(field.allowedValues.map(function(v){return el('option',{value:v.id||v.name},v.name);})));
