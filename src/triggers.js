@@ -11,7 +11,7 @@ import { plainOf } from './html-clean.js';
 
 const EMAIL_ALLOWED_STYLES = { '*': {
   'color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background-color': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i], 'background': [/^#[0-9a-f]{3,8}$/i, /^[a-z]+$/i],
-  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/],
+  'text-align': [/^(left|right|center|justify)$/], 'vertical-align': [/^(top|middle|bottom|baseline)$/], 'font-weight': [/^(bold|normal|[1-9]00)$/], 'font-style': [/^(normal|italic)$/],
   'font-size': [/^[0-9.]+(px|pt|em|rem|%)$/], 'line-height': [/^[0-9.]+(px|pt|em|rem|%)?$/], 'font-family': [/^[a-zA-Z0-9 ,"'_-]+$/],
   'letter-spacing': [/^-?[0-9.]+(px|pt|em|rem)$/], 'text-transform': [/^(none|uppercase|lowercase|capitalize)$/], 'text-decoration': [/^(none|underline|line-through)$/],
   'white-space': [/^(normal|nowrap|pre|pre-wrap|pre-line)$/], 'word-break': [/^(normal|break-all|keep-all|break-word)$/], 'overflow-wrap': [/^(normal|break-word|anywhere)$/],
