@@ -380,3 +380,10 @@ html{-webkit-text-size-adjust:100%}
 .ticket-column-head:hover .column-drag-handle{opacity:.9}
 .ticket-column-head.dragging{opacity:.35}
 .ticket-column-head.drag-over{box-shadow:inset 3px 0 0 var(--accent)}
+
+/* Per-agent ticket table column filters */
+.ticket-column-head{vertical-align:top;min-width:92px}
+.ticket-column-head .column-filter-input,.ticket-column-head select{display:block;box-sizing:border-box;width:100%;min-width:76px;max-width:180px;margin:7px 0 0;padding:5px 7px;border:1px solid var(--d-line);border-radius:6px;background:var(--d-panel);color:var(--d-ink);font:inherit;font-size:11px;font-weight:400}
+.ticket-column-head .column-filter-input:focus,.ticket-column-head select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.ticket-column-head .column-date-filters{display:grid;gap:4px;min-width:126px;margin-top:7px}
+.ticket-column-head .column-date-filters .column-filter-input{margin:0;min-width:0}
