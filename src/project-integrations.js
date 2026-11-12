@@ -170,7 +170,7 @@ async function receiveWebhook(req,{pool,env,provider}) {
       const issueId=clean(body.type==='Comment'?(issue.issueId||issue.issue?.id): (issue.id||issue.issueId),200);
       const link=(await c.query('select ticket_number from project_issue_links where org_id=$1 and provider=$2 and external_issue_id=$3',[org,provider,issueId])).rows[0];
       if(!link) return true;
-      return link.ticket_number;
+      return Number(link.ticket_number);
     });
     if(!handled) return json(200,{ok:true,duplicate:true});
     if(typeof handled==='number') {
