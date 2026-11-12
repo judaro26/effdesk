@@ -288,7 +288,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       const token=await tokenFor(pool,env,org,p); let ext;
       if(p==='linear') {
         const input={teamId:project,title,description:description||'EffDesk ticket #'+n};
-        const values=b.fields&&typeof b.fields==='object'?b.fields:{}; const requiredMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]==='')).map(f=>f.name||f.id); if(requiredMissing.length) return fail(400,'Complete the required fields: '+requiredMissing.join(', ')+'.');
+        const values=b.fields&&typeof b.fields==='object'?b.fields:{}; const requiredMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]===''||(Array.isArray(values[f.id])&&!values[f.id].length))).map(f=>f.name||f.id); if(requiredMissing.length) return fail(400,'Complete the required fields: '+requiredMissing.join(', ')+'.');
         const priorityValue=values.priority!==undefined?values.priority:b.priority; if(priorityValue!==undefined&&priorityValue!==null&&priorityValue!=='') input.priority=Math.max(0,Math.min(4,Number(priorityValue)));
         if(values.projectId2||b.projectId2) input.projectId=clean(values.projectId2||b.projectId2,100);
         if(values.stateId||b.stateId) input.stateId=clean(values.stateId||b.stateId,100);
