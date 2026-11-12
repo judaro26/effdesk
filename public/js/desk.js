@@ -316,6 +316,10 @@
       box.innerHTML = message.html_body;
       return box;
     }
+    function htmlPlain(html) { var box = doc.createElement('div'); box.innerHTML = String(html || '').replace(/<\\/(p|div|h[1-6]|li|tr|blockquote|pre)>/gi, '    // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
+\\n').replace(/<br\\s*\\/?\\s*>/gi, '\\n'); return String(box.innerText || box.textContent || '').replace(/\\u00a0/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim(); }
+    function htmlEsc(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); }
+    function uploadHelpImage(file) { return fetchFn('/api/help-assets/image?org=' + encodeURIComponent(orgId), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'That picture could not be uploaded.'); return j.url; }); }); }
     // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
     function editor(ta, t) {
       if (!root.EffEditor) return ta;
@@ -338,7 +342,10 @@
     // ── a ticket in three columns ──
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
-      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t)); var bodyBox = editor(body, t);
+      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
+      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, say: say, upload: uploadHelpImage }) : null;
+      if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
+      var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -353,7 +360,7 @@
         if (sending) return;
         draft = body.value; if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
         var status = action === 'reply' ? (sendStatus || (macroPatch && macroPatch.status) || undefined) : undefined, ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : [], mp = action === 'reply' ? macroPatch : null;
-        var req = api(action, { number: t.number, body: body.value, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
+        var req = api(action, { number: t.number, body: body.value, html: richEditor ? richEditor.getHtml() : undefined, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
         sending = true; paintSending();
         var done = function () { sending = false; paintSending(); };
         req.then(function (r) {
@@ -367,7 +374,7 @@
           return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, true); });
         }).catch(function () { done(); say('Could not confirm that the message was sent. Check the conversation before sending it again.', true); });
       };
-      body.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(mode === 'note' ? 'note' : 'reply'); });
+      var sendShortcut = function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(mode === 'note' ? 'note' : 'reply'); } }; body.addEventListener('keydown', sendShortcut); if (richEditor) richEditor.area.addEventListener('keydown', sendShortcut);
       var who = t.requester_name || t.requester_email;
       // labels: chips plus one box with suggestions
       var addLabel = function (v) { var g = String(v || '').trim(); if (!g) return; update({ tags: (t.tags || []).concat(g) }); };
@@ -609,20 +616,23 @@
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
           : a.type === 'auto_reply' ? (function() {
-              var ta = el('textarea', { 'aria-label': 'Action value', placeholder: 'Paste HTML email template or write a formatted reply (up to 20,000 characters). Use {{name}} for the customer first name and {{ticket_number}} for the ticket reference. The ticket number is also added automatically to every automated reply email.' });
-              ta.value = a.value || '';
-              ta.addEventListener('input', function () { a.value = ta.value; });
-              
-              // Keep automation templates as source text: unlike ticket replies, these may contain full HTML email markup.
-              // A markdown editor would rewrite that HTML, so preserve the exact saved template in an editable textarea.
-              ta.setAttribute('rows', '14');
-              ta.setAttribute('spellcheck', 'false');
-              ta.style.width = '100%';
-              ta.style.minHeight = '260px';
-              ta.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-              var box = el('div', { style: 'width: 100%; margin-top: 8px; margin-bottom: 8px;' },
-                el('p', { class: 'm' }, 'Edit the message or HTML email source below. Variables such as {{name}}, {{ticket_number}} and {{ticket_subject}} are supported.'),
-                ta);
+              var rich = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: a.value || '', canSource: has('article_import'), canImport: false, hideImport: true, emailMode: true, say: say, upload: uploadHelpImage }) : null;
+              var box = el('div', { style: 'width:100%;margin-top:8px;margin-bottom:8px;' },
+                el('p', { class: 'm' }, 'Compose a formatted public reply or edit its HTML source. Variables such as {{name}}, {{ticket_number}} and {{ticket_subject}} are supported.'),
+                rich ? rich.el : el('textarea', { 'aria-label': 'Action value', rows: '14', placeholder: 'Write the automated reply or paste HTML.' }));
+              if (rich) {
+                rich.area.addEventListener('input', function () { a.value = rich.getHtml(); });
+                var source = rich.el.querySelector('.ae-src'); if (source) source.addEventListener('input', function () { a.value = source.value; });
+                if (has('ai_assist')) {
+                  var aiMode = sel('AI rewrite', '', [['', '✦ Rewrite with AI…'], ['friendlier', 'Friendlier'], ['shorter', 'Shorter'], ['clearer', 'Clearer'], ['formal', 'More formal'], ['fix', 'Fix spelling and grammar']], function (v) {
+                    if (!v) return;
+                    var text = htmlPlain(rich.getHtml()); if (!text) return say('Write a message first, then choose how to rewrite it.', true);
+                    aiBusy = 'automation'; draw();
+                    api('ai-rewrite', { mode: v, text: text }).then(function (r) { aiBusy = ''; if (!r.ok) return say(r.body.error || 'The AI could not answer.', true); rich.setHtml('<p>' + htmlEsc(r.body.text).replace(/\\n/g, '<br>') + '</p>'); a.value = rich.getHtml(); draw(); });
+                  });
+                  box.insertBefore(el('div', { class: 'bar', style: 'margin:6px 0;' }, aiMode, el('span', { class: 'm' }, 'AI tools are included with Suite and Pro. Review the result before saving.')), rich.el);
+                }
+              } else { var ta = box.querySelector('textarea'); ta.value = a.value || ''; ta.addEventListener('input', function () { a.value = ta.value; }); }
               return box;
           })()
           : txt('Action value', a.value, function (x) { a.value = x; }, a.type === 'add_tag' ? 'label' : 'text');
