@@ -141,7 +141,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
         'select id,provider,name,description,project_id,project_name,issue_type_id,issue_type_name,form_config,active,sort_order,created_at,updated_at from project_issue_templates where org_id=$1 and ($2::text is null or provider=$2) and ($3::boolean or active=true) order by sort_order,name',
         [org,p||null,isAdmin]
       ))).rows;
-      return json(200,{templates:rows});
+      return json(200,{templates:rows,canManage:isAdmin});
     }
     if(!isAdmin) return fail(403,'Only workspace owners and admins can manage issue templates.');
     if(req.method==='POST') {
