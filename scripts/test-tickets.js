@@ -53,6 +53,9 @@ await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { assig
 const ids = async q => (await call(ann, { orgId: acme.id, action: 'list', ...q })).body.tickets.map(x => x.number).sort().join();
 check('the list filters by status, "me", "none" and a tag', await ids({ status: 'open' }) === '1,2' && await ids({ assignee: 'me' }) === '1' && await ids({ assignee: 'none' }) === '2' && await ids({ tag: 'vip' }) === '1' && await ids({ status: 'solved' }) === '');
 check('the list searches subject, requester and ticket number, and treats % and _ as plain characters', await ids({ q: 'heater' }) === '1' && await ids({ q: 'SAM@' }) === '2' && await ids({ q: '#2' }) === '2' && await ids({ q: '%' }) === '' && await ids({ q: 'tina' }) === '1');
+check('column filters match ticket number, subject, requester, priority and assignee', await ids({ columnFilters: { number: '2' } }) === '2' && await ids({ columnFilters: { subject: 'heater' } }) === '1' && await ids({ columnFilters: { requester: 'Tina' } }) === '1' && await ids({ columnFilters: { priority: 'high' } }) === '1' && await ids({ columnFilters: { assignee: 'me' } }) === '1');
+check('column updated-date filters are bounded and do not return unrelated tickets', await ids({ columnFilters: { updatedFrom: '2099-01-01' } }) === '' && await ids({ columnFilters: { updatedTo: '2000-01-01' } }) === '');
+
 await pool.query("update ticket_messages set body = '<p><strong>Legacy formatted reply</strong></p>', html_body = null where org_id = $1 and ticket_id = (select id from tickets where org_id = $1 and number = 2) and kind = 'requester'", [acme.id]);
 const legacyMessage = (await call(ann, { orgId: acme.id, action: 'get', number: 2 })).body.messages[0];
 check('legacy messages with HTML in their body are returned as safe rich HTML, not literal code', /<strong>Legacy formatted reply<\/strong>/.test(legacyMessage.html_body || '') && legacyMessage.body === 'Legacy formatted reply');
