@@ -99,13 +99,17 @@ export const deleteMacro = (pool, orgId, id) => withOrg(pool, orgId, async c => 
 
 // ---------- saved views: a named filter, private to its owner or shared with the team ----------
 const VIEW_KEYS = ['status', 'assignee', 'queue', 'type', 'client', 'tag', 'q', 'following'];
-export const listViews = (pool, orgId, actor) => withOrg(pool, orgId, async c => ({ ok: true, views: (await c.query('select id, name, owner_id, filter from saved_views where org_id = $1 and (owner_id is null or owner_id = $2) order by lower(name)', [orgId, actor.id])).rows.map(v => ({ id: v.id, name: v.name, shared: v.owner_id === null, mine: v.owner_id === actor.id, filter: v.filter })) }));
+const VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'sla', 'updated'];
+const DEFAULT_VIEW_COLUMNS = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'];
+export const listViews = (pool, orgId, actor) => withOrg(pool, orgId, async c => ({ ok: true, views: (await c.query('select id, name, owner_id, filter, columns from saved_views where org_id = $1 and (owner_id is null or owner_id = $2) order by lower(name)', [orgId, actor.id])).rows.map(v => ({ id: v.id, name: v.name, shared: v.owner_id === null, mine: v.owner_id === actor.id, filter: v.filter, columns: Array.isArray(v.columns) && v.columns.length ? v.columns : DEFAULT_VIEW_COLUMNS })) }));
 export const saveView = (pool, orgId, actor, b) => withOrg(pool, orgId, async c => {
   const name = clean(b.name, 60); if (!name) return fail('Give the view a name.');
   const f = {}; for (const k of VIEW_KEYS) if (b.filter && b.filter[k] != null && b.filter[k] !== '') f[k] = clean(b.filter[k], 100);
   if (!Object.keys(f).length) return fail('Choose at least one filter first.');
+  const columns = [...new Set((Array.isArray(b.columns) ? b.columns : DEFAULT_VIEW_COLUMNS).filter(k => VIEW_COLUMNS.includes(k)))];
+  if (!columns.length) return fail('Choose at least one ticket column.');
   if ((await c.query('select count(*)::int n from saved_views where org_id = $1', [orgId])).rows[0].n >= 100) return fail('An organization can have up to 100 saved views.');
-  return { ok: true, id: (await c.query('insert into saved_views (org_id, name, owner_id, filter) values ($1,$2,$3,$4) returning id', [orgId, name, b.shared === true ? null : actor.id, f])).rows[0].id };
+  return { ok: true, id: (await c.query('insert into saved_views (org_id, name, owner_id, filter, columns) values ($1,$2,$3,$4,$5) returning id', [orgId, name, b.shared === true ? null : actor.id, f, JSON.stringify(columns)])).rows[0].id };
 });
 export const deleteView = (pool, orgId, actor, id, canAdmin) => withOrg(pool, orgId, async c => {
   const v = (await c.query('select owner_id from saved_views where org_id = $1 and id = $2', [orgId, idOf(id)])).rows[0]; if (!v) return fail('No such view.', 404);
