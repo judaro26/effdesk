@@ -63,6 +63,22 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
+  if(req.method==='GET' && path.endsWith('/catalog')) {
+    const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    try {
+      const token=await tokenFor(pool,env,org,p);
+      if(p==='linear') { const d=await apiCall(p,token,'POST','query { teams { nodes { id name } } }'); return json(200,{items:d.teams.nodes.map(x=>({id:x.id,name:x.name}))}); }
+      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      if(!conn) return fail(400,'Connect Jira first.');
+      const d=await apiCall(p,token,'GET','/rest/api/3/project/search?maxResults=100',{cloudId:conn.external_workspace_id});
+      return json(200,{cloudId:conn.external_workspace_id,items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
+    } catch(e) { return fail(502,e.message); }
+  }
+  if(req.method==='GET' && path.endsWith('/links')) {
+    const n=Number(url.searchParams.get('ticketNumber'))||0;
+    const links=(await withOrg(pool,org,c=>c.query('select provider,external_issue_key,external_issue_url,external_issue_id,last_synced_at from project_issue_links where org_id=$1 and ticket_number=$2 order by provider',[org,n]))).rows;
+    return json(200,{links});
+  }
   const b=await req.json().catch(()=>({}));
   if(path.endsWith('/oauth/start') && req.method==='POST') {
     const p=clean(b.provider,20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
