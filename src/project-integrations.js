@@ -124,13 +124,67 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   if(!org) return fail(400,'Choose a workspace.');
   const role=await member(pool,org,s.user.id); if(!role) return fail(403,'You are not a member of this workspace.');
   const isAdmin=['owner','admin'].includes(role);
-  const ticketOperation=path.endsWith('/ticket-context')||path.endsWith('/links')||path.endsWith('/search')||path.endsWith('/issue-options')||path.endsWith('/catalog')||path.endsWith('/link-existing')||path.endsWith('/create-issue')||path.endsWith('/unlink');
+  const ticketOperation=path.endsWith('/templates')||path.endsWith('/ticket-context')||path.endsWith('/links')||path.endsWith('/search')||path.endsWith('/issue-options')||path.endsWith('/catalog')||path.endsWith('/link-existing')||path.endsWith('/create-issue')||path.endsWith('/unlink');
   if(!isAdmin&&!ticketOperation) return fail(403,'Only workspace owners and admins can manage external integrations.');
   if(req.method==='GET' && path.endsWith('/app-credentials')) {
     const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
     const row=(await withOrg(pool,org,c=>c.query('select provider from project_integration_apps where org_id=$1 and provider=$2',[org,p]))).rows[0];
     const [platformId,platformSecret]=envKeys(p,env);
     return json(200,{provider:p,customConfigured:!!row,platformConfigured:!!(platformId&&platformSecret),mode:row?'custom':'platform'});
+  }
+
+  if(path.endsWith('/templates')) {
+    if(req.method==='GET') {
+      const p=clean(url.searchParams.get('provider'),20);
+      if(p&&!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+      const rows=(await withOrg(pool,org,db=>db.query(
+        'select id,provider,name,description,project_id,project_name,issue_type_id,issue_type_name,form_config,active,sort_order,created_at,updated_at from project_issue_templates where org_id=$1 and ($2::text is null or provider=$2) and ($3::boolean or active=true) order by sort_order,name',
+        [org,p||null,isAdmin]
+      ))).rows;
+      return json(200,{templates:rows});
+    }
+    if(!isAdmin) return fail(403,'Only workspace owners and admins can manage issue templates.');
+    if(req.method==='POST') {
+      const b=await req.json().catch(()=>({}));
+      const id=Number(b.id)||0,p=clean(b.provider,20),name=clean(b.name,100),description=clean(b.description,500),projectId=clean(b.projectId,120),projectName=clean(b.projectName,160),issueTypeId=clean(b.issueTypeId,120),issueTypeName=clean(b.issueTypeName,120);
+      if(!PROVIDERS.has(p)||!name||!projectId) return fail(400,'Choose a provider and project, and enter a template name.');
+      if(p==='jira'&&!issueTypeId) return fail(400,'Choose a Jira issue type for this template.');
+      const raw=Array.isArray(b.formConfig?.fields)?b.formConfig.fields:[];
+      if(raw.length>80) return fail(400,'A template can contain at most 80 configured fields.');
+      const fields=raw.map(x=>({
+        id:clean(x.id,120),name:clean(x.name,120),type:clean(x.type,30)||'string',
+        visible:x.visible!==false,required:!!x.required,
+        defaultValue:x.defaultValue===undefined||x.defaultValue===null?'':String(x.defaultValue).slice(0,1000),
+        mapping:['ticket.subject','ticket.description','ticket.number','ticket.requester_name','ticket.requester_email','ticket.priority'].includes(x.mapping)?x.mapping:''
+      })).filter(x=>x.id&&x.visible);
+      const formConfig={fields,submitLabel:clean(b.formConfig?.submitLabel,50)||'Create and link issue'};
+      try {
+        let row;
+        if(id) {
+          row=(await withOrg(pool,org,db=>db.query(
+            'update project_issue_templates set provider=$3,name=$4,description=$5,project_id=$6,project_name=$7,issue_type_id=$8,issue_type_name=$9,form_config=$10::jsonb,active=$11,sort_order=$12,updated_at=now() where org_id=$1 and id=$2 returning id',
+            [org,id,p,name,description,projectId,projectName,issueTypeId||null,issueTypeName||null,JSON.stringify(formConfig),b.active!==false,Number(b.sortOrder)||0]
+          ))).rows[0];
+          if(!row) return fail(404,'Template not found.');
+        } else {
+          row=(await withOrg(pool,org,db=>db.query(
+            'insert into project_issue_templates (org_id,provider,name,description,project_id,project_name,issue_type_id,issue_type_name,form_config,active,sort_order,created_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12) returning id',
+            [org,p,name,description,projectId,projectName,issueTypeId||null,issueTypeName||null,JSON.stringify(formConfig),b.active!==false,Number(b.sortOrder)||0,s.user.id]
+          ))).rows[0];
+        }
+        return json(200,{ok:true,id:row.id});
+      } catch(e) {
+        if(e.code==='23505') return fail(409,'A template with that name already exists for this provider.');
+        console.error('external issue template save:',e.message);return fail(500,'Could not save this issue template.');
+      }
+    }
+    if(req.method==='DELETE') {
+      const b=await req.json().catch(()=>({})),id=Number(b.id)||0;
+      if(!id) return fail(400,'Choose a template.');
+      const r=await withOrg(pool,org,db=>db.query('delete from project_issue_templates where org_id=$1 and id=$2 returning id',[org,id]));
+      return r.rowCount?json(200,{ok:true}):fail(404,'Template not found.');
+    }
+    return fail(405,'Method not allowed.');
   }
 
   if(req.method==='GET' && path.endsWith('/ticket-context')) {
