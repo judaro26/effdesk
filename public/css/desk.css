@@ -371,3 +371,12 @@ html{-webkit-text-size-adjust:100%}
 .column-picker .chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--d-ink);white-space:nowrap}
 .column-picker input{accent-color:var(--accent)}
 @media(max-width:700px){.column-picker{position:sticky;top:0;z-index:6;max-height:30vh;overflow:auto}}
+
+/* Draggable ticket column headers */
+.ticket-column-head{position:relative;cursor:grab;user-select:none;white-space:nowrap}
+.ticket-column-head:active{cursor:grabbing}
+.ticket-column-head .column-head-label{vertical-align:middle}
+.ticket-column-head .column-drag-handle{display:inline-block;margin-left:7px;opacity:.42;font-size:14px;line-height:1;vertical-align:middle}
+.ticket-column-head:hover .column-drag-handle{opacity:.9}
+.ticket-column-head.dragging{opacity:.35}
+.ticket-column-head.drag-over{box-shadow:inset 3px 0 0 var(--accent)}

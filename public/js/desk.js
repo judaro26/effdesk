@@ -264,7 +264,27 @@
           cb.addEventListener('change', function () { if (cb.checked) { if (ticketColumns.indexOf(x[0]) < 0) ticketColumns.push(x[0]); } else ticketColumns = ticketColumns.filter(function (k) { return k !== x[0]; }); draw(); });
           return el('label', { class: 'chk' }, cb, ' ' + x[1]);
         })) : null;
-      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, el('div', { class: 'views-head' }, el('div', {}, el('h2', {}, 'All Tickets'), el('p', { class: 'm' }, 'Browse, filter and manage every ticket in this workspace.')), el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-columns-toggle': '1', 'aria-expanded': String(columnsOpen), onclick: function () { columnsOpen = !columnsOpen; draw(); } }, 'Columns'), el('button', { type: 'button', class: 'btn l sm', 'data-list-refresh': '1', onclick: function () { var b = main.querySelector('[data-list-refresh]'); if (b) { b.disabled = true; b.textContent = 'Refreshing…'; } refresh().then(function () { say('Ticket list refreshed.'); }); } }, '↻ Refresh'))), columnPicker, bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {}, (has('bulk_actions') ? [''] : []).concat(shownColumns.map(function (k) { return columnDefs[k].label; })).map(function (h, i) { if (has('bulk_actions') && i === 0) { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return el('th', {}, all); } return el('th', {}, h); }))), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
+      return el('div', { class: 'views' }, side, el('div', { class: 'tbl' }, el('div', { class: 'views-head' }, el('div', {}, el('h2', {}, 'All Tickets'), el('p', { class: 'm' }, 'Browse, filter and manage every ticket in this workspace.')), el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn l sm', 'data-columns-toggle': '1', 'aria-expanded': String(columnsOpen), onclick: function () { columnsOpen = !columnsOpen; draw(); } }, 'Columns'), el('button', { type: 'button', class: 'btn l sm', 'data-list-refresh': '1', onclick: function () { var b = main.querySelector('[data-list-refresh]'); if (b) { b.disabled = true; b.textContent = 'Refreshing…'; } refresh().then(function () { say('Ticket list refreshed.'); }); } }, '↻ Refresh'))), columnPicker, bulkBar, list.length ? el('table', {}, el('thead', {}, el('tr', {},
+        (has('bulk_actions') ? [el('th', {}, (function () { var all = el('input', { type: 'checkbox', 'aria-label': 'Select all tickets on this page', 'data-pick-all': '1' }); all.checked = list.length > 0 && list.every(function (t) { return picked[t.number]; }); all.addEventListener('change', function () { list.forEach(function (t) { if (all.checked) picked[t.number] = true; else delete picked[t.number]; }); draw(); }); return all; })())] : []).concat(shownColumns.map(function (k) {
+          var th = el('th', { class: 'ticket-column-head', draggable: 'true', 'data-column-key': k, title: 'Drag to reorder ' + columnDefs[k].label }, el('span', { class: 'column-head-label' }, columnDefs[k].label), el('span', { class: 'column-drag-handle', 'aria-hidden': 'true' }, '⠿'));
+          th.addEventListener('dragstart', function (e) { th.classList.add('dragging'); if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', k); } });
+          th.addEventListener('dragend', function () { th.classList.remove('dragging'); [].slice.call(th.parentNode.children).forEach(function (x) { x.classList.remove('drag-over'); }); });
+          th.addEventListener('dragover', function (e) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; th.classList.add('drag-over'); });
+          th.addEventListener('dragleave', function () { th.classList.remove('drag-over'); });
+          th.addEventListener('drop', function (e) {
+            e.preventDefault(); th.classList.remove('drag-over');
+            var from = e.dataTransfer && e.dataTransfer.getData('text/plain'), to = k;
+            if (!from || from === to || ticketColumns.indexOf(from) < 0 || ticketColumns.indexOf(to) < 0) return;
+            var ordered = ticketColumns.filter(function (x) { return columnDefs[x] && (x !== 'sla' || has('sla')); });
+            var fromIndex = ordered.indexOf(from), toIndex = ordered.indexOf(to);
+            if (fromIndex < 0 || toIndex < 0) return;
+            ordered.splice(toIndex, 0, ordered.splice(fromIndex, 1)[0]);
+            ticketColumns = ordered.concat(ticketColumns.filter(function (x) { return ordered.indexOf(x) < 0; }));
+            draw();
+          });
+          return th;
+        }))
+      )), el('tbody', {}, rows)) : el('p', { class: 'm pad' }, 'No tickets here.')));
     }
 
     // upload files for a ticket (t) or, while writing a new ticket, before it exists (t = null); they wait as chips until the message is sent
