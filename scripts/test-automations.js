@@ -36,7 +36,7 @@ outbox.length = 0;
 const t1 = (await A(olivia, 'create', { subject: 'Refund please', body: 'I want my money', requesterEmail: 'tina@example.com', requesterName: 'Tina Smith' })).body.ticket;
 const g1 = (await A(olivia, 'get', { number: t1.number })).body;
 check('a new ticket that matches gets the actions: priority, tag, owner, a private note and a public reply', g1.ticket.priority === 'urgent' && g1.ticket.tags.includes('billing') && g1.ticket.assignee_id === ann.user.id && g1.messages.some(m => m.kind === 'note' && /check the order/.test(m.body) && /Automation: Refunds are urgent/.test(m.author_name)) && g1.messages.some(m => m.kind === 'agent' && m.body === 'Hi Tina, we got your refund request.'));
-check('an automation keeps its rich HTML in the ticket message', g1.messages.some(m => m.kind === 'agent' && /<strong>Hi Tina<\\/strong>/.test(m.html_body || '') && /color:#123456/.test(m.html_body || '')));
+check('an automation keeps its rich HTML in the ticket message', g1.messages.some(m => m.kind === 'agent' && /<strong>Hi Tina<\/strong>/.test(m.html_body || '') && /color:#123456/.test(m.html_body || '')));
 check('the public reply is emailed to the customer', outbox.some(m => m.to === 'tina@example.com' || (Array.isArray(m.to) && m.to.includes('tina@example.com'))));
 check('an automated public reply does not move a newly created ticket from Open to Pending', g1.ticket.status === 'open');
 const t2 = (await A(olivia, 'create', { subject: 'Heater', body: 'cold', requesterEmail: 'tom@example.com' })).body.ticket;
