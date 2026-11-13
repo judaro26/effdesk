@@ -80,6 +80,19 @@
       box.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable', 'data-people': '1' }, el('thead', {}, el('tr', {}, ['Name', 'Email', 'Role', 'Last active'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.people.map(function (p) { return el('tr', {}, el('td', {}, p.name || ''), el('td', {}, p.email), el('td', {}, p.role), el('td', {}, ago(p.lastActive))); })))));
       box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Support view'));
       box.appendChild(el('p', {}, el('a', { class: 'btn', href: '/desk.html?org=' + encodeURIComponent(d.customer.id) + '&support=1', 'data-open-support': '1' }, 'Open support view (read-only)'), ' ', el('span', { class: 'm' }, 'Read-only. Each visit is recorded in the customer\u2019s audit log.')));
+      box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Sandbox environment'));
+      box.appendChild(el('p', { class: 'm' }, 'Create a separate workspace for safe testing. It copies the customer’s current workspace members and roles, but does not copy production tickets, contacts, integrations, credentials or billing.'));
+      box.appendChild(el('button', { type: 'button', class: 'btn', 'data-create-sandbox': d.customer.slug, onclick: function (ev) {
+        var btn = ev.currentTarget; if (root.confirm && !root.confirm('Create an isolated sandbox for ' + d.customer.name + '?')) return;
+        btn.disabled = true; btn.textContent = 'Creating sandbox…';
+        act('customer-sandbox-create', { slug: d.customer.slug }).then(function (r) {
+          btn.disabled = false; btn.textContent = 'Create / verify sandbox';
+          if (!r.ok) return say(r.body.error || 'The sandbox could not be created.', true);
+          var s = r.body.sandbox, note = box.querySelector('[data-sandbox-result]');
+          if (!note) { note = el('p', { class: 'msg', 'data-sandbox-result': '1' }); box.appendChild(note); }
+          note.textContent = (r.body.existing ? 'Sandbox already exists: ' : 'Sandbox created: ') + s.name + ' (' + s.slug + '). ' + r.body.members + ' team members have access. They can sign in normally and choose this workspace from the workspace switcher.';
+        }).catch(function () { btn.disabled = false; btn.textContent = 'Create / verify sandbox'; say('The server could not be reached.', true); });
+      } }, 'Create / verify sandbox'));
       if (P) { box.appendChild(el('h3', { style: 'margin-top:20px' }, 'Settings for this customer')); box.appendChild(P.customerControls(d.customer.slug)); }
       if (d.entries.length) box.appendChild(el('ul', { class: 't' }, d.entries.map(function (e) { return el('li', { class: 'm' }, new Date(e.at).toLocaleString() + ' · ' + e.action.replace('support.', '').replace('-', ' ') + ' · ' + (e.who || '')); })));
       return box;
