@@ -24,8 +24,8 @@ export function isWithinAllowedNetwork(ip,networks){
  return networks.some(raw=>{const p=String(raw).split('/'),base=p[0].split('.').map(Number),prefix=Math.max(0,Math.min(32,Number(p[1]||32)));if(base.length!==4||base.some(x=>!Number.isInteger(x)||x<0||x>255))return false;const target=base.reduce((n,x)=>((n<<8)|x)>>>0,0),mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;return (value&mask)===(target&mask);});
 }
 export function normalizeSnmpDevices(input){
- const devices=Array.isArray(input?.devices)?input.devices.slice(0,1024):[];
- return devices.map(d=>({ip:clean(d?.ip,64),name:clean(d?.sysName,180),description:clean(d?.sysDescr,500),objectId:clean(d?.sysObjectId,180),uptime:clean(d?.sysUpTime,120)}))
+ const devices=Array.isArray(input?.devices)?input.devices.slice(0,400):[];
+ return devices.map(d=>({ip:clean(d?.ip,64),name:clean(d?.sysName,120),description:clean(d?.sysDescr,240),objectId:clean(d?.sysObjectId,100),uptime:clean(d?.sysUpTime,60)}))
   .filter(d=>privateAddress(d.ip)&&d.name||privateAddress(d.ip)&&d.description);
 }
 export async function ingestSnmpDiscoveryAgent(req,{pool}){
@@ -36,7 +36,7 @@ export async function ingestSnmpDiscoveryAgent(req,{pool}){
  if(await rateLimit(pool,'cmdb-snmp-agent:'+hash(parsed.token),5,60))return fail(429,'Too many network discovery check-ins. Please wait before retrying.');
  const raw=await req.text();if(raw.length>300000)return fail(413,'Network inventory payload is too large.');
  let body;try{body=JSON.parse(raw);}catch{return fail(400,'Network inventory payload must be JSON.');}
- if(!Array.isArray(body.devices)||body.devices.length>1024)return fail(400,'A scan must contain no more than 1,024 device results.');
+ if(!Array.isArray(body.devices)||body.devices.length>400)return fail(400,'A scan must contain no more than 400 device results.');
  const devices=normalizeSnmpDevices(body);
  if(!devices.length)return fail(400,'No valid private-network SNMP device results were supplied.');
  try{
