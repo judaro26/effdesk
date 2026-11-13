@@ -9,5 +9,5 @@ assert.equal(payload.software.length,1);
 assert.equal(payload.software[0].name,'Office');
 assert.equal(payload.softwareComplete,true);
 assert.equal(normalizeDiscoveryPayload({softwareComplete:false}).softwareComplete,false);
-assert.equal(normalizeWindowsPayload({software:Array.from({length:520},(_,i)=>({name:'App '+i}))}).software.length,500);
+assert.equal(normalizeDiscoveryPayload({software:Array.from({length:520},(_,i)=>({name:'App '+i}))}).software.length,500);
 console.log('Cross-platform discovery agent module exports and payload normalization passed.');
