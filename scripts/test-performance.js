@@ -1,5 +1,5 @@
 import { check, done } from './lib/check.js';
-import { normalizePath, recordRequest, performanceOverview } from '../src/performance.js';
+import { normalizePath, normalizeSql, recordRequest, recordSqlQuery, recordWebVital, vitalRating, performanceOverview } from '../src/performance.js';
 check('normalizes numeric ids and strips query strings', normalizePath('/api/tickets/123/messages?token=secret') === '/api/tickets/:id/messages');
 check('normalizes UUID path segments', normalizePath('/api/agent/123e4567-e89b-12d3-a456-426614174000/tickets') === '/api/agent/:id/tickets');
 check('redacts tenant slugs in workspace URLs', normalizePath('/w/acme/agent/10003/tickets') === '/w/:tenant/agent/:id/tickets');
@@ -11,10 +11,22 @@ check('records one aggregate without storing query strings or request content', 
 check('captures status, latency bucket and pool pressure', calls[0].params[4] === 1 && calls[0].params[5] === 1 && calls[0].params[6] === 1200 && calls[0].params[10] === 1 && calls[0].params[11] === 2 && calls[0].params[12] === 10);
 calls = []; const skipped = await recordRequest(pool, sample, { PERFORMANCE_SAMPLE_RATE: '0.1' }, () => 0.9);
 check('respects sampling configuration', !skipped.recorded && calls.length === 0);
+check('normalizes SQL literals and parameters for stable fingerprints', normalizeSql("SELECT * FROM tickets WHERE id = 123 AND subject = 'secret' AND org_id = $1") === "SELECT * FROM tickets WHERE id = ? AND subject = ? AND org_id = ?");
+check('uses Core Web Vitals rating thresholds', vitalRating('LCP', 2400) === 'good' && vitalRating('INP', 350) === 'needs_improvement' && vitalRating('CLS', 0.3) === 'poor' && vitalRating('unknown', 10) === null);
+let sqlCalls = [];
+const sqlPool = { query: async (sql, params) => { sqlCalls.push({ sql, params }); return { rows: [], rowCount: 1 }; } };
+const sqlRecorded = await recordSqlQuery(sqlPool, { sql: "SELECT * FROM tickets WHERE id = $1 AND email = 'secret@example.com'", ms: 130, fn: 'tickets', org: 'org-1', at: 1760000000000, error: false }, { PERFORMANCE_SQL_SAMPLE_RATE: '1' }, () => 0);
+check('stores only SQL fingerprint and timing aggregates, never raw SQL', sqlRecorded.recorded && sqlCalls.length === 1 && sqlCalls[0].params[1] === sqlRecorded.fingerprint && !sqlCalls[0].params.includes("secret@example.com") && sqlCalls[0].params[5] === 0 && sqlCalls[0].params[6] === 130);
+sqlCalls = [];
+const vitalRecorded = await recordWebVital(sqlPool, { org: 'org-1', name: 'LCP', value: 4200, page: '/w/acme/agent/10003/tickets?secret=x', device: 'mobile', at: 1760000000000 });
+check('stores tenant-scoped and normalized browser vitals with a derived rating', vitalRecorded.recorded && vitalRecorded.rating === 'poor' && sqlCalls[0].params[1] === 'org-1' && sqlCalls[0].params[2] === '/w/:tenant/agent/:id/tickets' && sqlCalls[0].params[6] === 0 && sqlCalls[0].params[8] === 1);
+
 let q = 0;
-const fake = { query: async sql => { q++; if (q === 1) return { rows: [], rowCount: 0 }; if (q === 2) return { rows: [{ requests: 100, errors: 1, slow_requests: 7, duration_total_ms: 20000, max_ms: 2200, bucket_lt100: 40, bucket_100to499: 55, bucket_500to999: 3, bucket_gte1000: 2, pool_waiting_max: 1, pool_total_max: 10 }] }; if (q === 3) return { rows: [{ hour: '2026-11-13T12:00:00Z', requests: 100, errors: 1, avg_ms: 200 }] }; if (q === 4) return { rows: [{ function_name: 'tickets', path: '/api/tickets', requests: 100, errors: 1, slow_requests: 7, duration_total_ms: 20000, max_ms: 2200, bucket_lt100: 40, bucket_100to499: 55, bucket_500to999: 3, bucket_gte1000: 2 }] }; return { rows: [{ org_id: 'org-1', requests: 100, errors: 1, duration_total_ms: 20000, max_ms: 2200 }] }; } };
+const fake = { query: async sql => { q++; if (q === 1) return { rows: [{ requests: 100, errors: 1, slow_requests: 7, duration_total_ms: 20000, max_ms: 2200, bucket_lt100: 40, bucket_100to499: 55, bucket_500to999: 3, bucket_gte1000: 2, pool_waiting_max: 1, pool_total_max: 10 }] }; if (q === 2) return { rows: [{ hour: '2026-11-13T12:00:00Z', requests: 100, errors: 1, avg_ms: 200 }] }; if (q === 3) return { rows: [{ function_name: 'tickets', path: '/api/tickets', requests: 100, errors: 1, slow_requests: 7, duration_total_ms: 20000, max_ms: 2200, bucket_lt100: 40, bucket_100to499: 55, bucket_500to999: 3, bucket_gte1000: 2 }] }; if (q === 4) return { rows: [{ org_id: 'org-1', requests: 100, errors: 1, duration_total_ms: 20000, max_ms: 2200 }] }; if (q === 5) return { rows: [{ query_hash: 'abcdef0123456789', operation: 'SELECT', function_name: 'tickets', samples: 20, errors: 1, total_ms: 4000, max_ms: 500, bucket_lt25: 0, bucket_25to99: 0, bucket_100to499: 0, bucket_gte500: 20 }] }; return { rows: [{ metric: 'LCP', page: '/agent/:id/tickets', device: 'desktop', samples: 10, avg_value: 2200, max_value: 4500, good_count: 2, needs_improvement_count: 2, poor_count: 6 }] }; } };
 const view = await performanceOverview(fake, '24h');
 check('builds performance summaries, endpoint rankings and tenant comparisons', view.summary.requests === 100 && view.routes[0].path === '/api/tickets' && view.tenants[0].org_id === 'org-1');
 check('computes average latency and a documented approximate p95 band', view.summary.avg_ms === 200 && view.summary.p95_bucket === '100–499 ms' && view.summary.error_rate === 1);
-check('detects pool contention and includes the measurement limitations', view.diagnostics.some(x => /pool contention/.test(x.title)) && view.notes.some(x => /p95/.test(x)));
+check('detects pool contention and includes the measurement limitations', view.diagnostics.some(x => /pool contention/.test(x.title)) && view.notes.some(x => /SQL timings/.test(x)));
+check('returns slow SQL fingerprints and aggregated Core Web Vitals', view.sqlQueries[0].query_hash === 'abcdef0123456789' && view.sqlQueries[0].p95_bucket === '≥500 ms' && view.vitals[0].metric === 'LCP' && view.vitals[0].p75_rating === 'poor');
+check('raises automated findings for slow SQL and poor Core Web Vitals', view.diagnostics.some(x => x.title === 'Slow database queries detected') && view.diagnostics.some(x => x.title === 'Poor real-user experience detected'));
 done();

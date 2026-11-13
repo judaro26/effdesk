@@ -30,6 +30,7 @@ import { dashboard } from './dashboard.js';
 import { getSso, saveSso, deleteSso } from './sso.js';
 import * as wa from './whatsapp.js';
 import { recordBrowserError } from './errors.js';
+import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
@@ -849,6 +850,19 @@ export async function whatsappWebhook(req, { pool, mailer, store, env = process.
   const r = await wa.handleWebhook(pool, env, raw, req.headers.get('x-hub-signature-256'), mailer, { store, fetchFn });
   logInfo('whatsapp_webhook', { ok: r.ok, handled: r.handled, why: r.ok ? undefined : r.error });
   return json(r.ok ? 200 : r.status || 400, r.ok ? { ok: true } : { error: r.error });
+}
+
+// Authenticated, tenant-scoped real-user performance measurements. Only allowlisted metric values and normalized routes are persisted.
+export async function performanceVitals(req, { pool, auth, env = process.env }) {
+  if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
+  const s = await session(auth, req); if (!s) return json(401, { error: 'Sign in first.' });
+  const raw = await req.text(); if (raw.length > 1500) return json(413, { error: 'Too large.' });
+  let b; try { b = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
+  const orgId = String(b.orgId || '').slice(0, 80);
+  if (!orgId || !(await roleIn(pool, s.user.id, orgId))) return json(403, { error: 'Workspace access required.' });
+  if (await rateLimit(pool, 'pv:' + clientIp(req, env) + ':' + orgId, 300, 60)) return json(429, { error: 'Too many performance samples.' });
+  const r = await recordWebVital(pool, { org: orgId, name: b.name, value: b.value, page: b.page, device: b.device, at: Date.now() });
+  return r.recorded ? json(202, { ok: true }) : json(400, { error: 'Unsupported performance metric.' });
 }
 
 // a script error reported by a browser (public, capped): see src/errors.js

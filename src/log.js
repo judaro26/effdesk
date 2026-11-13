@@ -18,6 +18,7 @@ export function scrub(v, depth = 0) {
   return String(v).slice(0, 100);
 }
 const base = (env = process.env) => ({ service: 'effdesk', deploy: String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12) || undefined, ctx: env.CONTEXT || undefined });
+export const currentRequest = () => { const s = store.getStore(); return s ? { fn: s.fn, org: s.meta.org } : null; };
 export const sinks = { fetch: (...a) => fetch(...a), env: () => process.env, now: () => Date.now(), onError: null, onRequest: null };   // hooks are installed by context.js; telemetry must never affect a visitor response
 
 // one line: goes to the request's buffer (sent when the request ends) or, outside a request, straight out
