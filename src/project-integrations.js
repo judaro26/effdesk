@@ -375,7 +375,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     try {
       const conn=PROVIDERS.has(p)?(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]:(await withOrg(pool,org,c=>c.query('select provider from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,p]))).rows[0];
       // An unconnected provider is a normal setup state, not an upstream gateway failure.
-      if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first to load its teams or projects.');
+      if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':p==='jira'?'Jira':p==='github'?'GitHub':'GitLab')+' first to load its teams, repositories, or projects.');
       const token=await tokenFor(pool,env,org,p);
       if(p==='github') {
         const d=await apiCall(p,token,'GET','/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member');
