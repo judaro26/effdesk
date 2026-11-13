@@ -452,3 +452,79 @@
   .deskapp .dash-trend-totals{gap:7px}
   .deskapp .dash-chart{gap:5px}
 }
+
+
+/* Ticket workspace: keep the conversation central and make context feel intentional. */
+.deskapp .ticket{background:var(--d-bg)}
+.deskapp .ticket .props,.deskapp .ticket .info{padding:20px 17px}
+.deskapp .ticket .props .prop,.deskapp .ticket .info .prop{padding-bottom:2px}
+.deskapp .ticket .props .prop .pl,.deskapp .ticket .info .prop .pl{font-size:9px;letter-spacing:.105em;text-transform:uppercase}
+.deskapp .ticket .conv{background:color-mix(in srgb,var(--d-bg) 94%,var(--d-panel))}
+.deskapp .ticket .conv .ch{position:relative;z-index:2;padding:18px 23px 15px;background:var(--d-panel);box-shadow:0 3px 12px rgba(15,23,42,.035)}
+.deskapp .ticket .conv .ch h2{font-size:19px;font-weight:760;letter-spacing:-.035em;line-height:1.3}
+.deskapp .ticket .conv .ch>.m{font-size:11px;line-height:1.5}
+.deskapp .ticket .conv .chtools .ib{width:34px;height:34px;border:1px solid var(--eff-border);border-radius:9px;background:var(--eff-surface);font-size:14px}
+.deskapp .ticket .thread{gap:17px;padding:22px clamp(16px,2.5vw,34px);scrollbar-gutter:stable}
+.deskapp .ticket .msg-row{gap:10px}
+.deskapp .ticket .msg-row .av{width:31px;height:31px;flex:none;border:2px solid var(--d-panel);box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.deskapp .ticket .msg-b{max-width:min(760px,82%);padding:13px 16px;border:1px solid color-mix(in srgb,var(--d-line) 78%,transparent);border-radius:15px;background:var(--eff-surface);box-shadow:0 2px 8px rgba(15,23,42,.025);line-height:1.62}
+.deskapp .ticket .msg-b.agent{background:color-mix(in srgb,var(--accent) 7%,var(--d-panel));border-color:color-mix(in srgb,var(--accent) 16%,var(--d-line))}
+.deskapp .ticket .msg-b.note{background:color-mix(in srgb,var(--d-note) 70%,var(--d-panel));border-color:var(--d-note-line);box-shadow:none}
+.deskapp .ticket .msg-b .mh{display:flex;flex-wrap:wrap;align-items:center;gap:4px 7px;margin-bottom:8px;font-size:11px}
+.deskapp .ticket .msg-b .mh strong{font-weight:750}
+.deskapp .ticket .msg-b .mh .m{font-size:10px}
+.deskapp .ticket .msg-b .mt{font-size:13px;line-height:1.68}
+.deskapp .ticket .msg-row.sys{padding:3px 0}
+.deskapp .ticket .sysmsg{padding:5px 12px;border:1px solid var(--eff-border);background:var(--eff-surface-soft);font-size:10px}
+.deskapp .ticket .compose{padding:13px 18px 16px;border-top:1px solid var(--eff-border);background:var(--eff-surface);box-shadow:0 -5px 18px rgba(15,23,42,.025)}
+.deskapp .ticket .compose .modes{gap:5px;margin-bottom:10px}
+.deskapp .ticket .compose .modes button{padding:8px 13px;border-radius:9px;font-size:12px;font-weight:650}
+.deskapp .ticket .compose .modes button[aria-selected=true]{background:color-mix(in srgb,var(--accent) 10%,var(--d-bg));color:var(--accent-d)}
+.deskapp .ticket .compose textarea,.deskapp .ticket .compose .ae-area{border-radius:12px;background:var(--d-bg);line-height:1.6}
+.deskapp .ticket .compose .cbar{gap:8px;margin-top:10px}
+.deskapp .ticket .compose .cbar .btn{min-height:38px}
+.deskapp .ticket .compose .aibar{padding:8px 0;border-top:1px solid var(--eff-border)}
+.deskapp .ticket .info .pcard{padding:13px;border-radius:12px;background:var(--eff-surface-soft);box-shadow:none}
+.deskapp .ticket .info .pcard h3{margin-bottom:9px}
+.deskapp .ticket .info .timeline li{padding-block:7px;line-height:1.5}
+.deskapp .ticket .info .timeline li .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 10%,transparent)}
+.deskapp .ticket .props .chips{gap:6px}
+.deskapp .ticket .props .chip{padding:4px 8px;border-radius:7px;background:var(--eff-surface-soft);font-size:10px}
+@media(max-width:680px){
+  .deskapp .ticket .conv .ch{padding:15px 13px}
+  .deskapp .ticket .thread{padding:15px 11px;gap:12px}
+  .deskapp .ticket .msg-b{max-width:calc(100vw - 105px);padding:11px 12px}
+  .deskapp .ticket .compose{padding:10px}
+  .deskapp .ticket .props,.deskapp .ticket .info{padding:15px 13px}
+}
+
+/* Shared enterprise module language across ITSM, CMDB, contacts, changes and integrations. */
+.deskapp .itsm-page,.deskapp .contact-workspace{gap:17px}
+.deskapp .itsm-page-head h2,.deskapp .contact-page-head h2{font-size:25px;font-weight:770;letter-spacing:-.045em}
+.deskapp .itsm-list-card,.deskapp .itsm-services-card,.deskapp .itsm-detail-card,
+.deskapp .change-detail-card,.deskapp .change-policy-card,.deskapp .contact-form-grid,
+.deskapp .contact-profile-card,.deskapp .contact-ticket-row{
+  border-color:var(--eff-border);border-radius:14px;box-shadow:var(--eff-elev-1)
+}
+.deskapp .itsm-card-head,.deskapp .itsm-detail-head{padding-bottom:11px;border-bottom:1px solid var(--eff-border)}
+.deskapp .itsm-card-head h3,.deskapp .itsm-detail-head h3{font-size:13px;font-weight:730;letter-spacing:-.02em;text-transform:none;color:var(--d-ink)}
+.deskapp .itsm-table th,.deskapp .change-table th{background:var(--eff-surface-soft);font-size:9px;letter-spacing:.09em}
+.deskapp .itsm-table td,.deskapp .change-table td{border-bottom-color:var(--eff-border)}
+.deskapp .itsm-table tbody tr:hover,.deskapp .change-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,var(--d-bg))}
+.deskapp .itsm-detail-empty{border:1px dashed var(--eff-border);border-radius:13px;background:var(--eff-surface-soft)}
+.deskapp .contact-profile-card{padding:20px;background:linear-gradient(125deg,var(--d-panel),color-mix(in srgb,var(--d-panel) 86%,var(--accent) 14%))}
+.deskapp .contact-form-grid{padding:19px;background:var(--eff-surface)}
+.deskapp .contact-ticket-row{transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+.deskapp .contact-ticket-row:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--accent) 32%,var(--d-line));box-shadow:var(--eff-elev-1)}
+.deskapp .change-stage-card{border-color:var(--eff-border);border-radius:12px;background:var(--eff-surface-soft)}
+.deskapp .change-conflict-row{border-color:var(--eff-border);border-radius:10px;background:var(--eff-surface-soft)}
+.deskapp .integration-hub-section{border-color:var(--eff-border);border-radius:15px}
+.deskapp .integration-provider-card{background:var(--eff-surface)}
+.deskapp .integration-provider-description{line-height:1.55}
+.deskapp .integration-status{font-size:10px;font-weight:750;letter-spacing:.025em}
+@media(max-width:900px){
+  .deskapp .itsm-layout{grid-template-columns:minmax(0,1fr)}
+}
+@media(prefers-reduced-motion:reduce){
+  .deskapp .dash-bar,.deskapp .dash-setup-track span,.deskapp .contact-ticket-row{transition:none}
+}
