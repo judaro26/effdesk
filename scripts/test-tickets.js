@@ -61,6 +61,7 @@ const legacyMessage = (await call(ann, { orgId: acme.id, action: 'get', number: 
 check('legacy messages with HTML in their body are returned as safe rich HTML, not literal code', /<strong>Legacy formatted reply<\/strong>/.test(legacyMessage.html_body || '') && legacyMessage.body === 'Legacy formatted reply');
 r = await call(ann, { orgId: acme.id, action: 'list' });
 check('the list returns counts per status, and the newest activity comes first', r.body.counts.open === 2 && r.body.counts.solved === 0 && r.body.tickets[0].number === 1);
+check('status totals remain available when a filtered page has no tickets', (await call(ann, { orgId: acme.id, action: 'list', status: 'solved' })).body.tickets.length === 0 && (await call(ann, { orgId: acme.id, action: 'list', status: 'solved' })).body.counts.open === 2);
 check('the agents list holds the organization\'s members only', (await call(ann, { orgId: acme.id, action: 'agents' })).body.agents.map(a => a.email).sort().join() === 'ann@acme.test,olivia@acme.test');
 check('a bad action is a 400', (await call(ann, { orgId: acme.id, action: 'drop-everything' })).status === 400);
 // the second layer: a query that forgets WHERE org_id still sees one organization only (run as an ordinary role, as on Neon: a superuser would bypass row level security)
