@@ -41,7 +41,7 @@ export async function listConfigurationItems(pool,orgId,{q='',lifecycle='',ciTyp
 }
 export async function getConfigurationItem(pool,orgId,id){
  return withOrg(pool,orgId,async c=>{
-  const item=(await c.query(`select ci.*,u.name owner_name,u.email owner_email,bs.name service_name from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id left join cmdb_vendors v on v.org_id=ci.org_id and v.id=ci.vendor_id left join cmdb_contracts ct on ct.org_id=ci.org_id and ct.id=ci.contract_id where ci.org_id=$1 and ci.id=$2`,[orgId,Number(id)||0])).rows[0];
+  const item=(await c.query(`select ci.*,u.name owner_name,u.email owner_email,bs.name service_name,v.name vendor_name,ct.name contract_name from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id left join cmdb_vendors v on v.org_id=ci.org_id and v.id=ci.vendor_id left join cmdb_contracts ct on ct.org_id=ci.org_id and ct.id=ci.contract_id where ci.org_id=$1 and ci.id=$2`,[orgId,Number(id)||0])).rows[0];
   if(!item)return fail('No such configuration item.',404);
   const [relationships,events,tickets,problems,changes]=await Promise.all([
    c.query(`select r.relationship,r.source_ci_id,r.target_ci_id,a.name source_name,b.name target_name from configuration_item_relationships r join configuration_items a on a.org_id=r.org_id and a.id=r.source_ci_id join configuration_items b on b.org_id=r.org_id and b.id=r.target_ci_id where r.org_id=$1 and (r.source_ci_id=$2 or r.target_ci_id=$2) order by a.name,b.name`,[orgId,item.id]),
