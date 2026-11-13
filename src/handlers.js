@@ -184,6 +184,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'sandbox-create': {
       if (support) return json(403, { error: 'Sandbox provisioning is unavailable in read-only support mode.' });
       if ((g = need('sandbox') || adminOnly())) return g;
+      const sourceEntitlements = ent;
       const client = await pool.connect();
       try {
         await client.query('begin');
@@ -198,6 +199,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
           if (em.environment === 'sandbox' && em.sandboxOf === current.id) {
             await client.query('commit');
             const n = Number((await pool.query('select count(*)::int n from member where "organizationId"=$1', [existing.id])).rows[0].n);
+            await pool.query(`insert into org_overrides(org_id,seat_limit,features_on,note,updated_by) values($1,$2,$3,$4,$5) on conflict(org_id) do update set seat_limit=excluded.seat_limit,features_on=excluded.features_on,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`, [existing.id, Math.max(2,n), [...sourceEntitlements.features], 'Customer sandbox; isolated from production. No separate subscription.', actor.id]);
             return json(200, { ok: true, existing: true, sandbox: { id: existing.id, name: existing.name, slug: existing.slug }, members: n });
           }
           await client.query('rollback'); return json(409, { error: 'That sandbox address is already in use. Please contact EffDesk support.' });
@@ -206,9 +208,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
         const metadata = JSON.stringify({ environment: 'sandbox', sandboxOf: current.id, createdBy: actor.id, createdAt: new Date().toISOString() });
         await client.query('insert into "organization"(id,name,slug,logo,"createdAt",metadata) values($1,$2,$3,null,now(),$4)', [id, sandboxName, sandboxSlug, metadata]);
         const copied = await client.query('insert into member(id,"organizationId","userId",role,"createdAt") select gen_random_uuid()::text,$1,"userId",role,now() from member where "organizationId"=$2 returning id', [id, current.id]);
-        await client.query(`insert into org_overrides(org_id,seat_limit,note,updated_by) values($1,$2,$3,$4)
-          on conflict(org_id) do update set seat_limit=excluded.seat_limit,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
-          [id, Math.max(2, copied.rowCount), 'Customer sandbox; isolated from production. No separate subscription.', actor.id]);
+        await client.query(`insert into org_overrides(org_id,seat_limit,features_on,note,updated_by) values($1,$2,$3,$4,$5)
+          on conflict(org_id) do update set seat_limit=excluded.seat_limit,features_on=excluded.features_on,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
+          [id, Math.max(2, copied.rowCount), [...sourceEntitlements.features], 'Customer sandbox; isolated from production. No separate subscription.', actor.id]);
         await client.query('commit');
         await audit(pool, orgId, actor.id, 'sandbox.created', sandboxSlug, { members: copied.rowCount });
         return json(200, { ok: true, existing: false, sandbox: { id, name: sandboxName, slug: sandboxSlug }, members: copied.rowCount });
