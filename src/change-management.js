@@ -69,6 +69,7 @@ export async function getChange(pool,orgId,id){
 export async function saveChange(pool,orgId,actor,input={},mailer=null){
  const d=normalizeChange(input),hasId=input.id!==undefined&&input.id!==null&&input.id!=='',id=hasId?Number(input.id):0;
  if(!d.title)return fail('Give the change request a title.');
+ if(input.plannedStart&&!d.plannedStart||input.plannedEnd&&!d.plannedEnd)return fail('Enter a valid maintenance window date and time.');
  if(hasId&&(!Number.isSafeInteger(id)||id<1))return fail('Choose a valid change request.');
  if(d.plannedStart&&d.plannedEnd&&d.plannedEnd<=d.plannedStart)return fail('The maintenance window must end after it starts.');
  const serviceIds=linkIds(input.serviceIds,50),incidentNumbers=linkIds(input.incidentNumbers,100);
@@ -89,6 +90,9 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   }
   if(d.status==='approved'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can approve this change.');
   if(d.status==='rejected'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can reject this change.');
+  if(d.status==='scheduled'&&(!d.plannedStart||!d.plannedEnd))return fail('Set both planned start and end before scheduling the change.');
+  if(d.status==='implementing'&&(!d.implementationPlan||!d.rollbackPlan))return fail('Document the implementation and rollback plans before starting work.');
+  if((d.status==='completed'||d.status==='failed')&&!d.outcome)return fail('Record the implementation outcome before closing the change.');
   const values=[d.title,d.description,d.changeType,d.status,d.risk,d.impact,d.plannedStart,d.plannedEnd,d.implementationPlan,d.testPlan,d.rollbackPlan,d.outcome,d.ownerId||null,JSON.stringify(cfg.stages)];
   if(id){
    saved=(await c.query(`update change_requests set title=$3,description=$4,change_type=$5,status=$6,risk=$7,impact=$8,planned_start=$9,planned_end=$10,implementation_plan=$11,test_plan=$12,rollback_plan=$13,outcome=$14,owner_id=$15,approval_stages=$16::jsonb,approved_at=case when $6='approved' then coalesce(approved_at,now()) else approved_at end,completed_at=case when $6='completed' then coalesce(completed_at,now()) else completed_at end,updated_at=now() where org_id=$1 and id=$2 returning id,status,current_stage`,[orgId,id,...values])).rows[0];
@@ -128,7 +132,7 @@ export async function decideChange(pool,orgId,actorId,id,decision,comment='',mai
   await c.query('insert into change_decisions(org_id,change_id,stage_index,approver_id,decision,comment) values($1,$2,$3,$4,$5,$6)',[orgId,row.id,ix,String(actorId),decision,clean(comment,2000)]);
   const counts=(await c.query("select count(*) filter(where decision='approved')::int approved,count(*) filter(where decision='rejected')::int rejected from change_decisions where org_id=$1 and change_id=$2 and stage_index=$3",[orgId,row.id,ix])).rows[0];
   const outcome=decision==='rejected'?'rejected':approvalStageOutcome(stage,counts.approved,counts.rejected);
-  let status='awaiting_approval',nextStage=null,event='approval_decided';
+  let status='awaiting_approval',nextStage=null,event='decided';
   if(outcome==='rejected'){status='rejected';event='rejected';await c.query("update change_requests set status='rejected',updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
   else if(outcome==='complete'&&ix+1<stages.length){nextStage=ix+1;await c.query('update change_requests set current_stage=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,row.id,nextStage]);}
   else if(outcome==='complete'){status='approved';event='completed';await c.query("update change_requests set status='approved',approved_at=now(),updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
