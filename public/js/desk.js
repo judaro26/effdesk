@@ -509,10 +509,10 @@
       else if(!rows.length)list.appendChild(el('div',{class:'itsm-detail-empty'},el('h3',{},'No assets or configuration items yet'),el('p',{class:'m'},'Start with laptops, servers, applications and other components. You can connect them to business services and map dependencies.')));
       else{
         var tbl=el('table',{class:'itsm-table'});
-        tbl.appendChild(el('thead',{},el('tr',{},['Asset tag','Configuration item','Type','Lifecycle','Criticality','Business service','Dependencies'].map(function(x){return el('th',{},x);}))));
+        tbl.appendChild(el('thead',{},el('tr',{},['Asset tag','Configuration item','Type','Lifecycle','Criticality','Business service','Source','Operating system','Compliance','Dependencies'].map(function(x){return el('th',{},x);}))));
         var body=el('tbody');
         rows.forEach(function(x){var tr0=el('tr',{class:ciSelected===Number(x.id)?'selected':'',tabindex:'0',role:'button','aria-label':'Open '+x.name,onclick:function(){openConfigurationItem(x.id);}});
-          [x.asset_tag||'—',el('strong',{},x.name),cap(x.ci_type),cap(x.lifecycle),el('span',{class:'itsm-severity '+String(x.criticality||'medium').toLowerCase()},cap(x.criticality)),x.service_name||'—',String(x.relationship_count||0)].forEach(function(v){tr0.appendChild(el('td',{},v));});
+          [x.asset_tag||'—',el('strong',{},x.name),cap(x.ci_type),cap(x.lifecycle),el('span',{class:'itsm-severity '+String(x.criticality||'medium').toLowerCase()},cap(x.criticality)),x.service_name||'—',x.discovery_source?cap(x.discovery_source):'Manual',x.operating_system?(x.operating_system+' '+(x.os_version||'')):'—',x.compliance_state?cap(x.compliance_state):'—',String(x.relationship_count||0)].forEach(function(v){tr0.appendChild(el('td',{},v));});
           body.appendChild(tr0);
         });tbl.appendChild(body);list.appendChild(tbl);
       }
@@ -539,6 +539,7 @@
         detail=el('div',{class:'pcard'},el('div',{class:'bar'},el('div',{},el('span',{class:'itsm-kicker'},isNew?'NEW ASSET':'CONFIGURATION ITEM'),el('h3',{},isNew?'Add asset or CI':item.name)),el('span',{class:'grow'}),el('button',{type:'button',class:'btn l sm',onclick:function(){ciEditing=null;ciDetail=null;ciSelected=0;draw();}},'Close')),
           el('div',{class:'problem-form-grid'},el('label',{},el('span',{},'Name'),name),el('label',{},el('span',{},'Asset tag'),tag),el('label',{},el('span',{},'Type'),type),el('label',{},el('span',{},'Lifecycle'),life),el('label',{},el('span',{},'Criticality'),crit),el('label',{},el('span',{},'Owner'),owner),el('label',{},el('span',{},'Business service'),service),el('label',{},el('span',{},'Vendor'),vendor),el('label',{},el('span',{},'Contract'),contract),el('label',{},el('span',{},'Manufacturer'),manufacturer),el('label',{},el('span',{},'Model'),model),el('label',{},el('span',{},'Serial number'),serial),el('label',{},el('span',{},'Location'),location),el('label',{},el('span',{},'Purchase date'),purchase),el('label',{},el('span',{},'Warranty expiry'),warranty)),
           el('div',{class:'problem-form-section'},el('h4',{},'Description'),desc),el('div',{class:'itsm-save-row'},save));
+        if(!isNew&&item.discovery_source==='intune')detail.appendChild(el('div',{class:'pcard'},el('h4',{},'Microsoft Intune discovery'),el('p',{class:'m'},'Source: Microsoft Intune · '+cap(item.discovery_status||'current')),el('p',{class:'m'},'Operating system: '+[item.operating_system,item.os_version].filter(Boolean).join(' ')+' · Compliance: '+(item.compliance_state||'Unknown')),el('p',{class:'m'},'Last seen: '+(item.discovery_last_seen_at?new Date(item.discovery_last_seen_at).toLocaleString():'Not available'))));
         if(!isNew&&ciDetail){
           var target=sel('Related CI','',[['','Choose a configuration item']].concat(rows.filter(function(x){return Number(x.id)!==Number(item.id);}).map(function(x){return [String(x.id),x.name];})),function(){});
           var rel=sel('Relationship','depends_on',[['depends_on','Depends on'],['runs_on','Runs on'],['hosted_on','Hosted on'],['connects_to','Connects to'],['managed_by','Managed by']],function(){});
