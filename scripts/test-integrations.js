@@ -11,6 +11,7 @@ import { grantLicense } from '../src/license.js';
 import { ticketToken } from '../src/ticket-mail.js';
 import { emit, safeUrl } from '../src/webhooks.js';
 import { connectIntegration, listIntegrationConnections, testIntegrationConnection, disconnectIntegration } from '../src/integration-hub.js';
+import { projectIntegrations, syncTicketUpdate, syncTicketComment } from '../src/project-integrations.js';
 import { validAvatar } from '../src/avatar.js';
 import { handlesIn } from '../src/mentions.js';
 
@@ -91,6 +92,64 @@ check('only workspace admins can view or manage provider credentials', (await A(
 const degraded = await testIntegrationConnection(pool, ENV, acme.id, 'github', { fetchFn: async () => new Response('{}', { status: 403 }) });
 check('failed provider health checks mark the connection degraded without deleting credentials', !degraded.ok && (await A(olivia, 'integration-hub-list')).body.connections.find(x => x.provider === 'github').status === 'degraded');
 check('disconnect removes the stored GitHub credential and leaves GitLab intact', (await disconnectIntegration(pool, acme.id, 'github')).ok && (await listIntegrationConnections(pool, acme.id)).connections.length === 1);
+
+// GitHub and GitLab now use the same ticket-side search, create, link and sync workflow as Jira/Linear.
+await connectIntegration(pool, ENV, acme.id, olivia.user.id, 'github', { token: githubToken }, { fetchFn: githubFetch });
+const projectRequest = async (who, route, method='GET', body=null, workspace=acme.id) => {
+  const req = new Request('http://localhost/api/integrations/'+route+'?org='+encodeURIComponent(workspace), {
+    method, headers: { cookie: who.cookie, origin: 'http://localhost', ...(body?{'content-type':'application/json'}:{}) },
+    ...(body?{body:JSON.stringify(body)}:{})
+  });
+  const res = await projectIntegrations(req,{pool,auth,env:ENV});
+  return {status:res.status,body:await res.json()};
+};
+const providerCalls=[];
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async (url,init={}) => {
+  const path=new URL(String(url)).pathname, method=init.method||'GET';
+  providerCalls.push({url:String(url),path,method,headers:init.headers||{},body:init.body?JSON.parse(init.body):null});
+  if(path==='/user/repos') return new Response(JSON.stringify([{id:10,name:'desk',full_name:'acme/desk',html_url:'https://github.com/acme/desk',private:true}]),{status:200});
+  if(path==='/projects') return new Response(JSON.stringify([{id:20,name:'EffDesk',name_with_namespace:'Acme / EffDesk',path_with_namespace:'acme/effdesk',web_url:'https://gitlab.com/acme/effdesk'}]),{status:200});
+  if(path==='/search/issues') return new Response(JSON.stringify({items:[{id:900,number:42,title:'Login issue',html_url:'https://github.com/acme/desk/issues/42',state:'open',updated_at:'2026-11-12T00:00:00Z',repository_url:'https://api.github.com/repos/acme/desk'}]}),{status:200});
+  if(path==='/issues'&&method==='GET') return new Response(JSON.stringify([{id:901,iid:7,project_id:20,title:'GitLab issue',web_url:'https://gitlab.com/acme/effdesk/-/issues/7',state:'opened',updated_at:'2026-11-12T00:00:00Z',references:{full:'acme/effdesk#7'}}]),{status:200});
+  if(path==='/repos/acme/desk/issues'&&method==='POST') return new Response(JSON.stringify({id:902,number:43,title:'New ticket issue',html_url:'https://github.com/acme/desk/issues/43'}),{status:201});
+  if(path==='/projects/20/issues'&&method==='POST') return new Response(JSON.stringify({id:903,iid:8,project_id:20,title:'New GitLab issue',web_url:'https://gitlab.com/acme/effdesk/-/issues/8',references:{full:'acme/effdesk#8'}}),{status:201});
+  if(path==='/repos/acme/desk/issues/43'&&method==='PATCH') return new Response(JSON.stringify({id:902}),{status:200});
+  if(path==='/projects/20/issues/8'&&method==='PUT') return new Response(JSON.stringify({id:903}),{status:200});
+  if(path==='/repos/acme/desk/issues/43/comments'&&method==='POST') return new Response(JSON.stringify({id:904}),{status:201});
+  if(path==='/projects/20/issues/8/notes'&&method==='POST') return new Response(JSON.stringify({id:905}),{status:201});
+  if(path==='/repos/acme/desk/issues/42'&&method==='GET') return new Response(JSON.stringify({id:900,number:42,title:'Login issue',html_url:'https://github.com/acme/desk/issues/42',repository_url:'https://api.github.com/repos/acme/desk'}),{status:200});
+  if(path==='/repos/acme/desk/issues/44'&&method==='GET') return new Response(JSON.stringify({id:904,number:44,title:'A pull request',pull_request:{url:'https://api.github.com/repos/acme/desk/pulls/44'}}),{status:200});
+  if(path==='/projects/20/issues/7'&&method==='GET') return new Response(JSON.stringify({id:901,iid:7,project_id:20,title:'GitLab issue',web_url:'https://gitlab.com/acme/effdesk/-/issues/7',references:{full:'acme/effdesk#7'}}),{status:200});
+  return new Response(JSON.stringify({message:'unexpected test request'}),{status:404});
+};
+try {
+  const ctx=await projectRequest(olivia,'ticket-context&ticketNumber='+t1.number);
+  check('ticket context includes tenant-owned GitHub and GitLab connections alongside Jira/Linear',ctx.status===200&&ctx.body.connections.some(x=>x.provider==='github')&&ctx.body.connections.some(x=>x.provider==='gitlab'));
+  const betaContext=await projectRequest(otto,'ticket-context&ticketNumber='+t1.number,'GET',null,beta.id);
+  const betaCatalog=await projectRequest(otto,'catalog&provider=github','GET',null,beta.id);
+  check('GitHub/GitLab connections and issue links are never visible across customer workspaces',betaContext.status===200&&!betaContext.body.connections.some(x=>x.provider==='github'||x.provider==='gitlab')&&betaContext.body.links.length===0&&betaCatalog.status===409);
+  const ghCatalog=await projectRequest(olivia,'catalog&provider=github');
+  const glCatalog=await projectRequest(olivia,'catalog&provider=gitlab');
+  check('GitHub repositories and GitLab projects load in the ticket issue picker',ghCatalog.status===200&&ghCatalog.body.items[0].id==='acme/desk'&&glCatalog.status===200&&glCatalog.body.items[0].id==='20');
+  const ghSearch=await projectRequest(olivia,'search&provider=github&q=login');
+  const glSearch=await projectRequest(olivia,'search&provider=gitlab&q=login');
+  check('GitHub and GitLab issues can be searched and returned with stable link references',ghSearch.status===200&&ghSearch.body.items[0].id==='acme/desk#42'&&glSearch.status===200&&glSearch.body.items[0].id==='20#7');
+  const ghCreate=await projectRequest(olivia,'create-issue','POST',{provider:'github',ticketNumber:t1.number,projectId:'acme/desk',title:'New ticket issue',description:'Created from EffDesk'});
+  const glCreate=await projectRequest(olivia,'create-issue','POST',{provider:'gitlab',ticketNumber:t1.number,projectId:'20',title:'New GitLab issue',description:'Created from EffDesk'});
+  check('EffDesk tickets can create and link GitHub and GitLab issues',ghCreate.status===200&&glCreate.status===200&&(await pool.query('select count(*)::int n from project_issue_links where org_id=$1 and ticket_number=$2 and provider in (\'github\',\'gitlab\')',[acme.id,t1.number])).rows[0].n===2);
+  const ghLink=await projectRequest(olivia,'link-existing','POST',{provider:'github',ticketNumber:t1.number,issueId:'acme/desk#42'});
+  const glLink=await projectRequest(olivia,'link-existing','POST',{provider:'gitlab',ticketNumber:t1.number,issueId:'20#7'});
+  check('Existing GitHub and GitLab issues can be linked to EffDesk tickets',ghLink.status===200&&glLink.status===200);
+  const pullRequestLink=await projectRequest(olivia,'link-existing','POST',{provider:'github',ticketNumber:t1.number,issueId:'acme/desk#44'});
+  const invalidRepo=await projectRequest(olivia,'create-issue','POST',{provider:'github',ticketNumber:t1.number,projectId:'https://evil.example/acme/desk',title:'No'});
+  check('GitHub pull requests and untrusted repository paths are rejected by the issue linker',pullRequestLink.status===400&&invalidRepo.status===400);
+  const upd=await syncTicketUpdate(pool,ENV,acme.id,t1.number,{subject:'Updated from EffDesk',status:'solved'});
+  const comments=await syncTicketComment(pool,ENV,acme.id,t1.number,'A reply from the EffDesk agent.');
+  check('ticket subject/status updates and agent replies synchronize to linked GitHub and GitLab issues',upd.synced>=2&&comments.synced>=2&&providerCalls.some(x=>x.path.endsWith('/issues/43')&&x.method==='PATCH')&&providerCalls.some(x=>x.path.endsWith('/issues/8')&&x.method==='PUT')&&providerCalls.some(x=>x.path.endsWith('/issues/43/comments'))&&providerCalls.some(x=>x.path.endsWith('/issues/8/notes')));
+  check('GitHub and GitLab API requests use their tenant-specific token headers',providerCalls.filter(x=>x.url.includes('api.github.com')).every(x=>x.headers.authorization==='Bearer '+githubToken)&&providerCalls.filter(x=>x.url.includes('gitlab.com/api/v4')).every(x=>x.headers['private-token']===gitlabToken));
+} finally { globalThis.fetch=originalFetch; }
+
 
 const sl = await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://hooks.slack.com/services/T000/B000/XXXX', events: ['ticket.created'] });
 check('a Slack webhook only accepts Slack addresses, and has no secret', sl.status === 200 && sl.body.secret === undefined && (await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400 && (await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400);

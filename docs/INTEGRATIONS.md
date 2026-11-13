@@ -11,8 +11,8 @@ EffDesk integrations are organization-scoped. A customer workspace owns its own 
 | Communications | Microsoft Teams | Incoming webhook | Ticket notifications using an Adaptive Card payload |
 | Issue tracking | Jira Cloud | Tenant OAuth | Linked issues, issue templates, two-way ticket/issue synchronization |
 | Issue tracking | Linear | Tenant OAuth | Linked issues, issue templates, two-way ticket/issue synchronization |
-| Developer tools | GitHub | Customer-owned personal access token | Encrypted account connection and credential health check; repository/PR synchronization is a subsequent adapter phase |
-| Developer tools | GitLab | Customer-owned personal access token | Encrypted account connection and credential health check; project/MR synchronization is a subsequent adapter phase |
+| Developer tools | GitHub | Customer-owned personal access token | Repository/project browsing, issue search/create/link, and outbound ticket title/status/comment synchronization |
+| Developer tools | GitLab | Customer-owned personal access token | Repository/project browsing, issue search/create/link, and outbound ticket title/status/comment synchronization |
 | Developer automation | Custom webhooks | Signed HTTPS JSON | HMAC-signed event delivery for customer-owned systems, Zapier, Make, and custom receivers |
 
 Chat destinations are configured from the native Desk > External Integrations page. The Developer webhooks area remains for signed JSON endpoints. Incoming chat webhook URLs are validated against provider-specific hostnames; never render the complete URL back into the UI because it can contain a credential.
@@ -29,7 +29,7 @@ Chat destinations are configured from the native Desk > External Integrations pa
 
 ## Planned provider adapters
 
-The integration catalog roadmap includes Microsoft Entra ID, Okta, Google Workspace, Azure DevOps, PagerDuty, Rootly, FireHydrant, Datadog, Grafana, Splunk, Sentry, Microsoft Intune, Jamf, AWS, Microsoft Azure, Salesforce, HubSpot, Zapier, Make, n8n, Microsoft Defender, and CrowdStrike. GitHub and GitLab now support tenant-owned personal access token verification and encrypted storage; repository, issue, pull-request, and merge-request synchronization remains planned.
+The integration catalog roadmap includes Microsoft Entra ID, Okta, Google Workspace, Azure DevOps, PagerDuty, Rootly, FireHydrant, Datadog, Grafana, Splunk, Sentry, Microsoft Intune, Jamf, AWS, Microsoft Azure, Salesforce, HubSpot, Zapier, Make, n8n, Microsoft Defender, and CrowdStrike. GitHub and GitLab now support tenant-owned encrypted credentials, repository/project browsing, issue search, issue creation/linking, and outbound EffDesk ticket title/status/comment synchronization. Pull-request and merge-request lifecycle synchronization remains planned.
 
 These are catalog/roadmap entries, not active connectors until their OAuth/API adapter, tenant-scoped credential lifecycle, webhook verification, synchronization rules, and automated tests are implemented. Do not expose a Connect action for a provider until that provider's adapter is operational.
 
@@ -53,4 +53,22 @@ The first developer-platform adapter phase supports GitHub and GitLab account co
 - The list and health-check responses never include credentials.
 - Only workspace owners and admins can list, connect, test, or disconnect these providers.
 - Disconnect removes the encrypted token from EffDesk. The customer should also revoke the personal access token in GitHub or GitLab.
-- The current adapter verifies account identity and token health only. Repository inventory, ticket-to-issue links, pull/merge-request activity, and deployment events are separate follow-up capabilities and must not be represented as active yet.
+- The account adapter verifies identity and token health; the ticket workflow now adds repository/project browsing, issue search, issue creation/linking, and outbound ticket updates. Pull/merge-request lifecycle sync, inbound provider events, and deployment events remain planned.
+
+## GitHub and GitLab ticket issue workflow
+
+Connected GitHub.com and GitLab.com accounts appear in the ticket's External issues panel alongside Jira and Linear. GitHub Enterprise Server and self-managed GitLab hosts are not supported by this initial fixed-host adapter.
+
+- Browse up to 100 repositories (GitHub) or projects (GitLab) available to the connected account.
+- Search accessible issues and link an existing issue to an EffDesk ticket.
+- Create a new provider issue from an EffDesk ticket and save a tenant-scoped issue link.
+- EffDesk ticket subject changes update the linked issue title.
+- EffDesk solved/closed states close the linked issue; reopening or moving to another active state reopens it.
+- Agent replies are posted as issue comments (GitHub) or notes (GitLab).
+- EffDesk does not import provider comments into the ticket yet; inbound webhook synchronization and loop prevention remain a later phase.
+- Pull requests and merge requests are intentionally excluded from issue search/linking in this phase.
+
+Credential permissions:
+- GitHub: use a fine-grained PAT restricted to the intended repositories with repository metadata read and Issues read/write permissions. A classic PAT may use the broader `repo` scope.
+- GitLab: use a project/group access token where possible with the minimum role needed and `api` scope for issue creation, updates, and notes. `read_api` alone is insufficient for writes.
+- Token scopes are displayed when the provider reports them; GitHub fine-grained PAT scope details may not be returned in the same header as classic tokens.

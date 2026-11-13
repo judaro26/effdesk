@@ -468,14 +468,14 @@
       function developerCard(provider){
         var connection=integrationsNative.filter(function(x){return x.provider===provider;})[0],name=provider==='github'?'GitHub':'GitLab',connected=!!connection;
         function tokenEditor(trigger){
-          var editor=el('div',{class:'integration-channel-editor integration-token-editor'},el('p',{class:'m'},'Create a customer-owned '+name+' personal access token with only account/profile read access for this initial connection. Repository permissions are not used yet. EffDesk encrypts the token and never displays it again.'));
+          var editor=el('div',{class:'integration-channel-editor integration-token-editor'},el('p',{class:'m'},'Create a customer-owned '+name+' personal access token with the minimum issue-management permissions required. GitHub: repository metadata read and Issues read/write for selected repositories. GitLab: api scope (or an appropriately scoped project/group token). EffDesk encrypts the token and never displays it again.'));
           var token=el('input',{type:'password',autocomplete:'new-password',maxlength:'1000',placeholder:provider==='github'?'github_pat_…':'glpat-…','aria-label':name+' personal access token'});
           var save=el('button',{type:'button',class:'btn',onclick:function(){save.disabled=true;api('integration-connect',{provider:provider,token:token.value}).then(function(r){save.disabled=false;if(!r.ok)return say(r.body.error||'Could not connect '+name+'.',true);say(name+' connected as '+(r.body.accountUsername||'your account')+'.');loadIntegrations();}).catch(function(){save.disabled=false;say('Could not connect '+name+'.',true);});}},'Verify and connect');
           var cancel=el('button',{type:'button',class:'btn l',onclick:function(){loadIntegrations();}},'Cancel');
           editor.append(token,el('div',{class:'bar'},save,cancel));trigger.parentNode.appendChild(editor);token.focus();trigger.disabled=true;
         }
         return el('article',{class:'integration-provider-card integration-provider-'+provider},
-          el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},provider==='github'?'GH':'GL'),el('div',{class:'integration-provider-title'},el('h3',{},name),el('p',{class:'m'},provider==='github'?'Verify and securely connect a workspace-owned GitHub account. Repository and pull-request workflows are the next adapter phase.':'Verify and securely connect a workspace-owned GitLab account. Project and merge-request workflows are the next adapter phase.')),el('span',{class:'integration-status '+(connected?(connection.status==='connected'?'is-connected':'is-disconnected'):'is-disconnected')},connected?(connection.status==='connected'?'Connected':'Needs attention'):'Not connected')),
+          el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},provider==='github'?'GH':'GL'),el('div',{class:'integration-provider-title'},el('h3',{},name),el('p',{class:'m'},provider==='github'?'Browse repositories, search issues, create and link issues, and sync ticket titles, status, and agent replies.':'Browse projects, search issues, create and link issues, and sync ticket titles, status, and agent replies.')),el('span',{class:'integration-status '+(connected?(connection.status==='connected'?'is-connected':'is-disconnected'):'is-disconnected')},connected?(connection.status==='connected'?'Connected':'Needs attention'):'Not connected')),
           el('p',{class:'integration-provider-description'},connected?'Connected as '+(connection.account_username||connection.account_name||'your account')+'. '+(connection.granted_scopes&&connection.granted_scopes.length?'Granted scopes: '+connection.granted_scopes.join(', '):'Token scopes are not reported by the provider.')+(connection.last_error?' Last check: '+connection.last_error:''):'Use a workspace-owned personal access token. The token is verified before it is stored.'),
           el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connected?'Last verified: '+(connection.last_success_at?new Date(connection.last_success_at).toLocaleString():'Not yet'):'Secure token connection'),
             connected?el('div',{class:'bar'},
@@ -1321,6 +1321,7 @@
         };
         var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
         var loadTemplates=function(){
+          if(ui.provider==='github'||ui.provider==='gitlab'){ui.templates=[];ui.templatesLoadedProvider=ui.provider;return Promise.resolve(ui.templates);}
           if(ui.templatesLoadedProvider===ui.provider)return Promise.resolve(ui.templates);
           return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;return ui.templates;});
         };
@@ -1353,9 +1354,10 @@
         var loadCatalog=function(){
           if(ui.catalog&&ui.catalog.provider===ui.provider)return Promise.resolve(ui.catalog);
           ui.catalog=null;ui.options=null;ui.projectId='';ui.projectId2='';ui.stateId='';ui.labelIds=[];ui.issueTypeId='';
-          return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};return ui.catalog;});
+          return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};if(ui.provider==='github'||ui.provider==='gitlab')ui.options={simple:true};return ui.catalog;});
         };
         var loadOptions=function(project,issueType){
+          if(ui.provider==='github'||ui.provider==='gitlab'){ui.options={simple:true};return Promise.resolve(ui.options);}
           ui.options=null;
           return request('GET','issue-options&provider='+ui.provider+'&project='+encodeURIComponent(project||'')+'&issueType='+encodeURIComponent(issueType||'')).then(function(d){ui.options=d;return d;});
         };
@@ -1376,16 +1378,17 @@
         loadContext();
         var box=el('div',{class:'pcard external-issues'});
         if(!ui.loaded){box.appendChild(el('p',{class:'m'},ui.loading?'Loading external connections…':ui.error||'Loading…'));return box;}
-        var connectedProviders=['linear','jira'].filter(connected);
+        var connectedProviders=['linear','jira','github','gitlab'].filter(connected);
+        var providerLabel=function(p){return p==='linear'?'Linear':p==='jira'?'Jira':p==='github'?'GitHub':'GitLab';};
         if(!connectedProviders.length){
           box.appendChild(el('p',{class:'m'},'No external project tools are connected to this workspace.'));
           box.appendChild(el('a',{class:'btn l sm',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Configure integrations'));
           return box;
         }
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
-        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
+        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':p==='jira'?'🔷 Jira':p==='github'?'GH GitHub':'GL GitLab'));});
         box.appendChild(tabs);
-        if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
+        if(connectedProviders.length<4)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Manage connected issue trackers'));
         var links=ui.links.filter(function(x){return x.provider===ui.provider;});
         if(links.length){
           links.forEach(function(link){
@@ -1395,7 +1398,7 @@
               el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm||root.confirm('Unlink this issue from EffDesk? The issue will not be deleted.'))request('POST','unlink',{ticketNumber:t.number,linkId:link.id}).then(function(){ui.loaded=false;loadContext();}).catch(function(e){ui.error=e.message;redraw();});}},'Unlink')
             ));
           });
-        } else box.appendChild(el('p',{class:'m'},'No '+(ui.provider==='linear'?'Linear':'Jira')+' issues linked to this ticket yet.'));
+        } else box.appendChild(el('p',{class:'m'},'No '+providerLabel(ui.provider)+' issues linked to this ticket yet.'));
         var actions=el('div',{class:'external-issue-actions'},
           el('button',{type:'button',class:'btn l sm',onclick:function(){ui.mode=ui.mode==='search'?'idle':'search';ui.error='';ui.results=[];redraw();}},'⌕ Search existing'),
           el('button',{type:'button',class:'btn sm',onclick:function(){ui.mode=ui.mode==='create'?'idle':'create';ui.error='';redraw();if(ui.mode==='create')Promise.all([loadCatalog(),loadTemplates()]).then(redraw).catch(function(e){ui.error=e.message;redraw();});}},'+ Create new'));
@@ -1412,7 +1415,7 @@
         if(ui.mode==='create'){
           if(!ui.catalog){box.appendChild(el('p',{class:'m'},'Loading provider projects…'));return box;}
           var projectItems=ui.catalog.items||[];
-          var projectLabel=ui.provider==='linear'?'Linear team':'Jira project';
+          var projectLabel=ui.provider==='linear'?'Linear team':ui.provider==='jira'?'Jira project':ui.provider==='github'?'GitHub repository':'GitLab project';
           if(ui.templates.length){
             var templateSelect=el('select',{'aria-label':'Issue template'},[el('option',{value:''},'Use standard issue form')].concat(ui.templates.map(function(x){return el('option',{value:String(x.id)},x.name+' · '+(x.project_name||x.project_id));})));
             templateSelect.value=ui.templateId||'';
@@ -1437,7 +1440,7 @@
           }
           if(ui.provider==='linear'&&ui.projectId&&!ui.options){box.appendChild(el('p',{class:'m'},'Loading team fields…'));}
           if(ui.provider==='jira'&&ui.issueTypeId&&(!ui.options||!ui.options.fields)){box.appendChild(el('p',{class:'m'},'Loading required fields…'));}
-          if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.options.fields)){
+          if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.provider==='jira'?ui.options.fields:ui.options.simple)){
             var titleCfg=templateField('title');
             if(!ui.template||titleCfg){
               var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.required=titleCfg?!!titleCfg.required:true;titleInput.addEventListener('input',function(){ui.title=titleInput.value;ui.fields.title=titleInput.value;});
