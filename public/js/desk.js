@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -20,6 +20,7 @@
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
+    var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {};
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
@@ -41,7 +42,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -104,6 +105,30 @@
       api('contact-get',{email:email}).then(function(r){if(!r.ok)return say(r.body.error||'Could not open contact.',true);contactProfile=r.body;draw();});
     }
     function goViews() { closePanes(); draw(); }
+    function loadApprovals() {
+      closePanes(); approvalInbox = true; approvalRows = null; approvalLoading = true; draw();
+      return api('approvals-list', { status: 'pending' }).then(function (r) {
+        approvalLoading = false;
+        if (!r.ok) { approvalRows = []; say(r.body.error || 'Could not load approvals.', true); }
+        else approvalRows = r.body.approvals || [];
+        draw();
+      });
+    }
+    function approvalsPane() {
+      var rows = approvalRows || [];
+      var content = approvalLoading ? el('p', { class: 'm' }, 'Loading approvals…') : !rows.length ? el('div', { class: 'pcard approval-empty' }, el('div', { class: 'approval-empty-icon' }, '✓'), el('h3', {}, 'You’re all caught up'), el('p', { class: 'm' }, 'Requests waiting for your approval will appear here.')) : rows.map(function (a) {
+        var decisions = a.decisions || [], responded = decisions.some(function (d) { return d.approverId === meId; });
+        var comment = el('textarea', { rows: '2', maxlength: '2000', 'aria-label': 'Approval comment for ticket ' + a.ticket_number, placeholder: 'Add a comment (optional)…' });
+        var rule = a.mode === 'any' ? 'Any one approver' : 'All approvers';
+        return el('article', { class: 'approval-card', 'data-approval': String(a.id) },
+          el('div', { class: 'approval-card-top' }, el('div', { class: 'approval-card-title' }, el('span', { class: 'approval-kicker' }, 'TICKET #' + a.ticket_number), el('h3', {}, a.title || 'Request approval'), el('p', { class: 'm' }, a.subject || 'Service request'), el('p', { class: 'm' }, (a.requester_name || a.requester_email || 'Requester') + ' · ' + ago(a.created_at))), el('span', { class: 'approval-rule' }, rule)),
+          el('div', { class: 'approval-progress' }, el('span', {}, decisions.filter(function (d) { return d.decision === 'approved'; }).length + ' approved'), el('span', {}, ' · ' + decisions.length + ' of ' + (a.approver_ids || []).length + ' responses')),
+          decisions.length ? el('div', { class: 'approval-decisions' }, decisions.map(function (d) { var ag = agents.filter(function (x) { return x.id === d.approverId; })[0]; return el('span', { class: 'approval-decision ' + d.decision }, (ag ? ag.name || ag.email : 'Approver') + ' · ' + cap(d.decision)); })) : null,
+          responded ? el('p', { class: 'm' }, 'You have already responded to this request.') : el('div', { class: 'approval-actions' }, comment, el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', onclick: function () { api('approval-decide', { id: a.id, decision: 'approved', comment: comment.value }).then(function (r) { if (!r.ok) return say(r.body.error || 'Could not approve this request.', true); say(r.body.status === 'approved' ? 'Request approved.' : 'Approval recorded.'); loadApprovals(); }); } }, 'Approve'), el('button', { type: 'button', class: 'btn danger', onclick: function () { if (!comment.value.trim() && !root.confirm('Reject this request without a comment?')) return; api('approval-decide', { id: a.id, decision: 'rejected', comment: comment.value }).then(function (r) { if (!r.ok) return say(r.body.error || 'Could not reject this request.', true); say('Request rejected.'); loadApprovals(); }); } }, 'Reject'))),
+          el('button', { type: 'button', class: 'btn l sm', onclick: function () { open(a.ticket_number); } }, 'Open ticket →'));
+      });
+      return el('div', { class: 'page wide approvals-page' }, el('div', { class: 'bar approval-heading' }, el('div', {}, el('h2', {}, 'Approvals'), el('p', { class: 'm' }, 'Review service requests assigned to you and keep decisions moving.')), el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn l', onclick: loadApprovals }, 'Refresh')), el('div', { class: 'approval-list' }, content));
+    }
     function goHome() { addr(0); closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
     function search() { filter.q = qBox.value.trim(); closePanes(); refresh(); }
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
@@ -220,12 +245,13 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
+      if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
@@ -235,7 +261,7 @@
       rail.appendChild(el('span', { class: 'grow' }));
       rail.appendChild(el('a', { class: 'ri', href: '/app.html', 'aria-label': 'Account', title: 'Account and billing' }, icon('account')));
       while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
-      var onViews = !home && !current && !creating && !settings && !articles && !manage && !profile && !report;
+      var onViews = !home && !approvalInbox && !current && !creating && !settings && !articles && !manage && !profile && !report;
       tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-home-tab': '1', 'aria-selected': String(home), onclick: goHome }, 'Home'));
       tabsEl.appendChild(el('button', { type: 'button', role: 'tab', class: 'tab', 'data-views': '1', 'aria-selected': String(onViews), onclick: goViews }, 'All Tickets'));
       openTabs.forEach(function (t) {
@@ -799,6 +825,21 @@
         }
         return box;
       }
+      cards.push(el('h3', {}, 'Fulfillment tasks'));
+      if (ticketTasks[t.number] === undefined) {
+        ticketTasks[t.number] = null;
+        api('tasks-list', { number: t.number }).then(function (r) { ticketTasks[t.number] = r.ok ? (r.body.tasks || []) : []; if (current && current.ticket.number === t.number) draw(); });
+      }
+      var tasks = ticketTasks[t.number];
+      if (tasks === null) cards.push(el('div', { class: 'pcard m' }, 'Loading fulfillment tasks…'));
+      else if (!tasks || !tasks.length) cards.push(el('div', { class: 'pcard m' }, 'No fulfillment tasks are attached to this request.'));
+      else cards.push(el('div', { class: 'pcard fulfillment-list' }, tasks.map(function (task) {
+        var assignee = agents.filter(function (a) { return a.id === task.assignee_id; })[0];
+        var status = sel('Task status', task.status, [['open','Open'],['in_progress','In progress'],['done','Done'],['cancelled','Cancelled']], function (v) {
+          api('task-update', { id: task.id, status: v }).then(function (r) { if (!r.ok) return say(r.body.error || 'Could not update task.', true); ticketTasks[t.number] = null; open(t.number); });
+        });
+        return el('div', { class: 'fulfillment-task', 'data-task': String(task.id) }, el('div', { class: 'fulfillment-task-copy' }, el('strong', {}, task.title), task.description ? el('p', { class: 'm' }, task.description) : null, el('span', { class: 'm' }, assignee ? 'Assigned to ' + (assignee.name || assignee.email) : 'Unassigned')), status);
+      })));
       cards.push(el('h3', {}, 'External issues'));
       cards.push(has('integrations')?externalIssuePanel():el('div',{class:'pcard'},lock('integrations')));
 
@@ -1405,7 +1446,7 @@
       drawChrome(); drawMenu();
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }
