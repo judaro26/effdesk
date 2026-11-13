@@ -1,0 +1,76 @@
+name: Encrypted off-site backups
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effdesk-offsite-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install backup utilities
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client age
+
+      - name: Create database and file-store snapshots
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_DATABASE_URL"
+          test -n "$NETLIFY_SITE_ID"
+          test -n "$NETLIFY_AUTH_TOKEN"
+          mkdir -p "$RUNNER_TEMP/effdesk-backup"
+          pg_dump "$BACKUP_DATABASE_URL" --format=custom --no-owner --no-acl --file="$RUNNER_TEMP/effdesk-backup/database.dump"
+          node scripts/backup-blobs.js "$RUNNER_TEMP/effdesk-backup/blobs"
+          printf 'createdAt=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RUNNER_TEMP/effdesk-backup/backup-info.txt"
+
+      - name: Encrypt and upload to Cloudflare R2
+        env:
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_AGE_RECIPIENT"
+          test -n "$R2_ACCOUNT_ID"
+          test -n "$R2_BUCKET"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+          archive="$RUNNER_TEMP/effdesk-backup.tar.gz"
+          encrypted="$archive.age"
+          tar -czf "$archive" -C "$RUNNER_TEMP" effdesk-backup
+          age --recipient "$BACKUP_AGE_RECIPIENT" --output "$encrypted" "$archive"
+          sha256sum "$encrypted" > "$encrypted.sha256"
+          stamp="$(date -u +%Y/%m/%d/%H%M%S)"
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "$encrypted" "s3://${R2_BUCKET}/effdesk/$stamp/backup.tar.gz.age" --endpoint-url "$endpoint" --only-show-errors
+          aws s3 cp "$encrypted.sha256" "s3://${R2_BUCKET}/effdesk/$stamp/backup.tar.gz.age.sha256" --endpoint-url "$endpoint" --only-show-errors
+          echo "Encrypted database and Netlify Blobs backup uploaded to R2 at effdesk/$stamp/."
