@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeChange, CHANGE_TYPES, CHANGE_STATUSES, CHANGE_RISKS } from '../src/change-management.js';
+import { normalizeChange, CHANGE_TYPES, CHANGE_STATUSES, CHANGE_RISKS, CHANGE_TRANSITIONS } from '../src/change-management.js';
 const empty=normalizeChange();
 assert.equal(empty.changeType,'normal');
 assert.equal(empty.status,'draft');
@@ -28,3 +28,8 @@ assert.deepEqual(CHANGE_STATUSES,['draft','submitted','assessing','awaiting_appr
 assert.deepEqual(CHANGE_RISKS,['low','medium','high','critical']);
 assert.equal(normalizeChange({title:'x'.repeat(240)}).title.length,180);
 console.log('Change Management normalization tests passed.');
+
+assert.deepEqual(CHANGE_TRANSITIONS.draft,['draft','submitted','assessing','awaiting_approval','cancelled']);
+assert.deepEqual(CHANGE_TRANSITIONS.awaiting_approval,['awaiting_approval','approved','rejected','cancelled']);
+assert.deepEqual(CHANGE_TRANSITIONS.implementing,['implementing','completed','failed']);
+assert.deepEqual(CHANGE_TRANSITIONS.completed,['completed']);
