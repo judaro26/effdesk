@@ -26,7 +26,7 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
       return { ok: true, openErrors: errs, status: st.overall, openIncidents: st.open.length, maintenance: st.maintenance.length, logging: loggingInfo(env), deploy: String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12) || null, context: env.CONTEXT || null, alerts: { emailTo: (env.PLATFORM_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean).length }, settings: await settings(pool) };
     }
     // ----- sampled API and database-pool performance
-    case 'performance': return performanceOverview(pool, b.range);
+    case 'performance': return performanceOverview(pool, b.range, env);
     // ----- errors
     case 'errors': return listErrors(pool, { state: b.state, limit: b.limit });
     case 'error-resolve': return setResolved(pool, b.id, b.resolved !== false);
