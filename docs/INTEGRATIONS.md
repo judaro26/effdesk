@@ -48,7 +48,7 @@ These are catalog/roadmap entries, not active connectors until their OAuth/API a
 The first developer-platform adapter phase supports GitHub and GitLab account connection using a personal access token created by the customer. The token is verified against the provider's fixed current-user endpoint before it is encrypted and stored. Only the account identity, provider-reported scopes, connection health, and timestamps are returned to the browser.
 
 - GitHub uses `GET https://api.github.com/user` with a bearer token and the supported API version header.
-- GitLab uses `GET https://gitlab.com/api/v4/user` with the provider's supported token header (GitHub Bearer; GitLab PRIVATE-TOKEN).
+- GitLab uses `GET https://gitlab.com/api/v4/user` with the `PRIVATE-TOKEN` header.
 - Tokens are encrypted using the existing application secret and stored in the organization-scoped `integration_connections` table.
 - The list and health-check responses never include credentials.
 - Only workspace owners and admins can list, connect, test, or disconnect these providers.
