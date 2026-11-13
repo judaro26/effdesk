@@ -8,6 +8,7 @@ import { ALL_FEATURES, PLANS } from './plans.js';
 import { getEntitlements } from './billing.js';
 import { shipReport, info as logInfo } from './log.js';
 import { performanceOverview } from './performance.js';
+import { grafanaConfig, testGrafanaConnection, exportGrafanaSnapshot } from './grafana-otlp.js';
 
 const clean = (v, n) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, n);
 const fail = (error, st = 400) => ({ ok: false, status: st, error });
@@ -26,7 +27,9 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
       return { ok: true, openErrors: errs, status: st.overall, openIncidents: st.open.length, maintenance: st.maintenance.length, logging: loggingInfo(env), deploy: String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12) || null, context: env.CONTEXT || null, alerts: { emailTo: (env.PLATFORM_ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean).length }, settings: await settings(pool) };
     }
     // ----- sampled API and database-pool performance
-    case 'performance': return performanceOverview(pool, b.range, env);
+    case 'performance': return { ...(await performanceOverview(pool, b.range, env)), grafana: grafanaConfig(env) };
+    case 'performance-grafana-test': { const r = await testGrafanaConnection(env); return r.ok ? { ok: true, ...r } : fail(r.error || 'Grafana Cloud connection test failed.', r.status || 400); }
+    case 'performance-grafana-export': { const r = await exportGrafanaSnapshot(pool, env); return r.ok ? { ok: true, ...r } : fail(r.error || 'Grafana Cloud export failed.', r.status || 502); }
     // ----- errors
     case 'errors': return listErrors(pool, { state: b.state, limit: b.limit });
     case 'error-resolve': return setResolved(pool, b.id, b.resolved !== false);
