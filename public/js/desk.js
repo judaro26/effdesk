@@ -512,7 +512,7 @@
                 svg.setAttribute('focusable','false');
                 svg.setAttribute('width','100%');
                 svg.setAttribute('height','100%');
-                mark.appendChild(doc.importNode(svg,true));
+                mark.appendChild(document.importNode(svg,true));
               }else throw new Error('Invalid provider SVG');
             }catch(_){
               var img=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
