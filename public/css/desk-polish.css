@@ -678,3 +678,183 @@
 .deskapp .sandbox-create-icon{width:44px;height:44px;display:grid;place-items:center;flex:none;border-radius:13px;background:color-mix(in srgb,var(--accent) 13%,var(--d-panel));color:var(--accent);font-size:23px}
 .deskapp .sandbox-footnote{font-size:12px}
 @media(max-width:680px){.deskapp .sandbox-create-card{align-items:flex-start;flex-wrap:wrap}.deskapp .sandbox-create-card .btn{margin-left:61px}.deskapp .sandbox-env-card{flex-direction:column}}
+
+
+/* Mobile-first workspace pass.
+   Preserve the desktop three-column workflow while making the phone layout
+   thumb-friendly, full-width, and safe-area aware. */
+.deskapp,
+.deskapp body{overscroll-behavior-x:none}
+.deskapp .shell,
+.deskapp .work,
+.deskapp main#main{min-width:0;max-width:100%}
+.deskapp .page,
+.deskapp .page.wide,
+.deskapp .ticket,
+.deskapp .views,
+.deskapp .dash-page,
+.deskapp .contact-workspace,
+.deskapp .integrations-desk-page,
+.deskapp .itsm-page{min-width:0;max-width:100%}
+.deskapp img,.deskapp video,.deskapp iframe{max-width:100%}
+.deskapp input,.deskapp select,.deskapp textarea{max-width:100%}
+.deskapp button,.deskapp a,.deskapp input,.deskapp select,.deskapp textarea{touch-action:manipulation}
+.deskapp :focus-visible{scroll-margin-block:90px}
+
+@media(max-width:900px){
+  .deskapp{height:auto;min-height:100vh;min-height:100dvh;overflow-x:hidden;overflow-y:auto}
+  .deskapp .shell{height:auto;min-height:100vh;min-height:100dvh}
+  .deskapp .work{width:calc(100% - 60px);min-height:100vh;min-height:100dvh}
+  .deskapp main#main{min-height:0;overflow:visible}
+  .deskapp .page,.deskapp .page.wide{width:100%;max-width:none}
+  .deskapp .ticket{min-width:0}
+  .deskapp .ticket .col{min-width:0}
+  .deskapp .views,.deskapp .itsm-layout{min-width:0}
+  .deskapp .views table,.deskapp .itsm-table,.deskapp .change-table{max-width:100%}
+}
+
+@media(max-width:680px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .deskapp{width:100%;min-width:320px;min-height:100vh;min-height:100dvh;height:auto;overflow-x:hidden;overflow-y:auto;padding-bottom:env(safe-area-inset-bottom)}
+  .deskapp .shell{display:block;width:100%;min-height:100vh;min-height:100dvh;padding:0}
+  .deskapp .work{display:flex;width:100%;min-height:100vh;min-height:100dvh;padding:0 0 calc(68px + env(safe-area-inset-bottom));}
+  .deskapp main#main{width:100%;min-width:0;overflow:visible;padding-bottom:18px}
+  .deskapp .rail{
+    position:fixed;z-index:300;left:0;right:0;bottom:0;top:auto;
+    display:flex;flex-direction:row;align-items:center;justify-content:flex-start;
+    width:100%;height:calc(62px + env(safe-area-inset-bottom));
+    min-height:62px;padding:7px 9px calc(7px + env(safe-area-inset-bottom));
+    gap:7px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    border-top:1px solid rgba(255,255,255,.13);
+    box-shadow:0 -5px 22px rgba(10,25,35,.16)
+  }
+  .deskapp .rail::-webkit-scrollbar{display:none}
+  .deskapp .rail .logo{width:42px;height:42px;flex:0 0 42px;margin:0 3px 0 0}
+  .deskapp .rail .ri{width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;border-radius:13px}
+  .deskapp .rail .ri svg{width:21px;height:21px}
+  .deskapp .rail .ri[aria-current=true]::before{left:9px;right:9px;top:auto;bottom:-5px;width:auto;height:3px}
+  .deskapp .rail .ri[title]::after{display:none!important}
+  .deskapp .top{
+    position:sticky;top:0;z-index:120;
+    display:grid;grid-template-columns:minmax(0,1fr) auto auto;
+    grid-template-areas:"tabs tabs tabs" "search new user" "org org org";
+    align-items:center;gap:8px;width:100%;min-height:0;
+    padding:calc(8px + env(safe-area-inset-top)) 12px 9px;
+    border-bottom:1px solid var(--d-line);
+    background:color-mix(in srgb,var(--d-top) 96%,var(--d-bg));
+    backdrop-filter:saturate(140%) blur(14px)
+  }
+  .deskapp .top .tabs{grid-area:tabs;display:flex;width:100%;min-width:0;max-width:100%;gap:5px;order:0;padding:0 0 2px}
+  .deskapp .top .grow{display:none}
+  .deskapp .top #q{grid-area:search;order:0;width:100%;min-width:0;height:44px;margin:0;font-size:16px}
+  .deskapp .top #newbtn{grid-area:new;order:0;display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;height:44px;margin:0;padding:0 12px;font-size:12px;white-space:nowrap}
+  .deskapp .top .usermenu{grid-area:user;order:0;min-width:44px}
+  .deskapp .top .who{display:flex;align-items:center;justify-content:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0}
+  .deskapp .top .who #who{display:none}
+  .deskapp .top #orgsel{grid-area:org;order:0;display:block;width:100%;max-width:none;min-width:0;margin:0}
+  .deskapp .top #orgsel select{width:100%;min-width:0;max-width:100%;min-height:40px}
+  .deskapp .top .tabs .tab{min-height:40px;padding:8px 11px;font-size:12px}
+  .deskapp .top .tabs .tab.has-x>button{min-height:40px;padding:8px 4px 8px 11px}
+  .deskapp .top .tabs .tab.has-x>.x{min-height:40px;padding:8px 9px 8px 4px}
+  .deskapp .menu{z-index:500;max-width:calc(100vw - 20px)}
+  .deskapp .page,.deskapp .page.wide,.deskapp .contact-workspace,.deskapp .integrations-desk-page{width:100%;padding:17px 13px}
+  .deskapp .page>h2,.deskapp .contact-workspace>h2,.deskapp .integrations-desk-page>h2{font-size:22px;line-height:1.25}
+  .deskapp .page-head,.deskapp .page-header,.deskapp .contact-page-head,.deskapp .itsm-page-head{align-items:flex-start;flex-wrap:wrap;gap:10px}
+  .deskapp .page-head>* ,.deskapp .page-header>*{min-width:0;max-width:100%}
+  .deskapp .btn,.deskapp button:not(.ri):not(.tab){min-height:42px}
+  .deskapp input:not([type=checkbox]):not([type=radio]),.deskapp select,.deskapp textarea{min-height:44px;font-size:16px}
+  .deskapp input[type=checkbox],.deskapp input[type=radio]{min-width:18px!important;min-height:18px!important;width:18px!important;height:18px!important;flex-basis:18px!important}
+  .deskapp label{min-width:0}
+  .deskapp .bar,.deskapp .toolbar,.deskapp .contact-toolbar,.deskapp .itsm-toolbar{gap:8px;flex-wrap:wrap;max-width:100%}
+  .deskapp .bar>* ,.deskapp .toolbar>*{min-width:0;max-width:100%}
+  .deskapp .views{display:flex;flex-direction:column;width:100%;min-width:0}
+  .deskapp .views .side{width:100%;max-height:none;overflow:visible;border:0;border-bottom:1px solid var(--eff-border)}
+  .deskapp .views .main,.deskapp .views>section{width:100%;min-width:0}
+  .deskapp .views table,.deskapp .itsm-table,.deskapp .change-table,.deskapp table{display:block;width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .deskapp .views th,.deskapp .views td{white-space:nowrap}
+  .deskapp .ticket{display:flex;flex-direction:column;width:100%;height:auto;min-height:0;overflow:visible}
+  .deskapp .ticket .props,.deskapp .ticket .info{width:100%;max-width:100%;max-height:none;overflow:visible!important;border:0;border-bottom:1px solid var(--eff-border)}
+  .deskapp .ticket .props{order:0}
+  .deskapp .ticket .conv{order:1;display:flex;flex-direction:column;width:100%;min-width:0;min-height:420px;overflow:visible}
+  .deskapp .ticket .info{order:2}
+  .deskapp .ticket .conv .ch{position:sticky;top:0;z-index:15;padding:13px;background:var(--d-panel)}
+  .deskapp .ticket .thread{width:100%;min-width:0;max-height:none;overflow:visible;padding:13px 10px 18px;gap:12px}
+  .deskapp .ticket .msg-row{max-width:100%;min-width:0}
+  .deskapp .ticket .msg-b{width:auto;max-width:calc(100vw - 78px);min-width:0;overflow-wrap:anywhere}
+  .deskapp .ticket .msg-b .mt{overflow-wrap:anywhere}
+  .deskapp .ticket .compose{position:sticky;bottom:0;z-index:18;width:100%;padding:10px 10px calc(12px + env(safe-area-inset-bottom));background:var(--d-panel);box-shadow:0 -6px 18px rgba(15,23,42,.08)}
+  .deskapp .ticket .compose textarea,.deskapp .ticket .compose .ae-area{min-height:110px;font-size:16px}
+  .deskapp .ticket .compose .cbar{display:flex;flex-wrap:wrap;gap:7px}
+  .deskapp .ticket .compose .cbar>*{flex:0 1 auto;min-height:42px}
+  .deskapp .dash-page{gap:12px}
+  .deskapp .dash-hero{min-height:0;flex-direction:column;align-items:stretch;gap:14px;padding:18px}
+  .deskapp .dash-hero-pulse{width:100%;align-self:stretch}
+  .deskapp .dash-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .deskapp .dash-metric{min-width:0;min-height:94px;padding:12px}
+  .deskapp .dash-metric-value{font-size:25px}
+  .deskapp .dash-content-grid,.deskapp .dash-lower-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .dash-panel{min-width:0;padding:14px}
+  .deskapp .dash-ticket-row{align-items:flex-start;gap:8px}
+  .deskapp .dash-ticket-tags{flex-direction:column;align-items:flex-end}
+  .deskapp .dash-portal{align-items:flex-start;flex-wrap:wrap}
+  .deskapp .dash-portal-copy{flex-basis:calc(100% - 50px)}
+  .deskapp .dash-portal>a{margin-left:47px}
+  .deskapp .stats,.deskapp .itsm-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .deskapp .company-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .deskapp .company-summary-card{padding:12px}
+  .deskapp .company-form-grid,.deskapp .integration-form-grid,.deskapp .integration-link-form,.deskapp .itsm-service-form,.deskapp .itsm-field-grid,.deskapp .problem-form-grid,.deskapp .change-form-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .company-notes-field,.deskapp .integration-link-form #target-label,.deskapp .integration-link-form #create{grid-column:auto}
+  .deskapp .integration-provider-grid,.deskapp .integration-providers-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .integration-provider-card,.deskapp .integration-hub-section{min-width:0;padding:14px}
+  .deskapp .integration-provider-top{flex-wrap:wrap}
+  .deskapp .integration-provider-description{min-height:0}
+  .deskapp .integration-provider-actions,.deskapp .integration-provider-foot{align-items:stretch;flex-direction:column}
+  .deskapp .integration-provider-actions>* ,.deskapp .integration-provider-foot>*{width:100%;max-width:100%}
+  .deskapp .integration-catalog-list{display:grid;grid-template-columns:minmax(0,1fr)}
+  .deskapp .integration-catalog-item{min-height:44px;border-radius:11px}
+  .deskapp .itsm-layout{grid-template-columns:minmax(0,1fr)}
+  .deskapp .itsm-detail-col{order:2}
+  .deskapp .itsm-page{padding:16px 12px}
+  .deskapp .itsm-card-head,.deskapp .itsm-detail-head{display:flex;flex-wrap:wrap;gap:8px}
+  .deskapp .contact-profile-card,.deskapp .contact-form-grid{padding:14px}
+  .deskapp .contact-ticket-row{min-width:0;overflow-wrap:anywhere}
+  .deskapp .approval-card{padding:14px}
+  .deskapp .approval-card-top{display:grid;gap:8px}
+  .deskapp .fulfillment-task{align-items:stretch;flex-direction:column}
+  .deskapp .fulfillment-task select{width:100%;max-width:none}
+  .deskapp .change-decision-actions{grid-template-columns:1fr}
+  .deskapp .change-decision-actions textarea{grid-column:auto}
+  .deskapp .change-calendar-row{grid-template-columns:minmax(0,1fr) auto}
+  .deskapp .change-calendar-title{grid-column:1/-1;grid-row:auto}
+  .deskapp .integration-template-layout{grid-template-columns:minmax(0,1fr)}
+  .deskapp .integration-template-builder{padding:13px}
+  .deskapp .template-field-settings{grid-template-columns:minmax(0,1fr)}
+  .deskapp .updated-calendar-months{grid-template-columns:minmax(0,1fr)}
+  .deskapp dialog,.deskapp .modal,.deskapp .dialog{width:calc(100vw - 24px);max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);overflow:auto}
+  .deskapp .modal-actions,.deskapp .dialog-actions{display:flex;flex-wrap:wrap;gap:8px}
+  .deskapp .modal-actions>* ,.deskapp .dialog-actions>*{flex:1 1 120px}
+  .deskapp .column-picker{max-width:calc(100vw - 24px);max-height:42dvh;overflow:auto}
+  .deskapp .ae .ed-bar{overflow-x:auto;flex-wrap:nowrap}
+  .deskapp .ae-row{flex-wrap:nowrap;overflow-x:auto}
+  .deskapp .ae .ed-btn{min-width:42px;min-height:42px}
+  .deskapp .page table{font-size:12px}
+  .deskapp .page pre,.deskapp .page code{max-width:100%;overflow-x:auto}
+}
+
+@media(max-width:390px){
+  .deskapp .top{padding-inline:9px}
+  .deskapp .top #newbtn{padding-inline:9px;font-size:11px}
+  .deskapp .page,.deskapp .page.wide,.deskapp .contact-workspace,.deskapp .integrations-desk-page{padding-inline:10px}
+  .deskapp .dash-metric{padding:10px}
+  .deskapp .dash-metric-value{font-size:22px}
+  .deskapp .company-summary-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .rail{gap:5px;padding-inline:6px}
+  .deskapp .rail .ri{width:42px;min-width:42px;flex-basis:42px}
+}
+@media(hover:none){
+  .deskapp .contact-ticket-row:hover,.deskapp .integration-provider-card:hover,.deskapp .btn:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .deskapp .rail,.deskapp .ticket .compose{scroll-behavior:auto}
+}
