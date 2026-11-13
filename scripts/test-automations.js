@@ -86,7 +86,7 @@ await withOrg(pool,acme.id,c=>c.query("update tickets set updated_at=now()-inter
 await A(olivia,'lifecycle-save',{policy:{autoCloseEnabled:false,autoCloseDays:4,customerReminderEnabled:false,customerReminderHours:48,customerReminderRepeatHours:72,agentReminderEnabled:true,agentReminderHours:1,agentReminderRepeatHours:1,reopenEnabled:false,reopenAfterDays:14,permanentCloseEnabled:false,permanentCloseDays:30}});
 const agentRun=await runTicketLifecycle(pool,mailer,ENV);
 const agentDetail=(await A(olivia,'get',{number:lifeAgent.number})).body;
-check('unattended open tickets receive an internal agent reminder without resetting inactivity',agentRun.actions>=1&&agentDetail.messages.some(m=>m.kind==='note'&&/Automation reminder/.test(m.body)));
+check('unattended open tickets receive an internal agent reminder without resetting inactivity',agentRun.actions>=1&&agentDetail.messages.some(m=>m.kind==='note'&&/Automation reminder/.test(m.body))&&outbox.some(m=>m.to==='life-agent@example.com'||(Array.isArray(m.to)&&m.to.includes('life-agent@example.com'))));
 const lifePermanent=(await A(olivia,'create',{subject:'Permanent closure',body:'Original request',requesterEmail:'life-permanent@example.com'})).body.ticket;
 await A(olivia,'update',{number:lifePermanent.number,patch:{status:'closed'}});
 await withOrg(pool,acme.id,c=>c.query("update tickets set closed_at=now()-interval '2 days' where org_id=$1 and number=$2",[acme.id,lifePermanent.number]));
