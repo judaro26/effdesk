@@ -53,7 +53,7 @@ The first developer-platform adapter phase supports GitHub and GitLab account co
 - The list and health-check responses never include credentials.
 - Only workspace owners and admins can list, connect, test, or disconnect these providers.
 - Disconnect removes the encrypted token from EffDesk. The customer should also revoke the personal access token in GitHub or GitLab.
-- The current adapter verifies account identity and token health only. Repository inventory, ticket-to-issue links, pull/merge-request activity, and deployment events are separate follow-up capabilities and must not be represented as active yet.
+- The account adapter verifies identity and token health; the ticket workflow now adds repository/project browsing, issue search, issue creation/linking, and outbound ticket updates. Pull/merge-request lifecycle sync, inbound provider events, and deployment events remain planned.
 
 ## GitHub and GitLab ticket issue workflow
 
