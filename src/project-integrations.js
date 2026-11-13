@@ -264,7 +264,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,id=clean(b.issueId,200);
     if(!PROVIDERS.has(p)||!n||!id) return fail(400,'Choose a provider, ticket, and external issue.');
     try {
-      const conn=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      const conn=PROVIDERS.has(p)?(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]:(await withOrg(pool,org,db=>db.query('select provider from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,p]))).rows[0];
       if(!conn) return fail(409,'Connect '+p+' first.');
       const token=await tokenFor(pool,env,org,p); let ext;
       if(p==='github') {
