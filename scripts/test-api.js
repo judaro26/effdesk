@@ -36,6 +36,8 @@ check('the sandbox copies workspace memberships and roles, not production ticket
 check('sandbox creation is idempotent and visible in the workspace list', (await A(olivia, 'sandbox-create')).body.existing === true && (await me(new Request('http://x/api/me', { headers: { cookie: olivia.cookie } }), { pool, auth, env: ENV }).then(r => r.json())).organizations.some(o => o.id === sandboxOrg.id));
 check('a free-plan customer cannot provision a sandbox', (await B(otto, 'sandbox-create')).status === 402);
 check('the environment page identifies the linked sandbox', (await A(olivia, 'sandbox-get')).body.sandbox.id === sandboxOrg.id);
+check('the sandbox inherits the production feature entitlements', (await call(olivia, { orgId: sandboxOrg.id, action: 'sandbox-get' })).body.environment === 'sandbox' && (await call(olivia, { orgId: sandboxOrg.id, action: 'init' })).body.features.includes('sandbox'));
+check('a sandbox cannot provision a nested sandbox', (await call(olivia, { orgId: sandboxOrg.id, action: 'sandbox-create' })).status === 409);
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 const api = async (token, method, path, body) => { const r = await apiV1(new Request('https://x.test/api/v1' + path, { method, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), { pool, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 check('only an admin on a plan with the API can make tokens', (await A(ann, 'token-create', { name: 'x' })).status === 403 && (await B(otto, 'token-create', { name: 'x' })).status === 402 && (await A(olivia, 'token-create', { name: '' })).status === 400);
