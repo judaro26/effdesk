@@ -10,6 +10,7 @@ const digest = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 const json = (status,body) => new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const first = (...values) => values.find(v => v !== undefined && v !== null && String(v).trim() !== '');
 const responseError = (status,error) => json(status,{error});
+const safeExternalUrl = value => { try { const u=new URL(String(value||'')); return u.protocol==='https:'&&!u.username&&!u.password?u.toString():''; } catch { return ''; } };
 
 export async function listIncidentProviderConnections(pool,orgId) {
   return withOrg(pool,orgId,async c=>({ok:true,connections:(await c.query(
@@ -51,7 +52,7 @@ function normalize(provider,body,raw) {
   const id=clean(first(incident.id,attrs.id,attrs.incident_id,attrs.uuid,attrs.number),'180');
   if(!id) return null;
   const title=clean(first(attrs.title,attrs.name,attrs.summary,attrs.description,provider+' incident '+id),200);
-  const resolved=/resolv|closed|complete|fixed|cancel|mitigat(ed|ion)/.test(statusRaw+' '+eventType);
+  const resolved=/resolv|closed|complete|fixed|cancel/.test(statusRaw+' '+eventType);
   const acknowledged=/acknowledg|assign|respond|investigat|mitigat/.test(statusRaw+' '+eventType);
   const ticketStatus=resolved?'solved':acknowledged?'pending':'open';
   const sev1=/critical|sev[- ]?1|p1|high urgency|urgent/.test(severityRaw);
@@ -60,7 +61,7 @@ function normalize(provider,body,raw) {
   const severity=sev1?'P1':sev2?'P2':sev4?'P4':'P3';
   const priority=sev1?'urgent':sev2?'high':sev4?'low':'normal';
   const impact=sev1?'critical':sev2?'high':sev4?'low':'medium';
-  const url=clean(first(attrs.html_url,attrs.url,attrs.web_url,attrs.short_url),'1000');
+  const url=safeExternalUrl(clean(first(attrs.html_url,attrs.url,attrs.web_url,attrs.short_url),'1000'));
   const summary=clean(first(attrs.description,attrs.summary,attrs.details,attrs.description_text),'3000');
   const eventId=clean(first(event.id,body.event_id,body.webhook_id,body.id,body.delivery_id),200)||digest(raw);
   return {id,title,eventId,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary};
