@@ -1,6 +1,7 @@
 // Hourly, tenant-scoped approval reminders. Failed recipients are retried without resending to successful recipients.
 import { withOrg } from './db.js';
 import { PRODUCT } from './config.js';
+import { notifyApproval } from './notify.js';
 
 export function normalizeReminderSettings(hours, maximum) {
   const interval = Number.parseInt(hours, 10);
@@ -84,4 +85,22 @@ export async function runApprovalReminders(pool, mailer, nowMs=Date.now()) {
     }
   }
   return { approvals, sent, failed };
+}
+
+export async function runApprovalNotificationRetries(pool,mailer) {
+  if(!mailer||!mailer.agentNotice)return { groups:0, sent:0 };
+  const orgs=(await pool.query('select id from "organization"')).rows;
+  let groups=0,sent=0;
+  for(const {id:orgId} of orgs) {
+    const pending=await withOrg(pool,orgId,c=>c.query(
+      "select distinct n.approval_id,n.stage_index,n.event,a.created_by from approval_notifications n join approval_requests a on a.org_id=n.org_id and a.id=n.approval_id where n.org_id=$1 and (n.delivery_status='failed' or (n.delivery_status='sending' and n.updated_at < now()-interval '15 minutes')) order by n.approval_id,n.stage_index,n.event limit 100",
+      [orgId]
+    ));
+    for(const item of pending.rows) {
+      groups++;
+      const r=await notifyApproval(pool,mailer,orgId,Number(item.approval_id),Number(item.stage_index)||0,item.event,item.created_by);
+      sent+=Number(r.sent)||0;
+    }
+  }
+  return { groups,sent };
 }
