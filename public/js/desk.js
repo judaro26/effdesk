@@ -1641,6 +1641,11 @@
       if (!has('translation')) { cards.push(el('h3', {}, 'Translation')); cards.push(el('div', { class: 'pcard' }, lock('translation'))); }
       if (x.followers.length) { cards.push(el('h3', {}, 'Followers')); cards.push(el('div', { class: 'pcard m' }, x.followers.map(function (f) { return el('div', {}, f.name || f.email); }))); }
       cards.push(el('h3', {}, 'Timeline')); cards.push(el('ul', { class: 'timeline' }, x.events.map(function (e) { return el('li', { 'data-event': e.kind }, el('b', {}, e.actor_name || 'Someone'), ' ' + e.detail + ' · ' + ago(e.created_at)); })));
+      if (current.lifecycleLinks && (current.lifecycleLinks.parent || current.lifecycleLinks.followUps.length)) {
+        cards.push(el('h3', {}, 'Related follow-up tickets'));
+        if (current.lifecycleLinks.parent) cards.push(el('button',{type:'button',class:'btn l sm',onclick:function(){open(current.lifecycleLinks.parent.number);}},'Parent ticket #'+current.lifecycleLinks.parent.number+' · '+current.lifecycleLinks.parent.subject));
+        current.lifecycleLinks.followUps.forEach(function(link){cards.push(el('button',{type:'button',class:'btn l sm',onclick:function(){open(link.number);}},'Follow-up #'+link.number+' · '+link.subject+' · '+cap(link.status)));});
+      }
       return el('div', { class: 'ticket' }, props, center, el('aside', { class: 'col info', 'aria-label': 'Requester and context' }, cards));
     }
     // translation happens in the browser (Chrome's on-device translator): the text never goes to a server
