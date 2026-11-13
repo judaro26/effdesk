@@ -39,8 +39,8 @@ def private_network_targets(values):
             if address.is_link_local or address.is_loopback or address.is_multicast:
                 continue
             targets.add(str(address))
-            if len(targets) > 1024:
-                raise ValueError("A scan is limited to 1,024 target addresses.")
+            if len(targets) > 400:
+                raise ValueError("A scan is limited to 400 target addresses.")
     if not targets:
         raise ValueError("No usable private-network addresses were supplied.")
     return sorted(targets, key=lambda item: (ipaddress.ip_address(item).version, int(ipaddress.ip_address(item))))
@@ -83,10 +83,10 @@ async def poll_one(engine, ip, user):
             return None
         return {
             "ip": ip,
-            "sysName": values.get("sysName", ""),
-            "sysDescr": values.get("sysDescr", ""),
-            "sysObjectId": values.get("sysObjectID", ""),
-            "sysUpTime": values.get("sysUpTime", ""),
+            "sysName": values.get("sysName", "")[:120],
+            "sysDescr": values.get("sysDescr", "")[:240],
+            "sysObjectId": values.get("sysObjectID", "")[:100],
+            "sysUpTime": values.get("sysUpTime", "")[:60],
         }
     except Exception:
         return None
