@@ -339,12 +339,148 @@
     "Choose an issue type to load the fields required by this Jira project.":"Elige un tipo de incidencia para cargar los campos obligatorios de este proyecto de Jira.",
     "No company linked yet. Add a company domain or link this contact to a company from their profile.":"Todavía no hay ninguna empresa vinculada. Añade el dominio de una empresa o vincula este contacto a una empresa desde su perfil."
   });
+
+  // Focused coverage for the dashboard, Manage workspace navigation, ticket
+  // statuses and the external-integration hub.
+  Object.assign(dict, {
+    "Agents and access":"Agentes y acceso","Agents":"Agentes","Your team: roles, permissions, recent activity and tickets.":"Tu equipo: roles, permisos, actividad reciente y tickets.",
+    "Single sign-on":"Inicio de sesión único","Let people sign in with your company identity provider.":"Permite que el equipo inicie sesión con el proveedor de identidad de tu empresa.",
+    "Custom roles":"Roles personalizados","Decide exactly what each agent may change.":"Define exactamente qué puede modificar cada agente.",
+    "Support visits":"Visitas de soporte","See when EffDesk support looked at this workspace.":"Consulta cuándo el equipo de soporte de EffDesk ha accedido a este espacio de trabajo.",
+    "Tickets":"Tickets","Routing":"Asignación automática","Hand new tickets to the right agent automatically.":"Asigna automáticamente los tickets nuevos al agente adecuado.",
+    "Queues":"Colas","Split work between teams and send tickets to the right one.":"Distribuye el trabajo entre equipos y envía los tickets a la cola adecuada.",
+    "Ticket statuses":"Estados de los tickets","Add your own statuses, like Waiting on vendor.":"Añade estados personalizados, como En espera del proveedor.",
+    "Help center look":"Apariencia del centro de ayuda","Pick a theme, colours and the headline of your help center.":"Elige el tema, los colores y el título de tu centro de ayuda.",
+    "Status page":"Página de estado","A public page where your customers see outages and planned work.":"Una página pública donde tus clientes pueden consultar interrupciones y trabajos planificados.",
+    "Ticket fields":"Campos de los tickets","Add your own fields to every ticket.":"Añade campos personalizados a todos los tickets.",
+    "Macros":"Macros","Saved replies that also set status, priority and labels.":"Respuestas guardadas que también pueden establecer el estado, la prioridad y las etiquetas.",
+    "Automations":"Automatizaciones","Rules that act on tickets by themselves.":"Reglas que ejecutan acciones automáticamente en los tickets.",
+    "SLA and hours":"SLA y horarios","Reply and solve targets, and business hours.":"Objetivos de respuesta y resolución, y horario laboral.",
+    "Customers":"Clientes","Contacts":"Contactos","Requester profiles, contact details and company relationships.":"Perfiles de solicitantes, datos de contacto y relaciones con empresas.",
+    "Companies":"Empresas","Manage the companies your customers belong to.":"Administra las empresas a las que pertenecen tus clientes.",
+    "Channels":"Canales","Help center and search widget":"Centro de ayuda y widget de búsqueda","Your public help center, request page and a search box for your website.":"Tu centro de ayuda público, el formulario de solicitudes y un cuadro de búsqueda para tu sitio web.",
+    "Request forms":"Formularios de solicitud","Forms customers fill in on the help center.":"Formularios que los clientes completan en el centro de ayuda.",
+    "Live chat":"Chat en vivo","A chat button for your website.":"Un botón de chat para tu sitio web.",
+    "Answer customers who message your WhatsApp number.":"Responde a los clientes que escriban a tu número de WhatsApp.",
+    "Data and compliance":"Datos y cumplimiento","Environments":"Entornos","Create and manage an isolated sandbox for safe testing.":"Crea y administra un entorno aislado para realizar pruebas de forma segura.",
+    "Import from Zendesk or Freshdesk":"Importar desde Zendesk o Freshdesk","Bring your tickets and help articles over. Customers are not emailed.":"Transfiere tus tickets y artículos de ayuda. No se envían correos a los clientes.",
+    "Audit log":"Registro de auditoría","Who changed what, and when.":"Quién cambió qué y cuándo.",
+    "Export your data":"Exportar tus datos","Download your tickets, clients, macros and articles.":"Descarga tus tickets, clientes, macros y artículos.",
+    "Developers":"Desarrolladores","Developer webhooks":"Webhooks para desarrolladores","Manage signed outbound webhooks for Zapier, Make, CRMs and custom systems.":"Administra webhooks salientes firmados para Zapier, Make, CRM y sistemas personalizados.",
+    "API":"API","Tokens for your own systems.":"Tokens para tus propios sistemas.","Manage":"Administrar","Manage workspace":"Administrar espacio de trabajo",
+    "Only an owner or an admin can change these.":"Solo el propietario o un administrador puede modificar esta configuración.",
+    "Workspace overview":"Resumen del espacio de trabajo","Loading your workspace…":"Cargando tu espacio de trabajo…",
+    "Here is what needs attention across your support operation today.":"Esto es lo que requiere atención hoy en tu operación de soporte.",
+    "＋ New ticket":"＋ Nuevo ticket","View all tickets":"Ver todos los tickets","EFFDESK · WORKSPACE OVERVIEW":"EFFDESK · RESUMEN DEL ESPACIO DE TRABAJO",
+    "TODAY SO FAR":"RESUMEN DE HOY","New tickets":"Tickets nuevos","Solved":"Resueltos"," solved in the last 7 days":" resueltos en los últimos 7 días",
+    "Open tickets":"Tickets abiertos","Currently awaiting resolution":"Pendientes de resolución","Pending":"Pendiente","Waiting for a customer":"En espera del cliente",
+    "Needs an owner":"Sin responsable","Active tickets without an assignee":"Tickets activos sin asignar","Urgent priority":"Prioridad urgente",
+    "Active urgent tickets":"Tickets activos con prioridad urgente","Assigned to you":"Asignados a ti","Your active workload":"Tu carga de trabajo activa",
+    "SLA breached":"SLA incumplido","Tickets outside their SLA target":"Tickets que han superado el objetivo de SLA",
+    "View matching tickets":"Ver tickets correspondientes","LAST 7 DAYS":"ÚLTIMOS 7 DÍAS","Ticket activity":"Actividad de tickets",
+    "New tickets compared with tickets solved":"Tickets nuevos en comparación con los resueltos"," created":" creados"," solved":" resueltos",
+    "All clear":"Todo al día","Needs attention":"Requiere atención","No active tickets are waiting for an owner.":"No hay tickets activos esperando que se les asigne un responsable.",
+    "PRIORITY QUEUE":"COLA PRIORITARIA","MY WORK":"MI TRABAJO","Your queue is clear. Nice work.":"Tu cola está al día. ¡Buen trabajo!",
+    "Recently updated":"Actualizados recientemente","There is no ticket activity yet.":"Todavía no hay actividad en los tickets.","LATEST ACTIVITY":"ACTIVIDAD RECIENTE",
+    "GETTING STARTED":"PRIMEROS PASOS","Make EffDesk yours":"Personaliza EffDesk","Connect your support inbox":"Conecta tu bandeja de soporte",
+    "Route customer emails directly into EffDesk":"Recibe los correos de tus clientes directamente en EffDesk","Publish your first help article":"Publica tu primer artículo de ayuda",
+    "Give customers a self-service answer":"Ofrece a tus clientes respuestas de autoservicio","Invite your team":"Invita a tu equipo",
+    "Bring agents into the workspace":"Añade agentes al espacio de trabajo","Create your first ticket":"Crea tu primer ticket",
+    "Try the full agent workflow":"Prueba el flujo completo de trabajo del agente","Your customer portal is ready":"Tu portal de clientes está listo",
+    "Share your self-service support experience with customers":"Comparte con tus clientes tu experiencia de soporte de autoservicio","Open portal":"Abrir portal",
+    "External integrations":"Integraciones externas","Manage communication channels, engineering tools, and connected services for this workspace.":"Administra los canales de comunicación, las herramientas de ingeniería y los servicios conectados a este espacio de trabajo.",
+    "Loading workspace connections…":"Cargando conexiones del espacio de trabajo…","Could not load external integrations.":"No se pudieron cargar las integraciones externas.",
+    "WORKSPACE CONNECTIONS":"CONEXIONES DEL ESPACIO DE TRABAJO","01 · COMMUNICATIONS":"01 · COMUNICACIONES","Team notifications":"Notificaciones del equipo",
+    "Send ticket and customer activity into the channels your team already uses.":"Envía la actividad de tickets y clientes a los canales que tu equipo ya utiliza.",
+    "02 · ISSUE TRACKING":"02 · SEGUIMIENTO DE INCIDENCIAS","Engineering work":"Trabajo de ingeniería",
+    "Keep support tickets and engineering issues synchronized in both directions.":"Mantén sincronizados los tickets de soporte y las incidencias de ingeniería en ambas direcciones.",
+    "03 · DEVELOPER TOOLS":"03 · HERRAMIENTAS PARA DESARROLLADORES","Engineering platforms":"Plataformas de ingeniería",
+    "Connect GitHub and GitLab using credentials owned by this workspace. Tokens are encrypted at rest and can be tested or revoked here.":"Conecta GitHub y GitLab con credenciales propiedad de este espacio de trabajo. Los tokens se cifran y puedes probarlos o revocarlos aquí.",
+    "04 · INCIDENT RESPONSE":"04 · RESPUESTA A INCIDENTES","Incident response platforms":"Plataformas de respuesta a incidentes",
+    "Receive incident lifecycle events and keep EffDesk incident tickets synchronized with your response platforms.":"Recibe eventos del ciclo de vida de los incidentes y mantén sincronizados los tickets de EffDesk con tus plataformas de respuesta.",
+    "05 · MONITORING & OBSERVABILITY":"05 · MONITOREO Y OBSERVABILIDAD","Monitoring alerts":"Alertas de monitoreo",
+    "Turn incoming alerts into deduplicated EffDesk incidents and keep their status synchronized as alerts recover.":"Convierte las alertas entrantes en incidentes únicos de EffDesk y sincroniza su estado cuando las alertas se resuelvan.",
+    "06 · IDENTITY LIFECYCLE":"06 · CICLO DE VIDA DE IDENTIDADES","SCIM 2.0 user provisioning":"Aprovisionamiento de usuarios SCIM 2.0",
+    "Connect Microsoft Entra ID, Okta, or Google Workspace using a tenant-specific bearer token. Provisioning creates or links users, assigns the standard Member role, and deprovisions only this workspace membership.":"Conecta Microsoft Entra ID, Okta o Google Workspace mediante un token bearer específico del cliente. El aprovisionamiento crea o vincula usuarios, asigna el rol estándar de miembro y elimina únicamente la pertenencia a este espacio de trabajo.",
+    "07 · INTEGRATION CATALOG":"07 · CATÁLOGO DE INTEGRACIONES","Expand your stack":"Amplía tus herramientas",
+    "Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.":"Se están añadiendo conectores de proveedores al marco de integración compartido. Las opciones planificadas están identificadas y todavía no se pueden conectar.",
+    "All connections and notification destinations belong to this workspace. Credentials and activity remain isolated from other customer organizations.":"Todas las conexiones y los destinos de notificaciones pertenecen a este espacio de trabajo. Las credenciales y la actividad permanecen aisladas de las demás organizaciones.",
+    "Engineering issues, teams and cycles.":"Incidencias de ingeniería, equipos y ciclos.","Projects, workflows and issue synchronization.":"Proyectos, flujos de trabajo y sincronización de incidencias.",
+    "Channel notifications for tickets and customer replies.":"Notificaciones de tickets y respuestas de clientes en canales.",
+    "Team and operations notifications in Cliq channels.":"Notificaciones del equipo y de operaciones en canales de Cliq.",
+    "Channel notifications through Teams webhooks.":"Notificaciones en canales mediante webhooks de Teams.",
+    "Create a customer-owned ":"Crea un token de acceso personal de "," personal access token with the minimum issue-management permissions required. GitHub: repository metadata read and Issues read/write for selected repositories. GitLab: api scope (or an appropriately scoped project/group token). EffDesk encrypts the token and never displays it again.":" propiedad del cliente con los permisos mínimos necesarios para administrar incidencias. GitHub: lectura de metadatos del repositorio y lectura/escritura de Issues en los repositorios seleccionados. GitLab: ámbito api (o un token de proyecto/grupo con permisos adecuados). EffDesk cifra el token y no vuelve a mostrarlo.",
+    "Verify and connect":"Verificar y conectar","Connected":"Conectado","Needs attention":"Requiere atención","Not connected":"No conectado",
+    "Browse repositories, search issues, create and link issues, and sync ticket titles, status, and agent replies.":"Explora repositorios, busca incidencias, crea y vincula incidencias, y sincroniza títulos, estados y respuestas de los agentes.",
+    "Browse projects, search issues, create and link issues, and sync ticket titles, status, and agent replies.":"Explora proyectos, busca incidencias, crea y vincula incidencias, y sincroniza títulos, estados y respuestas de los agentes.",
+    "Use a workspace-owned personal access token. The token is verified before it is stored.":"Utiliza un token de acceso personal propiedad del espacio de trabajo. El token se verifica antes de guardarlo.",
+    "Secure token connection":"Conexión segura mediante token","Test connection":"Probar conexión","Disconnect":"Desconectar","Connect ":"Conectar ",
+    "Connected as ":"Conectado como ","Granted scopes: ":"Permisos concedidos: ","Token scopes are not reported by the provider.":"El proveedor no informa de los permisos del token.",
+    " Last check: ":" Última comprobación: ","Last verified: ":"Última verificación: ","Not yet":"Todavía no","Test connection":"Probar conexión",
+    "Connection is healthy.":"La conexión funciona correctamente.","Webhook-based connection":"Conexión mediante webhook","Workspace notification destination":"Destino de notificaciones del espacio de trabajo",
+    "Connect a channel using its incoming webhook URL.":"Conecta un canal mediante su URL de webhook entrante.",
+    "Connected to ":"Conectado a "," workspace. Ticket and issue updates can synchronize with EffDesk.":" workspace. Las actualizaciones de tickets e incidencias pueden sincronizarse con EffDesk.",
+    "Connect your ":"Conecta tu espacio de trabajo de "," workspace to link external issues with EffDesk tickets.":" para vincular incidencias externas con tickets de EffDesk.",
+    "Workspace connection active":"Conexión activa del espacio de trabajo","Secure OAuth connection":"Conexión OAuth segura","Connecting…":"Conectando…",
+    "04 · INCIDENT RESPONSE":"04 · RESPUESTA A INCIDENTES","Incident lifecycle and escalation status.":"Ciclo de vida de incidentes y estado de escalamiento.",
+    "Incident updates and response coordination.":"Actualizaciones de incidentes y coordinación de respuestas.",
+    "Incident lifecycle and response visibility.":"Visibilidad y ciclo de vida de incidentes.",
+    "Webhook endpoint active. Last event: ":"Punto de conexión de webhook activo. Último evento: ","Waiting for first event":"Esperando el primer evento",
+    "Create a private endpoint, then configure incident webhooks in ":"Crea un punto de conexión privado y configura los webhooks de incidentes en ",
+    "Copy this endpoint now. It contains the one-time secret.":"Copia este punto de conexión ahora. Contiene un secreto de un solo uso.",
+    "Treat the complete URL as a password. It will not be shown again; revoke this connection to rotate it.":"Trata la URL completa como una contraseña. No volverá a mostrarse; revoca esta conexión para generar otra.",
+    "Tenant-scoped inbound webhook":"Webhook entrante específico del cliente","One-time secret URL · JSON events":"URL con secreto de un solo uso · eventos JSON",
+    "Revoke endpoint":"Revocar punto de conexión","Generate endpoint":"Generar punto de conexión",
+    "Events are deduplicated and mapped to tenant-owned EffDesk incident tickets. The endpoint secret is stored only as a SHA-256 digest. Provider payloads are normalized; this initial connector does not call provider APIs or synchronize escalation policies back to those platforms.":"Los eventos se deduplican y se asignan a tickets de incidentes de EffDesk propiedad del cliente. El secreto del punto de conexión se almacena únicamente como resumen SHA-256. Las cargas de los proveedores se normalizan; esta versión inicial no llama a las API de los proveedores ni sincroniza las políticas de escalamiento con esas plataformas.",
+    "Monitor alerts, transitions, and recovery events.":"Supervisa alertas, cambios de estado y eventos de recuperación.",
+    "Alert rule firing and resolved notifications.":"Notificaciones de activación y resolución de reglas de alerta.",
+    "Saved search and alert action notifications.":"Notificaciones de búsquedas guardadas y acciones de alerta.",
+    "Issue creation, updates, and resolution events.":"Eventos de creación, actualización y resolución de incidencias.",
+    "Alert endpoint active. Last delivery: ":"Punto de conexión de alertas activo. Último envío: ","Waiting for first alert":"Esperando la primera alerta",
+    "Create a private endpoint and configure ":"Crea un punto de conexión privado y configura ",
+    " to send alert webhooks to it.":" para enviarle webhooks de alertas.",
+    "Treat the complete URL as a password. It will not be shown again; revoke this endpoint to rotate it.":"Trata la URL completa como una contraseña. No volverá a mostrarse; revoca este punto de conexión para generar otro.",
+    "Tenant-scoped alert webhook":"Webhook de alertas específico del cliente",
+    "Incoming alerts are deduplicated by provider alert identity and delivery. Firing alerts create incidents; acknowledgements update them; recovery/resolution marks them solved. This first increment uses a one-time secret URL and does not yet validate provider-specific signatures or call provider APIs.":"Las alertas entrantes se deduplican por identidad y entrega del proveedor. Las alertas activas crean incidentes; los acuses de recibo los actualizan; la recuperación o resolución los marca como resueltos. Esta primera versión utiliza una URL con secreto de un solo uso y todavía no valida firmas específicas del proveedor ni llama a sus API.",
+    "SCIM 2.0 user provisioning":"Aprovisionamiento de usuarios SCIM 2.0","Copy this token now — it will not be shown again.":"Copia este token ahora; no volverá a mostrarse.",
+    "Paste it into your identity provider’s SCIM bearer-token field, then close this message.":"Pégalo en el campo de token bearer SCIM de tu proveedor de identidad y cierra este mensaje.",
+    "Token name, e.g. Entra ID production":"Nombre del token, p. ej., Entra ID producción","No SCIM tokens have been created for this workspace.":"Todavía no se han creado tokens SCIM para este espacio de trabajo.",
+    "SCIM base URL: ":"URL base de SCIM: "," · Resource: Users · OIDC single sign-on remains a separate authentication flow.":" · Recurso: Users · El inicio de sesión único OIDC sigue siendo un flujo de autenticación independiente.",
+    "Planned":"Planificado","Identity & access":"Identidad y acceso","Developer tools":"Herramientas para desarrolladores","Endpoint & cloud":"Dispositivos y nube",
+    "CRM & automation":"CRM y automatización","Security":"Seguridad",
+    "Open":"Abierto","Pending":"Pendiente","On hold":"En espera","Solved":"Resuelto","Closed":"Cerrado","Active":"Activo",
+    "Draft":"Borrador","Submitted":"Enviado","Assessing":"En evaluación","Awaiting approval":"Pendiente de aprobación","Approved":"Aprobado",
+    "Rejected":"Rechazado","Scheduled":"Programado","Implementing":"En implementación","Completed":"Completado","Failed":"Fallido","Cancelled":"Cancelado",
+    "In progress":"En progreso","Done":"Hecho","Operational":"Operativo","Degraded":"Degradado","Outage":"Interrupción","Maintenance":"Mantenimiento",
+    "Good morning":"Buenos días","Good afternoon":"Buenas tardes","Good evening":"Buenas tardes",
+    "Loading…":"Cargando…","Nothing yet.":"Todavía no hay nada.","Details":"Detalles","Create sandbox":"Crear entorno de pruebas",
+    "Production and sandbox":"Producción y entorno de pruebas","Sandbox workspace":"Espacio de trabajo de pruebas",
+    "Production workspace":"Espacio de trabajo de producción","You are currently working in a sandbox. Changes here do not belong to your production workspace.":"Estás trabajando en un entorno de pruebas. Los cambios aquí no afectan a tu espacio de trabajo de producción.",
+    "Your live workspace and customer operations.":"Tu espacio de trabajo activo y las operaciones con clientes.",
+    "Create your sandbox":"Crea tu entorno de pruebas","Provision a separate workspace and copy your current team roles. Production tickets, contacts, integrations, credentials and billing are not copied.":"Crea un espacio de trabajo independiente y copia los roles actuales de tu equipo. No se copian los tickets, contactos, integraciones, credenciales ni la facturación de producción.",
+    "Sandbox access is included with the Pro plan. Each environment has its own tickets, contacts, settings and integration connections.":"El acceso al entorno de pruebas está incluido en el plan Pro. Cada entorno tiene sus propios tickets, contactos, ajustes y conexiones de integración."
+  });
+
   var originals = new WeakMap(), attrOriginals = new WeakMap(), current = 'en', observer = null;
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();
     if ((lang || current) !== 'es') return s;
-    var out = dict[key]; if (!out) return s;
-    return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
+    // Translate common dynamic dashboard greetings and status/message prefixes.
+    if ((lang || current) === 'es') {
+      var greeting = /^(Good morning|Good afternoon|Good evening)(,\\s*)(.+)$/.exec(s);
+      if (greeting) return ({'Good morning':'Buenos días','Good afternoon':'Buenas tardes','Good evening':'Buenas tardes'}[greeting[1]]) + greeting[2] + greeting[3];
+    }
+    var out = dict[key];
+    if (out) return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
+    // Many integration descriptions include live provider names, account
+    // names, URLs or counts. Translate their stable English prefix and retain
+    // the tenant/provider-specific value that follows it.
+    var leading = (s.match(/^\\s*/) || [''])[0], body = s.slice(leading.length);
+    var prefixes = Object.keys(dict).filter(function (candidate) {
+      return /\\s$/.test(candidate) && body.indexOf(candidate) === 0;
+    }).sort(function (a, b) { return b.length - a.length; });
+    if (prefixes.length) return leading + dict[prefixes[0]] + body.slice(prefixes[0].length);
+    return s;
   }
   function excluded(node, allowControls) {
     var p = node && (node.nodeType === 1 ? node : node.parentElement);
