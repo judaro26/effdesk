@@ -6,6 +6,7 @@ const pool = {
   query: async (sql, params) => {
     if (sql.startsWith('select role from member')) return { rows: member ? [{ role: 'member' }] : [] };
     if (sql.includes('insert into rate_hits')) return { rows: [{ n: 1 }] };
+    if (sql.startsWith('delete from rate_hits')) return { rows: [], rowCount: 0 };
     if (sql.includes('insert into performance_vitals_minute')) { writes.push(params); return { rows: [], rowCount: 1 }; }
     throw new Error('Unexpected query in performance-vitals handler test: ' + sql.slice(0, 80));
   }
