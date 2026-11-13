@@ -23,7 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
-    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsLoading=false;
+    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsScimTokens=[],integrationsScimSecret='',integrationsLoading=false;
     var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[], ciVendors=[], ciContracts=[], ciLicenses=[], ciWarranty=[], ciLifecycleOpen=false, ciDiscoveryStatus=null, ciDiscoveryAgents=[], ciDiscoverySoftware=[], ciNewAgentToken='', ciNewAgentCommand='', ciNewAgentProvider='windows_agent', ciNewSnmpTargets='', ciLicenseReconciliation=[], ciOwnershipReport=null, ciCompliancePolicies=[], ciComplianceEvaluation=null;
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
@@ -452,13 +452,13 @@
     function loadIntegrations(){
       if(!isAdmin)return Promise.resolve();
       closePanes();integrationsOpen=true;integrationsRows=null;integrationsHooks=[];integrationsLoading=true;draw();
-      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list'),api('integration-hub-list')]).then(function(rs){
+      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list'),api('integration-hub-list'),api('scim-token-list')]).then(function(rs){
         integrationsLoading=false;
         if(!rs[0].ok){integrationsRows=[];say(rs[0].body.error||'Could not load external integrations.',true);}else integrationsRows=rs[0].body.connections||[];
         integrationsHooks=rs[1].ok?(rs[1].body.webhooks||[]):[];
         integrationsNative=rs[2].ok?(rs[2].body.connections||[]):[];
         draw();
-      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];say('Could not load external integrations.',true);draw();});
+      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];integrationsScimTokens=[];say('Could not load external integrations.',true);draw();});
     }
     function integrationsPane(){
       var rows=integrationsRows||[],hookRows=integrationsHooks||[];
@@ -502,6 +502,16 @@
             connected?el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Disconnect '+p.name+' from this workspace?'))return;integrationRequest('POST','/disconnect',{provider:p.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not disconnect '+p.name+'.',true);say(p.name+' disconnected.');loadIntegrations();});}},'Disconnect'):el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget;b.disabled=true;b.textContent='Connecting…';integrationRequest('POST','/oauth/start',{provider:p.id}).then(function(r){if(!r.ok||!r.body.url){b.disabled=false;b.textContent='Connect '+p.name;return say(r.body.error||'Could not start OAuth connection.',true);}root.location.assign(r.body.url);}).catch(function(){b.disabled=false;b.textContent='Connect '+p.name;say('Could not start OAuth connection.',true);});}},'Connect '+p.name))
         );
       }
+      var scimTokenItems=integrationsScimTokens.map(function(t){return el('div',{class:'mitem'},el('span',{class:'grow'},el('strong',{},t.name),el('div',{class:'m'},'Created '+new Date(t.created_at).toLocaleDateString()+' · Last used: '+(t.last_used_at?ago(t.last_used_at):'Never'))),el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Revoke this SCIM token? Identity-provider provisioning using it will stop immediately.'))return;api('scim-token-revoke',{id:t.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not revoke SCIM token.',true);say('SCIM token revoked.');loadIntegrations();});}},'Revoke'));});
+      var scimPanel=el('section',{class:'integration-hub-section scim-provisioning-section'},
+        el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'05 · IDENTITY LIFECYCLE'),el('h3',{},'SCIM 2.0 user provisioning'),el('p',{class:'m'},'Connect Microsoft Entra ID, Okta, or Google Workspace using a tenant-specific bearer token. Provisioning creates or links users, assigns the standard Member role, and deprovisions only this workspace membership.'))),
+        has('sso')?el('div',{class:'integration-scim-card'},
+          integrationsScimSecret?el('div',{class:'integration-channel-editor'},el('strong',{},'Copy this token now — it will not be shown again.'),el('input',{type:'text',readonly:true,value:integrationsScimSecret,'aria-label':'New SCIM bearer token',onclick:function(e){e.currentTarget.select();}}),el('p',{class:'m'},'Paste it into your identity provider’s SCIM bearer-token field, then close this message.'),el('button',{type:'button',class:'btn l sm',onclick:function(){integrationsScimSecret='';draw();}},'Done')):null,
+          el('div',{class:'bar'},el('input',{type:'text',maxlength:'80',placeholder:'Token name, e.g. Entra ID production','aria-label':'SCIM token name',id:'scim-token-name'}),el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget,input=main.querySelector('#scim-token-name');if(!input||!input.value.trim())return say('Enter a name for this SCIM token.',true);b.disabled=true;api('scim-token-create',{name:input.value.trim()}).then(function(r){b.disabled=false;if(!r.ok)return say(r.body.error||'Could not create SCIM token.',true);integrationsScimSecret=r.body.secret||'';say('SCIM token created. Copy it now; it will not be shown again.');loadIntegrations();}).catch(function(){b.disabled=false;say('Could not create SCIM token.',true);});}},'＋ Create token')),
+          scimTokenItems.length?el('div',{class:'integration-channel-list'},scimTokenItems):el('p',{class:'m'},'No SCIM tokens have been created for this workspace.'),
+          el('p',{class:'integration-provider-meta'},'SCIM base URL: '+root.location.origin+'/api/scim/v2 · Resource: Users · OIDC single sign-on remains a separate authentication flow.')
+        ):lock('sso')
+      );
       var channelList=hookRows.filter(function(h){return ['slack','cliq','teams'].indexOf(h.kind||'json')>=0;});
       var channelItems=channelList.map(function(h){var label=({slack:'Slack',cliq:'Zoho Cliq',teams:'Microsoft Teams'})[h.kind];return el('div',{class:'mitem'},el('span',{class:'grow'},el('strong',{},label+' channel'),el('div',{class:'m'},h.events.join(' · ')+' · Last delivery: '+(h.last_status||'not yet sent')+(h.last_at?' · '+ago(h.last_at):''))),el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Remove this '+label+' destination?'))return;api('webhook-delete',{id:h.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not remove destination.',true);say(label+' destination removed.');loadIntegrations();});}},'Disconnect'));});
       var planned=[
@@ -520,7 +530,8 @@
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'01 · COMMUNICATIONS'),el('h3',{},'Team notifications'),el('p',{class:'m'},'Send ticket and customer activity into the channels your team already uses.'))),el('div',{class:'integration-providers-grid'},comms.map(communicationCard)),channelItems.length?el('div',{class:'integration-channel-list'},channelItems):null),
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'02 · ISSUE TRACKING'),el('h3',{},'Engineering work'),el('p',{class:'m'},'Keep support tickets and engineering issues synchronized in both directions.'))),el('div',{class:'integration-providers-grid'},providers.map(issueCard))),
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'03 · DEVELOPER TOOLS'),el('h3',{},'Engineering platforms'),el('p',{class:'m'},'Connect GitHub and GitLab using credentials owned by this workspace. Tokens are encrypted at rest and can be tested or revoked here.'))),el('div',{class:'integration-providers-grid'},[developerCard('github'),developerCard('gitlab')])),
-            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'04 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
+            scimPanel,
+             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'04 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
               planned.map(function(group){return el('div',{class:'integration-catalog-group'},el('h4',{},group[0]),el('div',{class:'integration-catalog-list'},group.slice(1).map(function(name){return el('span',{class:'integration-catalog-item'},name,el('small',{},'Planned'));})));})
             )
           ),
