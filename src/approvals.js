@@ -12,7 +12,12 @@ export function normalizeApprovalConfig(b){
  const first=stages[0]||{name:'Approval',mode:b.mode==='any'?'any':'all',approverIds:[]};
  return {enabled:b.enabled===true,mode:stages.length>1||b.mode==='sequential'?'sequential':first.mode,approverIds:first.approverIds,stages,tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t&&t.title,160),description:clean(t&&t.description,3000),assigneeId:clean(t&&t.assigneeId,128),position:i})).filter(t=>t.title)};
 }
-export function approvalStageOutcome(stage,approvedCount,rejectedCount=0){\n if(rejectedCount>0)return 'rejected';\n if(stage&&stage.mode==='any'&&approvedCount>0)return 'complete';\n return approvedCount>=((stage&&stage.approverIds)||[]).length?'complete':'pending';\n}\nexport async function validateApprovalConfig(c,orgId,input){
+export function approvalStageOutcome(stage,approvedCount,rejectedCount=0){
+ if(rejectedCount>0)return 'rejected';
+ if(stage&&stage.mode==='any'&&approvedCount>0)return 'complete';
+ return approvedCount>=((stage&&stage.approverIds)||[]).length?'complete':'pending';
+}
+export async function validateApprovalConfig(c,orgId,input){
  const config=normalizeApprovalConfig(input); if(!config.enabled)return {ok:true,config};
  if(!config.stages.length||config.stages.some(s=>!s.approverIds.length))return fail('Choose at least one approver for every approval stage.');
  const ids=[...new Set([...config.stages.flatMap(s=>s.approverIds),...config.tasks.map(t=>t.assigneeId).filter(Boolean)])];
