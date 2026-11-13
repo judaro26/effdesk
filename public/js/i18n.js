@@ -72,5 +72,5 @@
     }
   }
   root.EffI18n={t:t,setLocale:setLocale,getLocale:getLocale};
-  if(root.document){if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',start,{once:true});else start();}
+  if(root.document)start();
 })(typeof window!=='undefined'?window:this);
