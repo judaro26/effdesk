@@ -120,3 +120,8 @@
 .deskapp .integration-identity-providers .integration-provider-logo{width:36px;height:36px;padding:6px;border-radius:10px}
 .deskapp .integration-identity-providers .integration-provider-logo img{max-width:24px;max-height:24px}
 @media(max-width:680px){.deskapp .integration-provider-logo{width:42px;height:42px}.deskapp .integration-catalog-item{min-height:44px}}
+
+.deskapp .integration-identity-providers{flex-wrap:wrap}
+.deskapp .integration-identity-chip{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border:1px solid var(--d-line);border-radius:999px;background:var(--d-bg);font-size:11px;font-weight:650;color:var(--d-ink)}
+.deskapp .integration-identity-chip .integration-provider-logo{width:28px;height:28px;padding:4px;border:0;background:var(--d-panel)}
+.deskapp .integration-identity-chip .integration-provider-logo img{max-width:20px;max-height:20px}
