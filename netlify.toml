@@ -19,6 +19,16 @@
     Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.paddle.com; frame-src https://buy.paddle.com https://sandbox-buy.paddle.com; connect-src 'self' https://checkout-service.paddle.com https://sandbox-checkout-service.paddle.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 # The chat window is the one page other websites may put in a frame (the chat button on a customer's site opens it). It runs only its own scripts and talks only to this site.
+# The desk shell and its main application bundle must always revalidate after deploys.
+[[headers]]
+  for = "/desk.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+[[headers]]
+  for = "/js/desk.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
 [[headers]]
   for = "/chat.html"
   [headers.values]
