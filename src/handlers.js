@@ -214,7 +214,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-ci-warranty-report': if ((g = need('itsm'))) return g; r = await warrantyReport(pool, orgId, b); break;
     case 'itsm-ci-export-csv': if ((g = adminOnly() || need('itsm'))) return g; r = await exportAssetsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.assets_exported', r.filename, {}); break;
     case 'itsm-ci-import-csv': if ((g = adminOnly() || need('itsm'))) return g; r = await importAssetsCsv(pool, orgId, actor, b.csv); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.assets_imported', 'CSV import', { imported: r.imported, updated: r.updated, failed: r.failed }); break;
-    case 'itsm-ci-discovery-status': if ((g = adminOnly() || need('itsm'))) return g; r = await discoveryStatus(pool, orgId); break;
+    case 'itsm-ci-discovery-status': if ((g = need('itsm'))) return g; r = await discoveryStatus(pool, orgId); break;
     case 'itsm-ci-discovery-start': if ((g = adminOnly() || need('itsm'))) return g; r = await startDiscovery(pool, env, orgId, actor, b.tenantId); break;
     case 'itsm-ci-discovery-sync': if ((g = adminOnly() || need('itsm'))) return g; r = await syncDiscovery(pool, env, orgId, actor); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_synced', 'Microsoft Intune', { discovered: r.discovered, created: r.created, updated: r.updated }); break;
     case 'itsm-ci-discovery-disconnect': if ((g = adminOnly() || need('itsm'))) return g; r = await disconnectDiscovery(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_disconnected', 'Microsoft Intune', {}); break;
