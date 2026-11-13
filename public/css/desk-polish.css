@@ -340,3 +340,115 @@
   .deskapp .rail .ri[title]::after{transition:none}
   .deskapp button,.deskapp a,.deskapp input,.deskapp select,.deskapp textarea{transition:none!important}
 }
+
+
+/* Command center: a deliberate operational overview with a strong visual hierarchy. */
+.deskapp .dash-page{max-width:1680px;gap:18px;padding:clamp(18px,2.2vw,34px)}
+.deskapp .dash-hero{
+  position:relative;display:flex;align-items:stretch;justify-content:space-between;gap:28px;
+  min-height:190px;padding:clamp(22px,3vw,38px);overflow:hidden;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--d-line));
+  border-radius:20px;background:linear-gradient(115deg,color-mix(in srgb,var(--d-panel) 96%,var(--accent) 4%),var(--d-panel) 58%,color-mix(in srgb,var(--d-panel) 88%,var(--accent) 12%));
+  box-shadow:var(--eff-elev-1)
+}
+.deskapp .dash-hero::before{content:"";position:absolute;width:340px;height:340px;right:13%;top:-245px;border:1px solid color-mix(in srgb,var(--accent) 15%,transparent);border-radius:50%;box-shadow:0 0 0 34px color-mix(in srgb,var(--accent) 3%,transparent),0 0 0 72px color-mix(in srgb,var(--accent) 2%,transparent);pointer-events:none}
+.deskapp .dash-hero-copy{position:relative;z-index:1;max-width:720px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:9px}
+.deskapp .dash-eyebrow{display:block;color:var(--accent-d);font-size:9px;font-weight:800;letter-spacing:.14em;line-height:1.3}
+.deskapp .dash-hero h2{font-size:clamp(25px,3vw,36px);font-weight:780;letter-spacing:-.055em;line-height:1.08}
+.deskapp .dash-hero p{max-width:570px;margin:0;color:var(--d-muted);font-size:13px;line-height:1.6}
+.deskapp .dash-hero-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:8px}
+.deskapp .dash-hero-actions .btn{min-height:39px;padding-inline:16px}
+.deskapp .dash-hero-pulse{position:relative;z-index:1;align-self:center;flex:none;width:min(100%,255px);padding:17px 18px;border:1px solid var(--eff-border);border-radius:15px;background:color-mix(in srgb,var(--d-panel) 86%,transparent);box-shadow:var(--eff-elev-1);backdrop-filter:blur(12px)}
+.deskapp .dash-pulse-label{display:block;margin-bottom:9px;color:var(--d-muted);font-size:9px;font-weight:800;letter-spacing:.13em}
+.deskapp .dash-pulse-row{display:flex;align-items:center;gap:9px;padding:7px 0;color:var(--d-muted);font-size:12px}
+.deskapp .dash-pulse-row strong{margin-left:auto;color:var(--d-ink);font-size:17px;font-weight:760;font-variant-numeric:tabular-nums}
+.deskapp .dash-pulse-icon{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:color-mix(in srgb,var(--accent) 10%,var(--d-bg));color:var(--accent-d);font-weight:800}
+.deskapp .dash-pulse-icon.solved{background:rgba(46,166,117,.12);color:#2ea675}
+.deskapp .dash-pulse-foot{margin-top:8px;padding-top:10px;border-top:1px solid var(--eff-border);color:var(--d-muted);font-size:10px}
+.deskapp .dash-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:11px}
+.deskapp .dash-metric{position:relative;display:flex;min-width:0;min-height:112px;flex-direction:column;align-items:flex-start;gap:7px;padding:16px 17px;border:1px solid var(--eff-border);border-radius:14px;background:var(--eff-surface);color:var(--d-ink);text-align:left;box-shadow:var(--eff-elev-1);overflow:hidden}
+.deskapp button.dash-metric{cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.deskapp button.dash-metric:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 35%,var(--d-line));box-shadow:var(--eff-elev-2)}
+.deskapp .dash-metric::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--metric-color,var(--accent));opacity:.9}
+.deskapp .dash-metric-label{color:var(--d-muted);font-size:11px;font-weight:650}
+.deskapp .dash-metric-value{font-size:29px;line-height:1.05;font-weight:780;letter-spacing:-.055em;font-variant-numeric:tabular-nums}
+.deskapp .dash-metric-sub{max-width:90%;color:var(--d-muted);font-size:10px;line-height:1.35}
+.deskapp .dash-metric-arrow{position:absolute;right:13px;top:13px;color:var(--d-muted);font-size:13px;opacity:.55}
+.deskapp .dash-metric.blue{--metric-color:#4a8de7}.deskapp .dash-metric.violet{--metric-color:#9277e8}
+.deskapp .dash-metric.amber{--metric-color:#d99b32}.deskapp .dash-metric.rose{--metric-color:#df6476}
+.deskapp .dash-metric.green{--metric-color:#32a77b}
+.deskapp .dash-content-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,1fr);gap:14px;align-items:stretch}
+.deskapp .dash-lower-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch}
+.deskapp .dash-panel{min-width:0;padding:18px 19px;border:1px solid var(--eff-border);border-radius:15px;background:var(--eff-surface);box-shadow:var(--eff-elev-1)}
+.deskapp .dash-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.deskapp .dash-panel-head h3{margin:4px 0 0;color:var(--d-ink);font-size:14px;font-weight:730;letter-spacing:-.025em;text-transform:none}
+.deskapp .dash-panel-head p{margin:4px 0 0;font-size:11px}
+.deskapp .dash-count{display:inline-flex;align-items:center;justify-content:center;min-width:27px;height:25px;padding:0 8px;border:1px solid var(--eff-border);border-radius:8px;background:var(--eff-surface-soft);color:var(--d-muted);font-size:10px;font-weight:750;font-variant-numeric:tabular-nums}
+.deskapp .dash-trend{display:flex;min-height:245px;flex-direction:column}
+.deskapp .dash-trend-totals{display:flex;flex-wrap:wrap;gap:12px;color:var(--d-muted);font-size:10px}
+.deskapp .dash-trend-totals span{display:inline-flex;align-items:center;gap:5px}
+.deskapp .dash-dot{display:inline-block;width:7px;height:7px;border-radius:3px;background:var(--accent)}
+.deskapp .dash-dot.solved{background:#35a77b}
+.deskapp .dash-chart{display:flex;flex:1;align-items:stretch;justify-content:space-around;gap:clamp(8px,2vw,22px);min-height:145px;padding:13px 8px 0;border-bottom:1px solid var(--eff-border);background:repeating-linear-gradient(to bottom,transparent 0,transparent 35px,color-mix(in srgb,var(--d-line) 65%,transparent) 36px)}
+.deskapp .dash-day{display:flex;flex:1;min-width:0;max-width:60px;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px}
+.deskapp .dash-day-bars{display:flex;align-items:flex-end;justify-content:center;gap:4px;width:100%;height:118px}
+.deskapp .dash-bar{display:block;width:min(38%,17px);min-height:2px;border-radius:5px 5px 2px 2px;transition:height .25s ease}
+.deskapp .dash-bar.created{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 70%,white),var(--accent))}
+.deskapp .dash-bar.solved{background:linear-gradient(180deg,#78d5ad,#299d70)}
+.deskapp .dash-day-label{padding-bottom:8px;color:var(--d-muted);font-size:9px;font-weight:650}
+.deskapp .dash-ticket-panel{padding:17px 18px}
+.deskapp .dash-ticket-panel .dash-panel-head{margin-bottom:6px}
+.deskapp .dash-ticket-row{display:flex;width:100%;min-width:0;align-items:center;justify-content:space-between;gap:10px;padding:11px 1px;border:0;border-top:1px solid color-mix(in srgb,var(--d-line) 75%,transparent);background:transparent;color:var(--d-ink);text-align:left;cursor:pointer}
+.deskapp .dash-ticket-row:hover{background:var(--d-hover)}
+.deskapp .dash-ticket-main{display:flex;min-width:0;flex:1;flex-direction:column;gap:4px}
+.deskapp .dash-ticket-title{overflow:hidden;color:var(--d-ink);font-size:11px;font-weight:680;text-overflow:ellipsis;white-space:nowrap}
+.deskapp .dash-ticket-meta{overflow:hidden;color:var(--d-muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.deskapp .dash-ticket-tags{display:flex;flex:none;align-items:center;gap:5px}
+.deskapp .dash-ticket-tags .badge{padding:3px 6px;font-size:9px}
+.deskapp .dash-priority{padding:3px 6px;border:1px solid var(--eff-border);border-radius:6px;color:var(--d-muted);font-size:9px;font-weight:700}
+.deskapp .dash-priority.urgent{border-color:rgba(220,80,100,.25);background:rgba(220,80,100,.09);color:#d65b70}
+.deskapp .dash-priority.high{border-color:rgba(215,153,50,.25);background:rgba(215,153,50,.09);color:#b47b20}
+.deskapp .dash-empty{display:flex;min-height:125px;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center}
+.deskapp .dash-empty-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:rgba(46,166,117,.12);color:#2ea675;font-weight:800}
+.deskapp .dash-empty strong{font-size:12px}
+.deskapp .dash-empty p{max-width:220px;margin:0;color:var(--d-muted);font-size:10px;line-height:1.5}
+.deskapp .dash-setup{padding:18px 20px}
+.deskapp .dash-setup-track{height:5px;margin:0 0 8px;overflow:hidden;border-radius:10px;background:var(--d-badge)}
+.deskapp .dash-setup-track span{display:block;height:100%;border-radius:10px;background:var(--accent);transition:width .2s ease}
+.deskapp .dash-setup-row{display:flex;width:100%;align-items:center;gap:11px;padding:11px 2px;border:0;border-top:1px solid var(--eff-border);background:transparent;color:var(--d-ink);text-align:left;cursor:pointer}
+.deskapp .dash-setup-row:hover{background:var(--d-hover)}
+.deskapp .dash-setup-check{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid var(--eff-border);border-radius:9px;color:var(--accent-d);font-weight:750}
+.deskapp .dash-setup-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}
+.deskapp .dash-setup-copy strong{font-size:11px}
+.deskapp .dash-setup-copy span{color:var(--d-muted);font-size:10px}
+.deskapp .dash-setup-arrow{color:var(--d-muted)}
+.deskapp .dash-portal{display:flex;align-items:center;gap:13px;padding:15px 18px;border:1px solid color-mix(in srgb,var(--accent) 20%,var(--d-line));border-radius:14px;background:color-mix(in srgb,var(--accent) 5%,var(--d-panel))}
+.deskapp .dash-portal-mark{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:10px;background:color-mix(in srgb,var(--accent) 12%,var(--d-bg));color:var(--accent-d);font-weight:800}
+.deskapp .dash-portal-copy{display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}
+.deskapp .dash-portal-copy strong{font-size:11px}
+.deskapp .dash-portal-copy span{color:var(--d-muted);font-size:10px}
+.deskapp .dash-portal>a{font-size:11px;font-weight:750;white-space:nowrap}
+@media(max-width:1080px){
+  .deskapp .dash-content-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .dash-trend{min-height:225px}
+}
+@media(max-width:700px){
+  .deskapp .dash-page{gap:13px}
+  .deskapp .dash-hero{min-height:0;flex-direction:column;gap:17px;padding:21px;border-radius:16px}
+  .deskapp .dash-hero-pulse{width:100%;align-self:stretch}
+  .deskapp .dash-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .deskapp .dash-metric{min-height:100px;padding:13px}
+  .deskapp .dash-metric-value{font-size:26px}
+  .deskapp .dash-lower-grid{grid-template-columns:minmax(0,1fr)}
+  .deskapp .dash-panel{padding:15px}
+  .deskapp .dash-ticket-row{align-items:flex-start}
+  .deskapp .dash-ticket-tags{flex-direction:column;align-items:flex-end}
+  .deskapp .dash-portal{align-items:flex-start;flex-wrap:wrap}
+  .deskapp .dash-portal-copy{flex-basis:calc(100% - 50px)}
+  .deskapp .dash-portal>a{margin-left:47px}
+}
+@media(max-width:390px){
+  .deskapp .dash-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .deskapp .dash-metric-sub{font-size:9px}
+  .deskapp .dash-trend-totals{gap:7px}
+  .deskapp .dash-chart{gap:5px}
+}
