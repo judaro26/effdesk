@@ -1661,7 +1661,7 @@
         metric('Open tickets', c.open || 0, 'Currently awaiting resolution', { status: 'open', assignee: '', q: '' }, 'blue', 'data-stat-open'),
         metric('Pending', c.pending || 0, 'Waiting for a customer', { status: 'pending', assignee: '', q: '' }, 'violet', 'data-stat-pending'),
         metric('Needs an owner', c.unassigned || 0, 'Active tickets without an assignee', { status: 'active', assignee: 'none', q: '' }, 'amber', 'data-stat-unassigned'),
-        metric('Urgent priority', c.urgent || 0, 'Active urgent tickets', { status: 'active', assignee: '', q: '', priority: 'urgent' }, 'rose', 'data-stat-urgent'),
+        metric('Urgent priority', c.urgent || 0, 'Active urgent tickets', { status: 'active', assignee: '', q: '', columnFilters: { priority: 'urgent' } }, 'rose', 'data-stat-urgent'),
         metric('Assigned to you', c.mine || 0, 'Your active workload', { status: 'active', assignee: 'me', q: '' }, 'green', 'data-stat-mine')
       ];
       if (c.breached !== null && c.breached !== undefined) cards.push(metric('SLA breached', c.breached, 'Tickets outside their SLA target', { status: '', assignee: '', q: '', sla: 'breached' }, 'rose', 'data-stat-breached'));
