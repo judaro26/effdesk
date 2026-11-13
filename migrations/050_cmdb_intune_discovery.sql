@@ -7,10 +7,14 @@ alter table configuration_items add column if not exists discovery_last_seen_at 
 alter table configuration_items add column if not exists operating_system text not null default '';
 alter table configuration_items add column if not exists os_version text not null default '';
 alter table configuration_items add column if not exists compliance_state text not null default '';
-alter table configuration_items add constraint configuration_items_discovery_source_check
- check(discovery_source is null or discovery_source in ('intune'));
-alter table configuration_items add constraint configuration_items_discovery_status_check
- check(discovery_status in ('manual','current','missing','disconnected'));
+do $ begin
+ if not exists(select 1 from pg_constraint where conname='configuration_items_discovery_source_check') then
+  alter table configuration_items add constraint configuration_items_discovery_source_check check(discovery_source is null or discovery_source in ('intune'));
+ end if;
+ if not exists(select 1 from pg_constraint where conname='configuration_items_discovery_status_check') then
+  alter table configuration_items add constraint configuration_items_discovery_status_check check(discovery_status in ('manual','current','missing','disconnected'));
+ end if;
+end $;
 create unique index if not exists configuration_items_discovery_external_uq
  on configuration_items(org_id,discovery_source,discovery_external_id)
  where discovery_source is not null and discovery_external_id is not null;
