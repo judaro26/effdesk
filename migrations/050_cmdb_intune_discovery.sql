@@ -59,7 +59,7 @@ alter table cmdb_discovery_oauth_states enable row level security;
 alter table cmdb_discovery_oauth_states force row level security;
 drop policy if exists cmdb_discovery_oauth_states_state on cmdb_discovery_oauth_states;
 create policy cmdb_discovery_oauth_states_state on cmdb_discovery_oauth_states
- using(state_hash=current_setting('app.discovery_state_hash',true))
+ using(org_id=current_setting('app.org_id',true) or state_hash=current_setting('app.discovery_state_hash',true))
  with check(org_id=current_setting('app.org_id',true));
 
 create table if not exists cmdb_discovery_runs (
