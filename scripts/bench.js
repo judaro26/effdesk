@@ -8,7 +8,7 @@ import { report } from '../src/reports.js';
 import { listTeam, agentDetail } from '../src/team.js';
 import { exportData } from '../src/audit.js';
 const N = Number(process.argv[2]) || Number(process.env.BENCH_TICKETS) || 100000;
-const RUNS = Math.max(3, Math.min(30, Number(process.env.BENCH_RUNS) || 9);
+const RUNS = Math.max(3, Math.min(30, Number(process.env.BENCH_RUNS) || 9));
 const { url } = await freshDb('bench'); await migrate(url); const pool = makePool(url);
 const orgs = ['big', ...Array.from({ length: 30 }, (_, i) => 'o' + i)];
 for (const o of orgs) await pool.query('insert into "organization" (id, name, slug, "createdAt") values ($1,$1,$1,now())', [o]);
