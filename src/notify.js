@@ -38,7 +38,7 @@ export async function notifyChangeApproval(pool,mailer,orgId,changeId,stageIndex
  if(!mailer||!mailer.agentNotice)return {sent:0};
  try{
   const data=await withOrg(pool,orgId,async c=>{
-   const row=(await c.query('select id,title,status,approval_stages,requested_by from change_requests where org_id=$1 and id=$2',[orgId,Number(changeId)])).rows[0];
+   const row=(await c.query('select id,title,status,approval_stages,requested_by,approval_round from change_requests where org_id=$1 and id=$2',[orgId,Number(changeId)])).rows[0];
    if(!row)return null;
    const org=(await c.query('select name from "organization" where id=$1',[orgId])).rows[0];
    const stage=Array.isArray(row.approval_stages)?row.approval_stages[stageIndex]:null;
@@ -50,7 +50,7 @@ export async function notifyChangeApproval(pool,mailer,orgId,changeId,stageIndex
   for(const id of data.ids){
    const person=(await pool.query('select u.email,coalesce(p.notify,true) notify from "user" u join member m on m."userId"=u.id and m."organizationId"=$1 left join desk_prefs p on p.user_id=u.id where u.id=$2',[orgId,id])).rows[0];
    if(!person||!person.email||!person.notify)continue;
-   const claim=await withOrg(pool,orgId,c=>c.query("insert into change_approval_notifications(org_id,change_id,stage_index,user_id,event,delivery_status,attempts) values($1,$2,$3,$4,$5,'sending',1) on conflict(org_id,change_id,stage_index,user_id,event) do update set delivery_status='sending',attempts=change_approval_notifications.attempts+1,last_error=null,updated_at=now() where change_approval_notifications.delivery_status='failed' or (change_approval_notifications.delivery_status='sending' and change_approval_notifications.updated_at<now()-interval '15 minutes') returning id",[orgId,Number(changeId),Number(stageIndex)||0,id,event]));
+   const claim=await withOrg(pool,orgId,c=>c.query("insert into change_approval_notifications(org_id,change_id,approval_round,stage_index,user_id,event,delivery_status,attempts) values($1,$2,$3,$4,$5,$6,'sending',1) on conflict(org_id,change_id,approval_round,stage_index,user_id,event) do update set delivery_status='sending',attempts=change_approval_notifications.attempts+1,last_error=null,updated_at=now() where change_approval_notifications.delivery_status='failed' or (change_approval_notifications.delivery_status='sending' and change_approval_notifications.updated_at<now()-interval '15 minutes') returning id",[orgId,Number(changeId),Number(data.row.approval_round)||1,Number(stageIndex)||0,id,event]));
    if(!claim.rowCount)continue;
    try{
     const kind=event==='requested'?'approval_requested':event==='rejected'?'approval_rejected':event==='completed'?'approval_completed':'approval_decided';
