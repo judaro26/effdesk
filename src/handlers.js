@@ -860,7 +860,7 @@ export async function performanceVitals(req, { pool, auth, env = process.env }) 
   let b; try { b = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
   const orgId = String(b.orgId || '').slice(0, 80);
   if (!orgId || !(await roleIn(pool, s.user.id, orgId))) return json(403, { error: 'Workspace access required.' });
-  if (await rateLimit(pool, 'pv:' + clientIp(req, env), 120, 60)) return json(429, { error: 'Too many performance samples.' });
+  if (await rateLimit(pool, 'pv:' + clientIp(req, env) + ':' + orgId, 300, 60)) return json(429, { error: 'Too many performance samples.' });
   const r = await recordWebVital(pool, { org: orgId, name: b.name, value: b.value, page: b.page, device: b.device, at: Date.now() });
   return r.recorded ? json(202, { ok: true }) : json(400, { error: 'Unsupported performance metric.' });
 }
