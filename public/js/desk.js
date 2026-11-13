@@ -23,7 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
-    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsLoading=false;
+    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsLoading=false;
     var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[], ciVendors=[], ciContracts=[], ciLicenses=[], ciWarranty=[], ciLifecycleOpen=false, ciDiscoveryStatus=null, ciDiscoveryAgents=[], ciDiscoverySoftware=[], ciNewAgentToken='', ciNewAgentCommand='', ciNewAgentProvider='windows_agent', ciNewSnmpTargets='', ciLicenseReconciliation=[], ciOwnershipReport=null, ciCompliancePolicies=[], ciComplianceEvaluation=null;
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
@@ -452,18 +452,38 @@
     function loadIntegrations(){
       if(!isAdmin)return Promise.resolve();
       closePanes();integrationsOpen=true;integrationsRows=null;integrationsHooks=[];integrationsLoading=true;draw();
-      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list')]).then(function(rs){
+      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list'),api('integration-hub-list')]).then(function(rs){
         integrationsLoading=false;
         if(!rs[0].ok){integrationsRows=[];say(rs[0].body.error||'Could not load external integrations.',true);}else integrationsRows=rs[0].body.connections||[];
         integrationsHooks=rs[1].ok?(rs[1].body.webhooks||[]):[];
+        integrationsNative=rs[2].ok?(rs[2].body.connections||[]):[];
         draw();
-      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];say('Could not load external integrations.',true);draw();});
+      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];say('Could not load external integrations.',true);draw();});
     }
     function integrationsPane(){
       var rows=integrationsRows||[],hookRows=integrationsHooks||[];
       var providers=[{id:'linear',name:'Linear',detail:'Engineering issues, teams and cycles.'},{id:'jira',name:'Jira',detail:'Projects, workflows and issue synchronization.'}];
       var comms=[{id:'slack',name:'Slack',detail:'Channel notifications for tickets and customer replies.'},{id:'cliq',name:'Zoho Cliq',detail:'Team and operations notifications in Cliq channels.'},{id:'teams',name:'Microsoft Teams',detail:'Channel notifications through Teams webhooks.'}];
       function destinations(id){return hookRows.filter(function(h){return (h.kind||'json')===id;});}
+      function developerCard(provider){
+        var connection=integrationsNative.filter(function(x){return x.provider===provider;})[0],name=provider==='github'?'GitHub':'GitLab',connected=!!connection;
+        function tokenEditor(trigger){
+          var editor=el('div',{class:'integration-channel-editor integration-token-editor'},el('p',{class:'m'},'Create a customer-owned '+name+' personal access token with only the repository permissions this workspace needs. EffDesk encrypts it and never displays it again.'));
+          var token=el('input',{type:'password',autocomplete:'new-password',maxlength:'1000',placeholder:provider==='github'?'github_pat_…':'glpat-…','aria-label':name+' personal access token'});
+          var save=el('button',{type:'button',class:'btn',onclick:function(){save.disabled=true;api('integration-connect',{provider:provider,token:token.value}).then(function(r){save.disabled=false;if(!r.ok)return say(r.body.error||'Could not connect '+name+'.',true);say(name+' connected as '+(r.body.accountUsername||'your account')+'.');loadIntegrations();}).catch(function(){save.disabled=false;say('Could not connect '+name+'.',true);});}},'Verify and connect');
+          var cancel=el('button',{type:'button',class:'btn l',onclick:function(){loadIntegrations();}},'Cancel');
+          editor.append(token,el('div',{class:'bar'},save,cancel));trigger.parentNode.appendChild(editor);token.focus();trigger.disabled=true;
+        }
+        return el('article',{class:'integration-provider-card integration-provider-'+provider},
+          el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},provider==='github'?'GH':'GL'),el('div',{class:'integration-provider-title'},el('h3',{},name),el('p',{class:'m'},provider==='github'?'Link repositories, pull requests, commits, and deployment activity.':'Connect GitLab projects and engineering workflows.')),el('span',{class:'integration-status '+(connected?(connection.status==='connected'?'is-connected':'is-disconnected'):'is-disconnected')},connected?(connection.status==='connected'?'Connected':'Needs attention'):'Not connected')),
+          el('p',{class:'integration-provider-description'},connected?'Connected as '+(connection.account_username||connection.account_name||'your account')+'. '+(connection.granted_scopes&&connection.granted_scopes.length?'Granted scopes: '+connection.granted_scopes.join(', '):'Token scopes are not reported by the provider.'):'Use a workspace-owned personal access token. The token is verified before it is stored.'),
+          el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connected?'Last verified: '+(connection.last_success_at?new Date(connection.last_success_at).toLocaleString():'Not yet'):'Secure token connection'),
+            connected?el('div',{class:'bar'},
+              el('button',{type:'button',class:'btn l sm',onclick:function(){var b=this; b.disabled=true;api('integration-test',{provider:provider}).then(function(r){b.disabled=false;if(!r.ok)return say(r.body.error||name+' test failed.',true);say(name+' connection is healthy.');loadIntegrations();}).catch(function(){b.disabled=false;say(name+' test failed.',true);});}},'Test connection'),
+              el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Disconnect '+name+' from this workspace?'))return;api('integration-disconnect',{provider:provider}).then(function(r){if(!r.ok)return say(r.body.error||'Could not disconnect '+name+'.',true);say(name+' disconnected.');loadIntegrations();});}},'Disconnect'))
+              :el('button',{type:'button',class:'btn',onclick:function(e){tokenEditor(e.currentTarget);}},'Connect '+name))
+        );
+      }
       function communicationCard(p){
         var connected=destinations(p.id).length>0;
         return el('article',{class:'integration-provider-card integration-provider-'+p.id},
@@ -486,7 +506,7 @@
       var channelItems=channelList.map(function(h){var label=({slack:'Slack',cliq:'Zoho Cliq',teams:'Microsoft Teams'})[h.kind];return el('div',{class:'mitem'},el('span',{class:'grow'},el('strong',{},label+' channel'),el('div',{class:'m'},h.events.join(' · ')+' · Last delivery: '+(h.last_status||'not yet sent')+(h.last_at?' · '+ago(h.last_at):''))),el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Remove this '+label+' destination?'))return;api('webhook-delete',{id:h.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not remove destination.',true);say(label+' destination removed.');loadIntegrations();});}},'Disconnect'));});
       var planned=[
         ['Identity & access','Microsoft Entra ID','Okta','Google Workspace'],
-        ['Developer tools','GitHub','GitLab','Azure DevOps'],
+        ['Developer tools','Azure DevOps'],
         ['Incident response','PagerDuty','Rootly','FireHydrant'],
         ['Monitoring & observability','Datadog','Grafana','Splunk','Sentry'],
         ['Endpoint & cloud','Microsoft Intune','Jamf','AWS','Microsoft Azure'],
@@ -499,7 +519,8 @@
           el('div',{class:'integration-hub'},
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'01 · COMMUNICATIONS'),el('h3',{},'Team notifications'),el('p',{class:'m'},'Send ticket and customer activity into the channels your team already uses.'))),el('div',{class:'integration-providers-grid'},comms.map(communicationCard)),channelItems.length?el('div',{class:'integration-channel-list'},channelItems):null),
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'02 · ISSUE TRACKING'),el('h3',{},'Engineering work'),el('p',{class:'m'},'Keep support tickets and engineering issues synchronized in both directions.'))),el('div',{class:'integration-providers-grid'},providers.map(issueCard))),
-            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'03 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
+            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'03 · DEVELOPER TOOLS'),el('h3',{},'Engineering platforms'),el('p',{class:'m'},'Connect GitHub and GitLab using credentials owned by this workspace. Tokens are encrypted at rest and can be tested or revoked here.'))),el('div',{class:'integration-providers-grid'},[developerCard('github'),developerCard('gitlab')])),
+            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'04 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
               planned.map(function(group){return el('div',{class:'integration-catalog-group'},el('h4',{},group[0]),el('div',{class:'integration-catalog-list'},group.slice(1).map(function(name){return el('span',{class:'integration-catalog-item'},name,el('small',{},'Planned'));})));})
             )
           ),
