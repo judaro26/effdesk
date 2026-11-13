@@ -82,7 +82,8 @@ export async function ingestWindowsAgent(req,{pool}){
       values($1,$2,$3,'hardware','in_use','medium',$4,$5,$6,'windows_agent',$7,'current',now(),$8,$9,'Discovered by the EffDesk Windows agent')`,
       [parsed.orgId,'WIN-'+agent.id.slice(0,8).toUpperCase(),d.hostname,d.manufacturer,d.model,d.serial,String(agent.id),d.os,d.osVersion]);
    }
-   await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[parsed.orgId,agent.id]);
+   // A capped 500-row payload is not a complete snapshot, so do not mark unseen software missing in that case.
+   if(d.software.length<500)await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[parsed.orgId,agent.id]);
    for(const app of d.software){
     const normalized=app.name.toLowerCase().replace(/\\s+/g,' ').trim();
     await c.query(`insert into cmdb_discovered_software(org_id,agent_id,name,publisher,version,normalized_name,status)
@@ -99,6 +100,7 @@ export async function ingestWindowsAgent(req,{pool}){
   return ok({receivedAt:new Date().toISOString(),softwareCount:result.softwareCount});
  }catch(e){
   console.error('Windows discovery ingestion failed:',clean(e.message,240));
+  await withOrg(pool,parsed.orgId,c=>c.query("update cmdb_discovery_agents set last_sync_status='failed',last_sync_error='Inventory could not be saved.' where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null",[parsed.orgId,parsed.id,hash(parsed.token)])).catch(()=>{});
   return fail(500,'Inventory could not be saved. The agent can retry on its next run.');
  }
 }
