@@ -56,15 +56,17 @@ await time('session-style lookups x4', async () => { for (let i = 0; i < 4; i++)
 const concurrent = async (name, fn, workers = CONCURRENCY, rounds = 3) => {
   for (let round = 0; round < rounds; round++) {
     const started = performance.now();
-    const batch = await Promise.all(Array.from({ length: workers }, async () => {
+    const requests = Array.from({ length: workers }, async () => {
       const t = performance.now(); await fn(); return performance.now() - t;
-    }));
+    });
+    const poolWaitingPeak = pool.waitingCount, poolTotalPeak = pool.totalCount;
+    const batch = await Promise.all(requests);
     const sorted = batch.slice().sort((a, b) => a - b);
     rows.push({ screen: name + ' burst ' + (round + 1), runs: workers,
       batch_ms: Number((performance.now() - started).toFixed(1)),
       p50_ms: Number(percentile(sorted, .50).toFixed(1)),
       p95_ms: Number(percentile(sorted, .95).toFixed(1)),
-      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)) });
+      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)), pool_waiting_peak: poolWaitingPeak, pool_total_peak: poolTotalPeak });
   }
 };
 await concurrent('ticket list concurrent', () => listTickets(pool, 'big', me, {}));
