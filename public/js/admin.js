@@ -25,7 +25,7 @@
     }
     var ago = function (v) { if (!v) return 'never'; var d = Math.round((Date.now() - new Date(v).getTime()) / 86400000); return d < 1 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; };
     var HEALTH = { healthy: 'Healthy', free: 'Free', heavy: 'Heavy use', stalled: 'Stalled', past_due: 'Past due', canceled: 'Canceled' };
-    var SECTIONS = [['Monitor', [['overview', 'Overview'], ['customers', 'Customers'], ['errors', 'Errors'], ['status', 'Status page']]], ['Manage', [['licence', 'Lifetime licences'], ['users', 'People'], ['settings', 'Settings']]], ['Platform', [['logging', 'Logging'], ['activity', 'Activity']]], ['Data', [['import', 'Import old desk']]]], section = 'overview';
+    var SECTIONS = [['Monitor', [['overview', 'Overview'], ['performance', 'Performance & health'], ['customers', 'Customers'], ['errors', 'Errors'], ['status', 'Status page']]], ['Manage', [['licence', 'Lifetime licences'], ['users', 'People'], ['settings', 'Settings']]], ['Platform', [['logging', 'Logging'], ['activity', 'Activity']]], ['Data', [['import', 'Import old desk']]]], section = 'overview';
     var act = function (action, body) { return call('POST', '/api/admin/do', Object.assign({ action: action }, body || {})).catch(function () { return { ok: false, status: 0, body: { error: 'The server could not be reached.' } }; }); };
     var P = root.EffDeskAdminPanels ? root.EffDeskAdminPanels.make({ el: el, act: act, say: function (t, b) { say(t, b); }, doc: doc }) : null;
     var ids = []; SECTIONS.forEach(function (g) { g[1].forEach(function (x) { ids.push(x[0]); }); });
