@@ -227,7 +227,7 @@
         detailCard.appendChild(el('div',{class:'itsm-form-section'},el('h4',{},'Internal coordination'),internalSummary,el('label',{},el('span',{},'Related incident numbers'),relatedInput)));
         detailCard.appendChild(el('div',{class:'itsm-save-row'},save,el('span',{class:'m'},'Changes are recorded in the ticket timeline.')));
       }
-      return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Incident management'),el('p',{class:'m'},'Coordinate service disruptions using the ticket, service and approval foundations already in EffDesk.')),el('span',{class:'itsm-plan-pill'},'PRO')),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard,servicesCard),el('div',{class:'itsm-detail-col'},detailCard)));
+      return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Incident management'),el('p',{class:'m'},'Coordinate service disruptions using the ticket, service and approval foundations already in EffDesk.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();creating=true;newf=blankNew();newf.type='incident';pending=[];draw();}},'＋ Create incident'))),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard,servicesCard),el('div',{class:'itsm-detail-col'},detailCard)));
     }
 
     function goHome() { addr(0); closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
