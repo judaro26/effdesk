@@ -7,6 +7,7 @@ import { createTicket, TYPES } from './tickets.js';
 import { cleanValues, defsOf } from './fields.js';
 import { emit } from './webhooks.js';
 import { notifyTicket } from './notify.js';
+import { normalizeApprovalConfig, validateApprovalConfig, createForTicket } from './approvals.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
 const fail = (error, status = 400, extra = {}) => ({ ok: false, status, error, ...extra });
@@ -21,7 +22,7 @@ const tokenState = (env, orgId, tok, now) => {
 };
 export const PER_EMAIL_HOUR = 5, PER_ORG_HOUR = 100;
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
-const formCols = 'id, name, description, subject_hint, queue_id, type, priority, tags, field_keys, active, position';
+const formCols = 'id, name, description, subject_hint, queue_id, type, priority, tags, field_keys, active, position, approval_config';
 
 // ---- the admins' side ----
 export async function listForms(pool, orgId) {
@@ -35,10 +36,13 @@ export async function saveForm(pool, orgId, b) {
     return await withOrg(pool, orgId, async c => {
       const defs = (await defsOf(c, orgId)).map(d => d.key), keys = [...new Set((Array.isArray(b.fieldKeys) ? b.fieldKeys : []).map(String))].filter(k => defs.includes(k));
       let queue = null; if (/^\d{1,12}$/.test(String(b.queueId || ''))) { queue = (await c.query('select id from queues where org_id = $1 and id = $2', [orgId, Number(b.queueId)])).rows[0]?.id || null; }
-      const vals = [orgId, name, clean(b.description, 300), clean(b.subjectHint, 100), queue, type, priority, tags, keys, b.active !== false];
-      if (b.id) { const u = await c.query('update request_forms set name = $2, description = $3, subject_hint = $4, queue_id = $5, type = $6, priority = $7, tags = $8, field_keys = $9, active = $10 where org_id = $1 and id = $11 returning id', [...vals, Number(b.id)]); if (!u.rowCount) return fail('No such form.', 404); return { ok: true, id: u.rows[0].id }; }
+      const approvalConfig = normalizeApprovalConfig(b.approvalConfig);
+      const validApproval = await validateApprovalConfig(c, orgId, approvalConfig);
+      if (!validApproval.ok) return validApproval;
+      const vals = [orgId, name, clean(b.description, 300), clean(b.subjectHint, 100), queue, type, priority, tags, keys, b.active !== false, JSON.stringify(validApproval.config)];
+      if (b.id) { const u = await c.query('update request_forms set name = $2, description = $3, subject_hint = $4, queue_id = $5, type = $6, priority = $7, tags = $8, field_keys = $9, active = $10, approval_config = $11 where org_id = $1 and id = $12 returning id', [...vals, Number(b.id)]); if (!u.rowCount) return fail('No such form.', 404); return { ok: true, id: u.rows[0].id }; }
       if ((await c.query('select count(*)::int n from request_forms where org_id = $1', [orgId])).rows[0].n >= 20) return fail('You can have up to 20 request forms.');
-      return { ok: true, id: (await c.query('insert into request_forms (org_id, name, description, subject_hint, queue_id, type, priority, tags, field_keys, active) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id', vals)).rows[0].id };
+      return { ok: true, id: (await c.query('insert into request_forms (org_id, name, description, subject_hint, queue_id, type, priority, tags, field_keys, active, approval_config) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id', vals)).rows[0].id };
     });
   } catch (e) { if (e.code === '23505') return fail('A form with that name already exists.'); throw e; }
 }
@@ -73,6 +77,7 @@ export async function submit(pool, env, org, input, { mailer, custom = false, fi
   const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal' });
   if (!r.ok) return r;
   await withOrg(pool, org.id, c => c.query('update tickets set via_portal = true, form_id = $3, queue_id = coalesce($4, queue_id), type = $5 where org_id = $1 and id = $2', [org.id, r.ticket.id, form ? form.id : null, form ? form.queue_id : null, form ? form.type : 'question']));
+  if (form) { try { await createForTicket(pool, org.id, r.ticket, form.id, null); } catch (e) { console.warn('request approval creation failed:', e.message); } }
   await emit(pool, org.id, 'ticket.created', r.ticket.number);
   if (mailer) { try { await notifyTicket(pool, mailer, org.id, r.ticket.number, { kind: 'reply', summary: body }); } catch { } }
   return { ok: true, number: r.ticket.number };
