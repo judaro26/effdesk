@@ -61,7 +61,7 @@ export async function runTicketLifecycle(pool, mailer, env = process.env, nowMs 
     try {
       const policyResult = await getLifecyclePolicy(pool,orgId), p = policyResult.policy;
       if (!Object.values(p).some(v => v === true)) continue;
-      const rows = await withOrg(pool,orgId,c=>c.query(`select t.id,t.number,t.subject,t.status,t.priority,t.requester_name,t.requester_email,t.assignee_id,t.solved_at,t.closed_at,t.updated_at,
+      const rows = await withOrg(pool,orgId,c=>c.query(`select t.id,t.number,t.subject,t.status,t.priority,t.requester_name,t.requester_email,t.assignee_id,t.solved_at,t.closed_at,t.created_at,t.updated_at,
         (select max(m.created_at) from ticket_messages m where m.org_id=t.org_id and m.ticket_id=t.id and m.kind='requester') as last_customer_at
         from tickets t where org_id=$1 and status in ('open','pending','on_hold','solved','closed')
         and updated_at < now() - interval '1 hour' order by updated_at limit 1000`,[orgId]));
