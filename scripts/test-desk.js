@@ -217,7 +217,7 @@ check('opening a saved view applies its filter', calls.some(c => c[1] && c[1].ac
 $('[data-view-new]').click(); await tick(); $('input[aria-label="View name"]').value = 'Mine now'; $('[data-view-save]').click(); await tick();
 check('saving a view sends its name and the current filter', calls.some(c => c[1] && c[1].action === 'view-save' && c[1].name === 'Mine now' && c[1].filter.tag === 'heat'));
 $('#userbtn').click(); await tick();
-check('opening Manage workspace closes the profile popover so the two navigation surfaces never overlap', !$('#usermenu').hidden && ($('#userbtn').click(), $('[data-manage]').click(), $('#usermenu').hidden === true && $('#userbtn').getAttribute('aria-expanded') === 'false'));
+check('opening Manage workspace closes the profile popover so the two navigation surfaces never overlap', !$('#usermenu').hidden && ($('[data-manage]').click(), $('#usermenu').hidden === true && $('#userbtn').getAttribute('aria-expanded') === 'false'));
 $('[data-manage]').click(); await tick(); $('[data-manage-tab=queues]').click(); await tick();
 check('Manage has a grouped side menu with every section', ['team','queues','fields','macros','triggers','sla','clients','chat','sso','integrations','api','migrate'].every(t => !!$('[data-manage-tab=' + t + ']')) && $$('.mgh').length === 6 && !!$('.mmain h3'));
 $('[data-manage-tab=team]').click(); await tick(); await tick();
