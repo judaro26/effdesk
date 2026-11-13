@@ -1696,7 +1696,7 @@
         ['Customers', [['contacts', 'Contacts', 'Requester profiles, contact details and company relationships.', 'clients'], ['clients', 'Companies', 'Manage the companies your customers belong to.', 'clients']]],
         ['Channels', [['helpwidget', 'Help center and search widget', 'Your public help center, request page and a search box for your website.'], ['forms', 'Request forms', 'Forms customers fill in on the help center.', 'request_forms'], ['chat', 'Live chat', 'A chat button for your website.', 'live_chat'], ['whatsapp', 'WhatsApp', 'Answer customers who message your WhatsApp number.', 'whatsapp']]],
         ['Data and compliance', [['migrate', 'Import from Zendesk or Freshdesk', 'Bring your tickets and help articles over. Customers are not emailed.'], ['audit', 'Audit log', 'Who changed what, and when.', 'audit_log'], ['export', 'Export your data', 'Download your tickets, clients, macros and articles.', 'data_export']]],
-        ['Developers', [['integrations', 'Webhooks', 'Manage Slack, Microsoft Teams and outbound webhooks.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
+        ['Developers', [['integrations', 'Developer webhooks', 'Manage signed outbound webhooks for Zapier, Make, CRMs and custom systems.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
       ];
       var flat = []; groups.forEach(function (g) { g[1].forEach(function (t) { if (!(support && t[0] === 'support')) flat.push(t); }); });
       var cur = flat.filter(function (t) { return t[0] === manage; })[0] || flat[0];
