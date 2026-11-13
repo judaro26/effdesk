@@ -120,16 +120,16 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
   return withOrg(pool, orgId, async c => {
     const t = (await c.query('select id, status, closed_at, custom_status_id, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
-    if (patch.status === 'open' && t.status === 'closed') {
-      const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
-      if (cfg.permanentCloseEnabled === true && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
-    }
     const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = ${args.length}`); };
     let label = null, cs = null;
     if (patch.customStatusId !== undefined && patch.customStatusId !== null && patch.customStatusId !== '') {
       cs = (await c.query('select id, name, category from ticket_statuses where org_id = $1 and id = $2', [orgId, Number(patch.customStatusId) || 0])).rows[0]; if (!cs) return fail('That status does not exist.');
       patch = { ...patch, status: cs.category }; label = cs.name; set('custom_status_id', cs.id);
     } else if (patch.status !== undefined && t.custom_status_id) set('custom_status_id', null);
+    if (patch.status && patch.status !== 'closed' && t.status === 'closed') {
+      const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
+      if (cfg.permanentCloseEnabled === true && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
+    }
     if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when ${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); sets.push(`closed_at = case when ${args.length} = 'closed' then coalesce(closed_at, now()) when ${args.length} <> 'closed' then null else closed_at end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
     if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) return fail('That priority does not exist.'); set('priority', patch.priority); if (patch.priority !== t.priority) notes.push(['priority', `Priority ${t.priority} → ${patch.priority}`]); }
     if (patch.assigneeId !== undefined) {
