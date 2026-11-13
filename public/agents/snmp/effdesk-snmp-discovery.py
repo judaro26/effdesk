@@ -30,10 +30,11 @@ OIDS = [
 
 def private_network_targets(values):
     targets = set()
+    approved = [ipaddress.ip_network("10.0.0.0/8"), ipaddress.ip_network("172.16.0.0/12"), ipaddress.ip_network("192.168.0.0/16")]
     for value in values:
         network = ipaddress.ip_network(value, strict=False)
-        if not network.is_private or network.is_multicast or network.is_unspecified:
-            raise ValueError("Only explicitly supplied private network ranges are allowed.")
+        if network.version != 4 or not any(network.subnet_of(scope) for scope in approved):
+            raise ValueError("Only explicitly supplied RFC1918 private IPv4 ranges are allowed.")
         for address in network.hosts():
             if address.is_link_local or address.is_loopback or address.is_multicast:
                 continue
