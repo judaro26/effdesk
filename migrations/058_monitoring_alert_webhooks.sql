@@ -1,4 +1,7 @@
 -- 058_monitoring_alert_webhooks.sql
+-- The hash-only token registry is intentionally global so a webhook token can resolve
+-- its tenant before RLS context is established. It contains no plaintext secrets and is
+-- accessed only by server-side webhook handlers; all operational metadata is forced-RLS.
 -- Tenant-owned inbound monitoring alert endpoints and deduplicated alert-to-ticket links.
 create table if not exists monitoring_alert_connections (
   id bigserial primary key,
