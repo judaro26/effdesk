@@ -1,19 +1,31 @@
-# Roadmap against Zendesk / Freshdesk / Help Scout
+**Updated:** 2026-11-12
 
-Built: tickets, email in and out, labels, queues, clients, CC, merge, side conversations, linked tickets, macros, saved views, SLA timers, reports, translation, help center and customer portal, follower and mention emails, themes, profile pictures, webhooks, per-customer addresses (see SUBDOMAINS.md), dashboard.
+This short roadmap is now a summary; the implementation blueprint lives in [PRODUCT-MASTER-PLAN.md](PRODUCT-MASTER-PLAN.md).
 
-Next, in the order that sells best:
-1. **Triggers and automations** (if/then rules: auto-assign, auto-tag, auto-reply, close after N days; plan list already reserves `triggers`).
-2. **Customer satisfaction (CSAT)** survey after solve (reserved `csat`) feeding the reports.
-3. **API tokens and a public REST API** (the webhooks' counterpart), plus ready-made Slack and Zapier recipes.
-4. **Slack and Microsoft Teams notifications** (an incoming-webhook URL per organization, using the same event stream).
-5. **Custom ticket fields and forms** on the portal (`custom_fields`), ticket types and priorities per form.
-6. **Light agents (free, comment only) and custom roles** (`custom_roles`), audit log, SSO (SAML) and 2FA enforcement for Pro.
-7. ~~Live chat widget~~ (done: `public/widget.js`, `src/chat.js`, Manage > Live chat). Still to do: an embeddable help-center search widget, typing indicators, chat transcripts by email, business-hours away message.
-8. ~~WhatsApp~~ (done: `src/whatsapp.js`, `docs/WHATSAPP.md`). Media, templates and email delivery receipts are done too. Still to do: outbound media, template buttons.
-8. ~~SSO (OIDC)~~ done (`src/sso.js`, Manage > Single sign-on). Still to do: SAML, DNS domain verification, SCIM.
-8. **Knowledge-base extras:** article feedback is built; add categories, drafts review, and AI-suggested answers (`ai_assist`).
-9. **Business hours and holidays** for SLA (today it is around the clock), and breach alert emails.
-10. **Round-robin / load-based assignment**, ticket collision warnings ("Ann is replying"), bulk actions, keyboard shortcuts.
-11. **Channels:** SMS/WhatsApp, Facebook/Instagram, voice (partners).
-12. **Customer's own domain** for the portal (help.rooster.com).
+## Product direction
+
+Position EffDesk as an AI-native, multi-tenant service operations platform: simple to deploy and operate, with customer support, service requests, IT operations, integrations, and supervised AI automation in one product.
+
+## Immediate priorities
+
+1. **Reliability and architecture:** resolve migration ordering, strengthen tenant-isolation/permission tests, and add repeatable end-to-end smoke tests.
+2. **Service catalog and approvals:** evolve existing request forms and custom fields into catalog items; add tenant-scoped approval records, decision history, notifications, and fulfillment tasks.
+3. **Knowledge and customer experience:** categories, article review/publishing, contextual AI suggestions, and improved requester portal.
+4. **AI copilot and supervised agents:** grounded retrieval, scoped tools, approval gates, action traces, budgets and evaluation.
+5. **ITSM foundations:** major incidents, problem/change management, lightweight asset inventory and service relationships.
+6. **Integration ecosystem and analytics:** connector framework, identity/productivity, monitoring/on-call, endpoint management, CRM, public API and advanced reporting.
+
+## Existing capabilities to extend
+
+EffDesk already has multi-tenant organizations and RLS, tickets, queues, SLAs, triggers, request forms, custom fields, customer portal, help center, contacts/companies, AI assistance, API tokens, webhooks, and Linear/Jira integrations. Avoid rebuilding these as parallel systems; extend the existing modules and entitlement model.
+
+## Implementation rules
+
+- Every tenant-owned record and integration is tenant-scoped and protected by forced RLS.
+- Enforce feature entitlements and role permissions on the server.
+- Use additive, deterministic migrations and test cross-tenant access.
+- Keep long-running workflow execution durable, idempotent and observable.
+- Require human approval for sensitive or irreversible AI actions.
+- Ship in independently testable pull requests; deploy previews before production.
+
+See [PRODUCT-MASTER-PLAN.md](PRODUCT-MASTER-PLAN.md) for capability details, architecture guardrails, packaging direction, phase exit criteria and the first implementation slice.
