@@ -2,6 +2,7 @@ import { check, done } from './lib/check.js';
 import { normalizePath, recordRequest, performanceOverview } from '../src/performance.js';
 check('normalizes numeric ids and strips query strings', normalizePath('/api/tickets/123/messages?token=secret') === '/api/tickets/:id/messages');
 check('normalizes UUID path segments', normalizePath('/api/agent/123e4567-e89b-12d3-a456-426614174000/tickets') === '/api/agent/:id/tickets');
+check('redacts tenant slugs in workspace URLs', normalizePath('/w/acme/agent/10003/tickets') === '/w/:tenant/agent/:id/tickets');
 let calls = [];
 const pool = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [], rowCount: 1 }; } };
 const sample = { fn: 'tickets', path: '/api/tickets/123?email=private@example.com', status: 500, ms: 1200, org: 'org-1', at: 1760000000000, pool: { waiting: 2, total: 10 } };
