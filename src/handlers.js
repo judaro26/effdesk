@@ -53,7 +53,7 @@ import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
 import { themeById, usableTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
-import { listApprovals, decideApproval, listTasks, updateTask } from './approvals.js';
+import { listApprovals, getApprovalForTicket, decideApproval, listTasks, updateTask } from './approvals.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -189,6 +189,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
+    case 'approval-get': if ((g = need('request_forms'))) return g; r = await getApprovalForTicket(pool, orgId, b.number); break;
     case 'approvals-list': if ((g = need('request_forms'))) return g; r = await listApprovals(pool, orgId, actor.id, { mine: true, status: b.status || 'pending' }); break;
     case 'approval-decide': if ((g = need('request_forms'))) return g; r = await decideApproval(pool, orgId, actor.id, b.id, b.decision, b.comment); break;
     case 'tasks-list': if ((g = need('request_forms'))) return g; r = await listTasks(pool, orgId, b.number); break;
