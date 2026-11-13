@@ -9,6 +9,7 @@ import { listTeam, agentDetail } from '../src/team.js';
 import { exportData } from '../src/audit.js';
 const N = Number(process.argv[2]) || Number(process.env.BENCH_TICKETS) || 100000;
 const RUNS = Math.max(3, Math.min(30, Number(process.env.BENCH_RUNS) || 9));
+const CONCURRENCY = Math.max(2, Math.min(100, Number(process.env.BENCH_CONCURRENCY) || 20));
 const { url } = await freshDb('bench'); await migrate(url); const pool = makePool(url);
 const orgs = ['big', ...Array.from({ length: 30 }, (_, i) => 'o' + i)];
 for (const o of orgs) await pool.query('insert into "organization" (id, name, slug, "createdAt") values ($1,$1,$1,now())', [o]);
@@ -52,6 +53,26 @@ await time('agent detail', () => agentDetail(pool, 'big', 'u3', {}));
 await time('export part 1', () => exportData(pool, 'big', 1), 3);
 await time('ticket list (small workspace)', () => listTickets(pool, 'o3', me, {}));
 await time('session-style lookups x4', async () => { for (let i = 0; i < 4; i++) await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', ['u1', 'big']); });
-console.log(`\nBenchmark summary: ${N.toLocaleString()} tickets in the primary tenant; ${RUNS} measured runs per screen (plus one warm-up).`);
+const concurrent = async (name, fn, workers = CONCURRENCY, rounds = 3) => {
+  for (let round = 0; round < rounds; round++) {
+    const started = performance.now();
+    const requests = Array.from({ length: workers }, async () => {
+      const t = performance.now(); await fn(); return performance.now() - t;
+    });
+    const poolWaitingPeak = pool.waitingCount, poolTotalPeak = pool.totalCount;
+    const batch = await Promise.all(requests);
+    const sorted = batch.slice().sort((a, b) => a - b);
+    rows.push({ screen: name + ' burst ' + (round + 1), runs: workers,
+      batch_ms: Number((performance.now() - started).toFixed(1)),
+      p50_ms: Number(percentile(sorted, .50).toFixed(1)),
+      p95_ms: Number(percentile(sorted, .95).toFixed(1)),
+      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)), pool_waiting_peak: poolWaitingPeak, pool_total_peak: poolTotalPeak });
+  }
+};
+await concurrent('ticket list concurrent', () => listTickets(pool, 'big', me, {}));
+await concurrent('dashboard concurrent', () => dashboard(pool, 'big', me, { sla: false, agents: 5 }));
+console.log('\\nPool pressure after concurrent bursts (max ' + pool.options.max + '): total=' + pool.totalCount + ', idle=' + pool.idleCount + ', waiting=' + pool.waitingCount + '; configured concurrency=' + CONCURRENCY + '.');
+
+console.log(`\nBenchmark summary: ${N.toLocaleString()} tickets in the primary tenant; ${RUNS} measured runs per screen (plus one warm-up); concurrency bursts used ${CONCURRENCY} workers x 3 rounds.`);
 console.table(rows);
 await pool.end(); process.exit(0);
