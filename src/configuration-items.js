@@ -70,6 +70,8 @@ export async function saveConfigurationRelationship(pool,orgId,actor,input={}){
  const source=Number(input.sourceCiId),target=Number(input.targetCiId),relationship=CI_RELATIONSHIPS.includes(input.relationship)?input.relationship:'depends_on';
  if(!Number.isSafeInteger(source)||source<1||!Number.isSafeInteger(target)||target<1||source===target)return fail('Choose two different configuration items.');
  return withOrg(pool,orgId,async c=>{
+  const found=await c.query('select id from configuration_items where org_id=$1 and id=any($2::bigint[])',[orgId,[source,target]]);
+  if(found.rowCount!==2)return fail('Both configuration items must belong to this workspace.',404);
   const r=await c.query('insert into configuration_item_relationships(org_id,source_ci_id,target_ci_id,relationship,created_by) values($1,$2,$3,$4,$5) on conflict do nothing returning source_ci_id',[orgId,source,target,relationship,actor?.id||null]);
   if(!r.rowCount)return fail('That relationship already exists.');
   await event(c,orgId,source,actor,'relationship_added',relationship+' → CI #'+target);
