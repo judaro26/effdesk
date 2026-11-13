@@ -198,7 +198,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-service-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveService(pool, orgId, b); break;
     case 'itsm-incident-list': if ((g = need('itsm'))) return g; r = await listIncidents(pool, orgId, b); break;
     case 'itsm-incident-get': if ((g = need('itsm'))) return g; r = await getIncident(pool, orgId, b.number); break;
-    case 'itsm-incident-save': if ((g = need('itsm'))) return g; r = await saveIncident(pool, orgId, actor.id, b); break;
+    case 'itsm-incident-save': if ((g = need('itsm'))) return g; r = await saveIncident(pool, orgId, actor.name || actor.email || actor.id, b); break;
     case 'task-update': if ((g = need('request_forms'))) return g; r = await updateTask(pool, orgId, b.id, b); break;
     case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;
     case 'form-delete': if ((g = adminOnly() || need('request_forms'))) return g; if (!(await deleteForm(pool, orgId, b.id))) return json(404, { error: 'No such form.' }); r = { ok: true }; break;
