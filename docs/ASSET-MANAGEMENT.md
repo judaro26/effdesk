@@ -27,6 +27,14 @@ All owner and service references are validated against the current workspace. Cr
 
 Apply migration `048_configuration_items.sql` before deploying the application code. This is an additive migration and does not alter existing ticket, incident, problem, change or service records.
 
+## Procurement and lifecycle extension
+
+Migration `049_cmdb_lifecycle_and_procurement.sql` adds workspace-scoped vendors, contracts and software licenses. Configuration items can be associated with a vendor and contract. License records track publisher, license type, purchased and assigned seats, renewal/end dates, agreement reference and annual cost (never store license keys or secrets here). The Assets & CMDB pane provides supplier, contract, license and warranty-expiry views.
+
+Asset CSV import/export uses `asset_tag` as the stable upsert key. Imports are limited to 500 rows and 400 KB per request; rows without an asset tag/name or with invalid dates are reported as skipped. CSV import and export are owner/admin-only. Export contains inventory fields and does not include user identifiers or internal metadata.
+
+Warranty reporting identifies active assets with expired or upcoming warranties within a selected window (the workspace currently displays the next 90 days). It is a report/alert view, not yet an email escalation scheduler.
+
 ## Deliberate next steps
 
-This is a foundation, not a claim of a complete discovery-grade CMDB. Follow-on work should add bulk CSV import/export, vendor/contract/license records, reconciliation and duplicate detection, scheduled discovery through endpoint/RMM/MDM connectors, richer service dependency visualization, and automatic CI association suggestions.
+This is not yet a discovery-grade CMDB. Next work should add reconciliation and duplicate detection, scheduled discovery through tenant-authorized endpoint/RMM/MDM connectors (for example Microsoft Intune via Microsoft Graph), automated license assignment reconciliation, renewal email escalations and a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
