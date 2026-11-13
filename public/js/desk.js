@@ -1329,7 +1329,7 @@
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
         connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
         box.appendChild(tabs);
-        if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
+        if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
         var links=ui.links.filter(function(x){return x.provider===ui.provider;});
         if(links.length){
           links.forEach(function(link){
