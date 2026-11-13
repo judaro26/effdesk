@@ -2,6 +2,7 @@
 import { withOrg } from './db.js';
 import { updateTicket } from './tickets.js';
 import { sendTicketReply } from './ticket-mail.js';
+import { notifyTicket } from './notify.js';
 
 export const DEFAULT_LIFECYCLE = Object.freeze({
   autoCloseEnabled: false, autoCloseDays: 4,
@@ -89,6 +90,7 @@ export async function runTicketLifecycle(pool, mailer, env = process.env, nowMs 
             if(await act(pool,orgId,t,key,async()=>{
               const body='Automation reminder: this ticket has had no activity for '+Math.round(idle)+' hours. Please review ownership and next steps.';
               await lifecycleMessage(pool,orgId,t.id,body,true);
+              await notifyTicket(pool,mailer,orgId,t.number,{kind:'ticket_reminder',summary:'This ticket has had no activity for '+Math.round(idle)+' hours. Please review it.'});
             },{bucket})) actions++;
           }
         } catch(e) { errors++; console.warn('ticket lifecycle action failed',orgId,t.number,e.message); }
