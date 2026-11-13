@@ -18,6 +18,8 @@ export function normalizeConfigurationItem(input={}){
   model:clean(input.model,120),serialNumber:clean(input.serialNumber,180),
   location:clean(input.location,240),ownerId:clean(input.ownerId,128),
   businessServiceId:Number.isSafeInteger(Number(input.businessServiceId))&&Number(input.businessServiceId)>0?Number(input.businessServiceId):null,
+  vendorId:Number.isSafeInteger(Number(input.vendorId))&&Number(input.vendorId)>0?Number(input.vendorId):null,
+  contractId:Number.isSafeInteger(Number(input.contractId))&&Number(input.contractId)>0?Number(input.contractId):null,
   purchaseDate:validDate(input.purchaseDate),warrantyExpiresAt:validDate(input.warrantyExpiresAt)
  };
 }
@@ -32,14 +34,14 @@ export async function listConfigurationItems(pool,orgId,{q='',lifecycle='',ciTyp
  if(CI_TYPES.includes(ciType)){args.push(ciType);where.push('ci.ci_type=$'+args.length);}
  const term=clean(q,160);if(term){args.push('%'+term+'%');where.push('(ci.name ilike $'+args.length+' or ci.asset_tag ilike $'+args.length+' or ci.serial_number ilike $'+args.length+' or ci.manufacturer ilike $'+args.length+')');}
  args.push(Math.min(Math.max(Number(limit)||200,1),500));
- return withOrg(pool,orgId,async c=>({ok:true,items:(await c.query(`select ci.id,ci.asset_tag,ci.name,ci.ci_type,ci.lifecycle,ci.criticality,ci.manufacturer,ci.model,ci.serial_number,ci.location,ci.owner_id,ci.business_service_id,ci.warranty_expires_at,ci.created_at,ci.updated_at,u.name owner_name,u.email owner_email,bs.name service_name,
+ return withOrg(pool,orgId,async c=>({ok:true,items:(await c.query(`select ci.id,ci.asset_tag,ci.name,ci.ci_type,ci.lifecycle,ci.criticality,ci.manufacturer,ci.model,ci.serial_number,ci.location,ci.owner_id,ci.business_service_id,ci.warranty_expires_at,ci.created_at,ci.updated_at,u.name owner_name,u.email owner_email,bs.name service_name,v.name vendor_name,ct.name contract_name,
  (select count(*)::int from configuration_item_relationships r where r.org_id=ci.org_id and (r.source_ci_id=ci.id or r.target_ci_id=ci.id)) relationship_count
- from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id
+ from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id left join cmdb_vendors v on v.org_id=ci.org_id and v.id=ci.vendor_id left join cmdb_contracts ct on ct.org_id=ci.org_id and ct.id=ci.contract_id
  where ${where.join(' and ')} order by case ci.criticality when 'critical' then 0 when 'high' then 1 when 'medium' then 2 else 3 end,lower(ci.name) limit $${args.length}`,args)).rows}));
 }
 export async function getConfigurationItem(pool,orgId,id){
  return withOrg(pool,orgId,async c=>{
-  const item=(await c.query(`select ci.*,u.name owner_name,u.email owner_email,bs.name service_name from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id where ci.org_id=$1 and ci.id=$2`,[orgId,Number(id)||0])).rows[0];
+  const item=(await c.query(`select ci.*,u.name owner_name,u.email owner_email,bs.name service_name from configuration_items ci left join "user" u on u.id=ci.owner_id left join business_services bs on bs.org_id=ci.org_id and bs.id=ci.business_service_id left join cmdb_vendors v on v.org_id=ci.org_id and v.id=ci.vendor_id left join cmdb_contracts ct on ct.org_id=ci.org_id and ct.id=ci.contract_id where ci.org_id=$1 and ci.id=$2`,[orgId,Number(id)||0])).rows[0];
   if(!item)return fail('No such configuration item.',404);
   const [relationships,events,tickets,problems,changes]=await Promise.all([
    c.query(`select r.relationship,r.source_ci_id,r.target_ci_id,a.name source_name,b.name target_name from configuration_item_relationships r join configuration_items a on a.org_id=r.org_id and a.id=r.source_ci_id join configuration_items b on b.org_id=r.org_id and b.id=r.target_ci_id where r.org_id=$1 and (r.source_ci_id=$2 or r.target_ci_id=$2) order by a.name,b.name`,[orgId,item.id]),
@@ -58,10 +60,12 @@ export async function saveConfigurationItem(pool,orgId,actor,input={}){
  return withOrg(pool,orgId,async c=>{
   if(d.ownerId){const m=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,d.ownerId])).rows[0];if(!m||m.role==='light')return fail('The owner must be a full workspace member.');}
   if(d.businessServiceId&&!(await c.query('select 1 from business_services where org_id=$1 and id=$2',[orgId,d.businessServiceId])).rowCount)return fail('Choose a business service in this workspace.');
+  if(d.vendorId&&!(await c.query('select 1 from cmdb_vendors where org_id=$1 and id=$2',[orgId,d.vendorId])).rowCount)return fail('Choose a vendor in this workspace.');
+  if(d.contractId){const ct=(await c.query('select vendor_id from cmdb_contracts where org_id=$1 and id=$2',[orgId,d.contractId])).rows[0];if(!ct)return fail('Choose a contract in this workspace.');if(d.vendorId&&ct.vendor_id&&d.vendorId!==Number(ct.vendor_id))return fail('The selected contract belongs to a different vendor.');}
   try{
    let row;
-   if(hasId){const r=await c.query(`update configuration_items set asset_tag=nullif($3,''),name=$4,ci_type=$5,lifecycle=$6,criticality=$7,description=$8,manufacturer=$9,model=$10,serial_number=$11,location=$12,owner_id=$13,business_service_id=$14,purchase_date=$15,warranty_expires_at=$16,updated_at=now() where org_id=$1 and id=$2 returning *`,[orgId,id,d.assetTag,d.name,d.ciType,d.lifecycle,d.criticality,d.description,d.manufacturer,d.model,d.serialNumber,d.location,d.ownerId||null,d.businessServiceId,d.purchaseDate,d.warrantyExpiresAt]);if(!r.rowCount)return fail('No such configuration item.',404);row=r.rows[0];await event(c,orgId,id,actor,'updated','Configuration item updated');}
-   else{const r=await c.query(`insert into configuration_items(org_id,asset_tag,name,ci_type,lifecycle,criticality,description,manufacturer,model,serial_number,location,owner_id,business_service_id,purchase_date,warranty_expires_at,created_by) values($1,nullif($2,''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning *`,[orgId,d.assetTag,d.name,d.ciType,d.lifecycle,d.criticality,d.description,d.manufacturer,d.model,d.serialNumber,d.location,d.ownerId||null,d.businessServiceId,d.purchaseDate,d.warrantyExpiresAt,actor?.id||null]);row=r.rows[0];await event(c,orgId,row.id,actor,'created','Configuration item created');}
+   if(hasId){const r=await c.query(`update configuration_items set asset_tag=nullif($3,''),name=$4,ci_type=$5,lifecycle=$6,criticality=$7,description=$8,manufacturer=$9,model=$10,serial_number=$11,location=$12,owner_id=$13,business_service_id=$14,purchase_date=$15,warranty_expires_at=$16,vendor_id=$17,contract_id=$18,updated_at=now() where org_id=$1 and id=$2 returning *`,[orgId,id,d.assetTag,d.name,d.ciType,d.lifecycle,d.criticality,d.description,d.manufacturer,d.model,d.serialNumber,d.location,d.ownerId||null,d.businessServiceId,d.purchaseDate,d.warrantyExpiresAt,d.vendorId,d.contractId]);if(!r.rowCount)return fail('No such configuration item.',404);row=r.rows[0];await event(c,orgId,id,actor,'updated','Configuration item updated');}
+   else{const r=await c.query(`insert into configuration_items(org_id,asset_tag,name,ci_type,lifecycle,criticality,description,manufacturer,model,serial_number,location,owner_id,business_service_id,purchase_date,warranty_expires_at,created_by,vendor_id,contract_id) values($1,nullif($2,''),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *`,[orgId,d.assetTag,d.name,d.ciType,d.lifecycle,d.criticality,d.description,d.manufacturer,d.model,d.serialNumber,d.location,d.ownerId||null,d.businessServiceId,d.purchaseDate,d.warrantyExpiresAt,actor?.id||null,d.vendorId,d.contractId]);row=r.rows[0];await event(c,orgId,row.id,actor,'created','Configuration item created');}
    return {ok:true,item:row};
   }catch(e){if(e.code==='23505')return fail('That asset tag is already used in this workspace.');throw e;}
  });
