@@ -60,7 +60,7 @@ export async function getChange(pool,orgId,id){
   const [services,incidents,decisions,events]=await Promise.all([
    c.query('select s.id,s.name,s.criticality,s.status from change_services x join business_services s on s.org_id=x.org_id and s.id=x.service_id where x.org_id=$1 and x.change_id=$2 order by lower(s.name)',[orgId,change.id]),
    c.query(`select t.number,t.subject,t.status,t.priority from change_incidents x join tickets t on t.org_id=x.org_id and t.id=x.ticket_id where x.org_id=$1 and x.change_id=$2 order by t.number`,[orgId,change.id]),
-   c.query('select id,stage_index,approver_id,decision,comment,created_at from change_decisions where org_id=$1 and change_id=$2 order by stage_index,created_at',[orgId,change.id]),
+   c.query('select id,round_index,stage_index,approver_id,decision,comment,created_at from change_decisions where org_id=$1 and change_id=$2 order by round_index,stage_index,created_at',[orgId,change.id]),
    c.query('select id,actor_id,actor_name,event,detail,created_at from change_events where org_id=$1 and change_id=$2 order by created_at desc,id desc limit 100',[orgId,change.id])
   ]);
   return {ok:true,change,services:services.rows,incidents:incidents.rows,decisions:decisions.rows,events:events.rows};
@@ -79,9 +79,9 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   if(serviceIds.length){const r=await c.query('select id from business_services where org_id=$1 and id=any($2::bigint[])',[orgId,serviceIds]);if(r.rowCount!==serviceIds.length)return fail('One or more selected services do not belong to this workspace.');}
   if(incidentNumbers.length){const r=await c.query("select id,number from tickets where org_id=$1 and type='incident' and number=any($2::int[])",[orgId,incidentNumbers]);if(r.rowCount!==incidentNumbers.length)return fail('Every linked ticket must be an incident in this workspace.');}
   let before=null,saved,event='updated';
-  if(id){before=(await c.query('select status,approval_stages from change_requests where org_id=$1 and id=$2 for update',[orgId,id])).rows[0];if(!before)return fail('No such change request.',404);
+  if(id){before=(await c.query('select status,approval_stages,approval_round from change_requests where org_id=$1 and id=$2 for update',[orgId,id])).rows[0];if(!before)return fail('No such change request.',404);
    if(!(transitions[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
-   if(before.status==='awaiting_approval'&&JSON.stringify(before.approval_stages||[])!==JSON.stringify(cfg.stages))return fail('Approval stages cannot be changed while a decision is in progress.',409);
+   if(before.status==='awaiting_approval'&&JSON.stringify((before.approval_stages||[]).map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]})))!==JSON.stringify(cfg.stages.map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]}))))return fail('Approval stages cannot be changed while a decision is in progress.',409);
    if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType!=='standard')return fail('Normal and emergency changes must pass their configured approval stages before approval.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
   if(d.status==='awaiting_approval'){
@@ -95,7 +95,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   if((d.status==='completed'||d.status==='failed')&&!d.outcome)return fail('Record the implementation outcome before closing the change.');
   const values=[d.title,d.description,d.changeType,d.status,d.risk,d.impact,d.plannedStart,d.plannedEnd,d.implementationPlan,d.testPlan,d.rollbackPlan,d.outcome,d.ownerId||null,JSON.stringify(cfg.stages)];
   if(id){
-   saved=(await c.query(`update change_requests set title=$3,description=$4,change_type=$5,status=$6,risk=$7,impact=$8,planned_start=$9,planned_end=$10,implementation_plan=$11,test_plan=$12,rollback_plan=$13,outcome=$14,owner_id=$15,approval_stages=$16::jsonb,approved_at=case when $6='approved' then coalesce(approved_at,now()) else approved_at end,completed_at=case when $6='completed' then coalesce(completed_at,now()) else completed_at end,updated_at=now() where org_id=$1 and id=$2 returning id,status,current_stage`,[orgId,id,...values])).rows[0];
+   saved=(await c.query(`update change_requests set title=$3,description=$4,change_type=$5,status=$6,risk=$7,impact=$8,planned_start=$9,planned_end=$10,implementation_plan=$11,test_plan=$12,rollback_plan=$13,outcome=$14,owner_id=$15,approval_stages=$16::jsonb,approval_round=case when $6='awaiting_approval' and status<>'awaiting_approval' then approval_round+1 else approval_round end,approved_at=case when $6='approved' then coalesce(approved_at,now()) else approved_at end,completed_at=case when $6='completed' then coalesce(completed_at,now()) else completed_at end,updated_at=now() where org_id=$1 and id=$2 returning id,status,current_stage`,[orgId,id,...values])).rows[0];
    event=before.status!==d.status?'status_changed':'updated';
   }else{
    saved=(await c.query(`insert into change_requests(org_id,title,description,change_type,status,risk,impact,planned_start,planned_end,implementation_plan,test_plan,rollback_plan,outcome,owner_id,requested_by,approval_stages)
@@ -113,7 +113,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   await log(c,orgId,saved.id,actor,event,(event==='created'?'Change request created: ':event==='status_changed'?'Status changed to ':'Change request updated: ')+d.title);
   if(newServices.filter(x=>!oldServices.includes(x)).length)await log(c,orgId,saved.id,actor,'service_linked','Affected services updated');
   if(newIncidents.filter(x=>!oldIncidents.includes(x)).length)await log(c,orgId,saved.id,actor,'incident_linked','Related incidents updated');
-  if(d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval')){await c.query('delete from change_decisions where org_id=$1 and change_id=$2',[orgId,saved.id]);await c.query('update change_requests set current_stage=0 where org_id=$1 and id=$2',[orgId,saved.id]);}
+  if(d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval'))await c.query('update change_requests set current_stage=0 where org_id=$1 and id=$2',[orgId,saved.id]);
   return {ok:true,id:saved.id,status:saved.status,notify:d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval')};
  });
  if(result.ok&&result.notify)await notifyChangeApproval(pool,mailer,orgId,result.id,0,'requested');
@@ -127,16 +127,17 @@ export async function decideChange(pool,orgId,actorId,id,decision,comment='',mai
   const stages=Array.isArray(row.approval_stages)?row.approval_stages:[];
   const ix=Math.max(0,Math.min(Number(row.current_stage)||0,stages.length-1)),stage=stages[ix];
   if(!stage||!(stage.approverIds||[]).includes(String(actorId)))return fail('You are not an approver for the active stage.',403);
-  const prior=await c.query('select 1 from change_decisions where org_id=$1 and change_id=$2 and stage_index=$3 and approver_id=$4',[orgId,row.id,ix,String(actorId)]);
+  const round=Number(row.approval_round)||1;
+  const prior=await c.query('select 1 from change_decisions where org_id=$1 and change_id=$2 and round_index=$3 and stage_index=$4 and approver_id=$5',[orgId,row.id,round,ix,String(actorId)]);
   if(prior.rowCount)return fail('You have already responded to this approval stage.',409);
-  await c.query('insert into change_decisions(org_id,change_id,stage_index,approver_id,decision,comment) values($1,$2,$3,$4,$5,$6)',[orgId,row.id,ix,String(actorId),decision,clean(comment,2000)]);
-  const counts=(await c.query("select count(*) filter(where decision='approved')::int approved,count(*) filter(where decision='rejected')::int rejected from change_decisions where org_id=$1 and change_id=$2 and stage_index=$3",[orgId,row.id,ix])).rows[0];
+  await c.query('insert into change_decisions(org_id,change_id,round_index,stage_index,approver_id,decision,comment) values($1,$2,$3,$4,$5,$6,$7)',[orgId,row.id,round,ix,String(actorId),decision,clean(comment,2000)]);
+  const counts=(await c.query("select count(*) filter(where decision='approved')::int approved,count(*) filter(where decision='rejected')::int rejected from change_decisions where org_id=$1 and change_id=$2 and round_index=$3 and stage_index=$4",[orgId,row.id,round,ix])).rows[0];
   const outcome=decision==='rejected'?'rejected':approvalStageOutcome(stage,counts.approved,counts.rejected);
   let status='awaiting_approval',nextStage=null,event='decided';
   if(outcome==='rejected'){status='rejected';event='rejected';await c.query("update change_requests set status='rejected',updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
   else if(outcome==='complete'&&ix+1<stages.length){nextStage=ix+1;await c.query('update change_requests set current_stage=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,row.id,nextStage]);}
   else if(outcome==='complete'){status='approved';event='completed';await c.query("update change_requests set status='approved',approved_at=now(),updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
-  await log(c,orgId,row.id,{id:actorId,name:actorId},'approval_decided','Approval '+decision+' · '+(stage.name||('Stage '+(ix+1))));
+  await log(c,orgId,row.id,{id:actorId,name:actorId},'approval_decided','Approval round '+round+' · '+decision+' · '+(stage.name||('Stage '+(ix+1))));
   return {ok:true,status,nextStage,event,createdBy:row.requested_by,stageIndex:ix};
  });
  if(result.ok&&mailer){
