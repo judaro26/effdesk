@@ -28,7 +28,7 @@ create table if not exists cmdb_license_product_aliases (
  unique(org_id,license_id,normalized_name),
  foreign key(org_id,license_id) references cmdb_software_licenses(org_id,id) on delete cascade
 );
-create index if not exists cmdb_license_alias_lookup on cmdb_license_product_aliases(org_id,normalized_name);
+create unique index if not exists cmdb_license_alias_lookup on cmdb_license_product_aliases(org_id,normalized_name);
 alter table cmdb_license_product_aliases enable row level security;
 alter table cmdb_license_product_aliases force row level security;
 drop policy if exists cmdb_license_product_aliases_tenant on cmdb_license_product_aliases;
