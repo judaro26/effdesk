@@ -470,8 +470,17 @@
       var greeting = /^(Good morning|Good afternoon|Good evening)(,\\s*)(.+)$/.exec(s);
       if (greeting) return ({'Good morning':'Buenos días','Good afternoon':'Buenas tardes','Good evening':'Buenas tardes'}[greeting[1]]) + greeting[2] + greeting[3];
     }
-    var out = dict[key]; if (!out) return s;
-    return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
+    var out = dict[key];
+    if (out) return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
+    // Many integration descriptions include live provider names, account
+    // names, URLs or counts. Translate their stable English prefix and retain
+    // the tenant/provider-specific value that follows it.
+    var leading = (s.match(/^\\s*/) || [''])[0], body = s.slice(leading.length);
+    var prefixes = Object.keys(dict).filter(function (candidate) {
+      return /\\s$/.test(candidate) && body.indexOf(candidate) === 0;
+    }).sort(function (a, b) { return b.length - a.length; });
+    if (prefixes.length) return leading + dict[prefixes[0]] + body.slice(prefixes[0].length);
+    return s;
   }
   function excluded(node, allowControls) {
     var p = node && (node.nodeType === 1 ? node : node.parentElement);
