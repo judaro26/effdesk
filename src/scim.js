@@ -62,9 +62,9 @@ export async function revokeScimToken(pool, orgId, id) {
 
 const selectUsers = `select su.id as scim_id,su.external_id,su.active,su.display_name,su.given_name,su.family_name,
   su.created_at,su.updated_at,u.id as user_id,u.name,u.email
-  from scim_users su join "user" u on u.id=su.user_id where su.org_id=$1`;
+  from scim_users su join "user" u on u.id=su.user_id`;
 async function readUser(pool, orgId, id) {
-  return withOrg(pool, orgId, async c => (await c.query(selectUsers + ' and su.id=$2', [orgId, id])).rows[0] || null);
+  return withOrg(pool, orgId, async c => (await c.query(selectUsers + ' where su.org_id=$1 and su.id=$2', [orgId, id])).rows[0] || null);
 }
 async function addMembership(pool, orgId, userId) {
   return withOrg(pool, orgId, async c => {
