@@ -25,12 +25,13 @@ All actions use the existing authenticated `POST /api/tickets` endpoint and acti
 - `itsm-ci-licenses-list`, `itsm-ci-license-save`: software entitlements, seat counts and renewal dates.
 - `itsm-ci-warranty-report`: active assets with warranties due or expired within the requested day window.
 - `itsm-ci-import-csv`, `itsm-ci-export-csv`: admin-only asset CSV transfer.
+- `itsm-ci-agent-list`, `itsm-ci-agent-create`, `itsm-ci-agent-revoke`: view, enroll and revoke tenant-bound Windows discovery agents; create/revoke are owner/admin-only.
 
 All owner and service references are validated against the current workspace. Cross-workspace references are rejected by both application checks and composite foreign keys.
 
 ## Rollout
 
-Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql` and `051_cmdb_windows_discovery_agent.sql` in order before deploying the application code. Both are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
+Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql` and `051_cmdb_windows_discovery_agent.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
 
 ## Procurement and lifecycle extension
 
