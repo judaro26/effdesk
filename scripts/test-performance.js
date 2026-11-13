@@ -27,5 +27,5 @@ const view = await performanceOverview(fake, '24h');
 check('builds performance summaries, endpoint rankings and tenant comparisons', view.summary.requests === 100 && view.routes[0].path === '/api/tickets' && view.tenants[0].org_id === 'org-1');
 check('computes average latency and a documented approximate p95 band', view.summary.avg_ms === 200 && view.summary.p95_bucket === '100–499 ms' && view.summary.error_rate === 1);
 check('detects pool contention and includes the measurement limitations', view.diagnostics.some(x => /pool contention/.test(x.title)) && view.notes.some(x => /SQL timings/.test(x)));
-check('returns slow SQL fingerprints and aggregated Core Web Vitals', view.sqlQueries[0].query_hash === 'abcdef0123456789' && view.vitals[0].metric === 'LCP');
+check('returns slow SQL fingerprints and aggregated Core Web Vitals', view.sqlQueries[0].query_hash === 'abcdef0123456789' && view.vitals[0].metric === 'LCP' && view.vitals[0].p75_rating === 'needs improvement');
 done();
