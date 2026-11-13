@@ -104,7 +104,7 @@
     var area = el('div', { class: 'ed-area ae-area hc-article', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Article text', 'data-article-editor': '1' });
     var src = el('textarea', { class: 'ae-src', 'aria-label': 'Article HTML', spellcheck: 'false', hidden: 'hidden', rows: '16' });
     var dlg = el('div', { class: 'ae-dlg', hidden: 'hidden' }), imgBar = el('div', { class: 'ae-dlg', hidden: 'hidden', 'data-image-bar': '1' }), picked = null, sourceMode = false;
-    function setHtml(h) { area.innerHTML = clean(h) || '<p><br></p>'; if (typeof countWords === 'function') countWords(); }
+    function setHtml(h) { area.innerHTML = clean(h) || '<p><br></p>'; if (typeof countWords === 'function') countWords(); area.dispatchEvent(new win.Event('input', { bubbles: true })); }
     function getHtml() { if (sourceMode) applySource(); var h = clean(area.innerHTML); return /^(<p>(<br>)?<\/p>)?$/.test(h.trim()) ? '' : h; }
     try { doc.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { }
     function focusEnd() { area.focus(); }
