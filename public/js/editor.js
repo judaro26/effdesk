@@ -107,8 +107,16 @@
       e.preventDefault();
       var box = el('div');
       // cells copied from a spreadsheet or another page: when the html has no table but the plain text is tab separated, the tabs make the table
-      var tabbed = t && t.split(/\r?\n/).filter(function (l) { return l.indexOf('\t') >= 0; }).length >= 2;
-      if (tabbed && !/<table\b/i.test(h || '')) h = '';
+      var plainLines = String(t || '').replace(/\r\n?/g, '\n').split('\n');
+      var tabbed = plainLines.filter(function (l) { return l.indexOf('\t') >= 0; }).length >= 2;
+      // ChatGPT and other rich clipboard sources may provide an HTML wrapper that
+      // contains the Markdown characters as literal text. Prefer the plain-text
+      // Markdown table in that case so the table parser can build real table cells.
+      var pipeTable = plainLines.some(function (line, i) {
+        return line.indexOf('|') >= 0 && i + 1 < plainLines.length &&
+          /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(plainLines[i + 1]);
+      });
+      if ((tabbed || pipeTable) && !/<table\b/i.test(h || '')) h = '';
       if (h && /<(table|b|strong|i|em|u|a|ul|ol|li|h[1-6]|pre|code|blockquote|p|div|br)\b/i.test(h)) {
         var parsed = new win.DOMParser().parseFromString(h, 'text/html'); F().toDom(doc, F().fromDom(parsed.body), box);
       } else F().toDom(doc, t || '', box);
