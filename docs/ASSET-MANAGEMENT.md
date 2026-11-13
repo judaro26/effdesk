@@ -66,7 +66,7 @@ Migration `051_cmdb_windows_discovery_agent.sql` adds tenant-scoped agent enroll
 In **Assets & CMDB → Procurement & lifecycle → Automated discovery**, create a Windows agent, copy its one-time token, and download `/agents/windows/effdesk-discovery.ps1`. On the target Windows device, open PowerShell and run:
 
 ```powershell
-.\\effdesk-discovery.ps1 -EnrollmentToken "PASTE_ONE_TIME_TOKEN" -InstallScheduledTask -ApiUrl "https://app.effdesk.com/api/cmdb-agent"
+.\effdesk-discovery.ps1 -EnrollmentToken "PASTE_ONE_TIME_TOKEN" -InstallScheduledTask -ApiUrl "https://app.effdesk.com/api/cmdb-agent"
 ```
 
 The script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours while that Windows user is logged in and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
