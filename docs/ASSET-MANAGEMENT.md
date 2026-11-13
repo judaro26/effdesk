@@ -25,13 +25,13 @@ All actions use the existing authenticated `POST /api/tickets` endpoint and acti
 - `itsm-ci-licenses-list`, `itsm-ci-license-save`: software entitlements, seat counts and renewal dates.
 - `itsm-ci-warranty-report`: active assets with warranties due or expired within the requested day window.
 - `itsm-ci-import-csv`, `itsm-ci-export-csv`: admin-only asset CSV transfer.
-- `itsm-ci-agent-list`, `itsm-ci-agent-create`, `itsm-ci-agent-revoke`: view, enroll and revoke tenant-bound Windows discovery agents; create/revoke are owner/admin-only.
+- `itsm-ci-agent-list`, `itsm-ci-agent-create`, `itsm-ci-agent-revoke`: view, enroll and revoke tenant-bound Windows, osquery and SNMPv3 discovery agents; create/revoke are owner/admin-only.\n- `itsm-ci-license-reconciliation`, `itsm-ci-license-alias-save`: compare discovered endpoints with purchased software entitlements and map alternate product names.\n- `itsm-ci-ownership-report`, `itsm-ci-owner-assign`: report owner coverage and assign up to 100 assets to a current workspace member.\n- `itsm-ci-compliance-list`, `itsm-ci-compliance-save`, `itsm-ci-compliance-evaluate`: manage workspace compliance policies and evaluate all current CIs.
 
 All owner and service references are validated against the current workspace. Cross-workspace references are rejected by both application checks and composite foreign keys.
 
 ## Rollout
 
-Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql`, `051_cmdb_windows_discovery_agent.sql` and `052_cmdb_cross_platform_discovery.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
+Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql`, `051_cmdb_windows_discovery_agent.sql`, `052_cmdb_cross_platform_discovery.sql` and `053_cmdb_network_governance.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
 
 ## Procurement and lifecycle extension
 
@@ -90,3 +90,50 @@ python3 effdesk-osquery-discovery.py --token-file /etc/effdesk/enrollment-token 
 The bridge uses osquery's local `system_info`, `os_version`, and platform-appropriate application/package tables. It uses Python's standard library only; no pip packages or paid osquery management service are required. The current release is a pull-style local collector, not a remote osquery TLS fleet manager. Customers should run it on devices they own or are authorized to inventory, and may schedule it at their preferred cadence.
 
 The agent table records the provider and detected platform separately. Hardware and software records are reconciled through the same tenant-bound ingestion path; tokens cannot be used across workspaces or between provider types. The dashboard shows Windows and osquery agents together, with provider labels and last-check-in health.
+
+
+## Network discovery: authorized SNMPv3
+
+Migration `053_cmdb_network_governance.sql` enables a customer-installed SNMPv3 poller. An owner/admin enrolls an **SNMPv3 network poller** in Assets & CMDB → Procurement & lifecycle → Automated discovery and supplies an explicitly approved RFC1918 private IPv4 CIDR/IP range. EffDesk displays the one-time enrollment token and a generated command for the customer-managed poller.
+
+The approved RFC1918 CIDR is stored on the tenant-bound discovery-agent record and enforced again by the ingestion API, so a token cannot report devices outside its configured range. The first release supports private IPv4 ranges only. The collector is `/agents/snmp/effdesk-snmp-discovery.py`. It requires Python 3.9+ and `pysnmp` 7.x (`python3 -m pip install 'pysnmp>=7,<8'`). It uses SNMPv3 **authPriv** only (SHA-256 authentication and AES-128 privacy), performs read-only GETs for system description, object ID, uptime and system name, and sends the inventory over HTTPS to `/api/cmdb-snmp-agent`. It is deliberately not a write-capable SNMP manager and does not attempt SNMPv1/v2c fallback.
+
+The poller accepts only customer-specified private ranges, rejects public ranges, and caps a run at 400 target addresses. The customer must confirm authorization for every range and allow UDP/161 from the poller to the target devices. SNMP credentials remain on the customer-managed poller and are never uploaded to EffDesk. Put the credential JSON in a file readable only by its owner (for example `chmod 600 /etc/effdesk/snmpv3.json`) with separate `username`, `auth_key` and `priv_key` values. Store the EffDesk enrollment token in a separate protected file. Enable full-disk encryption and use your organization's secret-management process for backups. The platform stores only the hashed EffDesk enrollment token.
+
+Example credential file:
+
+```json
+{
+  "username": "effdesk-readonly",
+  "auth_key": "REPLACE_WITH_A_LONG_RANDOM_AUTH_SECRET",
+  "priv_key": "REPLACE_WITH_A_DIFFERENT_LONG_RANDOM_PRIV_SECRET"
+}
+```
+
+Example command (use the exact API URL and target range shown for the workspace):
+
+```sh
+python3 effdesk-snmp-discovery.py \
+  --targets "192.168.10.0/24" \
+  --credentials-file /etc/effdesk/snmpv3.json \
+  --token-file /etc/effdesk/snmp-enrollment-token \
+  --api-url https://app.effdesk.com/api/cmdb-snmp-agent
+```
+
+Network devices are created as `network` CIs and reconciled by poller ID plus IP address. The stored metadata includes the SNMP system description, object ID, name, uptime and IP address. This initial release does not collect interface tables, topology/LLDP neighbors, MAC tables, switch configuration or device credentials. It does not scan automatically: schedule the customer-side script only after network-owner approval. Revoke the poller in EffDesk to reject future check-ins.
+
+## Software license reconciliation
+
+The **License reconciliation** view compares each license entitlement with the distinct enrolled endpoints currently reporting a matching discovered software name. Exact normalized names are matched automatically. If a vendor's display name differs, an owner/admin can map that discovered name as an alias to a purchased license. The report shows observed devices, potential overage and unused seats.
+
+This is an operational reconciliation aid, not a legal determination of license compliance. Per-user, concurrent, suite, virtualization, downgrade and device-based terms can differ by vendor. Review the underlying agreement before purchasing or reclaiming licenses. Discovered software from the current Windows/macOS/Linux endpoint agents is included; SNMP network devices do not count as software endpoints.
+
+## Asset ownership mapping
+
+The **Asset ownership** view summarizes assigned versus unassigned CIs, groups coverage by owner, and allows an owner/admin to assign an asset to a member of the active workspace. Bulk API assignment is limited to 100 assets per request. No owner can be assigned from another tenant. Existing per-asset owner editing remains available in the CI detail panel.
+
+## Configurable compliance policies
+
+The **Compliance policies** view supports workspace-specific rules for required asset owner, asset tag, serial number, managed discovery, current warranty and maximum discovery check-in age. Policies have a configurable severity and can be enabled/disabled. Evaluation is read-only and returns per-asset pass/fail findings; it does not automatically quarantine devices, change endpoint configuration or close tickets. Add policies that reflect the customer's own asset-management baseline and review findings before taking action.
+
+The policy evaluator currently checks inventory metadata and discovery freshness only. It does not attest patch level, endpoint encryption, EDR health, vulnerability status, secure boot or regulatory certification unless those facts are independently added to the CMDB by a future provider.
