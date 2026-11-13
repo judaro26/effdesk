@@ -43,3 +43,17 @@ Warranty reporting identifies active assets with expired or upcoming warranties 
 ## Deliberate next steps
 
 This is not yet a discovery-grade CMDB. Next work should add reconciliation and duplicate detection, scheduled discovery through tenant-authorized endpoint/RMM/MDM connectors (for example Microsoft Intune via Microsoft Graph), automated license assignment reconciliation, renewal email escalations and a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
+
+## Automated discovery: Microsoft Intune
+
+Migration `050_cmdb_intune_discovery.sql` adds tenant-isolated Intune discovery. Configure the shared EffDesk Entra application on the deployment with `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`; keep `BETTER_AUTH_SECRET` configured for authenticated encryption. Register this exact redirect URI on the Entra app:
+
+`https://app.effdesk.com/api/integrations/cmdb-discovery/oauth/callback`
+
+For non-production deployments, use that deployment's `APP_URL` plus `/api/integrations/cmdb-discovery/oauth/callback`.
+
+A workspace owner/admin enters the customer's Entra tenant ID or verified tenant domain and completes Microsoft's admin-consent flow. EffDesk requests the delegated `DeviceManagementManagedDevices.Read.All` permission and uses PKCE. Access and refresh tokens are encrypted with the existing application secret and stored per workspace; they are never returned to the browser. The first release reads Intune managed-device inventory only.
+
+Sync is manually initiated from **Assets & CMDB → Procurement & lifecycle → Automated discovery**. It imports at most 2,500 devices per run, links an existing CI by serial number where possible, otherwise creates an Intune-tagged hardware CI, and updates inventory fields plus compliance/OS metadata. Devices not seen in a successful full sync are marked **missing**; EffDesk does not automatically retire or delete them. Disconnecting revokes EffDesk's stored access by deleting its encrypted tokens while retaining discovered CIs.
+
+The tenant must grant admin consent for the delegated permission. If consent or the Microsoft app registration is not configured, the integration remains unavailable; CSV import/export and manual asset management continue to work. Scheduled background sync, webhook-driven change notifications, write-back/remediation, and broader Entra user/group discovery are intentionally deferred.
