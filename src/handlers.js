@@ -687,7 +687,7 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
       const targetNumber = r.followup ? r.number : n;
-      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, 'customer_reply', targetNumber, body); await emitHook(pool, org.id, 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: r.followup ? 'new' : 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, r.followup ? 'created' : 'customer_reply', targetNumber, body); await emitHook(pool, org.id, r.followup ? 'ticket.created' : 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
       return r.ok ? redirect(`${base}/tickets/${targetNumber}?sent=1&lang=${lang}`) : notFound();
     }
   }
