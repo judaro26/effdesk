@@ -12,7 +12,7 @@ export function normalizeApprovalConfig(b){
  const first=stages[0]||{name:'Approval',mode:b.mode==='any'?'any':'all',approverIds:[]};
  return {enabled:b.enabled===true,mode:stages.length>1||b.mode==='sequential'?'sequential':first.mode,approverIds:first.approverIds,stages,tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t&&t.title,160),description:clean(t&&t.description,3000),assigneeId:clean(t&&t.assigneeId,128),position:i})).filter(t=>t.title)};
 }
-export async function validateApprovalConfig(c,orgId,input){
+export function approvalStageOutcome(stage,approvedCount,rejectedCount=0){\n if(rejectedCount>0)return 'rejected';\n if(stage&&stage.mode==='any'&&approvedCount>0)return 'complete';\n return approvedCount>=((stage&&stage.approverIds)||[]).length?'complete':'pending';\n}\nexport async function validateApprovalConfig(c,orgId,input){
  const config=normalizeApprovalConfig(input); if(!config.enabled)return {ok:true,config};
  if(!config.stages.length||config.stages.some(s=>!s.approverIds.length))return fail('Choose at least one approver for every approval stage.');
  const ids=[...new Set([...config.stages.flatMap(s=>s.approverIds),...config.tasks.map(t=>t.assigneeId).filter(Boolean)])];
@@ -56,7 +56,7 @@ export async function decideApproval(pool,orgId,actorId,id,decision,comment='',m
   if(prior.rowCount)return fail('You have already responded to this stage.',409);
   await c.query('insert into approval_decisions(org_id,approval_id,approver_id,stage_index,decision,comment) values($1,$2,$3,$4,$5,$6)',[orgId,a.id,String(actorId),stageIndex,decision,clean(comment,2000)]);
   const count=(await c.query("select count(*) filter(where decision='approved')::int approved,count(*) filter(where decision='rejected')::int rejected from approval_decisions where org_id=$1 and approval_id=$2 and stage_index=$3",[orgId,a.id,stageIndex])).rows[0];
-  const stageDone=decision==='rejected'||(stage.mode==='any'&&count.approved>0)||(stage.mode!=='any'&&count.approved>=(stage.approverIds||[]).length);
+  const outcome=decision==='rejected'?'rejected':approvalStageOutcome(stage,count.approved,count.rejected);\n  const stageDone=outcome!=='pending';
   let status='pending',nextStage=null,event='decided';
   if(decision==='rejected'){
    status='rejected';event='rejected';
