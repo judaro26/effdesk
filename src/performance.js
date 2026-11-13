@@ -1,7 +1,7 @@
 // src/performance.js: sampled, privacy-conscious request performance aggregates for the platform owner.
 const clampRate = value => { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.1; };
 export function normalizePath(path) {
-  return String(path || '/').split('?')[0].replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id').replace(/\/(\d+)(?=\/|$)/g, '/:id').slice(0, 180) || '/';
+  return String(path || '/').split('?')[0].replace(/\\/(w|workspace|portal)\\/[^/]+/gi, '/$1/:tenant').replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id').replace(/\/(\d+)(?=\/|$)/g, '/:id').slice(0, 180) || '/';
 }
 export async function recordRequest(pool, sample, env = process.env, random = Math.random) {
   const rate = clampRate(env.PERFORMANCE_SAMPLE_RATE == null ? 0.1 : env.PERFORMANCE_SAMPLE_RATE);
