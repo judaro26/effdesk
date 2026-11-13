@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { withOrg } from './db.js';
 import { rateLimit } from './guard.js';
 
-const clean=(v,n=500)=>String(v??'').replace(/[\\u0000-\\u001f\\u007f]/g,' ').trim().slice(0,n);
+const clean=(v,n=500)=>String(v??'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n);
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const fail=(status,error)=>new Response(JSON.stringify({ok:false,error}),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const ok=body=>new Response(JSON.stringify({ok:true,...body}),{status:200,headers:{'content-type':'application/json','cache-control':'no-store'}});
@@ -87,7 +87,7 @@ export async function ingestWindowsAgent(req,{pool}){
    // A capped 500-row payload is not a complete snapshot, so do not mark unseen software missing in that case.
    if(d.software.length<500)await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[parsed.orgId,agent.id]);
    for(const app of d.software){
-    const normalized=app.name.toLowerCase().replace(/\\s+/g,' ').trim();
+    const normalized=app.name.toLowerCase().replace(/\s+/g,' ').trim();
     await c.query(`insert into cmdb_discovered_software(org_id,agent_id,name,publisher,version,normalized_name,status)
       values($1,$2,$3,$4,$5,$6,'current')
       on conflict(org_id,agent_id,normalized_name,version) do update set name=excluded.name,publisher=excluded.publisher,status='current',last_seen_at=now()`,
