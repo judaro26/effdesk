@@ -59,19 +59,54 @@ const concurrent = async (name, fn, workers = CONCURRENCY, rounds = 3) => {
     const requests = Array.from({ length: workers }, async () => {
       const t = performance.now(); await fn(); return performance.now() - t;
     });
-    const poolWaitingPeak = pool.waitingCount, poolTotalPeak = pool.totalCount;
-    const batch = await Promise.all(requests);
+    // Sample pool pressure throughout the burst instead of taking a single
+    // snapshot immediately after scheduling the promises.
+    const poolPressure = { waiting: pool.waitingCount, total: pool.totalCount };
+    const sampler = setInterval(() => {
+      poolPressure.waiting = Math.max(poolPressure.waiting, pool.waitingCount);
+      poolPressure.total = Math.max(poolPressure.total, pool.totalCount);
+    }, 5);
+    let batch;
+    try { batch = await Promise.all(requests); } finally { clearInterval(sampler); }
     const sorted = batch.slice().sort((a, b) => a - b);
     rows.push({ screen: name + ' burst ' + (round + 1), runs: workers,
       batch_ms: Number((performance.now() - started).toFixed(1)),
       p50_ms: Number(percentile(sorted, .50).toFixed(1)),
       p95_ms: Number(percentile(sorted, .95).toFixed(1)),
-      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)), pool_waiting_peak: poolWaitingPeak, pool_total_peak: poolTotalPeak });
+      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)),
+      pool_waiting_sampled_max: poolPressure.waiting, pool_total_sampled_max: poolPressure.total });
   }
 };
 await concurrent('ticket list concurrent', () => listTickets(pool, 'big', me, {}));
 await concurrent('dashboard concurrent', () => dashboard(pool, 'big', me, { sla: false, agents: 5 }));
-console.log('\\nPool pressure after concurrent bursts (max ' + pool.options.max + '): total=' + pool.totalCount + ', idle=' + pool.idleCount + ', waiting=' + pool.waitingCount + '; configured concurrency=' + CONCURRENCY + '.');
+// A small tenant continues serving requests while the large tenant is busy.
+// This makes cross-tenant contention visible instead of measuring the small
+// workspace only in isolation.
+for (let round = 0; round < 3; round++) {
+  const started = performance.now(), latency = { big: [], small: [] };
+  const poolPressure = { waiting: pool.waitingCount, total: pool.totalCount };
+  const sampler = setInterval(() => {
+    poolPressure.waiting = Math.max(poolPressure.waiting, pool.waitingCount);
+    poolPressure.total = Math.max(poolPressure.total, pool.totalCount);
+  }, 5);
+  try {
+    await Promise.all(Array.from({ length: CONCURRENCY }, async (_, i) => {
+      const tenant = i % 5 === 0 ? 'small' : 'big', t = performance.now();
+      await listTickets(pool, tenant === 'small' ? 'o3' : 'big', me, {});
+      latency[tenant].push(performance.now() - t);
+    }));
+  } finally { clearInterval(sampler); }
+  for (const tenant of ['big', 'small']) {
+    const sorted = latency[tenant].sort((a, b) => a - b);
+    if (!sorted.length) continue;
+    rows.push({ screen: 'mixed-tenant ' + tenant + ' burst ' + (round + 1), runs: sorted.length,
+      batch_ms: Number((performance.now() - started).toFixed(1)),
+      p50_ms: Number(percentile(sorted, .50).toFixed(1)), p95_ms: Number(percentile(sorted, .95).toFixed(1)),
+      min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)),
+      pool_waiting_sampled_max: poolPressure.waiting, pool_total_sampled_max: poolPressure.total });
+  }
+}
+console.log('\nPool pressure after concurrent bursts (max ' + pool.options.max + '): total=' + pool.totalCount + ', idle=' + pool.idleCount + ', waiting=' + pool.waitingCount + '; configured concurrency=' + CONCURRENCY + '.');
 
 console.log(`\nBenchmark summary: ${N.toLocaleString()} tickets in the primary tenant; ${RUNS} measured runs per screen (plus one warm-up); concurrency bursts used ${CONCURRENCY} workers x 3 rounds.`);
 console.table(rows);
