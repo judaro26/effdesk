@@ -156,7 +156,7 @@ async function patchUser(pool, orgId, row, body) {
     else if (path === 'displayname') input.displayName = action === 'remove' ? '' : op.value;
     else if (path === 'username') input.userName = op.value;
     else if (path === 'externalid') input.externalId = action === 'remove' ? '' : op.value;
-    else if (/^emails(?:\\[[^\\]]+\\])?\\.value$/.test(path)) { input.userName = action === 'remove' ? '' : op.value; input.emails = action === 'remove' ? [] : [{ value: op.value, type: 'work', primary: true }]; }
+    else if (/^emails(?:\[[^\]]+\])?\.value$/.test(path)) { input.userName = action === 'remove' ? '' : op.value; input.emails = action === 'remove' ? [] : [{ value: op.value, type: 'work', primary: true }]; }
     else if (path === 'name.givenname') input.name.givenName = action === 'remove' ? '' : op.value;
     else if (path === 'name.familyname') input.name.familyName = action === 'remove' ? '' : op.value;
     else return fail('Unsupported PATCH path: ' + path, 400, 'noTarget');
