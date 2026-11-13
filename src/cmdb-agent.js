@@ -46,7 +46,7 @@ export async function revokeDiscoveryAgent(pool,orgId,id){
  return withOrg(pool,orgId,async c=>{
   const r=await c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=$3 where org_id=$1 and id=$2 returning id",[orgId,String(id),replacement]);
   if(!r.rowCount)return {ok:false,status:404,error:'No such discovery agent.'};
-  await c.query("update configuration_items set discovery_status='disconnected',updated_at=now() where org_id=$1 and discovery_source in ('windows_agent','osquery_agent','snmp_agent') and discovery_external_id=$2",[orgId,String(id)]);
+  await c.query("update configuration_items set discovery_status='disconnected',updated_at=now() where org_id=$1 and ((discovery_source in ('windows_agent','osquery_agent') and discovery_external_id=$2) or (discovery_source='snmp_agent' and discovery_external_id like $2||':%'))",[orgId,String(id)]);
   await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[orgId,String(id)]);
   return {ok:true};
  });
