@@ -210,7 +210,7 @@ Commercial decisions still required:
 ### Phase 4 — Incident and IT operations
 
 - Major incidents and correlated tickets. **Implemented:** tenant-scoped incident details, affected business services, major-incident coordination and the agent incident console (PRs #23–#24).
-- Problem/change records. **Problem Management initial slice implemented:** problem register, root-cause analysis, known-error/workaround/resolution fields, incident associations and activity history (PR #26). Change Management remains next.
+- Problem/change records. **Problem Management initial slice implemented** (problem register, root-cause analysis, known errors and incident associations; PR #26). **Change Management initial slice implemented in this branch:** risk/impact assessment, maintenance windows, sequential approvals, implementation/test/rollback plans and linked services/incidents. A graphical calendar, conflict detection and CAB policy configuration remain follow-up work.
 - Lightweight assets and service relationships.
 - Monitoring and on-call integrations.
 - Expand toward CMDB only after the data model and reconciliation model are proven.
