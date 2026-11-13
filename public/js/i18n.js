@@ -11,6 +11,67 @@
     'Current incidents':'Incidentes actuales','Planned maintenance':'Mantenimiento programado','Systems':'Sistemas','Past incidents':'Incidentes anteriores','No systems are listed yet.':'Aún no hay sistemas en la lista.','No incidents in the last 14 days.':'No hay incidentes en los últimos 14 días.','90 days ago':'Hace 90 días','Today':'Hoy','Under maintenance':'En mantenimiento','Degraded performance':'Rendimiento degradado','Partial outage':'Interrupción parcial','Major outage':'Interrupción importante','Investigating':'Investigando','Identified':'Identificado','Monitoring':'En seguimiento','Resolved':'Resuelto','Scheduled':'Programado','In progress':'En curso','Completed':'Completado','All systems':'Todos los sistemas','Subscribe with a feed reader':'Suscribirse mediante un lector de feeds','This page refreshes itself every minute.':'Esta página se actualiza automáticamente cada minuto.','last 90 days':'últimos 90 días','Operational':'Operativo','Status':'Estado'
   });
   Object.assign(dict, {'Your profile and settings':'Tu perfil y configuración','Open tickets':'Tickets abiertos','Filter subject':'Filtrar asunto','Filter number':'Filtrar número','Filter requester':'Filtrar solicitante','Search for a ticket':'Buscar un ticket','All statuses':'Todos los estados','All priorities':'Todas las prioridades','Sort by':'Ordenar por','Sort ascending':'Orden ascendente','Sort descending':'Orden descendente','No tickets match these filters.':'Ningún ticket coincide con estos filtros.'});
+
+  Object.assign(dict, {
+    'Problem management':'Gestión de problemas','Problems':'Problemas','Problem register':'Registro de problemas',
+    'Find recurring incidents, understand root causes and track permanent fixes.':'Identifica incidentes recurrentes, comprende sus causas raíz y realiza seguimiento de soluciones permanentes.',
+    'No problem records yet':'Todavía no hay registros de problemas',
+    'Create a problem to investigate recurring or high-impact incidents and document a lasting fix.':'Crea un problema para investigar incidentes recurrentes o de gran impacto y documentar una solución duradera.',
+    'Problem investigation':'Investigación del problema',
+    'Select a problem or create a new record to document root cause, workaround, known errors and affected incidents.':'Selecciona un problema o crea un registro para documentar la causa raíz, la solución temporal, los errores conocidos y los incidentes afectados.',
+    'Loading problems…':'Cargando problemas…','Could not load problems.':'No se pudieron cargar los problemas.',
+    'Problem title':'Título del problema','Problem status':'Estado del problema','Problem priority':'Prioridad del problema','Problem owner':'Responsable del problema',
+    'Open':'Abierto','Investigating':'En investigación','Known error':'Error conocido','Resolved':'Resuelto','Closed':'Cerrado',
+    'P1 · Critical':'P1 · Crítica','P2 · High':'P2 · Alta','P3 · Moderate':'P3 · Moderada','P4 · Low':'P4 · Baja',
+    'Known errors':'Errores conocidos','P1 priority':'Prioridad P1','All statuses':'Todos los estados','Filter problems by status':'Filtrar problemas por estado',
+    'Describe the recurring issue, symptoms and scope…':'Describe el problema recurrente, sus síntomas y alcance…',
+    'Document the underlying technical or process cause…':'Documenta la causa técnica o de proceso subyacente…',
+    'Document a safe temporary workaround…':'Documenta una solución temporal segura…',
+    'Document the permanent fix and verification…':'Documenta la solución permanente y su verificación…',
+    'Unassigned':'Sin asignar','Known error':'Error conocido',
+    'The root cause is understood or a documented workaround exists.':'La causa raíz se conoce o existe una solución temporal documentada.',
+    'Root-cause analysis':'Análisis de causa raíz','Workaround':'Solución temporal','Permanent resolution':'Solución permanente',
+    'Related incidents':'Incidentes relacionados','Link incident ticket numbers from this workspace. Only incident tickets can be linked.':'Vincula números de tickets de incidentes de este espacio de trabajo. Solo se pueden vincular tickets de tipo incidente.',
+    'Incident ticket numbers, separated by commas':'Números de tickets de incidentes, separados por comas',
+    'Give the problem a title.':'Escribe un título para el problema.','Could not save problem.':'No se pudo guardar el problema.',
+    'Problem saved.':'Problema guardado.','Create problem':'Crear problema','Save problem':'Guardar problema','New problem':'Nuevo problema',
+    'Capture the issue once and associate all related incidents.':'Registra el problema una sola vez y asocia todos los incidentes relacionados.',
+    'Created':'Creado','Updated':'Actualizado','Reload':'Volver a cargar','Problem activity':'Actividad del problema',
+    'Active':'Activos','All':'Todos','Priority':'Prioridad','Status':'Estado','Owner':'Responsable','Incidents':'Incidentes',
+    'No such problem record.':'No existe ese registro de problema.',
+    'The problem owner must be a full workspace member.':'El responsable del problema debe ser un miembro con acceso completo al espacio de trabajo.',
+    'Every linked record must be an incident in this workspace.':'Todos los registros vinculados deben ser incidentes de este espacio de trabajo.',
+    'Problem created: ':'Problema creado: ','Problem updated: ':'Problema actualizado: ','Problem status changed to ':'Estado del problema cambiado a ',
+    ' incident(s) linked':' incidente(s) vinculados',' incident(s) unlinked':' incidente(s) desvinculados',
+    'The language preference is saved for your account.':'La preferencia de idioma se guarda en tu cuenta.',
+    'Join your team':'Únete a tu equipo','Checking your invitation…':'Comprobando tu invitación…',
+    'This invitation link is not valid.':'Este enlace de invitación no es válido.',
+    'Sign in or create an account with the email address that was invited, then open this link again.':'Inicia sesión o crea una cuenta con la dirección de correo invitada y vuelve a abrir este enlace.',
+    'Create an account':'Crear una cuenta','Sign in':'Iniciar sesión','You joined the team.':'Te has unido al equipo.',
+    'This invitation did not work. It may have expired or been sent to another address.':'La invitación no funcionó. Es posible que haya caducado o que se haya enviado a otra dirección.',
+    'Developer documentation':'Documentación para desarrolladores','API reference':'Referencia de la API',
+    'Welcome to EffDesk':'Te damos la bienvenida a EffDesk','Your workspace is ready':'Tu espacio de trabajo está listo',
+    'Get started':'Comenzar','Go to your workspace':'Ir a tu espacio de trabajo'
+  });
+
+  Object.assign(dict, {
+    'What it does':'Qué ofrece','Pricing':'Precios','Developers':'Desarrolladores','Start free':'Comenzar gratis',
+    'Developer guide':'Guía para desarrolladores','Create and update tickets from your own systems, and get told when something happens. Everything here works with a plain HTTP client.':'Crea y actualiza tickets desde tus propios sistemas y recibe notificaciones cuando ocurran eventos. Todo funciona con un cliente HTTP estándar.',
+    'Plans.':'Planes.','Quickstart':'Inicio rápido','Authentication':'Autenticación','Errors':'Errores','List tickets':'Listar tickets',
+    'Create a ticket':'Crear un ticket','Get a ticket':'Obtener un ticket','Update a ticket':'Actualizar un ticket',
+    'Reply or add a note':'Responder o añadir una nota','Custom fields':'Campos personalizados',
+    'Events and payload':'Eventos y contenido','Verify a signature':'Verificar una firma','Slack and Teams':'Slack y Teams',
+    'You were signed in, but the session did not stay':'Iniciaste sesión, pero la sesión no se mantuvo',
+    'Your browser did not keep the sign-in. This happens when cookies are blocked for this site or when the page was opened from a different web address. Open app.effdesk.com, allow cookies, and sign in again.':'Tu navegador no mantuvo la sesión. Esto puede ocurrir si las cookies están bloqueadas para este sitio o si abriste la página desde otra dirección web. Abre app.effdesk.com, permite las cookies e inicia sesión de nuevo.',
+    'Go to app.effdesk.com':'Ir a app.effdesk.com','Confirm your email first':'Primero confirma tu correo electrónico',
+    'Open the link we emailed you, then come back.':'Abre el enlace que te enviamos por correo y vuelve aquí.',
+    'We could not load your account':'No pudimos cargar tu cuenta',
+    'Something went wrong on our side, or your connection dropped. Try again in a moment.':'Algo salió mal de nuestro lado o se interrumpió tu conexión. Inténtalo de nuevo en un momento.',
+    'Try again':'Intentar de nuevo','Sign in again':'Volver a iniciar sesión','Creating your workspace…':'Creando tu espacio de trabajo…',
+    'Your workspace is ready':'Tu espacio de trabajo está listo','Choose your plan':'Elige tu plan','Continue':'Continuar',
+    'Monthly':'Mensual','Yearly':'Anual','Seats':'Licencias','Create workspace':'Crear espacio de trabajo',
+    'The workspace could not be created.':'No se pudo crear el espacio de trabajo.'
+  });
   var originals = new WeakMap(), attrOriginals = new WeakMap(), current = 'en', observer = null;
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();

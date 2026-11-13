@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -22,6 +22,7 @@
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
+    var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
@@ -45,7 +46,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -232,6 +233,99 @@
       return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Incident management'),el('p',{class:'m'},'Coordinate service disruptions using the ticket, service and approval foundations already in EffDesk.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();creating=true;newf=blankNew();newf.type='incident';pending=[];draw();}},'＋ Create incident'))),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard,servicesCard),el('div',{class:'itsm-detail-col'},detailCard)));
     }
 
+
+    // ── Problem management: root-cause records linked to existing incidents ──
+    function loadProblems() {
+      closePanes(); problemsOpen=true; problemRows=null; problemDetail=null; problemSelected=0; problemCreating=false; problemLoading=true; draw();
+      return api('itsm-problem-list',{limit:200,status:problemStatus}).then(function(r){
+        problemLoading=false; if(!r.ok){problemRows=[];say(r.body.error||'Could not load problems.',true);}else problemRows=r.body.problems||[];draw();
+      });
+    }
+    function openProblem(id) {
+      problemSelected=Number(id)||0;problemCreating=false;problemDetail=null;draw();
+      return api('itsm-problem-get',{id:problemSelected}).then(function(r){
+        if(!r.ok){problemSelected=0;say(r.body.error||'Could not load problem.',true);return;}
+        problemDetail=r.body;draw();
+      });
+    }
+    function problemsPane() {
+      var rows=problemRows||[], active=rows.filter(function(x){return ['open','investigating','known_error'].indexOf(x.status)>=0;}).length;
+      var known=rows.filter(function(x){return x.known_error;}).length, p1=rows.filter(function(x){return x.priority==='P1';}).length;
+      var stats=el('div',{class:'stats itsm-stats'},
+        el('div',{class:'stat'},el('div',{class:'sv'},String(rows.length)),el('div',{class:'sl'},'Problems')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(active)),el('div',{class:'sl'},'Active')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(known)),el('div',{class:'sl'},'Known errors')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(p1)),el('div',{class:'sl'},'P1 priority')));
+      var statusFilter=el('select',{'aria-label':'Filter problems by status'});
+      [['','All statuses'],['open','Open'],['investigating','Investigating'],['known_error','Known error'],['resolved','Resolved'],['closed','Closed']].forEach(function(x){var o=el('option',{value:x[0]},x[1]);o.selected=x[0]===problemStatus;statusFilter.appendChild(o);});
+      statusFilter.addEventListener('change',function(){problemStatus=statusFilter.value;problemRows=null;problemLoading=true;draw();api('itsm-problem-list',{limit:200,status:problemStatus}).then(function(r){problemLoading=false;problemRows=r.ok?(r.body.problems||[]):[];if(!r.ok)say(r.body.error||'Could not load problems.',true);draw();});});
+      var list=el('div',{class:'itsm-table-wrap'});
+      if(problemLoading)list.appendChild(el('p',{class:'m'},'Loading problems…'));
+      else if(!rows.length)list.appendChild(el('div',{class:'itsm-detail-empty'},el('h3',{},'No problem records yet'),el('p',{class:'m'},'Create a problem to investigate recurring or high-impact incidents and document a lasting fix.')));
+      else {
+        var tbl=el('table',{class:'itsm-table problem-table'});
+        tbl.appendChild(el('thead',{},el('tr',{},['Priority','Problem','Status','Incidents','Owner','Updated'].map(function(x){return el('th',{},x);}))));
+        var body=el('tbody');
+        rows.forEach(function(p){
+          var tr=el('tr',{class:problemSelected===Number(p.id)?'selected':'',tabindex:'0',role:'button','aria-label':'Open problem '+p.title});
+          tr.appendChild(el('td',{},el('span',{class:'itsm-severity '+String(p.priority||'P3').toLowerCase()},p.priority||'P3')));
+          tr.appendChild(el('td',{},el('strong',{},p.title),el('span',{class:'itsm-subline'},'#PRB-'+p.id+(p.known_error?' · Known error':''))));
+          tr.appendChild(el('td',{},el('span',{class:'badge s-'+(p.status==='known_error'?'pending':p.status==='resolved'||p.status==='closed'?'solved':'open')},cap(p.status.replace('_',' ')))));
+          tr.appendChild(el('td',{},String(p.incident_count||0)+(p.active_incident_count?' · '+p.active_incident_count+' active':'')));
+          tr.appendChild(el('td',{},p.owner_name||p.owner_email||'Unassigned'));
+          tr.appendChild(el('td',{},ago(p.updated_at)));
+          var choose=function(){openProblem(p.id);};tr.addEventListener('click',choose);tr.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});body.appendChild(tr);
+        });
+        tbl.appendChild(body);list.appendChild(tbl);
+      }
+      var listCard=el('section',{class:'pcard itsm-list-card'},
+        el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Problem register'),el('p',{class:'m'},'Find recurring incidents, understand root causes and track permanent fixes.')),
+          el('div',{class:'itsm-toolbar'},statusFilter,el('button',{type:'button',class:'btn l sm',onclick:loadProblems},'Refresh'))),list);
+      var detail=el('section',{class:'pcard itsm-detail-card problem-detail-card'});
+      var p=problemDetail&&problemDetail.problem;
+      if(!problemCreating&&!problemSelected)detail.appendChild(el('div',{class:'itsm-detail-empty'},el('span',{class:'itsm-empty-icon'},'⌁'),el('h3',{},'Problem investigation'),el('p',{class:'m'},'Select a problem or create a new record to document root cause, workaround, known errors and affected incidents.')));
+      else if(problemSelected&&!p)detail.appendChild(el('p',{class:'m'},'Loading problem details…'));
+      else {
+        p=p||{title:'',description:'',status:'open',priority:'P3',known_error:false,root_cause:'',workaround:'',resolution:'',owner_id:''};
+        var title=el('input',{type:'text',maxlength:'180',placeholder:'Problem title','aria-label':'Problem title',value:p.title||''});
+        var description=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Describe the recurring issue, symptoms and scope…','aria-label':'Problem description'});description.value=p.description||'';
+        var status=el('select',{'aria-label':'Problem status'});
+        [['open','Open'],['investigating','Investigating'],['known_error','Known error'],['resolved','Resolved'],['closed','Closed']].forEach(function(x){status.appendChild(el('option',{value:x[0]},x[1]));});status.value=p.status||'open';
+        var priority=el('select',{'aria-label':'Problem priority'});
+        [['P1','P1 · Critical'],['P2','P2 · High'],['P3','P3 · Moderate'],['P4','P4 · Low']].forEach(function(x){priority.appendChild(el('option',{value:x[0]},x[1]));});priority.value=p.priority||'P3';
+        var owner=el('select',{'aria-label':'Problem owner'});owner.appendChild(el('option',{value:''},'Unassigned'));
+        agents.forEach(function(a){if(a.role!=='light')owner.appendChild(el('option',{value:a.id},a.name||a.email));});owner.value=p.owner_id||'';
+        var known=el('input',{type:'checkbox','aria-label':'Mark as known error'});known.checked=!!p.known_error;
+        var rootCause=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Document the underlying technical or process cause…','aria-label':'Root cause'});rootCause.value=p.root_cause||'';
+        var workaround=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Document a safe temporary workaround…','aria-label':'Workaround'});workaround.value=p.workaround||'';
+        var resolution=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Document the permanent fix and verification…','aria-label':'Resolution'});resolution.value=p.resolution||'';
+        var linked=el('input',{type:'text',placeholder:'Incident ticket numbers, separated by commas','aria-label':'Linked incident numbers',value:(problemDetail&&problemDetail.incidents||[]).map(function(x){return x.number;}).join(', ')});
+        var save=el('button',{type:'button',class:'btn',onclick:function(){
+          if(!title.value.trim())return say('Give the problem a title.',true);
+          var numbers=linked.value.split(',').map(function(x){return Number(x.trim());}).filter(function(x){return Number.isSafeInteger(x)&&x>0;});
+          api('itsm-problem-save',{id:problemSelected||undefined,title:title.value,description:description.value,status:status.value,priority:priority.value,knownError:known.checked,rootCause:rootCause.value,workaround:workaround.value,resolution:resolution.value,ownerId:owner.value,incidentNumbers:numbers}).then(function(r){
+            if(!r.ok)return say(r.body.error||'Could not save problem.',true);
+            problemSelected=Number(r.body.problem.id);problemCreating=false;problemDetail=r.body;
+            return api('itsm-problem-list',{limit:200,status:problemStatus}).then(function(l){if(l.ok)problemRows=l.body.problems||[];draw();say('Problem saved.');});
+          });
+        }},problemCreating?'Create problem':'Save problem');
+        detail.appendChild(el('div',{class:'itsm-detail-head'},el('div',{},el('span',{class:'itsm-kicker'},problemCreating?'NEW PROBLEM':'PROBLEM #PRB-'+p.id),el('h3',{},problemCreating?'New problem':p.title||'Problem'),el('p',{class:'m'},problemCreating?'Capture the issue once and associate all related incidents.':'Created '+ago(p.created_at)+' · Updated '+ago(p.updated_at))),el('div',{class:'itsm-detail-actions'},problemSelected?el('button',{type:'button',class:'btn l sm',onclick:function(){problemCreating=false;openProblem(problemSelected);}},'Reload'):null)));
+        detail.appendChild(el('div',{class:'problem-form-grid'},el('label',{},el('span',{},'Title'),title),el('label',{},el('span',{},'Status'),status),el('label',{},el('span',{},'Priority'),priority),el('label',{},el('span',{},'Problem owner'),owner)));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Description'),description));
+        detail.appendChild(el('label',{class:'problem-known-error'},known,el('span',{},el('strong',{},'Known error'),el('small',{},'The root cause is understood or a documented workaround exists.'))));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Root-cause analysis'),rootCause));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Workaround'),workaround));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Permanent resolution'),resolution));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Related incidents'),el('p',{class:'m'},'Link incident ticket numbers from this workspace. Only incident tickets can be linked.'),linked));
+        detail.appendChild(el('div',{class:'itsm-save-row'},save));
+        if(problemSelected&&problemDetail&&problemDetail.events&&problemDetail.events.length){
+          var history=el('div',{class:'problem-history'},el('h4',{},'Problem activity'));
+          problemDetail.events.forEach(function(e){history.appendChild(el('div',{class:'problem-history-item'},el('strong',{},e.actor_name||'System'),el('span',{class:'m'},e.detail),el('small',{},ago(e.created_at))));});detail.appendChild(history);
+        }
+      }
+      return el('div',{class:'page wide itsm-page problems-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Problem management'),el('p',{class:'m'},'Move beyond recurring incidents with documented root causes, workarounds and permanent fixes.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();problemsOpen=true;problemCreating=true;problemDetail=null;problemSelected=0;draw();}},'＋ New problem'))),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard),el('div',{class:'itsm-detail-col'},detail)));
+    }
+
     function goHome() { addr(0); closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
     function search() { filter.q = qBox.value.trim(); closePanes(); refresh(); }
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
@@ -350,14 +444,14 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
-      if (has('itsm') && role !== 'light') rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm));
+      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); }
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
@@ -1607,7 +1701,7 @@
       qBox.placeholder = tr('Search tickets, contacts, companies, agents…'); qBox.setAttribute('aria-label', tr('Search tickets')); newBtn.textContent = tr('+ New ticket');
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }

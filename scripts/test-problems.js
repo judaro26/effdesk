@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { normalizeProblem, PROBLEM_STATUSES, PROBLEM_PRIORITIES } from '../src/problems.js';
+const d=normalizeProblem();
+assert.deepEqual(d,{title:'',description:'',status:'open',priority:'P3',knownError:false,rootCause:'',workaround:'',resolution:'',ownerId:''});
+const p=normalizeProblem({title:'  Repeated database timeout  ',description:' details ',status:'known_error',priority:'P1',knownError:false,rootCause:' root ',workaround:' retry ',resolution:' fixed ',ownerId:' agent-1 '});
+assert.equal(p.title,'Repeated database timeout');
+assert.equal(p.status,'known_error');
+assert.equal(p.knownError,true);
+assert.equal(p.priority,'P1');
+assert.equal(p.rootCause,'root');
+assert.equal(p.ownerId,'agent-1');
+assert.equal(normalizeProblem({status:'invalid',priority:'P0'}).status,'open');
+assert.equal(normalizeProblem({status:'invalid',priority:'P0'}).priority,'P3');
+assert.deepEqual(PROBLEM_STATUSES,['open','investigating','known_error','resolved','closed']);
+assert.deepEqual(PROBLEM_PRIORITIES,['P1','P2','P3','P4']);
+assert.equal(normalizeProblem({title:'x'.repeat(240)}).title.length,180);
+console.log('Problem management normalization tests passed.');
