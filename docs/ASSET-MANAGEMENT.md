@@ -31,7 +31,7 @@ All owner and service references are validated against the current workspace. Cr
 
 ## Rollout
 
-Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql` and `051_cmdb_windows_discovery_agent.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
+Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql`, `051_cmdb_windows_discovery_agent.sql` and `052_cmdb_cross_platform_discovery.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
 
 ## Procurement and lifecycle extension
 
@@ -60,18 +60,33 @@ Sync is manually initiated from **Assets & CMDB → Procurement & lifecycle → 
 The tenant must grant admin consent for the delegated permission. If consent or the Microsoft app registration is not configured, the integration remains unavailable; CSV import/export and manual asset management continue to work. Scheduled background sync, webhook-driven change notifications, write-back/remediation, and broader Entra user/group discovery are intentionally deferred.
 
 
-## Automated discovery: native Windows agent (no Microsoft subscription)
+## Automated discovery: customer-installed agents (no Microsoft subscription)
 
-Migration `051_cmdb_windows_discovery_agent.sql` adds tenant-scoped agent enrollment and installed-software snapshots. This provider does not use Microsoft Entra, Intune, Graph API, or a paid endpoint-management subscription. The customer installs a signed-in-workspace enrollment script on each Windows device; each agent receives a unique, revocable, one-year bearer token. EffDesk stores only a SHA-256 token hash. The token is displayed once when the owner/admin creates the agent and is never returned by list APIs.
+Migrations `051_cmdb_windows_discovery_agent.sql` and `052_cmdb_cross_platform_discovery.sql` add tenant-scoped agent enrollment and installed-software snapshots. This provider does not use Microsoft Entra, Intune, Graph API, or a paid endpoint-management subscription. The customer installs a workspace-enrolled agent on each endpoint; each agent receives a unique, revocable, one-year bearer token. Windows uses the native PowerShell collector. macOS and Linux use the open-source osquery framework plus a small Python 3 bridge. EffDesk stores only a SHA-256 token hash. The token is displayed once when the owner/admin creates the agent and is never returned by list APIs.
 
-In **Assets & CMDB → Procurement & lifecycle → Automated discovery**, create a Windows agent, copy its one-time token, and download `/agents/windows/effdesk-discovery.ps1`. On the target Windows device, open PowerShell and run:
+In **Assets & CMDB → Procurement & lifecycle → Automated discovery**, create a Windows agent or a macOS/Linux osquery agent and copy its one-time token. For Windows, download `/agents/windows/effdesk-discovery.ps1`. On the target Windows device, open PowerShell and run:
 
 ```powershell
 .\effdesk-discovery.ps1 -EnrollmentToken "PASTE_ONE_TIME_TOKEN" -InstallScheduledTask -ApiUrl "https://app.effdesk.com/api/cmdb-agent"
 ```
 
-The script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours while that Windows user is logged in and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
+The Windows script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours while that Windows user is logged in and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
 
-The ingestion endpoint binds the bearer token to the encoded workspace ID and a single agent ID, validates the token hash inside that workspace's RLS transaction, and rejects revoked/expired tokens. Hardware is reconciled to an existing manually managed hardware CI by serial number when safe, otherwise a new Windows-agent CI is created. Software snapshots are reconciled per agent; items absent from the latest complete snapshot are marked missing rather than deleted. Owners/admins can revoke an agent at any time. The dashboard shows agent health, last check-in, device details and discovered software.
+The ingestion endpoint binds the bearer token to the encoded workspace ID and a single agent ID, validates the token hash inside that workspace's RLS transaction, and rejects revoked/expired tokens. Hardware is reconciled to an existing manually managed hardware CI by serial number when safe, otherwise a new provider-tagged endpoint CI is created. Software snapshots are reconciled per agent; items absent from the latest complete snapshot are marked missing rather than deleted. Owners/admins can revoke an agent at any time. The dashboard shows agent health, last check-in, device details and discovered software.
 
-This first release is a customer-installed Windows endpoint agent, not a network-wide scanner or a centrally managed service. The script should be distributed only to devices the customer owns or is authorized to inventory. Customers should review their own endpoint-management and employee-notice requirements before deployment.
+This first release uses customer-installed endpoint agents, not a network-wide scanner or a centrally managed fleet service. Deploy the appropriate script only to devices the customer owns or is authorized to inventory. Customers should review their own endpoint-management and employee-notice requirements before deployment.
+
+
+### macOS and Linux with osquery
+
+EffDesk also supports macOS and Linux through [osquery](https://osquery.io/), an open-source operating-system instrumentation framework with native support for Windows, macOS and Linux. The current EffDesk bridge targets macOS and Linux; Windows continues to use the native PowerShell collector. Install the osquery package for the target OS and Python 3.8+, then download `/agents/osquery/effdesk-osquery-discovery.py` from the discovery panel.
+
+Run a one-time check-in with the command generated by EffDesk. For unattended synchronization, store the token in a file readable only by the service account (for example, `chmod 600 /etc/effdesk/enrollment-token`) and schedule the script with cron or the host's normal scheduler:
+
+```sh
+python3 effdesk-osquery-discovery.py --token-file /etc/effdesk/enrollment-token --api-url https://app.effdesk.com/api/cmdb-agent
+```
+
+The bridge uses osquery's local `system_info`, `os_version`, and platform-appropriate application/package tables. It uses Python's standard library only; no pip packages or paid osquery management service are required. The current release is a pull-style local collector, not a remote osquery TLS fleet manager. Customers should run it on devices they own or are authorized to inventory, and may schedule it at their preferred cadence.
+
+The agent table records the provider and detected platform separately. Hardware and software records are reconciled through the same tenant-bound ingestion path; tokens cannot be used across workspaces or between provider types. The dashboard shows Windows and osquery agents together, with provider labels and last-check-in health.
