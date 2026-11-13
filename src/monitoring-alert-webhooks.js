@@ -106,7 +106,7 @@ async function applyAlert(pool,orgId,provider,alert){
     [orgId,n,alert.title,alert.ticketStatus,alert.priority,requester,email,['monitoring-alert',provider]])).rows[0];
    await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,ticket.id,requester,alert.message||('Alert received from '+requester+'.')]);
    await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,ticket.id,requester,'Monitoring alert imported · '+alert.severity]);
-   link=ticket;created=true;
+   link={...ticket,ticket_id:ticket.id};created=true;
    await c.query('insert into monitoring_alert_links(org_id,provider,external_alert_key,ticket_id,external_url,external_status,external_severity,last_event_at) values($1,$2,$3,$4,$5,$6,$7,now())',[orgId,provider,alert.key,ticket.id,alert.url||null,alert.statusRaw,alert.severity]);
   }else{
    const changed=link.status!==alert.ticketStatus||link.priority!==alert.priority||link.subject!==alert.title;
