@@ -119,7 +119,8 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
  if(result.ok&&result.notify)await notifyChangeApproval(pool,mailer,orgId,result.id,0,'requested');
  return result.ok?getChange(pool,orgId,result.id):result;
 }
-export async function decideChange(pool,orgId,actorId,id,decision,comment='',mailer=null){
+export async function decideChange(pool,orgId,actor,id,decision,comment='',mailer=null){
+ const actorId=String(actor&&actor.id||actor||'');
  if(!['approved','rejected'].includes(decision))return fail('Choose approve or reject.');
  const result=await withOrg(pool,orgId,async c=>{
   const row=(await c.query('select * from change_requests where org_id=$1 and id=$2 for update',[orgId,Number(id)||0])).rows[0];
@@ -137,7 +138,7 @@ export async function decideChange(pool,orgId,actorId,id,decision,comment='',mai
   if(outcome==='rejected'){status='rejected';event='rejected';await c.query("update change_requests set status='rejected',updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
   else if(outcome==='complete'&&ix+1<stages.length){nextStage=ix+1;await c.query('update change_requests set current_stage=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,row.id,nextStage]);}
   else if(outcome==='complete'){status='approved';event='completed';await c.query("update change_requests set status='approved',approved_at=now(),updated_at=now() where org_id=$1 and id=$2",[orgId,row.id]);}
-  await log(c,orgId,row.id,{id:actorId,name:actorId},'approval_decided','Approval round '+round+' · '+decision+' · '+(stage.name||('Stage '+(ix+1))));
+  await log(c,orgId,row.id,{id:actorId,name:actor&&actor.name||actor&&actor.email||actorId},'approval_decided','Approval round '+round+' · '+decision+' · '+(stage.name||('Stage '+(ix+1))));
   return {ok:true,status,nextStage,event,createdBy:row.requested_by,stageIndex:ix};
  });
  if(result.ok&&mailer){
