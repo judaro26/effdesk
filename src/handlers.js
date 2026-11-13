@@ -514,7 +514,7 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
   if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
-  if (res.ok && res.action === 'followup') await notifyTicket(pool, mailer, res.orgId, res.number, { kind: 'new', summary: 'Follow-up from a permanently closed ticket' });
+  if (res.ok && res.action === 'followup') await notifyTicket(pool, mailer, res.orgId, res.number, { kind: 'ticket_created', summary: 'Follow-up from a permanently closed ticket' });
   logInfo('inbound_email', { action: res.action, dropped: res.dropped, org: res.orgId, ticket: res.number });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
@@ -687,7 +687,7 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
       const targetNumber = r.followup ? r.number : n;
-      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: r.followup ? 'new' : 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, r.followup ? 'created' : 'customer_reply', targetNumber, body); await emitHook(pool, org.id, r.followup ? 'ticket.created' : 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: r.followup ? 'ticket_created' : 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, r.followup ? 'created' : 'customer_reply', targetNumber, body); await emitHook(pool, org.id, r.followup ? 'ticket.created' : 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
       return r.ok ? redirect(`${base}/tickets/${targetNumber}?sent=1&lang=${lang}`) : notFound();
     }
   }
