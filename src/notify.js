@@ -1,8 +1,7 @@
 // Agent email notifications for tickets and approval workflows.
 import { withOrg } from './db.js';
 import { PRODUCT } from './config.js';
-const DEDUPE_MINUTES = 10;
-export async function notifyApproval(pool,mailer,orgId,approvalId,stageIndex=0,event='requested',createdBy=null){
+export async function notifyApproval(pool,mailer,orgId,approvalId,stageIndex=0,event='requested',createdBy=null,actorId=null){
  if(!mailer||!mailer.agentNotice)return {sent:0};
  try{
   const data=await withOrg(pool,orgId,async c=>{
@@ -10,7 +9,7 @@ export async function notifyApproval(pool,mailer,orgId,approvalId,stageIndex=0,e
    if(!a)return null;
    const org=(await c.query('select name from "organization" where id=$1',[orgId])).rows[0];
    const ids=event==='requested'?((Array.isArray(a.stages)&&a.stages[stageIndex]&&a.stages[stageIndex].approverIds)||a.approver_ids||[]):[createdBy||a.created_by].filter(Boolean);
-   return {a,orgName:org?.name||'',ids:[...new Set(ids.map(String))]};
+   return {a,orgName:org?.name||'',ids:[...new Set(ids.map(String))].filter(id=>id!==String(actorId||''))};
   });
   if(!data||!data.ids.length)return {sent:0};
   let sent=0;
