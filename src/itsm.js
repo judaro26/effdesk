@@ -53,11 +53,13 @@ export async function getIncident(pool,orgId,number){
  return withOrg(pool,orgId,async c=>{
   const t=(await c.query(`select t.id,t.number,t.subject,t.status,t.priority,t.requester_name,t.requester_email,t.assignee_id,t.created_at,t.updated_at,d.impact,d.urgency,d.severity,d.is_major,d.commander_id,d.public_summary,d.internal_summary,d.next_update_at,d.resolved_at from tickets t left join incident_details d on d.org_id=t.org_id and d.ticket_id=t.id where t.org_id=$1 and t.number=$2 and t.type='incident'`,[orgId,Number(number)||0])).rows[0];
   if(!t)return fail('No such incident ticket.',404);
-  const [services,relations]=await Promise.all([
+  const [services,relations,providerIncidents,monitoringAlerts]=await Promise.all([
    c.query('select s.id,s.name,s.criticality,s.status from incident_services x join business_services s on s.org_id=x.org_id and s.id=x.service_id where x.org_id=$1 and x.ticket_id=$2 order by lower(s.name)',[orgId,t.id]),
-   c.query(`select t.number,t.subject,t.status,r.relation from incident_relations r join tickets t on t.org_id=r.org_id and t.id=r.related_ticket_id where r.org_id=$1 and r.ticket_id=$2 order by t.number`,[orgId,t.id])
+   c.query(`select t.number,t.subject,t.status,r.relation from incident_relations r join tickets t on t.org_id=r.org_id and t.id=r.related_ticket_id where r.org_id=$1 and r.ticket_id=$2 order by t.number`,[orgId,t.id]),
+   c.query('select provider,external_incident_id,external_url,external_status,external_severity,external_owner,external_service,external_escalation,last_event_at from incident_provider_links where org_id=$1 and ticket_id=$2 order by provider',[orgId,t.id]),
+   c.query('select provider,external_alert_key,external_url,external_status,external_severity,last_event_at from monitoring_alert_links where org_id=$1 and ticket_id=$2 order by provider',[orgId,t.id])
   ]);
-  return {ok:true,incident:t,services:services.rows,related:relations.rows};
+  return {ok:true,incident:t,services:services.rows,related:relations.rows,providerIncidents:providerIncidents.rows,monitoringAlerts:monitoringAlerts.rows};
  });
 }
 export async function saveIncident(pool,orgId,actorId,input={}){
