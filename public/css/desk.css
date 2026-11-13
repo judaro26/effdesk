@@ -769,3 +769,20 @@ html{-webkit-text-size-adjust:100%}
 .change-calendar-title small{font-size:11px;color:var(--d-muted)}
 @media(max-width:1000px){.change-form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.change-form-grid{grid-template-columns:1fr}.change-decision-actions{grid-template-columns:1fr 1fr}.change-decision-actions textarea{grid-column:1/-1}.change-calendar-row{grid-template-columns:1fr auto;gap:5px}.change-calendar-title{grid-column:1/-1;grid-row:2}}
+
+/* CAB policy and maintenance conflict presentation */
+.change-policy-card{margin:14px 0;padding:16px}
+.change-policy-card h3{margin:0 0 4px}
+.change-policy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}
+.change-policy-field{display:grid;gap:6px;min-width:0}
+.change-policy-field>span{font-size:11px;font-weight:750;color:var(--d-muted)}
+.change-policy-field input,.change-policy-field select{width:100%;max-width:none}
+.change-policy-check{display:flex;align-items:center;gap:9px;padding:8px 0;font-size:12px}
+.change-policy-check input{width:16px;height:16px;flex:none}
+.change-conflicts{border:1px solid #d97706;border-radius:9px;padding:12px;background:color-mix(in srgb,#d97706 7%,var(--d-panel))}
+.change-conflict-row{display:grid;gap:3px;padding:9px 0;border-top:1px solid var(--d-line);font-size:12px}
+.change-conflict-row small{color:var(--d-muted)}
+@media(max-width:600px){.change-policy-grid{grid-template-columns:1fr}}
+
+.change-conflict-preview{display:grid;gap:6px;margin-top:9px;font-size:12px}
+.change-conflict-preview:empty{display:none}

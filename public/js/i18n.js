@@ -121,6 +121,20 @@
     'Your approval is needed':'Se necesita tu aprobación','All approval stages are complete.':'Todas las etapas de aprobación están completas.',
     'Change requests':'Solicitudes de cambio','Change request':'Solicitud de cambio','Upcoming windows':'Próximas ventanas'
   });
+  Object.assign(dict, {
+    'Configurable CAB policy':'Política CAB configurable','Approval quorum for each CAB stage':'Quórum de aprobación para cada etapa CAB','All assigned approvers must approve':'Todos los aprobadores asignados deben aprobar','Any one assigned approver may approve':'Cualquier aprobador asignado puede aprobar','Set approval thresholds and maintenance-window conflict handling for this workspace.':'Configura los umbrales de aprobación y la gestión de conflictos de ventanas de mantenimiento para este espacio de trabajo.',
+    'Maintenance conflict handling':'Gestión de conflictos de mantenimiento','Warn and allow scheduling':'Advertir y permitir la programación','Block scheduling until resolved':'Bloquear la programación hasta resolverlo',
+    'Allow emergency changes to override conflicts':'Permitir que los cambios de emergencia omitan conflictos','Standard · minimum stages':'Estándar · etapas mínimas','Normal · minimum stages':'Normal · etapas mínimas','Emergency · minimum stages':'Emergencia · etapas mínimas',
+    'Low risk · minimum approvers per stage':'Riesgo bajo · aprobadores mínimos por etapa','Medium risk · minimum approvers per stage':'Riesgo medio · aprobadores mínimos por etapa','High risk · minimum approvers per stage':'Riesgo alto · aprobadores mínimos por etapa','Critical risk · minimum approvers per stage':'Riesgo crítico · aprobadores mínimos por etapa',
+    'Standard pre-approval · maximum risk':'Preaprobación estándar · riesgo máximo','Standard pre-approval · maximum impact':'Preaprobación estándar · impacto máximo','Save CAB policy':'Guardar política CAB','CAB policy':'Política CAB',
+    'Maintenance-window conflicts':'Conflictos de ventanas de mantenimiento','These approved or in-flight changes overlap this window on one or more selected services.':'Estos cambios aprobados o en curso se superponen con esta ventana en uno o más servicios seleccionados.',
+    'Check maintenance conflicts':'Comprobar conflictos de mantenimiento','No overlapping changes found for the selected services and window.':'No se encontraron cambios superpuestos para los servicios y el horario seleccionados.',
+    'overlapping change(s) found':'cambio(s) superpuesto(s) encontrado(s)','CAB policy saved.':'Política CAB guardada.','Could not load CAB policy.':'No se pudo cargar la política CAB.','Could not check this window.':'No se pudo comprobar esta ventana.',
+    'This CAB policy requires at least ':'Esta política CAB requiere al menos ',' approval stage(s) for ':' etapa(s) de aprobación para ',' changes.':' cambios.',
+    ' approver(s) in every stage for ':' aprobador(es) en cada etapa para ',' risk / ':' riesgo / ',' impact changes.':' impacto.',
+    'This standard change exceeds the risk or impact limit configured by your CAB policy.':'Este cambio estándar supera el límite de riesgo o impacto configurado por la política CAB.',
+    'This maintenance window conflicts with another change affecting the same service. Choose another window or resolve the conflict.':'Esta ventana de mantenimiento entra en conflicto con otro cambio que afecta al mismo servicio. Elige otro horario o resuelve el conflicto.'
+  });
   var originals = new WeakMap(), attrOriginals = new WeakMap(), current = 'en', observer = null;
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();

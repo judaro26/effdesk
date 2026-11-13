@@ -20,6 +20,60 @@ export const CHANGE_TRANSITIONS={
  completed:['completed'],failed:['failed'],cancelled:['cancelled']
 };
 const validDate=v=>v&&Number.isFinite(new Date(v).getTime())?new Date(v):null;
+const RISK_RANK={low:1,medium:2,high:3,critical:4};
+export const DEFAULT_CAB_POLICY={
+ conflictMode:'warn',emergencyConflictOverride:false,approvalMode:'all',
+ requiredStages:{standard:0,normal:1,emergency:1},
+ minApproversByRisk:{low:1,medium:1,high:2,critical:3},
+ standardMaxRisk:'low',standardMaxImpact:'medium'
+};
+export function normalizeCabPolicy(input={}){
+ const n=(v,d,min,max)=>Math.min(max,Math.max(min,Number.isFinite(Number(v))?Math.floor(Number(v)):d));
+ const stages=input.requiredStages&&typeof input.requiredStages==='object'?input.requiredStages:{};
+ const approvers=input.minApproversByRisk&&typeof input.minApproversByRisk==='object'?input.minApproversByRisk:{};
+ return {
+  conflictMode:input.conflictMode==='block'?'block':'warn',
+  emergencyConflictOverride:input.emergencyConflictOverride===true,
+  approvalMode:input.approvalMode==='any'?'any':'all',
+  requiredStages:Object.fromEntries(CHANGE_TYPES.map(t=>[t,n(stages[t],DEFAULT_CAB_POLICY.requiredStages[t],t==='standard'?0:1,10)])),
+  minApproversByRisk:Object.fromEntries(CHANGE_RISKS.map(r=>[r,n(approvers[r],DEFAULT_CAB_POLICY.minApproversByRisk[r],1,30)])),
+  standardMaxRisk:CHANGE_RISKS.includes(input.standardMaxRisk)?input.standardMaxRisk:DEFAULT_CAB_POLICY.standardMaxRisk,
+  standardMaxImpact:CHANGE_RISKS.includes(input.standardMaxImpact)?input.standardMaxImpact:DEFAULT_CAB_POLICY.standardMaxImpact
+ };
+}
+export async function getChangeCabPolicy(pool,orgId){
+ return withOrg(pool,orgId,async c=>{
+  const row=(await c.query('select policy,updated_at from change_cab_policies where org_id=$1',[orgId])).rows[0];
+  return {ok:true,policy:normalizeCabPolicy(row&&row.policy||DEFAULT_CAB_POLICY),updatedAt:row&&row.updated_at||null};
+ });
+}
+export async function saveChangeCabPolicy(pool,orgId,input={},actor=null){
+ const policy=normalizeCabPolicy(input);
+ return withOrg(pool,orgId,async c=>{
+  const row=(await c.query(`insert into change_cab_policies(org_id,policy,updated_by,updated_at)
+   values($1,$2::jsonb,$3,now()) on conflict(org_id) do update set policy=excluded.policy,updated_by=excluded.updated_by,updated_at=now()
+   returning policy,updated_at`,[orgId,JSON.stringify(policy),actor&&actor.id||null])).rows[0];
+  return {ok:true,policy:normalizeCabPolicy(row.policy),updatedAt:row.updated_at};
+ });
+}
+async function changeConflicts(c,orgId,{id=0,start,end,serviceIds=[]}={}){
+ if(!start||!end||!serviceIds.length)return [];
+ return (await c.query(`select x.id,x.title,x.change_type,x.status,x.risk,x.planned_start,x.planned_end,
+  array_agg(distinct s.name order by s.name) as shared_services
+  from change_requests x
+  join change_services xs on xs.org_id=x.org_id and xs.change_id=x.id
+  join business_services s on s.org_id=xs.org_id and s.id=xs.service_id
+  where x.org_id=$1 and x.id<>$2 and xs.service_id=any($5::bigint[])
+   and x.status in ('submitted','assessing','awaiting_approval','approved','scheduled','implementing')
+   and x.planned_start < $4::timestamptz and x.planned_end > $3::timestamptz
+  group by x.id order by x.planned_start asc limit 50`,[orgId,Number(id)||0,start,end,serviceIds])).rows;
+}
+export async function previewChangeConflicts(pool,orgId,input={}){
+ const start=validDate(input.plannedStart),end=validDate(input.plannedEnd),serviceIds=linkIds(input.serviceIds,50);
+ if(input.plannedStart&&!start||input.plannedEnd&&!end)return fail('Enter a valid maintenance window date and time.');
+ if(start&&end&&end<=start)return fail('The maintenance window must end after it starts.');
+ return withOrg(pool,orgId,async c=>({ok:true,conflicts:await changeConflicts(c,orgId,{id:input.id,start,end,serviceIds}),policy:normalizeCabPolicy(((await c.query('select policy from change_cab_policies where org_id=$1',[orgId])).rows[0]||{}).policy||DEFAULT_CAB_POLICY)}));
+}
 export function normalizeChange(input={}){
  const type=CHANGE_TYPES.includes(input.changeType)?input.changeType:'normal';
  const status=CHANGE_STATUSES.includes(input.status)?input.status:'draft';
@@ -63,7 +117,8 @@ export async function getChange(pool,orgId,id){
    c.query('select id,round_index,stage_index,approver_id,decision,comment,created_at from change_decisions where org_id=$1 and change_id=$2 order by round_index,stage_index,created_at',[orgId,change.id]),
    c.query('select id,actor_id,actor_name,event,detail,created_at from change_events where org_id=$1 and change_id=$2 order by created_at desc,id desc limit 100',[orgId,change.id])
   ]);
-  return {ok:true,change,services:services.rows,incidents:incidents.rows,decisions:decisions.rows,events:events.rows};
+  const conflicts=await changeConflicts(c,orgId,{id:change.id,start:change.planned_start,end:change.planned_end,serviceIds:services.rows.map(x=>Number(x.id))});
+  return {ok:true,change,services:services.rows,incidents:incidents.rows,decisions:decisions.rows,events:events.rows,conflicts};
  });
 }
 export async function saveChange(pool,orgId,actor,input={},mailer=null){
@@ -75,6 +130,8 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
  const serviceIds=linkIds(input.serviceIds,50),incidentNumbers=linkIds(input.incidentNumbers,100).filter(n=>n<=2147483647);
  const cfg=normalizeApprovalConfig({enabled:true,stages:Array.isArray(input.approvalStages)?input.approvalStages:[]});
  const result=await withOrg(pool,orgId,async c=>{
+  const policyRow=(await c.query('select policy from change_cab_policies where org_id=$1',[orgId])).rows[0];
+  const policy=normalizeCabPolicy(policyRow&&policyRow.policy||DEFAULT_CAB_POLICY);
   if(d.ownerId){const m=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,d.ownerId])).rows[0];if(!m||m.role==='light')return fail('The change owner must be a full workspace member.');}
   if(serviceIds.length){const r=await c.query('select id from business_services where org_id=$1 and id=any($2::bigint[])',[orgId,serviceIds]);if(r.rowCount!==serviceIds.length)return fail('One or more selected services do not belong to this workspace.');}
   if(incidentNumbers.length){const r=await c.query("select id,number from tickets where org_id=$1 and type='incident' and number=any($2::int[])",[orgId,incidentNumbers]);if(r.rowCount!==incidentNumbers.length)return fail('Every linked ticket must be an incident in this workspace.');}
@@ -83,15 +140,21 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
    if(!(CHANGE_TRANSITIONS[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
    if(before.status==='awaiting_approval'&&JSON.stringify((before.approval_stages||[]).map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]})))!==JSON.stringify(cfg.stages.map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]}))))return fail('Approval stages cannot be changed while a decision is in progress.',409);
    if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType!=='standard')return fail('Normal and emergency changes must pass their configured approval stages before approval.',409);
-   if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType==='standard'&&(d.risk!=='low'||['high','critical'].includes(d.impact)))return fail('The pre-authorized path is limited to low-risk standard changes with low or medium impact.',409);
+   if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType==='standard'&&(RISK_RANK[d.risk]>RISK_RANK[policy.standardMaxRisk]||RISK_RANK[d.impact]>RISK_RANK[policy.standardMaxImpact]))return fail('This standard change exceeds the risk or impact limit configured by your CAB policy.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
   if(d.status==='awaiting_approval'){
-   if(!cfg.stages.length||cfg.stages.some(s=>!s.approverIds.length))return fail('Add at least one full-agent approver before requesting approval.');
+   const minStages=policy.requiredStages[d.changeType]||0;
+   const requiredApprovers=policy.minApproversByRisk[(RISK_RANK[d.risk]>=RISK_RANK[d.impact]?d.risk:d.impact)]||1;
+   if(cfg.stages.length<minStages)return fail('This CAB policy requires at least '+minStages+' approval stage(s) for '+d.changeType+' changes.');
+   if(!cfg.stages.length||cfg.stages.some(s=>s.approverIds.length<requiredApprovers))return fail('This CAB policy requires at least '+requiredApprovers+' approver(s) in every stage for '+d.risk+' risk / '+d.impact+' impact changes.');
+   if(cfg.stages.some(s=>s.mode!==policy.approvalMode))return fail('This CAB policy requires '+(policy.approvalMode==='all'?'all approvers to approve each stage.':'any one assigned approver to approve each stage.'));
    const v=await validateApprovalConfig(c,orgId,{enabled:true,stages:cfg.stages});if(!v.ok)return v;
   }
   if(d.status==='approved'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can approve this change.');
   if(d.status==='rejected'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can reject this change.');
   if(d.status==='scheduled'&&(!d.plannedStart||!d.plannedEnd))return fail('Set both planned start and end before scheduling the change.');
+  const conflicts=await changeConflicts(c,orgId,{id,start:d.plannedStart,end:d.plannedEnd,serviceIds});
+  if(d.status==='scheduled'&&conflicts.length&&policy.conflictMode==='block'&&!(d.changeType==='emergency'&&policy.emergencyConflictOverride))return { ...fail('This maintenance window conflicts with another change affecting the same service. Choose another window or resolve the conflict.',409),conflicts };
   if(d.status==='implementing'&&(!d.implementationPlan||!d.rollbackPlan))return fail('Document the implementation and rollback plans before starting work.');
   if((d.status==='completed'||d.status==='failed')&&!d.outcome)return fail('Record the implementation outcome before closing the change.');
   const values=[d.title,d.description,d.changeType,d.status,d.risk,d.impact,d.plannedStart,d.plannedEnd,d.implementationPlan,d.testPlan,d.rollbackPlan,d.outcome,d.ownerId||null,JSON.stringify(cfg.stages)];
@@ -115,7 +178,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   if(newServices.filter(x=>!oldServices.includes(x)).length)await log(c,orgId,saved.id,actor,'service_linked','Affected services updated');
   if(newIncidents.filter(x=>!oldIncidents.includes(x)).length)await log(c,orgId,saved.id,actor,'incident_linked','Related incidents updated');
   if(d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval'))await c.query('update change_requests set current_stage=0 where org_id=$1 and id=$2',[orgId,saved.id]);
-  return {ok:true,id:saved.id,status:saved.status,notify:d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval')};
+  return {ok:true,id:saved.id,status:saved.status,notify:d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval'),conflicts};
  });
  if(result.ok&&result.notify)await notifyChangeApproval(pool,mailer,orgId,result.id,0,'requested');
  return result.ok?getChange(pool,orgId,result.id):result;
