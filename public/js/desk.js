@@ -1627,24 +1627,85 @@
     function loadReport() { return api('report', { days: reportDays }).then(function (r) { if (r.status === 402) { closePanes(); report = { locked: true }; return draw(); } if (!r.ok) return say(r.body.error, true); closePanes(); report = r.body; draw(); }); }
     function hlist(title, rows) { var max = Math.max.apply(null, [1].concat(rows.map(function (r) { return r.n; }))); return el('div', { class: 'rcard' }, el('h3', {}, title), rows.length ? rows.map(function (r) { return el('div', { class: 'hbar' }, el('span', { class: 'hn' }, cap(r.name)), el('span', { class: 'ht' }, el('span', { class: 'hf', style: 'width:' + Math.max(2, Math.round(100 * r.n / max)) + '%' })), el('span', { class: 'hv' }, String(r.n))); }) : el('p', { class: 'm' }, 'Nothing yet.')); }
     function homePane() {
-      if (!dash) return el('div', { class: 'page wide' }, el('h2', {}, 'Dashboard'), el('p', { class: 'm' }, 'Loading…'));
-      var c = dash.counts, first = (meName || '').split(' ')[0] || 'there', hr = new Date().getHours(), hello = (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + ', ' + first;
+      if (!dash) return el('div', { class: 'page wide dash-page' }, el('h2', {}, 'Workspace overview'), el('p', { class: 'm' }, 'Loading your workspace…'));
+      var c = dash.counts || {}, first = (meName || '').split(' ')[0] || 'there', hr = new Date().getHours();
+      var hello = (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + ', ' + first;
       var go = function (f) { return function () { closePanes(); filter = f; refresh(); }; };
-      var stat = function (label, value, f, data) { var b = el('button', { type: 'button', class: 'stat link', onclick: go(f) }, el('div', { class: 'sv' }, String(value)), el('div', { class: 'sl' }, label)); b.setAttribute(data, '1'); return b; };
-      var cards = [stat('Open', c.open, { status: 'open', assignee: '', q: '' }, 'data-stat-open'), stat('Pending', c.pending, { status: 'pending', assignee: '', q: '' }, 'data-stat-pending'), stat('On hold', c.on_hold, { status: 'on_hold', assignee: '', q: '' }, 'data-stat-on-hold'), stat('Unassigned', c.unassigned, { status: 'active', assignee: 'none', q: '' }, 'data-stat-unassigned'), stat('Assigned to me', c.mine, { status: 'active', assignee: 'me', q: '' }, 'data-stat-mine'),
-        el('div', { class: 'stat' }, el('div', { class: 'sv' }, String(c.newToday)), el('div', { class: 'sl' }, 'New today')), el('div', { class: 'stat' }, el('div', { class: 'sv' }, String(c.solvedToday)), el('div', { class: 'sl' }, 'Solved today'), el('div', { class: 'm' }, c.solvedWeek + ' this week'))];
-      if (c.breached !== null && c.breached !== undefined) cards.push(stat('SLA breached', c.breached, { status: '', assignee: '', q: '', sla: 'breached' }, 'data-stat-breached'));
-      var list = function (title, rows, empty, data) {
-        var box = el('div', { class: 'pcard' }, el('h3', {}, title)); box.setAttribute(data, '1');
-        if (!rows.length) box.appendChild(el('p', { class: 'm' }, empty));
-        rows.forEach(function (t) { box.appendChild(el('button', { type: 'button', class: 'hrow', 'data-open': String(t.number), onclick: function () { open(t.number); } }, el('span', { class: 'grow' }, '#' + t.number + ' ' + t.subject), el('span', { class: 'm' }, t.requester + ' · ' + ago(t.updatedAt)))); });
+      var metric = function (label, value, sub, f, tone, data) {
+        var node = f ? el('button', { type: 'button', class: 'dash-metric ' + (tone || ''), onclick: go(f) },
+          el('span', { class: 'dash-metric-label' }, label),
+          el('strong', { class: 'dash-metric-value' }, String(value)),
+          el('span', { class: 'dash-metric-sub' }, sub || 'View matching tickets'),
+          el('span', { class: 'dash-metric-arrow', 'aria-hidden': 'true' }, '↗')) :
+          el('div', { class: 'dash-metric ' + (tone || '') },
+            el('span', { class: 'dash-metric-label' }, label),
+            el('strong', { class: 'dash-metric-value' }, String(value)),
+            el('span', { class: 'dash-metric-sub' }, sub || ''));
+        if (data) node.setAttribute(data, '1');
+        return node;
+      };
+      var hero = el('section', { class: 'dash-hero' },
+        el('div', { class: 'dash-hero-copy' },
+          el('span', { class: 'dash-eyebrow' }, 'EFFDESK · WORKSPACE OVERVIEW'),
+          el('h2', {}, hello),
+          el('p', {}, 'Here is what needs attention across your support operation today.'),
+          el('div', { class: 'dash-hero-actions' },
+            el('button', { type: 'button', class: 'btn', 'data-new-home': '1', onclick: function () { closePanes(); creating = true; newf = blankNew(); pending = []; draw(); } }, '＋ New ticket'),
+            el('button', { type: 'button', class: 'btn l', onclick: function () { goViews(); } }, 'View all tickets'))),
+        el('div', { class: 'dash-hero-pulse' },
+          el('span', { class: 'dash-pulse-label' }, 'TODAY SO FAR'),
+          el('div', { class: 'dash-pulse-row' }, el('span', { class: 'dash-pulse-icon created' }, '＋'), el('span', {}, 'New tickets'), el('strong', {}, String(c.newToday || 0))),
+          el('div', { class: 'dash-pulse-row' }, el('span', { class: 'dash-pulse-icon solved' }, '✓'), el('span', {}, 'Solved'), el('strong', {}, String(c.solvedToday || 0))),
+          el('div', { class: 'dash-pulse-foot' }, String(c.solvedWeek || 0) + ' solved in the last 7 days')));
+      var cards = [
+        metric('Open tickets', c.open || 0, 'Currently awaiting resolution', { status: 'open', assignee: '', q: '' }, 'blue', 'data-stat-open'),
+        metric('Pending', c.pending || 0, 'Waiting for a customer', { status: 'pending', assignee: '', q: '' }, 'violet', 'data-stat-pending'),
+        metric('Needs an owner', c.unassigned || 0, 'Active tickets without an assignee', { status: 'active', assignee: 'none', q: '' }, 'amber', 'data-stat-unassigned'),
+        metric('Urgent priority', c.urgent || 0, 'Active urgent tickets', { status: 'active', assignee: '', q: '', columnFilters: { priority: 'urgent' } }, 'rose', 'data-stat-urgent'),
+        metric('Assigned to you', c.mine || 0, 'Your active workload', { status: 'active', assignee: 'me', q: '' }, 'green', 'data-stat-mine')
+      ];
+      if (c.breached !== null && c.breached !== undefined) cards.push(metric('SLA breached', c.breached, 'Tickets outside their SLA target', { status: '', assignee: '', q: '', sla: 'breached' }, 'rose', 'data-stat-breached'));
+      var daily = Array.isArray(dash.daily) ? dash.daily : [], maxDaily = Math.max(1, ...daily.map(function (d) { return Math.max(Number(d.created) || 0, Number(d.solved) || 0); }));
+      var createdTotal = daily.reduce(function (n, d) { return n + (Number(d.created) || 0); }, 0);
+      var solvedTotal = daily.reduce(function (n, d) { return n + (Number(d.solved) || 0); }, 0);
+      var trend = el('section', { class: 'dash-panel dash-trend' },
+        el('div', { class: 'dash-panel-head' },
+          el('div', {}, el('span', { class: 'dash-eyebrow' }, 'LAST 7 DAYS'), el('h3', {}, 'Ticket activity'), el('p', { class: 'm' }, 'New tickets compared with tickets solved')),
+          el('div', { class: 'dash-trend-totals' }, el('span', {}, el('b', { class: 'dash-dot created' }), createdTotal + ' created'), el('span', {}, el('b', { class: 'dash-dot solved' }), solvedTotal + ' solved'))),
+        el('div', { class: 'dash-chart', role: 'img', 'aria-label': 'Last seven days: ' + createdTotal + ' tickets created and ' + solvedTotal + ' solved' },
+          daily.map(function (d) { var a = Number(d.created) || 0, b = Number(d.solved) || 0; return el('div', { class: 'dash-day', title: d.label + ': ' + a + ' created, ' + b + ' solved' },
+            el('div', { class: 'dash-day-bars' }, el('span', { class: 'dash-bar created', style: 'height:' + Math.max(a ? 5 : 2, Math.round(100 * a / maxDaily)) + '%' }), el('span', { class: 'dash-bar solved', style: 'height:' + Math.max(b ? 5 : 2, Math.round(100 * b / maxDaily)) + '%' })),
+            el('span', { class: 'dash-day-label' }, d.label)); })));
+      var ticketList = function (title, rows, empty, eyebrow, showStatus) {
+        rows = Array.isArray(rows) ? rows : [];
+        var box = el('section', { class: 'dash-panel dash-ticket-panel' },
+          el('div', { class: 'dash-panel-head' }, el('div', {}, el('span', { class: 'dash-eyebrow' }, eyebrow), el('h3', {}, title)), el('span', { class: 'dash-count' }, String(rows.length))));
+        if (!rows.length) box.appendChild(el('div', { class: 'dash-empty' }, el('span', { class: 'dash-empty-mark' }, '✓'), el('strong', {}, 'All clear'), el('p', {}, empty)));
+        rows.forEach(function (t) {
+          box.appendChild(el('button', { type: 'button', class: 'dash-ticket-row', 'data-open': String(t.number), onclick: function () { open(t.number); } },
+            el('span', { class: 'dash-ticket-main' }, el('span', { class: 'dash-ticket-title' }, '#' + t.number + ' · ' + t.subject), el('span', { class: 'dash-ticket-meta' }, (t.requester || 'Unknown requester') + ' · ' + ago(t.updatedAt))),
+            el('span', { class: 'dash-ticket-tags' }, showStatus ? el('span', { class: 'badge s-' + t.status }, statusName(t)) : null, el('span', { class: 'dash-priority ' + (t.priority || 'normal') }, cap(t.priority || 'normal')))));
+        });
         return box;
       };
-      var st = dash.setup, steps = [[st.inbox, 'Set up your support email address', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }], [st.articles, 'Write your first help article', loadArticles], [st.team, 'Invite a teammate', function () { location_go('/app.html'); }], [st.firstTicket, 'Create a test ticket', function () { closePanes(); creating = true; draw(); }]];
+      var st = dash.setup || {}, steps = [
+        [st.inbox, 'Connect your support inbox', 'Route customer emails directly into EffDesk', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }],
+        [st.articles, 'Publish your first help article', 'Give customers a self-service answer', loadArticles],
+        [st.team, 'Invite your team', 'Bring agents into the workspace', function () { location_go('/app.html'); }],
+        [st.firstTicket, 'Create your first ticket', 'Try the full agent workflow', function () { closePanes(); creating = true; newf = blankNew(); draw(); }]
+      ];
       var todo = steps.filter(function (x) { return !x[0]; }), setup = null;
-      if (todo.length) { setup = el('div', { class: 'pcard', 'data-setup': '1' }, el('h3', {}, 'Finish setting up (' + (steps.length - todo.length) + ' of ' + steps.length + ' done)')); todo.forEach(function (x) { setup.appendChild(el('button', { type: 'button', class: 'hrow', onclick: x[2] }, el('span', { class: 'grow' }, x[1]), el('span', { class: 'm' }, 'Go →'))); }); }
-      return el('div', { class: 'page wide' }, el('div', { class: 'bar' }, el('h2', {}, hello), el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn', 'data-new-home': '1', onclick: function () { closePanes(); creating = true; draw(); } }, 'New ticket')),
-        el('div', { class: 'stats' }, cards), dash.portal ? el('div', { class: 'pcard', 'data-portal': '1' }, el('h3', {}, 'Your customer portal and help center'), el('p', {}, el('a', { href: dash.portal, target: '_blank', rel: 'noopener' }, dash.portal.replace('https://', '')), ' · share this address with your customers.')) : null, setup, el('div', { class: 'rgrid' }, list('Assigned to you', dash.mine, 'Nothing is waiting on you.', 'data-list-mine'), list('Needs an owner', dash.unassigned, 'Every active ticket has an owner.', 'data-list-unassigned')));
+      if (todo.length) {
+        setup = el('section', { class: 'dash-panel dash-setup', 'data-setup': '1' },
+          el('div', { class: 'dash-panel-head' }, el('div', {}, el('span', { class: 'dash-eyebrow' }, 'GETTING STARTED'), el('h3', {}, 'Make EffDesk yours')), el('span', { class: 'dash-count' }, (steps.length - todo.length) + ' / ' + steps.length)),
+          el('div', { class: 'dash-setup-track' }, el('span', { style: 'width:' + Math.round(100 * (steps.length - todo.length) / steps.length) + '%' })));
+        todo.forEach(function (x) { setup.appendChild(el('button', { type: 'button', class: 'dash-setup-row', onclick: x[3] }, el('span', { class: 'dash-setup-check' }, '＋'), el('span', { class: 'dash-setup-copy' }, el('strong', {}, x[1]), el('span', {}, x[2])), el('span', { class: 'dash-setup-arrow' }, '→'))); });
+      }
+      var portal = dash.portal ? el('section', { class: 'dash-portal', 'data-portal': '1' }, el('span', { class: 'dash-portal-mark' }, '↗'), el('span', { class: 'dash-portal-copy' }, el('strong', {}, 'Your customer portal is ready'), el('span', {}, 'Share your self-service support experience with customers')), el('a', { href: dash.portal, target: '_blank', rel: 'noopener' }, 'Open portal')) : null;
+      return el('div', { class: 'page wide dash-page' }, hero, el('div', { class: 'dash-metrics' }, cards),
+        el('div', { class: 'dash-content-grid' }, trend, ticketList('Needs attention', dash.unassigned, 'No active tickets are waiting for an owner.', 'PRIORITY QUEUE', true)),
+        el('div', { class: 'dash-lower-grid' }, ticketList('Assigned to you', dash.mine, 'Your queue is clear. Nice work.', 'MY WORK', true), ticketList('Recently updated', dash.recent, 'There is no ticket activity yet.', 'LATEST ACTIVITY', true)),
+        setup, portal);
     }
     function location_go(u) { nav.go(u); }
     function reportPane() {
