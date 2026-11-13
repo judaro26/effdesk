@@ -457,6 +457,7 @@
         if(!rs[0].ok){integrationsRows=[];say(rs[0].body.error||'Could not load external integrations.',true);}else integrationsRows=rs[0].body.connections||[];
         integrationsHooks=rs[1].ok?(rs[1].body.webhooks||[]):[];
         integrationsNative=rs[2].ok?(rs[2].body.connections||[]):[];
+        integrationsScimTokens=rs[3].ok?(rs[3].body.tokens||[]):[];
         draw();
       }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];integrationsScimTokens=[];say('Could not load external integrations.',true);draw();});
     }
