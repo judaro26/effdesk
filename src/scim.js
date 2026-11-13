@@ -46,10 +46,13 @@ export async function createScimToken(pool, orgId, actorId, name) {
   if (!label) return fail('Give this SCIM token a name.');
   const token = 'effscim_' + crypto.randomBytes(32).toString('base64url');
   const id = crypto.randomUUID();
-  await withOrg(pool, orgId, c => c.query(
-    'insert into scim_tokens (id,org_id,name,token_hash,created_by) values ($1,$2,$3,$4,$5)',
-    [id, orgId, label, digest(token), actorId],
-  ));
+  const saved = await withOrg(pool, orgId, async c => {
+    const count = await c.query('select count(*)::int as n from scim_tokens where org_id=$1 and revoked_at is null', [orgId]);
+    if (count.rows[0].n >= 10) return false;
+    await c.query('insert into scim_tokens (id,org_id,name,token_hash,created_by) values ($1,$2,$3,$4,$5)', [id, orgId, label, digest(token), actorId]);
+    return true;
+  });
+  if (!saved) return fail('This workspace already has 10 active SCIM tokens. Revoke an unused token first.', 409);
   return { ok: true, token: { id, name: label }, secret: token };
 }
 export async function revokeScimToken(pool, orgId, id) {
@@ -115,6 +118,11 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
   } else {
     await deactivateMembership(pool, orgId, user.id);
   }
+  const externalId = clean(input.externalId, 250) || null;
+  if (externalId) {
+    const clash = await withOrg(pool, orgId, c => c.query('select id from scim_users where org_id=$1 and external_id=$2 and user_id<>$3 limit 1', [orgId, externalId, user.id]));
+    if (clash.rowCount) return fail('That externalId is already assigned to another SCIM user.', 409, 'uniqueness');
+  }
   const scimId = existing?.scim_id || crypto.randomUUID();
   const active = input.active !== false;
   const saved = await withOrg(pool, orgId, async c => {
@@ -122,7 +130,7 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
       values ($1,$2,$3,$4,$5,$6,$7,$8)
       on conflict (org_id,user_id) do update set external_id=excluded.external_id,active=excluded.active,display_name=excluded.display_name,given_name=excluded.given_name,family_name=excluded.family_name,updated_at=now()
       returning id as scim_id,external_id,active,display_name,given_name,family_name,created_at,updated_at`,
-      [scimId, orgId, user.id, clean(input.externalId, 250) || null, active, names.display || (createdUser ? user.name : null), names.given || null, names.family || null]);
+      [scimId, orgId, user.id, externalId, active, names.display || (createdUser ? user.name : null), names.given || null, names.family || null]);
     return q.rows[0];
   });
   return { ok: true, row: { ...saved, user_id: user.id, name: user.name, email: user.email } };
@@ -141,13 +149,14 @@ async function patchUser(pool, orgId, row, body) {
       if (v.name) input.name = v.name;
       if (v.userName !== undefined) input.userName = v.userName;
       if (v.externalId !== undefined) input.externalId = v.externalId;
-      if (v.emails) input.emails = v.emails;
+      if (v.emails) { input.emails = v.emails; const primary = v.emails.find(e => e && (e.primary || e.type === 'work')) || v.emails[0]; if (primary?.value) input.userName = primary.value; }
       continue;
     }
     if (path === 'active') input.active = action === 'remove' ? false : op.value !== false;
     else if (path === 'displayname') input.displayName = action === 'remove' ? '' : op.value;
     else if (path === 'username') input.userName = op.value;
     else if (path === 'externalid') input.externalId = action === 'remove' ? '' : op.value;
+    else if (/^emails(?:\\[[^\\]]+\\])?\\.value$/.test(path)) { input.userName = action === 'remove' ? '' : op.value; input.emails = action === 'remove' ? [] : [{ value: op.value, type: 'work', primary: true }]; }
     else if (path === 'name.givenname') input.name.givenName = action === 'remove' ? '' : op.value;
     else if (path === 'name.familyname') input.name.familyName = action === 'remove' ? '' : op.value;
     else return fail('Unsupported PATCH path: ' + path, 400, 'noTarget');
@@ -157,7 +166,7 @@ async function patchUser(pool, orgId, row, body) {
 export async function scim(req, { pool }) {
   const orgId = await authenticate(pool, req);
   if (!orgId) return scimError(401, 'A valid SCIM bearer token is required.');
-  const url = new URL(req.url), base = url.origin + url.pathname.replace(/\/+$/, '');
+  const url = new URL(req.url), base = url.origin + url.pathname.replace(/\/Users(?:\/[^/]+)?\/?$/i, '/Users').replace(/\/+$/, '');
   if (req.method === 'GET' && /\/ServiceProviderConfig\/?$/i.test(url.pathname)) return response(200, {
     schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
     patch: { supported: true }, bulk: { supported: false, maxOperations: 0, maxPayloadSize: 0 },
