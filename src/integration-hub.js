@@ -15,7 +15,7 @@ const enc = (env, value) => seal(secret(env), value);
 const dec = (env, value) => unseal(secret(env), value);
 
 function scopesFrom(response, provider) {
-  const raw = response.headers.get(provider === 'github' ? 'x-oauth-scopes' : 'x-oauth-scopes') || response.headers.get('scope') || '';
+  const raw = response.headers.get('x-oauth-scopes') || response.headers.get('scope') || '';
   return [...new Set(raw.split(/[ ,]+/).map(x => clean(x, 100)).filter(Boolean))].slice(0, 100);
 }
 async function verify(provider, token, fetchFn = fetch) {
