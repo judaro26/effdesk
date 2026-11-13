@@ -1,6 +1,6 @@
 // src/ticket-lifecycle.js: tenant-scoped lifecycle policies and idempotent scheduled actions.
 import { withOrg } from './db.js';
-import { updateTicket, addMessage } from './tickets.js';
+import { updateTicket } from './tickets.js';
 import { sendTicketReply } from './ticket-mail.js';
 
 export const DEFAULT_LIFECYCLE = Object.freeze({
@@ -42,8 +42,16 @@ async function claim(pool, orgId, ticketId, key, detail = {}) {
 }
 async function act(pool, orgId, t, key, action, detail = {}) {
   if (!(await claim(pool,orgId,t.id,key,detail))) return false;
-  await action();
-  return true;
+  try { await action(); return true; }
+  catch (e) { await withOrg(pool,orgId,c=>c.query('delete from ticket_lifecycle_runs where org_id=$1 and ticket_id=$2 and action_key=$3',[orgId,t.id,key])); throw e; }
+}
+async function lifecycleMessage(pool, orgId, ticketId, body, internal) {
+  return withOrg(pool,orgId,async c=>{
+    const kind=internal?'note':'agent';
+    const m=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,$3,null,$4,$5) returning id',[orgId,ticketId,kind,'Ticket lifecycle automation',body])).rows[0];
+    await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)',[orgId,ticketId,'Ticket lifecycle automation',internal?'note':'reminder',internal?'Internal agent reminder sent':'Customer reminder sent']);
+    return m;
+  });
 }
 const hoursSince = (v, now) => v ? Math.max(0,(now-new Date(v).getTime())/3600000) : 0;
 export async function runTicketLifecycle(pool, mailer, env = process.env, nowMs = Date.now()) {
@@ -53,36 +61,35 @@ export async function runTicketLifecycle(pool, mailer, env = process.env, nowMs 
     try {
       const policyResult = await getLifecyclePolicy(pool,orgId), p = policyResult.policy;
       if (!Object.values(p).some(v => v === true)) continue;
-      const rows = await withOrg(pool,orgId,c=>c.query(`select id,number,subject,status,priority,requester_name,requester_email,assignee_id,solved_at,closed_at,updated_at
-        from tickets where org_id=$1 and status in ('open','pending','on_hold','solved','closed')
+      const rows = await withOrg(pool,orgId,c=>c.query(`select t.id,t.number,t.subject,t.status,t.priority,t.requester_name,t.requester_email,t.assignee_id,t.solved_at,t.closed_at,t.updated_at,
+        (select max(m.created_at) from ticket_messages m where m.org_id=t.org_id and m.ticket_id=t.id and m.kind='requester') as last_customer_at
+        from tickets t where org_id=$1 and status in ('open','pending','on_hold','solved','closed')
         and updated_at < now() - interval '1 hour' order by updated_at limit 1000`,[orgId]));
       for (const t of rows.rows) {
         try {
-          const idle = hoursSince(t.updated_at,nowMs), solvedAge = hoursSince(t.solved_at,nowMs), closedAge = hoursSince(t.closed_at || t.updated_at,nowMs);
+          const idle = hoursSince(t.updated_at,nowMs), customerIdle = hoursSince(t.last_customer_at || t.created_at || t.updated_at,nowMs), solvedAge = hoursSince(t.solved_at,nowMs), closedAge = hoursSince(t.closed_at || t.updated_at,nowMs);
           if (t.status === 'solved' && p.reopenEnabled && solvedAge >= p.reopenAfterDays*24 && (!p.autoCloseEnabled || solvedAge < p.autoCloseDays*24)) {
-            if (await act(pool,orgId,t,'reopen-after-idle',async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'open'});if(!r.ok)throw new Error(r.error||'Unable to reopen ticket');})) actions++;
+            if (await act(pool,orgId,t,'reopen-after-idle-'+new Date(t.solved_at).toISOString(),async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'open'});if(!r.ok)throw new Error(r.error||'Unable to reopen ticket');})) actions++;
             continue;
           }
           if (t.status === 'solved' && p.autoCloseEnabled && solvedAge >= p.autoCloseDays*24) {
-            if (await act(pool,orgId,t,'auto-close-solved',async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'closed'});if(!r.ok)throw new Error(r.error||'Unable to close ticket');})) actions++;
+            if (await act(pool,orgId,t,'auto-close-solved-'+new Date(t.solved_at).toISOString(),async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'closed'});if(!r.ok)throw new Error(r.error||'Unable to close ticket');})) actions++;
             continue;
           }
-          if (t.status === 'pending' && p.customerReminderEnabled && idle >= p.customerReminderHours) {
-            const interval = p.customerReminderRepeatHours, bucket = Math.floor((idle-p.customerReminderHours)/interval);
-            const key = 'customer-reminder-'+bucket;
+          if (t.status === 'pending' && p.customerReminderEnabled && customerIdle >= p.customerReminderHours) {
+            const interval = p.customerReminderRepeatHours, bucket = Math.floor((customerIdle-p.customerReminderHours)/interval);
+            const key = 'customer-reminder-'+String(t.last_customer_at || t.updated_at)+'-'+bucket;
             if (await act(pool,orgId,t,key,async()=>{
               const body='We are waiting for your response on this request. Reply to this email if you still need help.';
-              const msg=await addMessage(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{body,internal:false,status:t.status});
-              if(!msg.ok)throw new Error(msg.error||'Unable to add customer reminder');
-              if(mailer)await sendTicketReply(pool,mailer,env,orgId,t.number,msg.message.id,[]);
+              const msg=await lifecycleMessage(pool,orgId,t.id,body,false);
+              if(mailer)await sendTicketReply(pool,mailer,env,orgId,t.number,msg.id,[]);
             },{bucket})) actions++;
           }
           if (['open','on_hold'].includes(t.status) && p.agentReminderEnabled && idle >= p.agentReminderHours) {
-            const interval=p.agentReminderRepeatHours,bucket=Math.floor((idle-p.agentReminderHours)/interval),key='agent-reminder-'+bucket;
+            const interval=p.agentReminderRepeatHours,bucket=Math.floor((idle-p.agentReminderHours)/interval),key='agent-reminder-'+new Date(t.updated_at).toISOString()+'-'+bucket;
             if(await act(pool,orgId,t,key,async()=>{
               const body='Automation reminder: this ticket has had no activity for '+Math.round(idle)+' hours. Please review ownership and next steps.';
-              const msg=await addMessage(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{body,internal:true});
-              if(!msg.ok)throw new Error(msg.error||'Unable to add agent reminder');
+              await lifecycleMessage(pool,orgId,t.id,body,true);
             },{bucket})) actions++;
           }
         } catch(e) { errors++; console.warn('ticket lifecycle action failed',orgId,t.number,e.message); }
