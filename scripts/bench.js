@@ -7,7 +7,8 @@ import { dashboard } from '../src/dashboard.js';
 import { report } from '../src/reports.js';
 import { listTeam, agentDetail } from '../src/team.js';
 import { exportData } from '../src/audit.js';
-const N = Number(process.argv[2]) || 100000;
+const N = Number(process.argv[2]) || Number(process.env.BENCH_TICKETS) || 100000;
+const RUNS = Math.max(3, Math.min(30, Number(process.env.BENCH_RUNS) || 9));
 const { url } = await freshDb('bench'); await migrate(url); const pool = makePool(url);
 const orgs = ['big', ...Array.from({ length: 30 }, (_, i) => 'o' + i)];
 for (const o of orgs) await pool.query('insert into "organization" (id, name, slug, "createdAt") values ($1,$1,$1,now())', [o]);
@@ -27,7 +28,14 @@ await seed('big', N); for (const o of orgs.slice(1)) await seed(o, Math.round(N 
 await pool.query('analyze');
 console.log(`seeded ${N} tickets in the big workspace and ${orgs.length - 1} small ones in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const me = { id: 'u1' }; const rows = [];
-const time = async (name, fn, runs = 5) => { await fn(); const ts = []; for (let i = 0; i < runs; i++) { const s = performance.now(); await fn(); ts.push(performance.now() - s); } ts.sort((a, b) => a - b); rows.push([name, ts[Math.floor(ts.length / 2)].toFixed(0)]); };
+const percentile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
+const time = async (name, fn, runs = RUNS) => {
+  await fn(); // one warm-up run, excluded from the sample
+  const samples = [];
+  for (let i = 0; i < runs; i++) { const started = performance.now(); await fn(); samples.push(performance.now() - started); }
+  samples.sort((a, b) => a - b);
+  rows.push({ screen: name, runs, p50_ms: Number(percentile(samples, .50).toFixed(1)), p95_ms: Number(percentile(samples, .95).toFixed(1)), min_ms: Number(samples[0].toFixed(1)), max_ms: Number(samples[samples.length - 1].toFixed(1)) });
+};
 await time('ticket list (default)', () => listTickets(pool, 'big', me, {}));
 await time('ticket list (active)', () => listTickets(pool, 'big', me, { status: 'active' }));
 await time('ticket list (mine, open)', () => listTickets(pool, 'big', me, { assignee: 'me', status: 'open' }));
@@ -44,5 +52,6 @@ await time('agent detail', () => agentDetail(pool, 'big', 'u3', {}));
 await time('export part 1', () => exportData(pool, 'big', 1), 3);
 await time('ticket list (small workspace)', () => listTickets(pool, 'o3', me, {}));
 await time('session-style lookups x4', async () => { for (let i = 0; i < 4; i++) await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', ['u1', 'big']); });
-console.table(rows.map(([n, ms]) => ({ screen: n, 'median ms': Number(ms) })));
+console.log(`\nBenchmark summary: ${N.toLocaleString()} tickets in the primary tenant; ${RUNS} measured runs per screen (plus one warm-up).`);
+console.table(rows);
 await pool.end(); process.exit(0);
