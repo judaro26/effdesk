@@ -14,15 +14,21 @@ export async function notifyApproval(pool,mailer,orgId,approvalId,stageIndex=0,e
   if(!data||!data.ids.length)return {sent:0};
   let sent=0;
   for(const id of data.ids){
-   const claim=await withOrg(pool,orgId,c=>c.query('insert into approval_notifications(org_id,approval_id,stage_index,user_id,event) values($1,$2,$3,$4,$5) on conflict do nothing returning id',[orgId,Number(approvalId),Number(stageIndex)||0,id,event]));
-   if(!claim.rowCount)continue;
    const p=(await pool.query('select u.email,coalesce(p.notify,true) notify from "user" u join member m on m."userId"=u.id and m."organizationId"=$1 left join desk_prefs p on p.user_id=u.id where u.id=$2',[orgId,id])).rows[0];
-   if(!p||!p.notify)continue;
+   if(!p||!p.email||!p.notify)continue;
+   const claim=await withOrg(pool,orgId,c=>c.query("insert into approval_notifications(org_id,approval_id,stage_index,user_id,event,delivery_status,attempts) values($1,$2,$3,$4,$5,'sending',1) on conflict(org_id,approval_id,stage_index,user_id,event) do update set delivery_status='sending',attempts=approval_notifications.attempts+1,last_error=null,updated_at=now() where approval_notifications.delivery_status='failed' or (approval_notifications.delivery_status='sending' and approval_notifications.updated_at < now()-interval '15 minutes') returning id",[orgId,Number(approvalId),Number(stageIndex)||0,id,event]));
+   if(!claim.rowCount)continue;
+   const logId=claim.rows[0].id;
    const what=event==='requested'?'approval_requested':event==='rejected'?'approval_rejected':event==='completed'?'approval_completed':'approval_decided';
    const stage=(Array.isArray(data.a.stages)&&data.a.stages[stageIndex])||null;
    const summary=event==='requested'?'Your approval is needed'+(stage?' for '+stage.name:'')+'.':'Approval update: '+(event==='rejected'?'request rejected':event==='completed'?'all stages approved':'a decision was recorded')+'.';
-   try{await mailer.agentNotice(p.email,{kind:what,orgName:data.orgName,number:data.a.ticket_number,subject:data.a.subject||data.a.title,summary,url:PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)+'&ticket='+Number(data.a.ticket_number)});sent++;}
-   catch(e){console.warn('approval notice failed:',e.message);}
+   try{
+    await mailer.agentNotice(p.email,{kind:what,orgName:data.orgName,number:data.a.ticket_number,subject:data.a.subject||data.a.title,summary,url:PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)+'&ticket='+Number(data.a.ticket_number)});
+    await withOrg(pool,orgId,c=>c.query("update approval_notifications set delivery_status='sent',last_error=null,updated_at=now() where org_id=$1 and id=$2",[orgId,logId]));sent++;
+   }catch(e){
+    await withOrg(pool,orgId,c=>c.query("update approval_notifications set delivery_status='failed',last_error=$3,updated_at=now() where org_id=$1 and id=$2",[orgId,logId,String(e.message||e).slice(0,500)]));
+    console.warn('approval notice failed:',e.message);
+   }
   }
   return {sent};
  }catch(e){console.warn('approval notification error:',e.message);return {sent:0};}
