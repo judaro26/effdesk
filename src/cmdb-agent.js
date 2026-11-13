@@ -13,7 +13,7 @@ export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='
  if(!['windows_agent','osquery_agent'].includes(provider))return {ok:false,status:400,error:'Unsupported discovery provider.'};
  const name=clean(nameInput,120);
  if(!name)return {ok:false,status:400,error:'Give this discovery agent a name.'};
- const active=await withOrg(pool,orgId,c=>c.query("select count(*)::int n from cmdb_discovery_agents where org_id=$1 and revoked_at is null",[orgId]));
+ const active=await withOrg(pool,orgId,c=>c.query("select count(*)::int n from cmdb_discovery_agents where org_id=$1 and revoked_at is null and expires_at>now()",[orgId]));
  if(active.rows[0].n>=100)return {ok:false,status:400,error:'A workspace can have up to 100 active discovery agents.'};
  const id=crypto.randomUUID(),secret=crypto.randomBytes(32).toString('base64url');
  const token='edk1.'+b64u(orgId)+'.'+id+'.'+secret;
