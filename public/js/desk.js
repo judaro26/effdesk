@@ -23,7 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
-    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsScimTokens=[],integrationsScimSecret='',integrationsLoading=false;
+    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsScimTokens=[],integrationsScimSecret='',integrationsIncidentConnections=[],integrationsIncidentSecret='',integrationsIncidentProvider='',integrationsLoading=false;
     var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[], ciVendors=[], ciContracts=[], ciLicenses=[], ciWarranty=[], ciLifecycleOpen=false, ciDiscoveryStatus=null, ciDiscoveryAgents=[], ciDiscoverySoftware=[], ciNewAgentToken='', ciNewAgentCommand='', ciNewAgentProvider='windows_agent', ciNewSnmpTargets='', ciLicenseReconciliation=[], ciOwnershipReport=null, ciCompliancePolicies=[], ciComplianceEvaluation=null;
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
@@ -452,14 +452,15 @@
     function loadIntegrations(){
       if(!isAdmin)return Promise.resolve();
       closePanes();integrationsOpen=true;integrationsRows=null;integrationsHooks=[];integrationsLoading=true;draw();
-      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list'),api('integration-hub-list'),api('scim-token-list')]).then(function(rs){
+      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list'),api('integration-hub-list'),api('scim-token-list'),api('incident-provider-list')]).then(function(rs){
         integrationsLoading=false;
         if(!rs[0].ok){integrationsRows=[];say(rs[0].body.error||'Could not load external integrations.',true);}else integrationsRows=rs[0].body.connections||[];
         integrationsHooks=rs[1].ok?(rs[1].body.webhooks||[]):[];
         integrationsNative=rs[2].ok?(rs[2].body.connections||[]):[];
         integrationsScimTokens=rs[3].ok?(rs[3].body.tokens||[]):[];
+        integrationsIncidentConnections=rs[4].ok?(rs[4].body.connections||[]):[];
         draw();
-      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];integrationsScimTokens=[];say('Could not load external integrations.',true);draw();});
+      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];integrationsNative=[];integrationsScimTokens=[];integrationsIncidentConnections=[];say('Could not load external integrations.',true);draw();});
     }
     function integrationsPane(){
       var rows=integrationsRows||[],hookRows=integrationsHooks||[];
@@ -503,6 +504,24 @@
             connected?el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Disconnect '+p.name+' from this workspace?'))return;integrationRequest('POST','/disconnect',{provider:p.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not disconnect '+p.name+'.',true);say(p.name+' disconnected.');loadIntegrations();});}},'Disconnect'):el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget;b.disabled=true;b.textContent='Connecting…';integrationRequest('POST','/oauth/start',{provider:p.id}).then(function(r){if(!r.ok||!r.body.url){b.disabled=false;b.textContent='Connect '+p.name;return say(r.body.error||'Could not start OAuth connection.',true);}root.location.assign(r.body.url);}).catch(function(){b.disabled=false;b.textContent='Connect '+p.name;say('Could not start OAuth connection.',true);});}},'Connect '+p.name))
         );
       }
+      var incidentProviders=[{id:'pagerduty',name:'PagerDuty',detail:'Incident lifecycle and escalation status.'},{id:'rootly',name:'Rootly',detail:'Incident updates and response coordination.'},{id:'firehydrant',name:'FireHydrant',detail:'Incident lifecycle and response visibility.'}];
+      var incidentPanel=el('section',{class:'integration-hub-section incident-provider-section'},
+        el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'04 · INCIDENT RESPONSE'),el('h3',{},'Incident response platforms'),el('p',{class:'m'},'Receive incident lifecycle events and keep EffDesk incident tickets synchronized with your response platforms.'))),
+        el('div',{class:'integration-providers-grid'},incidentProviders.map(function(p){
+          var connection=integrationsIncidentConnections.filter(function(x){return x.provider===p.id&&x.active;})[0];
+          var revealed=integrationsIncidentProvider===p.id&&integrationsIncidentSecret;
+          return el('article',{class:'integration-provider-card integration-provider-'+p.id},
+            el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},p.id==='pagerduty'?'PD':p.id==='rootly'?'R':'FH'),el('div',{class:'integration-provider-title'},el('h3',{},p.name),el('p',{class:'m'},p.detail)),el('span',{class:'integration-status '+(connection?'is-connected':'is-disconnected')},connection?'Connected':'Not connected')),
+            el('p',{class:'integration-provider-description'},connection?'Webhook endpoint active. Last event: '+(connection.last_at?ago(connection.last_at):'Waiting for first event')+(connection.last_status?' · '+connection.last_status:''):'Create a private endpoint, then configure incident webhooks in '+p.name+'.'),
+            revealed?el('div',{class:'integration-channel-editor'},el('strong',{},'Copy this endpoint now. It contains the one-time secret.'),el('input',{type:'text',readonly:true,value:root.location.origin+'/api/integrations/incidents/'+p.id+'/'+integrationsIncidentSecret,'aria-label':p.name+' webhook endpoint',onclick:function(e){e.currentTarget.select();}}),el('p',{class:'m'},'Treat the complete URL as a password. It will not be shown again; revoke this connection to rotate it.'),el('button',{type:'button',class:'btn l sm',onclick:function(){integrationsIncidentSecret='';integrationsIncidentProvider='';draw();}},'Done')):null,
+            el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connection?'Tenant-scoped inbound webhook':'One-time secret URL · JSON events'),
+              connection?el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Revoke the '+p.name+' webhook endpoint? New events will be rejected.'))return;api('incident-provider-revoke',{id:connection.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not revoke incident webhook.',true);say(p.name+' webhook revoked.');loadIntegrations();});}},'Revoke endpoint'):
+              el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget,input=main.querySelector('#incident-provider-name-'+p.id),name=input&&input.value.trim()||p.name;b.disabled=true;api('incident-provider-create',{provider:p.id,name:name}).then(function(r){b.disabled=false;if(!r.ok)return say(r.body.error||'Could not create incident webhook.',true);integrationsIncidentSecret=r.body.secret||'';integrationsIncidentProvider=p.id;say(p.name+' webhook endpoint created. Copy its URL now.');loadIntegrations();}).catch(function(){b.disabled=false;say('Could not create incident webhook.',true);});}},'Generate endpoint')),
+            !connection?el('input',{type:'text',maxlength:'100',placeholder:p.name+' connection name','aria-label':p.name+' connection name',id:'incident-provider-name-'+p.id}):null
+          );
+        })),
+        el('p',{class:'integration-provider-meta'},'Events are deduplicated and mapped to tenant-owned EffDesk incident tickets. The endpoint secret is stored only as a SHA-256 digest. Provider payloads are normalized; this initial connector does not call provider APIs or synchronize escalation policies back to those platforms.')
+      );
       var scimTokenItems=integrationsScimTokens.map(function(t){return el('div',{class:'mitem'},el('span',{class:'grow'},el('strong',{},t.name),el('div',{class:'m'},'Created '+new Date(t.created_at).toLocaleDateString()+' · Last used: '+(t.last_used_at?ago(t.last_used_at):'Never'))),el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Revoke this SCIM token? Identity-provider provisioning using it will stop immediately.'))return;api('scim-token-revoke',{id:t.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not revoke SCIM token.',true);say('SCIM token revoked.');loadIntegrations();});}},'Revoke'));});
       var scimPanel=el('section',{class:'integration-hub-section scim-provisioning-section'},
         el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'05 · IDENTITY LIFECYCLE'),el('h3',{},'SCIM 2.0 user provisioning'),el('p',{class:'m'},'Connect Microsoft Entra ID, Okta, or Google Workspace using a tenant-specific bearer token. Provisioning creates or links users, assigns the standard Member role, and deprovisions only this workspace membership.'))),
@@ -531,8 +550,9 @@
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'01 · COMMUNICATIONS'),el('h3',{},'Team notifications'),el('p',{class:'m'},'Send ticket and customer activity into the channels your team already uses.'))),el('div',{class:'integration-providers-grid'},comms.map(communicationCard)),channelItems.length?el('div',{class:'integration-channel-list'},channelItems):null),
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'02 · ISSUE TRACKING'),el('h3',{},'Engineering work'),el('p',{class:'m'},'Keep support tickets and engineering issues synchronized in both directions.'))),el('div',{class:'integration-providers-grid'},providers.map(issueCard))),
             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'03 · DEVELOPER TOOLS'),el('h3',{},'Engineering platforms'),el('p',{class:'m'},'Connect GitHub and GitLab using credentials owned by this workspace. Tokens are encrypted at rest and can be tested or revoked here.'))),el('div',{class:'integration-providers-grid'},[developerCard('github'),developerCard('gitlab')])),
-            scimPanel,
-             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'04 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
+            incidentPanel,
+             scimPanel,
+             el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'06 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
               planned.map(function(group){return el('div',{class:'integration-catalog-group'},el('h4',{},group[0]),el('div',{class:'integration-catalog-list'},group.slice(1).map(function(name){return el('span',{class:'integration-catalog-item'},name,el('small',{},'Planned'));})));})
             )
           ),
