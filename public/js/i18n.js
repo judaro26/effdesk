@@ -465,6 +465,11 @@
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();
     if ((lang || current) !== 'es') return s;
+    // Translate common dynamic dashboard greetings and status/message prefixes.
+    if ((lang || current) === 'es') {
+      var greeting = /^(Good morning|Good afternoon|Good evening)(,\\s*)(.+)$/.exec(s);
+      if (greeting) return ({'Good morning':'Buenos días','Good afternoon':'Buenas tardes','Good evening':'Buenas tardes'}[greeting[1]]) + greeting[2] + greeting[3];
+    }
     var out = dict[key]; if (!out) return s;
     return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
   }
