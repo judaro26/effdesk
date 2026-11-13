@@ -22,7 +22,7 @@ create table if not exists configuration_items (
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),
  unique(org_id,id),
- foreign key(org_id,business_service_id) references business_services(org_id,id) on delete set null
+ foreign key(org_id,business_service_id) references business_services(org_id,id) on delete restrict
 );
 create unique index if not exists configuration_items_org_asset_tag_uq on configuration_items(org_id,lower(asset_tag)) where asset_tag is not null and asset_tag<>'';
 create index if not exists configuration_items_org_lifecycle on configuration_items(org_id,lifecycle,criticality,updated_at desc);
