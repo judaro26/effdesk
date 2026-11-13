@@ -10,9 +10,9 @@ create table if not exists cmdb_vendors (
  notes text not null default '' check(char_length(notes)<=3000),
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now(),
- unique(org_id,id),
- unique(org_id,lower(name))
+ unique(org_id,id)
 );
+create unique index if not exists cmdb_vendors_org_name_uq on cmdb_vendors(org_id,lower(name));
 create table if not exists cmdb_contracts (
  id bigserial primary key,
  org_id text not null references "organization"(id) on delete cascade,
