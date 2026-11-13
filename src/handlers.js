@@ -58,6 +58,7 @@ import { listServices, saveService, listIncidents, getIncident, saveIncident } f
 import { listProblems, getProblem, saveProblem } from './problems.js';
 import { listChanges, getChange, saveChange, decideChange, getChangeCabPolicy, saveChangeCabPolicy, previewChangeConflicts } from './change-management.js';
 import { listConfigurationItems, getConfigurationItem, saveConfigurationItem, saveConfigurationRelationship, linkConfigurationRecord } from './configuration-items.js';
+import { listVendors, saveVendor, listContracts, saveContract, listLicenses, saveLicense, warrantyReport, exportAssetsCsv, importAssetsCsv } from './cmdb-lifecycle.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -203,6 +204,15 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-ci-save': if ((g = need('itsm'))) return g; r = await saveConfigurationItem(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'cmdb.ci_updated' : 'cmdb.ci_created', 'CI #' + r.item.id, { lifecycle: r.item.lifecycle, type: r.item.ci_type }); break;
     case 'itsm-ci-relationship-save': if ((g = need('itsm'))) return g; r = await saveConfigurationRelationship(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.relationship_created', 'CI #' + b.sourceCiId, { targetCiId: b.targetCiId, relationship: b.relationship }); break;
     case 'itsm-ci-record-link': if ((g = need('itsm'))) return g; r = await linkConfigurationRecord(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.record_linked', 'CI #' + b.ciId, { recordType: b.recordType, recordId: b.recordId }); break;
+    case 'itsm-ci-vendors-list': if ((g = need('itsm'))) return g; r = await listVendors(pool, orgId); break;
+    case 'itsm-ci-vendor-save': if ((g = need('itsm'))) return g; r = await saveVendor(pool, orgId, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.vendor_saved', r.vendor.name, {}); break;
+    case 'itsm-ci-contracts-list': if ((g = need('itsm'))) return g; r = await listContracts(pool, orgId); break;
+    case 'itsm-ci-contract-save': if ((g = need('itsm'))) return g; r = await saveContract(pool, orgId, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.contract_saved', r.contract.name, {}); break;
+    case 'itsm-ci-licenses-list': if ((g = need('itsm'))) return g; r = await listLicenses(pool, orgId); break;
+    case 'itsm-ci-license-save': if ((g = need('itsm'))) return g; r = await saveLicense(pool, orgId, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.license_saved', r.license.product_name, { seatsPurchased: r.license.seats_purchased }); break;
+    case 'itsm-ci-warranty-report': if ((g = need('itsm'))) return g; r = await warrantyReport(pool, orgId, b); break;
+    case 'itsm-ci-export-csv': if ((g = adminOnly() || need('itsm'))) return g; r = await exportAssetsCsv(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.assets_exported', r.filename, {}); break;
+    case 'itsm-ci-import-csv': if ((g = adminOnly() || need('itsm'))) return g; r = await importAssetsCsv(pool, orgId, actor, b.csv); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.assets_imported', 'CSV import', { imported: r.imported, updated: r.updated, failed: r.failed }); break;
     case 'itsm-service-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveService(pool, orgId, b); break;
     case 'itsm-incident-list': if ((g = need('itsm'))) return g; r = await listIncidents(pool, orgId, b); break;
     case 'itsm-incident-get': if ((g = need('itsm'))) return g; r = await getIncident(pool, orgId, b.number); break;
