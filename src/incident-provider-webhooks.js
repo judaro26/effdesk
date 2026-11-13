@@ -63,8 +63,11 @@ function normalize(provider,body,raw) {
   const impact=sev1?'critical':sev2?'high':sev4?'low':'medium';
   const url=safeExternalUrl(clean(first(attrs.html_url,attrs.url,attrs.web_url,attrs.short_url),'1000'));
   const summary=clean(first(attrs.description,attrs.summary,attrs.details,attrs.description_text),'3000');
+  const owner=clean(first(attrs.assignments?.[0]?.assignee?.summary,attrs.assignments?.[0]?.assignee?.name,attrs.assigned_to?.name,attrs.assignee?.name,attrs.responder?.name,attrs.owner?.name),'160');
+  const service=clean(first(attrs.service?.summary,attrs.service?.name,attrs.service_name,attrs.services?.[0]?.name),'160');
+  const escalation=clean(first(attrs.escalation_policy?.name,attrs.escalation_policy?.summary,attrs.escalation?.name,attrs.escalation_level,attrs.escalation?.level),'160');
   const eventId=clean(first(event!==body?event.id:undefined,body.event_id,body.webhook_id,body.delivery_id,body.id&&String(body.id)!==id?body.id:undefined),200)||digest(raw);
-  return {id,title,eventId,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary};
+  return {id,title,eventId,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary,owner,service,escalation};
 }
 
 async function applyEvent(pool,orgId,provider,normalized) {
@@ -85,14 +88,14 @@ async function applyEvent(pool,orgId,provider,normalized) {
       await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,ticket.id,requester,normalized.summary||('Incident opened in '+requester+'.')]);
       await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,ticket.id,requester,requester+' incident imported · '+normalized.severity]);
       link=ticket; created=true;
-      await c.query('insert into incident_provider_links(org_id,provider,external_incident_id,ticket_id,external_url,external_status,external_severity,last_event_at) values($1,$2,$3,$4,$5,$6,$7,now())',[orgId,provider,normalized.id,ticket.id,normalized.url||null,normalized.statusRaw,normalized.severity]);
+      await c.query('insert into incident_provider_links(org_id,provider,external_incident_id,ticket_id,external_url,external_status,external_severity,external_owner,external_service,external_escalation,last_event_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())',[orgId,provider,normalized.id,ticket.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null]);
     } else {
       const changed=link.status!==normalized.ticketStatus||link.priority!==normalized.priority||link.subject!==normalized.title;
       await c.query(`update tickets set subject=$3,status=$4,priority=$5,solved_at=case when $4 in ('solved','closed') then coalesce(solved_at,now()) else null end,updated_at=now() where org_id=$1 and id=$2`,
         [orgId,link.ticket_id,normalized.title,normalized.ticketStatus,normalized.priority]);
       if(changed) await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,link.ticket_id,provider,provider+' update · '+normalized.statusRaw+' · '+normalized.severity]);
       if(changed && normalized.summary) await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,link.ticket_id,provider,normalized.summary]);
-      await c.query('update incident_provider_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,last_event_at=now(),updated_at=now() where org_id=$1 and provider=$2 and external_incident_id=$3',[orgId,provider,normalized.id,normalized.url||null,normalized.statusRaw,normalized.severity]);
+      await c.query('update incident_provider_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,external_owner=coalesce($7,external_owner),external_service=coalesce($8,external_service),external_escalation=coalesce($9,external_escalation),last_event_at=now(),updated_at=now() where org_id=$1 and provider=$2 and external_incident_id=$3',[orgId,provider,normalized.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null]);
     }
     await c.query(`insert into incident_details(org_id,ticket_id,impact,urgency,severity,is_major)
       values($1,$2,$3,$3,$4,$5)
