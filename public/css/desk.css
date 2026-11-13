@@ -786,3 +786,26 @@ html{-webkit-text-size-adjust:100%}
 
 .change-conflict-preview{display:grid;gap:6px;margin-top:9px;font-size:12px}
 .change-conflict-preview:empty{display:none}
+
+
+/* Desk rail labels: keep the compact icon rail, reveal a readable label on hover/focus. */
+.rail .ri[aria-label]::after{
+  content:attr(aria-label);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%) translateX(-4px);
+  z-index:100;white-space:nowrap;padding:8px 11px;border:1px solid var(--d-line);border-radius:8px;
+  background:var(--d-panel);color:var(--d-ink);font-size:12px;font-weight:650;line-height:1.2;
+  box-shadow:0 8px 24px rgba(10,25,30,.18);opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .12s ease,transform .12s ease,visibility .12s ease;
+}
+.rail .ri:hover::after,.rail .ri:focus-visible::after{
+  opacity:1;visibility:visible;transform:translateY(-50%) translateX(0);
+}
+.rail .ri:focus-visible{outline:2px solid var(--d-rail-on);outline-offset:2px}
+.contact-workspace{max-width:none;width:100%;margin:0;padding:8px 0}
+.contact-page-head-compact{justify-content:flex-end;margin:0 0 14px}
+.contact-toolbar{width:100%}
+.contact-list{width:100%;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));align-items:start}
+.integrations-desk-page{width:100%;max-width:none;padding:24px;gap:18px}
+.integration-providers-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.integrations-desk-page .integration-provider-card{margin:0;min-width:0}
+.integrations-desk-page .integration-provider-mark{display:grid;place-items:center;font-size:20px;font-weight:800;border-radius:12px;width:46px;height:46px;background:var(--d-in);color:var(--d-ink);flex:none}
+@media(max-width:760px){.integration-providers-grid{grid-template-columns:1fr}}
