@@ -66,10 +66,23 @@ const p95Bucket = r => {
 };
 const decorate = r => ({ ...r, avg_ms: Number(r.requests) ? Math.round(Number(r.duration_total_ms) / Number(r.requests)) : 0, p95_bucket: p95Bucket(r), error_rate: Number(r.requests) ? Number((Number(r.errors) / Number(r.requests) * 100).toFixed(2)) : 0 });
 export async function performanceOverview(pool, range = '24h', env = process.env) {
+  const schema = await pool.query("select to_regclass('public.performance_minute') as request_table, to_regclass('public.performance_query_minute') as sql_table, to_regclass('public.performance_vitals_minute') as vitals_table");
+  const schemaRow = schema.rows && schema.rows[0] || {};
+  const missingTables = [['performance_minute', schemaRow.request_table], ['performance_query_minute', schemaRow.sql_table], ['performance_vitals_minute', schemaRow.vitals_table]].filter(([, value]) => !value).map(([name]) => name);
+  if (missingTables.length) return {
+    ok: true, schemaReady: false, missingTables, range: range === '1h' ? '1h' : '24h',
+    sampleRate: clampRate(env.PERFORMANCE_SAMPLE_RATE == null ? 0.1 : env.PERFORMANCE_SAMPLE_RATE),
+    sqlSampleRate: clampRate(env.PERFORMANCE_SQL_SAMPLE_RATE == null ? 0.03 : env.PERFORMANCE_SQL_SAMPLE_RATE),
+    summary: { requests: 0, errors: 0, slow_requests: 0, avg_ms: 0, p95_bucket: null, error_rate: 0, pool_waiting_max: 0 },
+    series: [], routes: [], tenants: [], sqlQueries: [], vitals: [],
+    diagnostics: [{ severity: 'warning', title: 'Performance database migrations are incomplete', detail: 'The performance telemetry tables are not all present in the production database.' }],
+    retentionDays: 14,
+    notes: ['Missing tables: ' + missingTables.join(', '), 'Deploy the latest production build so the migration runner can apply the performance telemetry migrations.']
+  };
   const hours = range === '1h' ? 1 : 24;
   const [summary, series, routes, tenants, sqlQueries, vitals] = await Promise.all([
     pool.query('select coalesce(sum(requests),0)::int requests,coalesce(sum(errors),0)::int errors,coalesce(sum(slow_requests),0)::int slow_requests,coalesce(sum(duration_total_ms),0)::bigint duration_total_ms,coalesce(max(duration_max_ms),0)::int max_ms,coalesce(sum(bucket_lt100),0)::int bucket_lt100,coalesce(sum(bucket_100to499),0)::int bucket_100to499,coalesce(sum(bucket_500to999),0)::int bucket_500to999,coalesce(sum(bucket_gte1000),0)::int bucket_gte1000,coalesce(max(pool_waiting_max),0)::int pool_waiting_max,coalesce(max(pool_total_max),0)::int pool_total_max from performance_minute where minute >= now() - ($1::int * interval \'1 hour\')', [hours]),
-    pool.query("select to_char(date_trunc('hour',minute AT TIME ZONE 'UTC'),'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') hour,sum(requests)::int requests,sum(errors)::int errors,round(sum(duration_total_ms)::numeric/greatest(sum(requests),1))::int avg_ms from performance_minute where minute >= now() - ($1::int * interval '1 hour') group by date_trunc('hour',minute AT TIME ZONE 'UTC') order by date_trunc('hour',minute AT TIME ZONE 'UTC')", [hours]),
+    pool.query("select to_char(date_trunc('hour',minute AT TIME ZONE 'UTC'),'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') AS \"hour\",sum(requests)::int requests,sum(errors)::int errors,round(sum(duration_total_ms)::numeric/greatest(sum(requests),1))::int avg_ms from performance_minute where minute >= now() - ($1::int * interval '1 hour') group by date_trunc('hour',minute AT TIME ZONE 'UTC') order by date_trunc('hour',minute AT TIME ZONE 'UTC')", [hours]),
     pool.query("select function_name,path,sum(requests)::int requests,sum(errors)::int errors,sum(slow_requests)::int slow_requests,sum(duration_total_ms)::bigint duration_total_ms,max(duration_max_ms)::int max_ms,sum(bucket_lt100)::int bucket_lt100,sum(bucket_100to499)::int bucket_100to499,sum(bucket_500to999)::int bucket_500to999,sum(bucket_gte1000)::int bucket_gte1000 from performance_minute where minute >= now()-interval '24 hours' group by function_name,path order by sum(duration_total_ms)::numeric/greatest(sum(requests),1) desc limit 12"),
     pool.query("select org_id,sum(requests)::int requests,sum(errors)::int errors,sum(duration_total_ms)::bigint duration_total_ms,max(duration_max_ms)::int max_ms from performance_minute where minute >= now()-interval '24 hours' and org_id <> '' group by org_id order by sum(duration_total_ms)::numeric/greatest(sum(requests),1) desc limit 10"),
     pool.query("select query_hash,operation,function_name,sum(samples)::int samples,sum(errors)::int errors,sum(total_ms)::bigint total_ms,max(max_ms)::int max_ms,sum(bucket_lt25)::int bucket_lt25,sum(bucket_25to99)::int bucket_25to99,sum(bucket_100to499)::int bucket_100to499,sum(bucket_gte500)::int bucket_gte500 from performance_query_minute where minute >= now()-interval '24 hours' group by query_hash,operation,function_name order by sum(total_ms)::numeric/greatest(sum(samples),1) desc limit 12"),
