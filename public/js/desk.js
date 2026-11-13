@@ -375,7 +375,7 @@
           var services=Array.prototype.filter.call(serviceSelect.options,function(o){return o.selected;}).map(function(o){return Number(o.value);});
           var incidents=incidentInput.value.split(',').map(function(x){return Number(x.trim());}).filter(function(x){return Number.isSafeInteger(x)&&x>0;});
           api('itsm-change-save',{id:changeSelected||undefined,title:title.value,description:description.value,changeType:type.value,status:status.value,risk:risk.value,impact:impact.value,plannedStart:start.value||null,plannedEnd:end.value||null,implementationPlan:implementation.value,testPlan:testing.value,rollbackPlan:rollback.value,outcome:outcome.value,ownerId:owner.value,serviceIds:services,incidentNumbers:incidents,approvalStages:stages}).then(function(r){
-            if(!r.ok)return say(r.body.error||'Could not save change request.',true);
+            if(!r.ok){if(r.body&&Array.isArray(r.body.conflicts)){changeDetail=changeDetail||{change:ch,services:[],incidents:[],decisions:[],events:[]};changeDetail.conflicts=r.body.conflicts;draw();}return say(r.body.error||'Could not save change request.',true);}
             changeSelected=Number(r.body.change.id);changeCreating=false;changeDetail=r.body;
             return refreshChangeList(false).then(function(){draw();say('Change request saved.');});
           });
