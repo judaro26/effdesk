@@ -69,7 +69,7 @@ function normalize(provider,body,raw){
    provider==='sentry'?issue.shortId:undefined,
    digest(title+'|'+String(item.host||labels.host||labels.instance||''))
   ),200);
-  const statusRaw=clean(first(item.status,item.state,item.alert_transition,item.action,body.status,body.action),'100').toLowerCase();
+  const statusRaw=clean(first(provider==='sentry'?body.action:undefined,item.status,item.state,item.alert_transition,item.action,body.status,body.action),'100').toLowerCase();
   const reopened=/unresolved|reopen|regression|firing|triggered|active/.test(statusRaw);
   const resolved=!reopened&&/resolv|recover|closed|normal|clear|fixed|regression_end/.test(statusRaw);
   const acknowledged=/acknowledg|assign|muted/.test(statusRaw);
