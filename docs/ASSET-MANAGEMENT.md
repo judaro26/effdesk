@@ -42,7 +42,7 @@ Warranty reporting identifies active assets with expired or upcoming warranties 
 
 ## Deliberate next steps
 
-This is not yet a discovery-grade CMDB. Next work should add reconciliation and duplicate detection, scheduled discovery through tenant-authorized endpoint/RMM/MDM connectors (for example Microsoft Intune via Microsoft Graph), automated license assignment reconciliation, renewal email escalations and a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
+Further CMDB work can expand discovery to macOS/Linux and authorized SNMP/network inventory, improve duplicate-resolution workflows, reconcile discovered applications against purchased license entitlements, add renewal email escalations and provide a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
 
 ## Automated discovery: Microsoft Intune
 
@@ -69,7 +69,7 @@ In **Assets & CMDB → Procurement & lifecycle → Automated discovery**, create
 .\\effdesk-discovery.ps1 -EnrollmentToken "PASTE_ONE_TIME_TOKEN" -InstallScheduledTask
 ```
 
-The script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours as the installing Windows user and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
+The script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours while that Windows user is logged in and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
 
 The ingestion endpoint binds the bearer token to the encoded workspace ID and a single agent ID, validates the token hash inside that workspace's RLS transaction, and rejects revoked/expired tokens. Hardware is reconciled to an existing manually managed hardware CI by serial number when safe, otherwise a new Windows-agent CI is created. Software snapshots are reconciled per agent; items absent from the latest complete snapshot are marked missing rather than deleted. Owners/admins can revoke an agent at any time. The dashboard shows agent health, last check-in, device details and discovered software.
 
