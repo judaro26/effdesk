@@ -501,11 +501,33 @@
         var initials=fallback[raw]||String(name||'').trim().split(/\s+/).slice(0,2).map(function(part){return part.charAt(0);}).join('').toUpperCase()||'IN';
         var mark=el('div',{class:'integration-provider-mark integration-provider-logo',role:'img','aria-label':name+' logo',title:name});
         if(src){
-          var img=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
-            if(!img.parentNode)return;
-            var textMark=el('span',{'aria-hidden':'true'},initials);img.parentNode.replaceChild(textMark,img);mark.setAttribute('data-logo-fallback','true');
-          }});
-          mark.appendChild(img);
+          var svgMarkup=inlineLogos[src];
+          if(svgMarkup){
+            try{
+              var parsed=new DOMParser().parseFromString(svgMarkup,'image/svg+xml');
+              var svg=parsed.documentElement;
+              if(svg&&String(svg.tagName).toLowerCase()==='svg'&&!parsed.querySelector('parsererror')){
+                svg.setAttribute('class','integration-provider-svg');
+                svg.setAttribute('aria-hidden','true');
+                svg.setAttribute('focusable','false');
+                svg.setAttribute('width','100%');
+                svg.setAttribute('height','100%');
+                mark.appendChild(doc.importNode(svg,true));
+              }else throw new Error('Invalid provider SVG');
+            }catch(_){
+              var img=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
+                if(!img.parentNode)return;
+                var textMark=el('span',{'aria-hidden':'true'},initials);img.parentNode.replaceChild(textMark,img);mark.setAttribute('data-logo-fallback','true');
+              }});
+              mark.appendChild(img);
+            }
+          }else{
+            var fallbackImg=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
+              if(!fallbackImg.parentNode)return;
+              var textMark=el('span',{'aria-hidden':'true'},initials);fallbackImg.parentNode.replaceChild(textMark,fallbackImg);mark.setAttribute('data-logo-fallback','true');
+            }});
+            mark.appendChild(fallbackImg);
+          }
         }else{
           mark.appendChild(el('span',{'aria-hidden':'true'},initials));
           mark.setAttribute('data-logo-fallback','true');
