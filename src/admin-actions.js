@@ -76,6 +76,7 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
     case 'customer-sandbox-create': {
       const source = await orgBySlug(pool, b.slug);
       if (!source) return fail('No such customer.', 404);
+      const sourceEntitlements = await getEntitlements(pool, source.id);
       const client = await pool.connect();
       try {
         await client.query('begin');
@@ -87,7 +88,9 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
           let meta = {}; try { meta = JSON.parse(existing.metadata || '{}'); } catch { }
           if (meta.environment === 'sandbox' && meta.sandboxOf === current.id) {
             await client.query('commit');
-            return { ok: true, existing: true, sandbox: { id: existing.id, name: existing.name, slug: existing.slug }, members: (await pool.query('select count(*)::int n from member where "organizationId"=$1',[existing.id])).rows[0].n };
+            const memberCount = (await pool.query('select count(*)::int n from member where "organizationId"=$1',[existing.id])).rows[0].n;
+            await pool.query(`insert into org_overrides(org_id,seat_limit,features_on,note,updated_by) values($1,$2,$3,$4,$5) on conflict(org_id) do update set seat_limit=excluded.seat_limit,features_on=excluded.features_on,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`, [existing.id, Math.max(2,memberCount), [...sourceEntitlements.features], 'Customer sandbox; isolated from production. No separate subscription.', actor]);
+            return { ok: true, existing: true, sandbox: { id: existing.id, name: existing.name, slug: existing.slug }, members: memberCount };
           }
           await client.query('rollback'); return fail('The proposed sandbox address is already in use. Rename the customer workspace first or contact support.', 409);
         }
@@ -95,9 +98,9 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
         const metadata = JSON.stringify({ environment: 'sandbox', sandboxOf: current.id, createdBy: actor, createdAt: new Date().toISOString() });
         await client.query('insert into "organization"(id,name,slug,logo,"createdAt",metadata) values($1,$2,$3,null,now(),$4)', [id, current.name + ' — Sandbox', slug, metadata]);
         const members = await client.query('insert into member(id,"organizationId","userId",role,"createdAt") select gen_random_uuid()::text,$1,"userId",role,now() from member where "organizationId"=$2 returning id', [id, current.id]);
-        await client.query(`insert into org_overrides(org_id,seat_limit,note,updated_by) values($1,$2,$3,$4)
-          on conflict(org_id) do update set seat_limit=excluded.seat_limit,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
-          [id, Math.max(2, members.rowCount), 'Customer sandbox; isolated from production. No separate subscription.', actor]);
+        await client.query(`insert into org_overrides(org_id,seat_limit,features_on,note,updated_by) values($1,$2,$3,$4,$5)
+          on conflict(org_id) do update set seat_limit=excluded.seat_limit,features_on=excluded.features_on,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
+          [id, Math.max(2, members.rowCount), [...sourceEntitlements.features], 'Customer sandbox; isolated from production. No separate subscription.', actor]);
         await client.query('commit');
         await audit(pool, actor, 'customer.sandbox.create', slug, { source: current.slug, members: members.rowCount });
         return { ok: true, existing: false, sandbox: { id, name: current.name + ' — Sandbox', slug }, members: members.rowCount };
