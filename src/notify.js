@@ -42,7 +42,7 @@ export async function notifyTicket(pool, mailer, orgId, number, { kind, actorId 
     let sent = 0;
     for (const p of people) {
       if (kind !== 'assigned') {
-        const hit = (await pool.query('insert into desk_notify_log (user_id, ticket_id) values ($1,$2) on conflict (user_id, ticket_id) do update set notified_at = now() where desk_notify_log.notified_at < now() - interval '+DEDUPE_MINUTES+' minutes returning 1', [p.id, data.t.id])).rowCount;
+        const hit = (await pool.query('insert into desk_notify_log (user_id, ticket_id) values ($1,$2) on conflict (user_id, ticket_id) do update set notified_at = now() where desk_notify_log.notified_at < now() - interval '10 minutes' returning 1', [p.id, data.t.id])).rowCount;
         if (!hit) continue;
       }
       try { await mailer.agentNotice(p.email, { kind, orgName: data.orgName, number, subject: data.t.subject, summary: String(summary || '').slice(0, 300), url: PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)+'&ticket='+Number(number) }); sent++; } catch (e) { console.warn('agent notice failed:', e.message); }
