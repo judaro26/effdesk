@@ -20,7 +20,7 @@
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
+    var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};\n    var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
     var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsNative=[],integrationsScimTokens=[],integrationsScimSecret='',integrationsIncidentConnections=[],integrationsIncidentSecret='',integrationsIncidentProvider='',integrationsAlertConnections=[],integrationsAlertSecret='',integrationsAlertProvider='',integrationsLoading=false;
@@ -1904,7 +1904,7 @@
         ['Tickets', [['routing', 'Routing', 'Hand new tickets to the right agent automatically.', 'routing'], ['queues', 'Queues', 'Split work between teams and send tickets to the right one.', 'queues'], ['statuses', 'Ticket statuses', 'Add your own statuses, like Waiting on vendor.', 'queues'], ['helplook', 'Help center look', 'Pick a theme, colours and the headline of your help center.', 'help_center_basic'], ['wstatus', 'Status page', 'A public page where your customers see outages and planned work.', 'queues'], ['fields', 'Ticket fields', 'Add your own fields to every ticket.', 'custom_fields'], ['macros', 'Macros', 'Saved replies that also set status, priority and labels.'], ['triggers', 'Automations', 'Rules that act on tickets by themselves.', 'triggers'], ['sla', 'SLA and hours', 'Reply and solve targets, and business hours.', 'sla']]],
         ['Customers', [['contacts', 'Contacts', 'Requester profiles, contact details and company relationships.', 'clients'], ['clients', 'Companies', 'Manage the companies your customers belong to.', 'clients']]],
         ['Channels', [['helpwidget', 'Help center and search widget', 'Your public help center, request page and a search box for your website.'], ['forms', 'Request forms', 'Forms customers fill in on the help center.', 'request_forms'], ['chat', 'Live chat', 'A chat button for your website.', 'live_chat'], ['whatsapp', 'WhatsApp', 'Answer customers who message your WhatsApp number.', 'whatsapp']]],
-        ['Data and compliance', [['migrate', 'Import from Zendesk or Freshdesk', 'Bring your tickets and help articles over. Customers are not emailed.'], ['audit', 'Audit log', 'Who changed what, and when.', 'audit_log'], ['export', 'Export your data', 'Download your tickets, clients, macros and articles.', 'data_export']]],
+        ['Data and compliance', [['environments', 'Environments', 'Create and manage an isolated sandbox for safe testing.', 'sandbox'], ['migrate', 'Import from Zendesk or Freshdesk', 'Bring your tickets and help articles over. Customers are not emailed.'], ['audit', 'Audit log', 'Who changed what, and when.', 'audit_log'], ['export', 'Export your data', 'Download your tickets, clients, macros and articles.', 'data_export']]],
         ['Developers', [['integrations', 'Developer webhooks', 'Manage signed outbound webhooks for Zapier, Make, CRMs and custom systems.'], ['api', 'API', 'Tokens for your own systems.', 'api']]]
       ];
       var flat = []; groups.forEach(function (g) { g[1].forEach(function (t) { if (!(support && t[0] === 'support')) flat.push(t); }); });
@@ -1938,6 +1938,35 @@
               el('div',{class:'contact-list'},contactRows.map(function(p){return el('button',{type:'button',class:'contact-list-row',onclick:function(){openContact(p.email);}},el('span',{class:'contact-avatar sm'},initial(p.name||p.email)),el('span',{class:'contact-list-copy'},el('strong',{},p.name||p.email),el('span',{class:'m'},p.email),el('small',{},(p.company_name||'No company')+' · '+p.tickets+' tickets')),el('span',{class:'contact-list-arrow'},'›'));})),
               !contactRows.length?el('p',{class:'m'},'No contacts yet. Requester profiles will appear here automatically as tickets arrive.'):null);
           }
+        }
+      } else if (manage === 'environments') {
+        if (!has('sandbox')) body = lock('sandbox');
+        else if (!isAdmin) body = guardAdmin;
+        else if (sandboxInfo === null) {
+          if (!sandboxLoading) { sandboxLoading = true; api('sandbox-get').then(function(r) { sandboxLoading = false; sandboxInfo = r.ok ? r.body : { error: r.body.error || 'Could not load environment details.' }; draw(); }); }
+          body = el('div', { class: 'mlist sandbox-workspace' }, el('p', { class: 'm' }, 'Loading environment details…'));
+        } else if (sandboxInfo.error) body = el('div', { class: 'mlist sandbox-workspace' }, el('p', { class: 'm' }, sandboxInfo.error));
+        else {
+          var isSandboxWorkspace = sandboxInfo.environment === 'sandbox', linked = sandboxInfo.sandbox;
+          var envCard = function(kind, title, desc, state) { return el('div', { class: 'sandbox-env-card ' + kind }, el('div', { class: 'sandbox-env-top' }, el('strong', {}, title), el('span', { class: 'sandbox-env-state' }, state)), el('p', { class: 'm' }, desc)); };
+          body = el('div', { class: 'mlist sandbox-workspace' },
+            el('div', { class: 'sandbox-page-head' }, el('div', {}, el('span', { class: 'sandbox-eyebrow' }, 'WORKSPACE ENVIRONMENTS'), el('h2', {}, 'Production and sandbox'), el('p', { class: 'm' }, 'Keep experiments, workflow changes and integration tests separate from your live customer operations.'))),
+            isSandboxWorkspace ? envCard('sandbox', 'Sandbox workspace', 'You are currently working in a sandbox. Changes here do not belong to your production workspace.', 'SANDBOX') : envCard('production', 'Production workspace', 'Your live workspace and customer operations.', 'LIVE'),
+            isSandboxWorkspace ? el('p', { class: 'm' }, 'Production workspace: ' + ((sandboxInfo.parent && sandboxInfo.parent.name) || 'Linked production workspace')) :
+            linked ? el('div', { class: 'sandbox-existing' }, envCard('sandbox', linked.name, 'Your isolated testing workspace is ready. Team members use their normal EffDesk sign-in.', 'READY'),
+              el('p', { class: 'm' }, 'Sandbox address: ' + linked.slug + '. Select it from the workspace switcher in the top bar.')) :
+            el('div', { class: 'sandbox-create-card' }, el('div', { class: 'sandbox-create-icon' }, '✳'), el('div', {}, el('h3', {}, 'Create your sandbox'), el('p', { class: 'm' }, 'Provision a separate workspace and copy your current team roles. Production tickets, contacts, integrations, credentials and billing are not copied.')),
+              el('button', { type: 'button', class: 'btn', 'data-sandbox-create': '1', onclick: function(ev) {
+                var btn = ev.currentTarget;
+                if (root.confirm && !root.confirm('Create an isolated sandbox for this workspace?')) return;
+                btn.disabled = true; btn.textContent = 'Creating sandbox…';
+                api('sandbox-create').then(function(r) {
+                  if (!r.ok) { btn.disabled = false; btn.textContent = 'Create sandbox'; return say(r.body.error || 'Could not create the sandbox.', true); }
+                  sandboxInfo = { ok: true, environment: 'production', sandbox: r.body.sandbox };
+                  post('/api/me').then(function(m) { if (m.ok) orgs = m.body.organizations || orgs; draw(); say(r.body.existing ? 'Your sandbox already exists.' : 'Sandbox created. It is ready in your workspace switcher.'); });
+                }).catch(function() { btn.disabled = false; btn.textContent = 'Create sandbox'; say('The server could not be reached.', true); });
+              } }, 'Create sandbox')),
+            el('p', { class: 'm sandbox-footnote' }, 'Sandbox access is included with the Pro plan. Each environment has its own tickets, contacts, settings and integration connections.'));
         }
       } else if (manage === 'queues') {
         if (!has('queues')) body = lock('queues');
