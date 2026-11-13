@@ -579,7 +579,7 @@
           if(!n||!n.trim())return;
           var targets='';
           if(provider==='snmp_agent'){targets=root.prompt('Enter customer-approved private CIDR/IP targets (for example 10.20.0.0/24):','192.168.1.0/24');if(!targets||!targets.trim())return;}
-          api('itsm-ci-agent-create',{name:n.trim(),provider:provider}).then(function(r){
+          api('itsm-ci-agent-create',{name:n.trim(),provider:provider,allowedNetworks:provider==='snmp_agent'?[targets.trim()]:[]}).then(function(r){
             if(!r.ok)return say(r.body.error||'Could not create discovery agent.',true);
             ciNewAgentToken=r.body.token;ciNewAgentProvider=provider;ciNewSnmpTargets=targets;
             var origin=(root.location&&root.location.origin||'https://app.effdesk.com'),apiUrl=origin+(provider==='snmp_agent'?'/api/cmdb-snmp-agent':'/api/cmdb-agent');
