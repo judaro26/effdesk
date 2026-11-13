@@ -112,6 +112,9 @@
           var diag = el('div', { class: 'stack' });
           d.diagnostics.forEach(function (x) { diag.appendChild(el('article', { class: 'erow perf-finding ' + x.severity }, el('div', { class: 'ehead' }, el('strong', {}, x.title), el('span', { class: 'chip ' + (x.severity === 'critical' ? 'bad' : x.severity === 'success' ? 'info' : '') }, x.severity)), el('p', { class: 'm' }, x.detail))); });
           body.appendChild(diag);
+          body.appendChild(el('h3', {}, 'Hourly trend · selected period'));
+          if (!d.series.length) body.appendChild(el('p', { class: 'm' }, 'Hourly trends will appear as requests are sampled.'));
+          else body.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable perf-table' }, el('thead', {}, el('tr', {}, ['Hour (UTC)', 'Samples', 'Avg latency', '5xx errors'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.series.map(function (x) { return el('tr', {}, el('td', {}, new Date(x.hour).toLocaleString()), el('td', {}, x.requests.toLocaleString()), el('td', {}, x.avg_ms + ' ms'), el('td', {}, x.errors)); })))));
           body.appendChild(el('h3', {}, 'Slowest endpoints · last 24 hours'));
           if (!d.routes.length) body.appendChild(el('div', { class: 'empty' }, 'No endpoint samples yet.'));
           else body.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable perf-table' }, el('thead', {}, el('tr', {}, ['Function', 'Endpoint', 'Samples', 'Avg', 'p95 band', 'Max'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.routes.map(function (x) { return el('tr', {}, el('td', {}, x.function_name), el('td', {}, x.path), el('td', {}, x.requests.toLocaleString()), el('td', {}, x.avg_ms + ' ms'), el('td', {}, x.p95_bucket), el('td', {}, x.max_ms + ' ms')); })))));
