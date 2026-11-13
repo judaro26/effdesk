@@ -23,7 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
-    var integrationsOpen=false,integrationsRows=null,integrationsLoading=false;
+    var integrationsOpen=false,integrationsRows=null,integrationsHooks=[],integrationsLoading=false;
     var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[], ciVendors=[], ciContracts=[], ciLicenses=[], ciWarranty=[], ciLifecycleOpen=false, ciDiscoveryStatus=null, ciDiscoveryAgents=[], ciDiscoverySoftware=[], ciNewAgentToken='', ciNewAgentCommand='', ciNewAgentProvider='windows_agent', ciNewSnmpTargets='', ciLicenseReconciliation=[], ciOwnershipReport=null, ciCompliancePolicies=[], ciComplianceEvaluation=null;
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
@@ -451,12 +451,29 @@
     }
     function loadIntegrations(){
       if(!isAdmin)return Promise.resolve();
-      closePanes();integrationsOpen=true;integrationsRows=null;integrationsLoading=true;draw();
-      return integrationRequest('GET','/connections').then(function(r){integrationsLoading=false;if(!r.ok){integrationsRows=[];say(r.body.error||'Could not load external integrations.',true);}else integrationsRows=r.body.connections||[];draw();});
+      closePanes();integrationsOpen=true;integrationsRows=null;integrationsHooks=[];integrationsLoading=true;draw();
+      return Promise.all([integrationRequest('GET','/connections'),api('webhooks-list')]).then(function(rs){
+        integrationsLoading=false;
+        if(!rs[0].ok){integrationsRows=[];say(rs[0].body.error||'Could not load external integrations.',true);}else integrationsRows=rs[0].body.connections||[];
+        integrationsHooks=rs[1].ok?(rs[1].body.webhooks||[]):[];
+        draw();
+      }).catch(function(){integrationsLoading=false;integrationsRows=[];integrationsHooks=[];say('Could not load external integrations.',true);draw();});
     }
     function integrationsPane(){
-      var providers=[{id:'linear',name:'Linear',detail:'Issue tracking, teams and cycles.'},{id:'jira',name:'Jira',detail:'Projects, workflows and issues.'}],rows=integrationsRows||[];
-      var cards=providers.map(function(p){
+      var rows=integrationsRows||[],hookRows=integrationsHooks||[];
+      var providers=[{id:'linear',name:'Linear',detail:'Engineering issues, teams and cycles.'},{id:'jira',name:'Jira',detail:'Projects, workflows and issue synchronization.'}];
+      var comms=[{id:'slack',name:'Slack',detail:'Channel notifications for tickets and customer replies.'},{id:'cliq',name:'Zoho Cliq',detail:'Team and operations notifications in Cliq channels.'},{id:'teams',name:'Microsoft Teams',detail:'Channel notifications through Teams webhooks.'}];
+      function destinations(id){return hookRows.filter(function(h){return (h.kind||'json')===id;});}
+      function communicationCard(p){
+        var connected=destinations(p.id).length>0;
+        return el('article',{class:'integration-provider-card integration-provider-'+p.id},
+          el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},p.id==='slack'?'S':p.id==='cliq'?'C':'T'),el('div',{class:'integration-provider-title'},el('h3',{},p.name),el('p',{class:'m'},p.detail)),el('span',{class:'integration-status '+(connected?'is-connected':'is-disconnected')},connected?'Connected':'Not connected')),
+          el('div',{class:'integration-provider-description'},connected?destinations(p.id).length+' channel destination'+(destinations(p.id).length===1?'':'s')+' configured.':'Connect a channel using its incoming webhook URL.'),
+          el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connected?'Workspace notification destination':'Webhook-based connection'),
+            el('button',{type:'button',class:'btn l sm',onclick:function(){var kind=el('input',{type:'hidden',value:p.id});var url=el('input',{type:'url',maxlength:'1000',placeholder:p.id==='slack'?'https://hooks.slack.com/services/…':p.id==='cliq'?'https://cliq.zoho.com/api/v2/…':'https://…webhook.office.com/…','aria-label':p.name+' incoming webhook URL'});var events={};var checks=el('div',{class:'bar',role:'group','aria-label':'Events to send'});['ticket.created','ticket.updated','message.agent','message.customer','ticket.mentioned'].forEach(function(ev){var cb=el('input',{type:'checkbox','aria-label':ev});cb.checked=ev!=='ticket.mentioned';events[ev]=cb;checks.appendChild(el('label',{class:'m'},cb,' '+ev));});var save=el('button',{type:'button',class:'btn',onclick:function(){save.disabled=true;api('webhook-save',{kind:kind.value,url:url.value,events:Object.keys(events).filter(function(ev){return events[ev].checked;})}).then(function(r){save.disabled=false;if(!r.ok)return say(r.body.error||'Could not save the channel connection.',true);say(p.name+' channel connected.');loadIntegrations();}).catch(function(){save.disabled=false;say('Could not save the channel connection.',true);});}},'Save connection');var cancel=el('button',{type:'button',class:'btn l',onclick:function(){loadIntegrations();}},'Cancel');var form=el('div',{class:'integration-channel-editor'},el('p',{class:'m'},'Paste an incoming webhook URL created in '+p.name+'. EffDesk validates the provider domain and stores the destination within this workspace.'),url,checks,el('div',{class:'bar'},save,cancel));var parent=this.parentNode;parent.appendChild(form);url.focus();this.disabled=true;}}},connected?'Manage channel':'Connect '+p.name))
+        );
+      }
+      function issueCard(p){
         var connection=rows.filter(function(x){return x.provider===p.id;})[0],connected=!!connection;
         return el('article',{class:'integration-provider-card integration-provider-'+p.id},
           el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},p.id==='linear'?'L':'J'),el('div',{class:'integration-provider-title'},el('h3',{},p.name),el('p',{class:'m'},p.detail)),el('span',{class:'integration-status '+(connected?'is-connected':'is-disconnected')},connected?'Connected':'Not connected')),
@@ -464,11 +481,29 @@
           el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connected?'Workspace connection active':'Secure OAuth connection'),
             connected?el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Disconnect '+p.name+' from this workspace?'))return;integrationRequest('POST','/disconnect',{provider:p.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not disconnect '+p.name+'.',true);say(p.name+' disconnected.');loadIntegrations();});}},'Disconnect'):el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget;b.disabled=true;b.textContent='Connecting…';integrationRequest('POST','/oauth/start',{provider:p.id}).then(function(r){if(!r.ok||!r.body.url){b.disabled=false;b.textContent='Connect '+p.name;return say(r.body.error||'Could not start OAuth connection.',true);}root.location.assign(r.body.url);}).catch(function(){b.disabled=false;b.textContent='Connect '+p.name;say('Could not start OAuth connection.',true);});}},'Connect '+p.name))
         );
-      });
+      }
+      var channelList=hookRows.filter(function(h){return ['slack','cliq','teams'].indexOf(h.kind||'json')>=0;});
+      var channelItems=channelList.map(function(h){var label=({slack:'Slack',cliq:'Zoho Cliq',teams:'Microsoft Teams'})[h.kind];return el('div',{class:'mitem'},el('span',{class:'grow'},el('strong',{},label+' channel'),el('div',{class:'m'},h.events.join(' · ')+' · Last delivery: '+(h.last_status||'not yet sent')+(h.last_at?' · '+ago(h.last_at):''))),el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Remove this '+label+' destination?'))return;api('webhook-delete',{id:h.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not remove destination.',true);say(label+' destination removed.');loadIntegrations();});}},'Disconnect'));});
+      var planned=[
+        ['Identity & access','Microsoft Entra ID','Okta','Google Workspace'],
+        ['Developer tools','GitHub','GitLab','Azure DevOps'],
+        ['Incident response','PagerDuty','Rootly','FireHydrant'],
+        ['Monitoring & observability','Datadog','Grafana','Splunk','Sentry'],
+        ['Endpoint & cloud','Microsoft Intune','Jamf','AWS','Microsoft Azure'],
+        ['CRM & automation','Salesforce','HubSpot','Zapier','Make','n8n'],
+        ['Security','Microsoft Defender','CrowdStrike']
+      ];
       return el('div',{class:'page wide integrations-desk-page'},
-        el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'WORKSPACE CONNECTIONS'),el('h2',{},'External integrations'),el('p',{class:'m'},'Connect issue-tracking workspaces and synchronize linked work with EffDesk.'))),
-        integrationsLoading?el('p',{class:'m'},'Loading workspace connections…'):el('div',{class:'integration-providers-grid'},cards),
-        el('p',{class:'m'},'Connections are scoped to this workspace. Each customer organization manages its own credentials and authorization.')
+        el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'WORKSPACE CONNECTIONS'),el('h2',{},'External integrations'),el('p',{class:'m'},'Manage communication channels, engineering tools, and connected services for this workspace.'))),
+        integrationsLoading?el('p',{class:'m'},'Loading workspace connections…'):
+          el('div',{class:'integration-hub'},
+            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'01 · COMMUNICATIONS'),el('h3',{},'Team notifications'),el('p',{class:'m'},'Send ticket and customer activity into the channels your team already uses.'))),el('div',{class:'integration-providers-grid'},comms.map(communicationCard)),channelItems.length?el('div',{class:'integration-channel-list'},channelItems):null),
+            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'02 · ISSUE TRACKING'),el('h3',{},'Engineering work'),el('p',{class:'m'},'Keep support tickets and engineering issues synchronized in both directions.'))),el('div',{class:'integration-providers-grid'},providers.map(issueCard))),
+            el('section',{class:'integration-hub-section'},el('div',{class:'integration-hub-heading'},el('div',{},el('span',{class:'itsm-kicker'},'03 · INTEGRATION CATALOG'),el('h3',{},'Expand your stack'),el('p',{class:'m'},'Additional provider adapters are being added to the shared integration framework. Planned entries are clearly marked and cannot be connected yet.'))),
+              planned.map(function(group){return el('div',{class:'integration-catalog-group'},el('h4',{},group[0]),el('div',{class:'integration-catalog-list'},group.slice(1).map(function(name){return el('span',{class:'integration-catalog-item'},name,el('small',{},'Planned'));})));})
+            )
+          ),
+        el('p',{class:'m'},'All connections and notification destinations belong to this workspace. Credentials and activity remain isolated from other customer organizations.')
       );
     }
     function loadConfigurationItems(){
