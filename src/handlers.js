@@ -56,7 +56,7 @@ import { PLANS, has as planHas } from './plans.js';
 import { listApprovals, getApprovalForTicket, decideApproval, listTasks, updateTask } from './approvals.js';
 import { listServices, saveService, listIncidents, getIncident, saveIncident } from './itsm.js';
 import { listProblems, getProblem, saveProblem } from './problems.js';
-import { listChanges, getChange, saveChange, decideChange } from './change-management.js';
+import { listChanges, getChange, saveChange, decideChange, getChangeCabPolicy, saveChangeCabPolicy, previewChangeConflicts } from './change-management.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -205,6 +205,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-problem-get': if ((g = need('itsm'))) return g; r = await getProblem(pool, orgId, b.id); break;
     case 'itsm-problem-save': if ((g = need('itsm'))) return g; r = await saveProblem(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'problem.updated' : 'problem.created', 'Problem #' + r.problem.id, { status: r.problem.status, priority: r.problem.priority }); break;
     case 'itsm-change-list': if ((g = need('itsm'))) return g; r = await listChanges(pool, orgId, b); break;
+    case 'itsm-change-policy-get': if ((g = need('itsm'))) return g; r = await getChangeCabPolicy(pool, orgId); break;
+    case 'itsm-change-policy-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveChangeCabPolicy(pool, orgId, b.policy || b, actor); if (r.ok) await audit(pool, orgId, actor.id, 'change.cab_policy_updated', 'Change Advisory Board policy', r.policy); break;
+    case 'itsm-change-conflicts': if ((g = need('itsm'))) return g; r = await previewChangeConflicts(pool, orgId, b); break;
     case 'itsm-change-get': if ((g = need('itsm'))) return g; r = await getChange(pool, orgId, b.id); break;
     case 'itsm-change-save': if ((g = need('itsm'))) return g; r = await saveChange(pool, orgId, actor, b, mailer); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'change.updated' : 'change.created', 'Change CHG-' + r.change.id, { status: r.change.status, risk: r.change.risk }); break;
     case 'itsm-change-decide': if ((g = need('itsm'))) return g; r = await decideChange(pool, orgId, actor, b.id, b.decision, b.comment, mailer); if (r.ok) await audit(pool, orgId, actor.id, 'change.approval_decided', 'Change CHG-' + r.change.id, { status: r.change.status }); break;
