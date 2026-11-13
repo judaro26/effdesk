@@ -325,9 +325,9 @@
         function renderStages(){
           approvalBox.textContent='';
           changeApprovalStages.forEach(function(stage,ix){
-            var name=el('input',{type:'text',maxlength:'80',placeholder:'Stage '+(ix+1)+' name',value:stage.name||('Stage '+(ix+1))});
-            var mode=el('select',{'aria-label':'Approval rule for stage '+(ix+1)});[['all','All approvers'],['any','Any one approver']].forEach(function(x){mode.appendChild(el('option',{value:x[0]},x[1]));});mode.value=stage.mode||'all';
-            var people=el('select',{multiple:true,size:Math.min(5,Math.max(3,agents.filter(function(a){return a.role!=='light';}).length)),'aria-label':'Approvers for stage '+(ix+1)});
+            var name=el('input',{type:'text',maxlength:'80',placeholder:'Stage '+(ix+1)+' name',value:stage.name||('Stage '+(ix+1)),disabled:pendingApproval});
+            var mode=el('select',{'aria-label':'Approval rule for stage '+(ix+1),disabled:pendingApproval});[['all','All approvers'],['any','Any one approver']].forEach(function(x){mode.appendChild(el('option',{value:x[0]},x[1]));});mode.value=stage.mode||'all';
+            var people=el('select',{multiple:true,disabled:pendingApproval,size:Math.min(5,Math.max(3,agents.filter(function(a){return a.role!=='light';}).length)),'aria-label':'Approvers for stage '+(ix+1)});
             agents.forEach(function(a){if(a.role!=='light'){var o=el('option',{value:a.id},a.name||a.email);o.selected=(stage.approverIds||[]).indexOf(a.id)>=0;people.appendChild(o);}});
             var remove=el('button',{type:'button',class:'btn l sm',disabled:pendingApproval,onclick:function(){changeApprovalStages.splice(ix,1);renderStages();}},'Remove stage');
             approvalBox.appendChild(el('div',{class:'change-stage-card'},el('div',{class:'change-stage-head'},el('strong',{},'Stage '+(ix+1)),remove),name,mode,people));
