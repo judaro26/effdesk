@@ -136,7 +136,7 @@ const cleanTicketFilters = input => {
   return out;
 };
 export const getTicketPreferences = (pool, orgId, userId) => withOrg(pool, orgId, async c => {
-  const row = (await c.query('select filters, columns from agent_ticket_preferences where org_id = $1 and user_id = $2', [orgId, userId])).rows[0];
+  const row = (await c.query('select filters, columns, locale from agent_ticket_preferences where org_id = $1 and user_id = $2', [orgId, userId])).rows[0];
   return { ok: true, ticketPrefs: { filters: cleanTicketFilters(row?.filters), columns: Array.isArray(row?.columns) && row.columns.length ? [...new Set(row.columns.filter(k => VIEW_COLUMNS.includes(k)))] : DEFAULT_VIEW_COLUMNS, locale: row?.locale === 'es' || row?.locale === 'en' ? row.locale : null } };
 });
 export const saveTicketPreferences = (pool, orgId, userId, input) => withOrg(pool, orgId, async c => {
