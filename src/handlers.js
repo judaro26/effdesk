@@ -61,6 +61,8 @@ import { listConfigurationItems, getConfigurationItem, saveConfigurationItem, sa
 import { listVendors, saveVendor, listContracts, saveContract, listLicenses, saveLicense, warrantyReport, exportAssetsCsv, importAssetsCsv } from './cmdb-lifecycle.js';
 import { discoveryStatus, startDiscovery, syncDiscovery, disconnectDiscovery } from './cmdb-discovery.js';
 import { createDiscoveryAgent, listDiscoveryAgents, revokeDiscoveryAgent } from './cmdb-agent.js';
+import { ingestSnmpDiscoveryAgent } from './cmdb-snmp.js';
+import { licenseReconciliation, saveLicenseAlias, assetOwnershipReport, assignAssetOwner, listCompliancePolicies, saveCompliancePolicy, evaluateCompliance } from './cmdb-governance.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -222,6 +224,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-ci-agent-list': if ((g = need('itsm'))) return g; r = await listDiscoveryAgents(pool, orgId); break;
     case 'itsm-ci-agent-create': if ((g = adminOnly() || need('itsm'))) return g; r = await createDiscoveryAgent(pool, orgId, actor, b.name, b.provider || 'windows_agent'); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_created', r.agent.name, { agentId: r.agent.id }); break;
     case 'itsm-ci-agent-revoke': if ((g = adminOnly() || need('itsm'))) return g; r = await revokeDiscoveryAgent(pool, orgId, b.id); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_revoked', String(b.id), {}); break;
+    case 'itsm-ci-license-reconciliation': if ((g = need('itsm'))) return g; r = await licenseReconciliation(pool, orgId); break;
+    case 'itsm-ci-license-alias-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveLicenseAlias(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.license_alias_saved', r.alias.display_name, { licenseId: r.alias.license_id }); break;
+    case 'itsm-ci-ownership-report': if ((g = need('itsm'))) return g; r = await assetOwnershipReport(pool, orgId); break;
+    case 'itsm-ci-owner-assign': if ((g = adminOnly() || need('itsm'))) return g; r = await assignAssetOwner(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.asset_owner_assigned', 'Bulk asset ownership', { updated: r.updated, ownerId: b.ownerId || null }); break;
+    case 'itsm-ci-compliance-list': if ((g = need('itsm'))) return g; r = await listCompliancePolicies(pool, orgId); break;
+    case 'itsm-ci-compliance-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveCompliancePolicy(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.compliance_policy_saved', r.policy.name, { policyId: r.policy.id }); break;
+    case 'itsm-ci-compliance-evaluate': if ((g = need('itsm'))) return g; r = await evaluateCompliance(pool, orgId); break;
     case 'itsm-service-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveService(pool, orgId, b); break;
     case 'itsm-incident-list': if ((g = need('itsm'))) return g; r = await listIncidents(pool, orgId, b); break;
     case 'itsm-incident-get': if ((g = need('itsm'))) return g; r = await getIncident(pool, orgId, b.number); break;
