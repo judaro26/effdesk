@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6', changes: 'M4 7h16M4 12h16M4 17h10 M17 15l3 3 3-3' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6', changes: 'M4 7h16M4 12h16M4 17h10 M17 15l3 3 3-3', assets: 'M4 7h16v13H4z M8 7V4h8v3 M8 12h8 M8 16h5' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -23,6 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
+    var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[];
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
@@ -47,7 +48,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -442,6 +443,80 @@
     }
 
     // ── Problem management: root-cause records linked to existing incidents ──
+    function loadConfigurationItems(){
+      closePanes();ciOpen=true;ciRows=null;ciDetail=null;ciSelected=0;ciEditing=null;ciLoading=true;draw();
+      return Promise.all([api('itsm-ci-list',{limit:500}),api('itsm-services-list')]).then(function(rs){
+        ciLoading=false;
+        if(!rs[0].ok||!rs[1].ok){ciRows=[];ciServices=[];say((!rs[0].ok?rs[0].body.error:rs[1].body.error)||'Could not load assets.',true);}
+        else{ciRows=rs[0].body.items||[];ciServices=rs[1].body.services||[];}
+        draw();
+      });
+    }
+    function openConfigurationItem(id){
+      ciSelected=Number(id)||0;ciEditing=null;ciDetail=null;draw();
+      return api('itsm-ci-get',{id:ciSelected}).then(function(r){
+        if(!r.ok){ciSelected=0;say(r.body.error||'Could not load configuration item.',true);return;}
+        ciDetail=r.body;draw();
+      });
+    }
+    function configurationItemsPane(){
+      var rows=ciRows||[],active=rows.filter(function(x){return ['in_use','in_repair'].indexOf(x.lifecycle)>=0;}).length;
+      var critical=rows.filter(function(x){return x.criticality==='critical'||x.criticality==='high';}).length;
+      var warranty=rows.filter(function(x){return x.warranty_expires_at&&new Date(x.warranty_expires_at+'T00:00:00')>=new Date()&&new Date(x.warranty_expires_at+'T00:00:00')<new Date(Date.now()+90*86400000);}).length;
+      var stats=el('div',{class:'stats itsm-stats'},
+        el('div',{class:'stat'},el('div',{class:'sv'},String(rows.length)),el('div',{class:'sl'},'Configuration items')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(active)),el('div',{class:'sl'},'In use / repair')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(critical)),el('div',{class:'sl'},'High criticality')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(warranty)),el('div',{class:'sl'},'Warranty due in 90 days')));
+      var list=el('div',{class:'itsm-table-wrap'});
+      if(ciLoading)list.appendChild(el('p',{class:'m'},'Loading configuration items…'));
+      else if(!rows.length)list.appendChild(el('div',{class:'itsm-detail-empty'},el('h3',{},'No assets or configuration items yet'),el('p',{class:'m'},'Start with laptops, servers, applications and other components. You can connect them to business services and map dependencies.')));
+      else{
+        var tbl=el('table',{class:'itsm-table'});
+        tbl.appendChild(el('thead',{},el('tr',{},['Asset tag','Configuration item','Type','Lifecycle','Criticality','Business service','Dependencies'].map(function(x){return el('th',{},x);}))));
+        var body=el('tbody');
+        rows.forEach(function(x){var tr0=el('tr',{class:ciSelected===Number(x.id)?'selected':'',tabindex:'0',role:'button','aria-label':'Open '+x.name,onclick:function(){openConfigurationItem(x.id);}});
+          [x.asset_tag||'—',el('strong',{},x.name),cap(x.ci_type),cap(x.lifecycle),el('span',{class:'itsm-severity '+String(x.criticality||'medium').toLowerCase()},cap(x.criticality)),x.service_name||'—',String(x.relationship_count||0)].forEach(function(v){tr0.appendChild(el('td',{},v));});
+          body.appendChild(tr0);
+        });tbl.appendChild(body);list.appendChild(tbl);
+      }
+      var detail=el('div',{class:'pcard itsm-detail-empty'},el('h3',{},'Select a configuration item'),el('p',{class:'m'},'Review ownership, lifecycle, service association, dependencies and linked work.'));
+      var item=ciEditing||(ciDetail&&ciDetail.item);
+      if(item){
+        var isNew=!item.id,field=function(label,value,type,max){var x=el(type==='textarea'?'textarea':'input',{ 'aria-label':label, ...(type==='textarea'?{rows:'3'}:{type:type||'text'}),maxlength:String(max||240)});x.value=value||'';return x;};
+        var name=field('Name',item.name),tag=field('Asset tag',item.asset_tag||item.assetTag),desc=field('Description',item.description,'textarea',5000);
+        var type=sel('Configuration item type',item.ci_type||item.ciType||'hardware',[['hardware','Hardware'],['software','Software'],['application','Application'],['database','Database'],['network','Network'],['cloud_resource','Cloud resource'],['service','Service'],['other','Other']],function(){});
+        var life=sel('Lifecycle',item.lifecycle||'in_use',[['planned','Planned'],['in_use','In use'],['in_repair','In repair'],['retired','Retired'],['disposed','Disposed']],function(){});
+        var crit=sel('Criticality',item.criticality||'medium',[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']],function(){});
+        var manufacturer=field('Manufacturer',item.manufacturer),model=field('Model',item.model),serial=field('Serial number',item.serial_number||item.serialNumber),location=field('Location',item.location);
+        var purchase=field('Purchase date',item.purchase_date||item.purchaseDate,'date'),warranty=field('Warranty expiry',item.warranty_expires_at||item.warrantyExpiresAt,'date');
+        var owner=sel('Owner',item.owner_id||item.ownerId||'', [['','Unassigned']].concat(agents.filter(function(a){return a.role!=='light';}).map(function(a){return [a.id,a.name||a.email];})),function(){});
+        var service=sel('Business service',String(item.business_service_id||item.businessServiceId||''),[['','No service']].concat(ciServices.map(function(x){return [String(x.id),x.name];})),function(){});
+        var save=el('button',{type:'button',class:'btn',onclick:function(){
+          api('itsm-ci-save',{id:item.id,assetTag:tag.value,name:name.value,description:desc.value,ciType:type.value,lifecycle:life.value,criticality:crit.value,manufacturer:manufacturer.value,model:model.value,serialNumber:serial.value,location:location.value,ownerId:owner.value,businessServiceId:service.value,purchaseDate:purchase.value,warrantyExpiresAt:warranty.value}).then(function(r){
+            if(!r.ok)return say(r.body.error||'Could not save configuration item.',true);
+            say('Configuration item saved.');ciEditing=null;return loadConfigurationItems().then(function(){return openConfigurationItem(r.body.item.id);});
+          });
+        }},'Save configuration item');
+        detail=el('div',{class:'pcard'},el('div',{class:'bar'},el('div',{},el('span',{class:'itsm-kicker'},isNew?'NEW ASSET':'CONFIGURATION ITEM'),el('h3',{},isNew?'Add asset or CI':item.name)),el('span',{class:'grow'}),el('button',{type:'button',class:'btn l sm',onclick:function(){ciEditing=null;ciDetail=null;ciSelected=0;draw();}},'Close')),
+          el('div',{class:'problem-form-grid'},el('label',{},el('span',{},'Name'),name),el('label',{},el('span',{},'Asset tag'),tag),el('label',{},el('span',{},'Type'),type),el('label',{},el('span',{},'Lifecycle'),life),el('label',{},el('span',{},'Criticality'),crit),el('label',{},el('span',{},'Owner'),owner),el('label',{},el('span',{},'Business service'),service),el('label',{},el('span',{},'Manufacturer'),manufacturer),el('label',{},el('span',{},'Model'),model),el('label',{},el('span',{},'Serial number'),serial),el('label',{},el('span',{},'Location'),location),el('label',{},el('span',{},'Purchase date'),purchase),el('label',{},el('span',{},'Warranty expiry'),warranty)),
+          el('div',{class:'problem-form-section'},el('h4',{},'Description'),desc),el('div',{class:'itsm-save-row'},save));
+        if(!isNew&&ciDetail){
+          var target=sel('Related CI','',[['','Choose a configuration item']].concat(rows.filter(function(x){return Number(x.id)!==Number(item.id);}).map(function(x){return [String(x.id),x.name];})),function(){});
+          var rel=sel('Relationship','depends_on',[['depends_on','Depends on'],['runs_on','Runs on'],['hosted_on','Hosted on'],['connects_to','Connects to'],['managed_by','Managed by']],function(){});
+          var relBox=el('div',{class:'pcard'},el('h4',{},'Service map relationships'),el('p',{class:'m'},'Create a directed relationship from this item to another configuration item.'),el('div',{class:'bar'},target,rel,el('button',{type:'button',class:'btn sm',onclick:function(){if(!target.value)return say('Choose a related configuration item.',true);api('itsm-ci-relationship-save',{sourceCiId:item.id,targetCiId:target.value,relationship:rel.value}).then(function(r){if(!r.ok)return say(r.body.error,true);openConfigurationItem(item.id);});}},'Add relationship')));
+          (ciDetail.relationships||[]).forEach(function(x){relBox.appendChild(el('p',{class:'m'},x.source_name+' — '+cap(x.relationship)+' → '+x.target_name));});
+          var rt=sel('Record type','ticket',[['ticket','Ticket'],['problem','Problem'],['change','Change']],function(){}),rid=field('Record ID','','number',12);
+          var linkBox=el('div',{class:'pcard'},el('h4',{},'Linked work'),el('p',{class:'m'},'Associate this CI with existing tickets, problems or change requests in this workspace.'),el('div',{class:'bar'},rt,rid,el('button',{type:'button',class:'btn sm',onclick:function(){api('itsm-ci-record-link',{ciId:item.id,recordType:rt.value,recordId:rid.value}).then(function(r){if(!r.ok)return say(r.body.error,true);openConfigurationItem(item.id);});}},'Link record')));
+          (ciDetail.tickets||[]).forEach(function(x){linkBox.appendChild(el('p',{class:'m'},'Ticket #'+x.number+' · '+x.subject+' · '+cap(x.status)));});
+          (ciDetail.problems||[]).forEach(function(x){linkBox.appendChild(el('p',{class:'m'},'Problem #'+x.id+' · '+x.title+' · '+cap(x.status)));});
+          (ciDetail.changes||[]).forEach(function(x){linkBox.appendChild(el('p',{class:'m'},'Change CHG-'+x.id+' · '+x.title+' · '+cap(x.status)));});
+          detail.appendChild(relBox);detail.appendChild(linkBox);
+          if((ciDetail.events||[]).length){var hist=el('div',{class:'problem-history'},el('h4',{},'CI activity'));ciDetail.events.forEach(function(e){hist.appendChild(el('div',{class:'problem-history-item'},el('strong',{},e.actor_name||'System'),el('span',{class:'m'},e.detail),el('small',{},ago(e.created_at))));});detail.appendChild(hist);}
+        }
+      }
+      return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'IT OPERATIONS'),el('h2',{},'Assets & CMDB'),el('p',{class:'m'},'Track hardware and software assets, map technical dependencies and connect configuration items to service work.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){ciEditing={};ciDetail=null;ciSelected=0;draw();}},'＋ Add asset / CI'),el('button',{type:'button',class:'btn l',onclick:loadConfigurationItems},'Refresh'))),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},list),el('div',{class:'itsm-detail-col'},detail)));
+    }
     function loadProblems() {
       closePanes(); problemsOpen=true; problemRows=null; problemDetail=null; problemSelected=0; problemCreating=false; problemLoading=true; draw();
       return api('itsm-problem-list',{limit:200,status:problemStatus}).then(function(r){
@@ -651,14 +726,14 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
-      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
+      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems)); }
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
@@ -1908,7 +1983,7 @@
       qBox.placeholder = tr('Search tickets, contacts, companies, agents…'); qBox.setAttribute('aria-label', tr('Search tickets')); newBtn.textContent = tr('+ New ticket');
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }

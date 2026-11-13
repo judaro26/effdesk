@@ -57,6 +57,7 @@ import { listApprovals, getApprovalForTicket, decideApproval, listTasks, updateT
 import { listServices, saveService, listIncidents, getIncident, saveIncident } from './itsm.js';
 import { listProblems, getProblem, saveProblem } from './problems.js';
 import { listChanges, getChange, saveChange, decideChange, getChangeCabPolicy, saveChangeCabPolicy, previewChangeConflicts } from './change-management.js';
+import { listConfigurationItems, getConfigurationItem, saveConfigurationItem, saveConfigurationRelationship, linkConfigurationRecord } from './configuration-items.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -197,6 +198,11 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'approval-decide': if ((g = need('request_forms'))) return g; r = await decideApproval(pool, orgId, actor.id, b.id, b.decision, b.comment, mailer); break;
     case 'tasks-list': if ((g = need('request_forms'))) return g; r = await listTasks(pool, orgId, b.number); break;
     case 'itsm-services-list': if ((g = need('itsm'))) return g; r = await listServices(pool, orgId); break;
+    case 'itsm-ci-list': if ((g = need('itsm'))) return g; r = await listConfigurationItems(pool, orgId, b); break;
+    case 'itsm-ci-get': if ((g = need('itsm'))) return g; r = await getConfigurationItem(pool, orgId, b.id); break;
+    case 'itsm-ci-save': if ((g = need('itsm'))) return g; r = await saveConfigurationItem(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'cmdb.ci_updated' : 'cmdb.ci_created', 'CI #' + r.item.id, { lifecycle: r.item.lifecycle, type: r.item.ci_type }); break;
+    case 'itsm-ci-relationship-save': if ((g = need('itsm'))) return g; r = await saveConfigurationRelationship(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.relationship_created', 'CI #' + b.sourceCiId, { targetCiId: b.targetCiId, relationship: b.relationship }); break;
+    case 'itsm-ci-record-link': if ((g = need('itsm'))) return g; r = await linkConfigurationRecord(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.record_linked', 'CI #' + b.ciId, { recordType: b.recordType, recordId: b.recordId }); break;
     case 'itsm-service-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveService(pool, orgId, b); break;
     case 'itsm-incident-list': if ((g = need('itsm'))) return g; r = await listIncidents(pool, orgId, b); break;
     case 'itsm-incident-get': if ((g = need('itsm'))) return g; r = await getIncident(pool, orgId, b.number); break;

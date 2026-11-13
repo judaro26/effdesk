@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { normalizeConfigurationItem, CI_TYPES, CI_LIFECYCLES, CI_RELATIONSHIPS } from '../src/configuration-items.js';
+const empty=normalizeConfigurationItem();
+assert.equal(empty.name,'');assert.equal(empty.ciType,'hardware');assert.equal(empty.lifecycle,'in_use');assert.equal(empty.criticality,'medium');assert.equal(empty.businessServiceId,null);
+const item=normalizeConfigurationItem({assetTag:'  LAP-001 ',name:'  Finance laptop  ',ciType:'hardware',lifecycle:'in_repair',criticality:'critical',manufacturer:' Acme ',model:' X1 ',serialNumber:' SN-4 ',location:' HQ ',ownerId:' user-1 ',businessServiceId:'42',purchaseDate:'2025-01-02',warrantyExpiresAt:'2027-01-02'});
+assert.equal(item.assetTag,'LAP-001');assert.equal(item.name,'Finance laptop');assert.equal(item.lifecycle,'in_repair');assert.equal(item.businessServiceId,42);assert.equal(item.purchaseDate,'2025-01-02');
+assert.equal(normalizeConfigurationItem({ciType:'bogus',lifecycle:'gone',criticality:'extreme'}).ciType,'hardware');
+assert.equal(normalizeConfigurationItem({name:'x'.repeat(240)}).name.length,180);
+assert.equal(normalizeConfigurationItem({purchaseDate:'not-a-date'}).purchaseDate,null);
+assert.deepEqual(CI_TYPES,['hardware','software','application','database','network','cloud_resource','service','other']);
+assert.ok(CI_LIFECYCLES.includes('disposed'));assert.ok(CI_RELATIONSHIPS.includes('depends_on'));
+console.log('Configuration item normalization tests passed.');
