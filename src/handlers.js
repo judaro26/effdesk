@@ -685,8 +685,9 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
       const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
-      if (r.ok) { await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, 'customer_reply', n, body); await emitHook(pool, org.id, 'message.customer', n, { message: { body: body.slice(0, 2000) } }); }
-      return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
+      const targetNumber = r.followup ? r.number : n;
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, 'customer_reply', targetNumber, body); await emitHook(pool, org.id, 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
+      return r.ok ? redirect(`${base}/tickets/${targetNumber}?sent=1&lang=${lang}`) : notFound();
     }
   }
   return notFound();
