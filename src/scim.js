@@ -82,11 +82,17 @@ async function addMembership(pool, orgId, userId) {
 }
 async function deactivateMembership(pool, orgId, userId) {
   return withOrg(pool, orgId, async c => {
+    const member = (await c.query('select role from member where "organizationId"=$1 and "userId"=$2', [orgId, userId])).rows[0];
+    if (member?.role === 'owner') {
+      const owners = Number((await c.query('select count(*)::int as n from member where "organizationId"=$1 and role=\'owner\'', [orgId])).rows[0]?.n || 0);
+      if (owners <= 1) return fail('This is the workspace’s only owner. Assign another owner before deprovisioning this account.', 409);
+    }
     await c.query('update tickets set assignee_id=null,updated_at=now() where org_id=$1 and assignee_id=$2', [orgId, userId]);
     await c.query('delete from ticket_followers where org_id=$1 and user_id=$2', [orgId, userId]);
     await c.query('delete from member_custom_role where org_id=$1 and user_id=$2', [orgId, userId]);
     await c.query('delete from agent_status where org_id=$1 and user_id=$2', [orgId, userId]);
     await c.query('delete from member where "organizationId"=$1 and "userId"=$2', [orgId, userId]);
+    return { ok: true };
   });
 }
 function getEmail(input) {
@@ -116,7 +122,8 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
     const membership = await addMembership(pool, orgId, user.id);
     if (!membership.ok) return membership;
   } else {
-    await deactivateMembership(pool, orgId, user.id);
+    const removed = await deactivateMembership(pool, orgId, user.id);
+    if (!removed.ok) return removed;
   }
   const externalId = clean(input.externalId, 250) || null;
   if (externalId) {
@@ -224,7 +231,8 @@ export async function scim(req, { pool }) {
   }
   if (req.method === 'DELETE' && id) {
     const row = await readUser(pool, orgId, id); if (!row) return scimError(404, 'User not found.');
-    await deactivateMembership(pool, orgId, row.user_id);
+    const removed = await deactivateMembership(pool, orgId, row.user_id);
+    if (!removed.ok) return scimError(removed.status || 409, removed.error);
     await withOrg(pool, orgId, async c => {
       await c.query('update scim_users set active=false,updated_at=now() where org_id=$1 and id=$2', [orgId, id]);
       await c.query('insert into audit_log (org_id,actor_id,action,target,meta) values ($1,null,$2,$3,$4)', [orgId, 'scim.user.deprovisioned', row.email, JSON.stringify({ scimId: id, externalId: row.external_id, active: false })]);
