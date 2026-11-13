@@ -671,3 +671,46 @@ html{-webkit-text-size-adjust:100%}
 /* Sequential approval stage editor */
 .form-task-row>.form-task-fields>strong{font-size:12px;letter-spacing:.04em;color:var(--d-muted)}
 .form-task-row .perms{display:flex;flex-wrap:wrap;gap:6px}
+
+
+/* ITSM incident workspace */
+.itsm-page{max-width:none;gap:16px;padding:24px;align-items:stretch}
+.itsm-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.itsm-page-head h2{font-size:26px;margin:3px 0 4px}
+.itsm-kicker{font-size:10px;letter-spacing:.13em;font-weight:800;color:var(--accent-d)}
+.itsm-plan-pill{font-size:10px;font-weight:800;letter-spacing:.08em;padding:6px 10px;border:1px solid var(--d-line);border-radius:999px;color:var(--d-muted)}
+.itsm-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.itsm-layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(380px,.95fr);gap:14px;align-items:start}
+.itsm-main-col,.itsm-detail-col{display:grid;gap:14px;min-width:0}
+.itsm-list-card,.itsm-services-card,.itsm-detail-card{width:100%;min-width:0}
+.itsm-card-head,.itsm-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.itsm-card-head h3,.itsm-detail-head h3{margin:0 0 4px}
+.itsm-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.itsm-toolbar select{max-width:155px}
+.itsm-table-wrap{overflow:auto;margin:12px -4px -4px}
+.itsm-table{width:100%;border-collapse:collapse;font-size:13px;min-width:580px}
+.itsm-table th{text-align:left;color:var(--d-muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;padding:10px 9px;border-bottom:1px solid var(--d-line);white-space:nowrap}
+.itsm-table td{padding:11px 9px;border-bottom:1px solid var(--d-line);vertical-align:middle}
+.itsm-table tbody tr{cursor:pointer;transition:background .15s}
+.itsm-table tbody tr:hover,.itsm-table tbody tr.selected{background:var(--d-hover)}
+.itsm-table tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.itsm-table td strong{display:block;max-width:290px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.itsm-subline{display:block;font-size:11px;color:var(--d-muted);margin-top:3px}
+.itsm-severity{display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;letter-spacing:.04em;padding:4px 7px;border-radius:6px;background:var(--d-badge);color:var(--d-ink);white-space:nowrap}
+.itsm-severity.p1{background:#b83232;color:#fff}.itsm-severity.p2{background:#d97726;color:#fff}.itsm-severity.p3{background:#c6a33c;color:#2c2414}.itsm-severity.p4{background:#39856c;color:#fff}
+.itsm-major-tag{display:block;font-size:9px;font-weight:900;letter-spacing:.08em;color:#b83232;margin-top:4px}
+.itsm-service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:12px}
+.itsm-service-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid var(--d-line);border-radius:9px;min-width:0}
+.itsm-service-item .grow{min-width:0}.itsm-service-item strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.itsm-service-owner{font-size:10px;color:var(--d-muted)}
+.itsm-service-dot{width:8px;height:8px;border-radius:50%;background:#26966d;flex:none}.itsm-service-dot.degraded{background:#d18a29}.itsm-service-dot.outage{background:#c43c3c}.itsm-service-dot.maintenance{background:#487fbd}.itsm-service-dot.retired{background:#8b9298}
+.itsm-service-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.itsm-service-form input,.itsm-service-form textarea{width:100%;max-width:none}.itsm-service-form textarea{grid-column:1/-1;min-height:58px}.itsm-service-form button{justify-self:start}
+.itsm-detail-empty{min-height:330px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:25px}.itsm-empty-icon{width:42px;height:42px;border-radius:14px;background:var(--d-hover);display:grid;place-items:center;font-size:22px;margin-bottom:12px;color:var(--accent-d)}
+.itsm-detail-head{padding-bottom:14px;border-bottom:1px solid var(--d-line)}.itsm-detail-head h3{font-size:17px;overflow-wrap:anywhere}.itsm-detail-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.itsm-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.itsm-field-grid label,.itsm-form-section>label{display:grid;gap:5px;font-size:11px;font-weight:700;color:var(--d-muted)}.itsm-field-grid select{width:100%}
+.itsm-major-toggle{display:flex;align-items:center;gap:10px;margin:14px 0;padding:11px;border:1px solid var(--d-line);border-radius:9px;cursor:pointer}.itsm-major-toggle input{width:16px;height:16px}.itsm-major-toggle strong,.itsm-major-toggle small{display:block}.itsm-major-toggle small{font-size:11px;color:var(--d-muted);margin-top:2px}
+.itsm-form-section{border-top:1px solid var(--d-line);padding-top:13px;margin-top:13px;display:grid;gap:8px}.itsm-form-section h4{margin:0;font-size:12px}.itsm-form-section textarea,.itsm-form-section input{width:100%;max-width:none}.itsm-form-section textarea{min-height:76px}.itsm-check-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.itsm-check{display:flex;align-items:center;gap:7px;padding:7px;border:1px solid var(--d-line);border-radius:8px;font-size:12px;cursor:pointer}.itsm-check input{width:15px;height:15px;flex:none}.itsm-check small{display:block;color:var(--d-muted);font-size:10px}
+.itsm-next-update{display:flex!important;align-items:center;justify-content:space-between;gap:10px}.itsm-next-update input{max-width:220px}
+.itsm-save-row{display:flex;align-items:center;gap:10px;margin-top:15px;flex-wrap:wrap}
+@media(max-width:1050px){.itsm-layout{grid-template-columns:1fr}.itsm-detail-col{order:2}}
+@media(max-width:680px){.itsm-page{padding:16px 12px}.itsm-page-head{align-items:center}.itsm-page-head h2{font-size:21px}.itsm-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.itsm-card-head{display:grid}.itsm-toolbar{justify-content:flex-start}.itsm-service-form,.itsm-field-grid{grid-template-columns:1fr}.itsm-check-grid{grid-template-columns:1fr}.itsm-detail-head{display:grid}.itsm-next-update{align-items:flex-start!important;flex-direction:column}}
