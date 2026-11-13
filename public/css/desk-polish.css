@@ -568,3 +568,31 @@
 .deskapp .integration-catalog-item .integration-provider-logo{
   background:#fff!important;
 }
+
+
+/* External integration cards must fit the workspace instead of overflowing it. */
+.deskapp .integrations-desk-page,
+.deskapp .integrations-desk-page > .integration-hub-section{
+  width:100%;
+  min-width:0;
+}
+.deskapp .integration-hub-section{box-sizing:border-box;overflow:hidden}
+.deskapp .integration-providers-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+  width:100%;
+  min-width:0;
+  gap:14px;
+}
+.deskapp .integration-providers-grid > .integration-provider-card{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+.deskapp .integration-provider-top,
+.deskapp .integration-provider-title{min-width:0}
+.deskapp .integration-provider-title{overflow-wrap:anywhere}
+@media(max-width:900px){
+  .deskapp .integration-providers-grid{grid-template-columns:minmax(0,1fr)}
+}
