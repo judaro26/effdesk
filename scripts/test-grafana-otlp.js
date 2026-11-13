@@ -4,8 +4,8 @@ import { buildGrafanaPayload, exportGrafanaSnapshot, grafanaConfig, testGrafanaC
 const env = { GRAFANA_OTLP_ENDPOINT: 'https://otlp-gateway-prod-us-west-0.grafana.net/otlp', GRAFANA_CLOUD_INSTANCE_ID: '123456', GRAFANA_CLOUD_API_KEY: 'secret-test-token', CONTEXT: 'test' };
 check('Grafana setup requires endpoint, instance id and API key', grafanaConfig(env).configured && !grafanaConfig({}).configured && grafanaConfig({}).missing.length === 3);
 check('Grafana endpoint status exposes only the host, never credentials', grafanaConfig(env).host === 'otlp-gateway-prod-us-west-0.grafana.net' && !JSON.stringify(grafanaConfig(env)).includes('secret-test-token'));
-let posted = null, postedUrl = '';
-const fakeFetch = async (url, options) => { postedUrl = url; posted = JSON.parse(options.body); return { ok: true, status: 200 }; };
+let posted = null, postedUrl = '', postedHeaders = null;
+const fakeFetch = async (url, options) => { postedUrl = url; postedHeaders = options.headers; posted = JSON.parse(options.body); return { ok: true, status: 200 }; };
 const pool = { query: async sql => {
   if (sql.includes('performance_minute')) return { rows: [{ function_name: 'tickets', path: '/api/tickets?secret=hidden', requests: 20, errors: 1, avg_ms: 120, max_ms: 700 }] };
   if (sql.includes('performance_query_minute')) return { rows: [{ query_hash: '0123456789abcdef', operation: 'SELECT', function_name: 'tickets', samples: 4, errors: 0, avg_ms: 80, max_ms: 150 }] };
@@ -19,7 +19,7 @@ check('tenant IDs, raw SQL and query strings are not exported', !JSON.stringify(
 check('routes are normalized and SQL uses only its fingerprint', JSON.stringify(payload).includes('/api/tickets') && JSON.stringify(payload).includes('0123456789abcdef') && !JSON.stringify(payload).includes('/agent/123/'));
 const sent = await exportGrafanaSnapshot(pool, env, fakeFetch);
 check('snapshot posts OTLP metrics to the Grafana Cloud v1 metrics endpoint', sent.ok && sent.dataPoints >= 3 && postedUrl === 'https://otlp-gateway-prod-us-west-0.grafana.net/otlp/v1/metrics');
-check('OTLP authentication uses the configured instance id and key', postedUrl.startsWith('https://') && !!posted.resourceMetrics);
+check('OTLP authentication uses the configured instance id and key', postedUrl.startsWith('https://') && postedHeaders.Authorization === 'Basic ' + Buffer.from('123456:secret-test-token').toString('base64') && !!posted.resourceMetrics);
 const tested = await testGrafanaConnection(env, fakeFetch);
 check('connection test sends a harmless service-level metric', tested.ok && posted.resourceMetrics[0].scopeMetrics[0].metrics[0].name === 'effdesk_grafana_connection_test');
 const bad = await testGrafanaConnection({ ...env, GRAFANA_OTLP_ENDPOINT: 'http://127.0.0.1:3000' }, fakeFetch);
