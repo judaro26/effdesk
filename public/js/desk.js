@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -21,6 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
+    var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
@@ -42,7 +43,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -129,6 +130,106 @@
       });
       return el('div', { class: 'page wide approvals-page' }, el('div', { class: 'bar approval-heading' }, el('div', {}, el('h2', {}, 'Approvals'), el('p', { class: 'm' }, 'Review service requests assigned to you and keep decisions moving.')), el('span', { class: 'grow' }), el('button', { type: 'button', class: 'btn l', onclick: loadApprovals }, 'Refresh')), el('div', { class: 'approval-list' }, content));
     }
+
+    // ── ITSM incident workspace (incidents remain ordinary tickets) ──
+    function loadItsm() {
+      closePanes(); incidentsOpen = true; incidentRows = null; incidentServices = []; incidentLoading = true; incidentSelected = 0; incidentDetail = null; draw();
+      return Promise.all([api('itsm-incident-list', { limit: 200 }), api('itsm-services-list')]).then(function (rs) {
+        incidentLoading = false;
+        if (!rs[0].ok || !rs[1].ok) { incidentRows = []; incidentServices = []; say((!rs[0].ok ? rs[0].body.error : rs[1].body.error) || 'Could not load ITSM.', true); }
+        else { incidentRows = rs[0].body.incidents || []; incidentServices = rs[1].body.services || []; }
+        draw();
+      });
+    }
+    function openIncidentDetail(number) {
+      incidentSelected = Number(number) || 0; incidentDetail = null; draw();
+      return api('itsm-incident-get', { number: incidentSelected }).then(function (r) {
+        if (!r.ok) { incidentSelected = 0; return say(r.body.error || 'Could not load incident.', true); }
+        incidentDetail = r.body; draw();
+      });
+    }
+    function itsmPane() {
+      var rows = incidentRows || [], selected = incidentDetail && incidentDetail.incident;
+      var severityOptions = [['','All severities'],['P1','P1 · Critical'],['P2','P2 · High'],['P3','P3 · Moderate'],['P4','P4 · Low']];
+      var filterSeverity = el('select', { 'aria-label': 'Filter by severity' });
+      severityOptions.forEach(function (o) { var op=el('option',{value:o[0]},o[1]); op.selected=o[0]===incidentSeverity; filterSeverity.appendChild(op); });
+      filterSeverity.addEventListener('change',function(){incidentSeverity=filterSeverity.value;incidentRows=null;incidentLoading=true;draw();api('itsm-incident-list',{limit:200,severity:incidentSeverity,majorOnly:incidentMajorOnly}).then(function(r){incidentLoading=false;incidentRows=r.ok?(r.body.incidents||[]):[];if(!r.ok)say(r.body.error,true);draw();});});
+      var refreshButton=el('button',{type:'button',class:'btn l',onclick:loadItsm},'Refresh');
+      var majorToggle=el('button',{type:'button',class:'btn '+(incidentMajorOnly?'':'l'),'aria-pressed':String(incidentMajorOnly),onclick:function(){incidentMajorOnly=!incidentMajorOnly;incidentRows=null;incidentLoading=true;draw();api('itsm-incident-list',{limit:200,severity:incidentSeverity,majorOnly:incidentMajorOnly}).then(function(r){incidentLoading=false;incidentRows=r.ok?(r.body.incidents||[]):[];if(!r.ok)say(r.body.error,true);draw();});}},incidentMajorOnly?'Major incidents only ✓':'Major incidents');
+      var p1=rows.filter(function(x){return x.severity==='P1';}).length, major=rows.filter(function(x){return x.is_major;}).length, active=rows.filter(function(x){return ['open','pending','on_hold'].indexOf(x.status)>=0;}).length;
+      var stats=el('div',{class:'stats itsm-stats'},
+        el('div',{class:'stat'},el('div',{class:'sv'},String(rows.length)),el('div',{class:'sl'},'Incidents')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(active)),el('div',{class:'sl'},'Active')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(p1)),el('div',{class:'sl'},'P1 critical')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(major)),el('div',{class:'sl'},'Major incidents')));
+      var table=el('div',{class:'itsm-table-wrap'});
+      if(incidentLoading)table.appendChild(el('p',{class:'m'},'Loading incidents…'));
+      else if(!rows.length)table.appendChild(el('div',{class:'pcard approval-empty'},el('h3',{},'No incidents found'),el('p',{class:'m'},'Create a ticket and set its type to Incident. It will appear here automatically.')));
+      else {
+        var tbl=el('table',{class:'itsm-table'});
+        tbl.appendChild(el('thead',{},el('tr',{},['Severity','Incident','Status','Impact','Services','Updated'].map(function(h){return el('th',{},h);}))));
+        var body=el('tbody');
+        rows.forEach(function(x){
+          var tr=el('tr',{class:incidentSelected===Number(x.number)?'selected':'','data-incident':String(x.number),tabindex:'0',role:'button','aria-label':'Open incident #'+x.number+' '+x.subject});
+          tr.appendChild(el('td',{},el('span',{class:'itsm-severity '+String(x.severity||'P3').toLowerCase()},x.severity||'P3'),x.is_major?el('span',{class:'itsm-major-tag'},'MAJOR'):null));
+          tr.appendChild(el('td',{},el('strong',{},'#'+x.number+' '+x.subject),el('span',{class:'itsm-subline'},x.requester_name||x.requester_email||'Unknown requester')));
+          tr.appendChild(el('td',{},el('span',{class:'badge s-'+x.status},cap(x.status))));
+          tr.appendChild(el('td',{},cap(x.impact||'medium')));
+          tr.appendChild(el('td',{},String(x.affected_services||0)));
+          tr.appendChild(el('td',{},ago(x.updated_at)));
+          var choose=function(){openIncidentDetail(x.number);};tr.addEventListener('click',choose);tr.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});
+          body.appendChild(tr);
+        });
+        tbl.appendChild(body);table.appendChild(tbl);
+      }
+      var listCard=el('section',{class:'pcard itsm-list-card'},
+        el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Incident queue'),el('p',{class:'m'},'Prioritized by severity and recent activity.')),el('div',{class:'itsm-toolbar'},filterSeverity,majorToggle,refreshButton)),table);
+      var servicesCard=el('section',{class:'pcard itsm-services-card'},el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Business services'),el('p',{class:'m'},'Services that can be associated with affected incidents.')),isAdmin?el('button',{type:'button',class:'btn l sm',onclick:function(){serviceEditorOpen=!serviceEditorOpen;draw();}},serviceEditorOpen?'Cancel':'＋ Add service'):null));
+      if(serviceEditorOpen&&isAdmin){
+        var sn=el('input',{type:'text',maxlength:'120',placeholder:'Service name','aria-label':'Service name'});
+        var sd=el('textarea',{rows:'2',maxlength:'2000',placeholder:'What does this service do?','aria-label':'Service description'});
+        var sc=el('select',{'aria-label':'Service criticality'},[['low','Low criticality'],['medium','Medium criticality'],['high','High criticality'],['critical','Critical']].map(function(x){return el('option',{value:x[0]},x[1]);}));
+        var ss=el('select',{'aria-label':'Service status'},[['operational','Operational'],['degraded','Degraded'],['outage','Outage'],['maintenance','Maintenance'],['retired','Retired']].map(function(x){return el('option',{value:x[0]},x[1]);}));
+        servicesCard.appendChild(el('div',{class:'itsm-service-form'},sn,sd,sc,ss,el('button',{type:'button',class:'btn',onclick:function(){if(!sn.value.trim())return say('Give the service a name.',true);api('itsm-service-save',{name:sn.value,description:sd.value,criticality:sc.value,status:ss.value}).then(function(r){if(!r.ok)return say(r.body.error||'Could not save service.',true);serviceEditorOpen=false;loadItsm();say('Business service created.');});}},'Save service')));
+      }
+      if(!incidentServices.length)servicesCard.appendChild(el('p',{class:'m'},'No business services have been configured yet.'));
+      else {
+        var serviceGrid=el('div',{class:'itsm-service-grid'});
+        incidentServices.forEach(function(s){serviceGrid.appendChild(el('div',{class:'itsm-service-item'},el('span',{class:'itsm-service-dot '+s.status},''),el('div',{class:'grow'},el('strong',{},s.name),el('span',{class:'itsm-subline'},cap(s.criticality)+' criticality · '+cap(s.status))),el('span',{class:'itsm-service-owner'},s.owner_name||'')));});
+        servicesCard.appendChild(serviceGrid);
+      }
+      var detailCard=el('section',{class:'pcard itsm-detail-card'});
+      if(!incidentSelected)detailCard.appendChild(el('div',{class:'itsm-detail-empty'},el('span',{class:'itsm-empty-icon'},'✦'),el('h3',{},'Incident command center'),el('p',{class:'m'},'Select an incident to review impact, coordinate ownership, update communications and track affected services.')));
+      else if(!selected)detailCard.appendChild(el('p',{class:'m'},'Loading incident details…'));
+      else {
+        var d=selected, details=incidentDetail.services||[], related=incidentDetail.related||[];
+        var impact=el('select',{'aria-label':'Impact'},[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].map(function(x){return el('option',{value:x[0]},x[1]);}));
+        var urgency=el('select',{'aria-label':'Urgency'},[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].map(function(x){return el('option',{value:x[0]},x[1]);}));
+        var sev=el('select',{'aria-label':'Severity'},[['P1','P1 · Critical'],['P2','P2 · High'],['P3','P3 · Moderate'],['P4','P4 · Low']].map(function(x){return el('option',{value:x[0]},x[1]);}));
+        var commander=el('select',{'aria-label':'Incident commander'});commander.appendChild(el('option',{value:''},'Unassigned'));agents.forEach(function(a){if(a.role!=='light')commander.appendChild(el('option',{value:a.id},a.name||a.email));});
+        impact.value=d.impact||'medium';urgency.value=d.urgency||'medium';sev.value=d.severity||'P3';commander.value=d.commander_id||'';
+        var majorBox=el('input',{type:'checkbox','aria-label':'Mark as major incident'});majorBox.checked=!!d.is_major;
+        var publicSummary=el('textarea',{rows:'3',maxlength:'3000','aria-label':'Public incident update',placeholder:'Customer-safe summary and current impact…'});publicSummary.value=d.public_summary||'';
+        var internalSummary=el('textarea',{rows:'3',maxlength:'5000','aria-label':'Internal incident notes',placeholder:'Internal coordination notes, investigation and next actions…'});internalSummary.value=d.internal_summary||'';
+        var nextUpdate=el('input',{type:'datetime-local','aria-label':'Next customer update'});if(d.next_update_at){var nd=new Date(d.next_update_at);nextUpdate.value=new Date(nd.getTime()-nd.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+        var affected=el('div',{class:'itsm-check-grid'});
+        incidentServices.forEach(function(s){var cb=el('input',{type:'checkbox'});cb.checked=details.some(function(x){return Number(x.id)===Number(s.id);});cb.value=String(s.id);affected.appendChild(el('label',{class:'itsm-check'},cb,el('span',{},s.name,el('small',{},cap(s.status)+' · '+cap(s.criticality)))));});
+        var relatedInput=el('input',{type:'text',placeholder:'e.g. 104, 108','aria-label':'Related incident ticket numbers',value:related.map(function(x){return x.number;}).join(', ')});
+        var save=el('button',{type:'button',class:'btn',onclick:function(){
+          var next=nextUpdate.value?new Date(nextUpdate.value):null;
+          api('itsm-incident-save',{number:d.number,impact:impact.value,urgency:urgency.value,severity:sev.value,isMajor:majorBox.checked,commanderId:commander.value,publicSummary:publicSummary.value,internalSummary:internalSummary.value,nextUpdateAt:next&&Number.isFinite(next.getTime())?next.toISOString():null,serviceIds:Array.prototype.slice.call(affected.querySelectorAll('input:checked')).map(function(x){return Number(x.value);}),relatedNumbers:relatedInput.value.split(',').map(function(x){return Number(x.trim());}).filter(function(x){return Number.isSafeInteger(x)&&x>0;})}).then(function(r){if(!r.ok)return say(r.body.error||'Could not save incident.',true);incidentDetail=r.body;return api('itsm-incident-list',{limit:200,severity:incidentSeverity,majorOnly:incidentMajorOnly}).then(function(l){if(l.ok)incidentRows=l.body.incidents||[];draw();say('Incident updated.');});});
+        }},'Save incident');
+        detailCard.appendChild(el('div',{class:'itsm-detail-head'},el('div',{},el('span',{class:'itsm-kicker'},'INCIDENT #'+d.number),el('h3',{},d.subject),el('p',{class:'m'},(d.requester_name||d.requester_email||'Requester')+' · '+cap(d.status)+' · Updated '+ago(d.updated_at))),el('div',{class:'itsm-detail-actions'},el('span',{class:'itsm-severity '+String(d.severity||'P3').toLowerCase()},d.severity||'P3'),el('button',{type:'button',class:'btn l sm',onclick:function(){open(d.number);}},'Open ticket'))));
+        detailCard.appendChild(el('div',{class:'itsm-field-grid'},el('label',{},el('span',{},'Impact'),impact),el('label',{},el('span',{},'Urgency'),urgency),el('label',{},el('span',{},'Severity'),sev),el('label',{},el('span',{},'Incident commander'),commander)));
+        detailCard.appendChild(el('label',{class:'itsm-major-toggle'},majorBox,el('span',{},el('strong',{},'Major incident'),el('small',{},'Flag this incident for coordinated response and communication.'))));
+        detailCard.appendChild(el('div',{class:'itsm-form-section'},el('h4',{},'Affected services'),affected));
+        detailCard.appendChild(el('div',{class:'itsm-form-section'},el('h4',{},'Customer communications'),el('p',{class:'m'},'Use a customer-safe summary and set when the next update is expected.'),publicSummary,el('label',{class:'itsm-next-update'},el('span',{},'Next update'),nextUpdate)));
+        detailCard.appendChild(el('div',{class:'itsm-form-section'},el('h4',{},'Internal coordination'),internalSummary,el('label',{},el('span',{},'Related incident numbers'),relatedInput)));
+        detailCard.appendChild(el('div',{class:'itsm-save-row'},save,el('span',{class:'m'},'Changes are recorded in the ticket timeline.')));
+      }
+      return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Incident management'),el('p',{class:'m'},'Coordinate service disruptions using the ticket, service and approval foundations already in EffDesk.')),el('span',{class:'itsm-plan-pill'},'PRO')),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard,servicesCard),el('div',{class:'itsm-detail-col'},detailCard)));
+    }
+
     function goHome() { addr(0); closePanes(); home = true; return api('dashboard').then(function (r) { dash = r.ok ? r.body : null; if (!r.ok) say(r.body.error || 'That did not work.', true); else draw(); }); }
     function search() { filter.q = qBox.value.trim(); closePanes(); refresh(); }
     qBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
@@ -245,13 +346,14 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
+      if (has('itsm')) rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm));
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
@@ -1499,7 +1601,7 @@
       drawChrome(); drawMenu();
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }
