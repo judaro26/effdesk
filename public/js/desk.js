@@ -359,7 +359,7 @@
         detail.appendChild(el('div',{class:'problem-form-section'},el('div',{class:'change-stage-title'},el('h4',{},'Sequential approval stages'),el('span',{class:'m'},pendingApproval?'Approval stages are locked while decisions are in progress.':'All stages must complete in order.')),approvalBox,addStage));
         if(pendingApproval&&changeDetail){
           var ix=Math.max(0,Math.min(Number(ch.current_stage)||0,(ch.approval_stages||[]).length-1)),stage=(ch.approval_stages||[])[ix]||{};
-          var already=(changeDetail.decisions||[]).some(function(d){return Number(d.stage_index)===ix&&d.approver_id===meId;});
+          var already=(changeDetail.decisions||[]).some(function(d){return Number(d.round_index)===Number(ch.approval_round||1)&&Number(d.stage_index)===ix&&d.approver_id===meId;});
           if((stage.approverIds||[]).indexOf(meId)>=0&&!already){
             var comment=el('textarea',{rows:'2',maxlength:'2000',placeholder:'Optional approval comment…','aria-label':'Approval comment'});
             var actions=el('div',{class:'change-decision-actions'},comment,
@@ -370,7 +370,7 @@
         }
         if(changeDetail&&changeDetail.decisions&&changeDetail.decisions.length){
           var history=el('div',{class:'problem-history'},el('h4',{},'Approval decisions'));
-          changeDetail.decisions.forEach(function(x){var s=(ch.approval_stages||[])[x.stage_index]||{};var a=agents.filter(function(v){return v.id===x.approver_id;})[0];history.appendChild(el('div',{class:'problem-history-item'},el('strong',{},a?a.name||a.email:x.approver_id),el('span',{class:'m'},(s.name||'Stage '+(x.stage_index+1))+' · '+x.decision+(x.comment?' · '+x.comment:'')),el('small',{},changeDateLabel(x.created_at))));});detail.appendChild(history);
+          changeDetail.decisions.forEach(function(x){var s=(ch.approval_stages||[])[x.stage_index]||{};var a=agents.filter(function(v){return v.id===x.approver_id;})[0];history.appendChild(el('div',{class:'problem-history-item'},el('strong',{},a?a.name||a.email:x.approver_id),el('span',{class:'m'},'Round '+(x.round_index||1)+' · '+(s.name||'Stage '+(x.stage_index+1))+' · '+x.decision+(x.comment?' · '+x.comment:'')),el('small',{},changeDateLabel(x.created_at))));});detail.appendChild(history);
         }
         if(changeDetail&&changeDetail.events&&changeDetail.events.length){
           var activity=el('div',{class:'problem-history'},el('h4',{},'Change activity'));
