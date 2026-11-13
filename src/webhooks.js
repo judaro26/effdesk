@@ -6,9 +6,9 @@ import { withOrg } from './db.js';
 import { publicAddress, guardedFetch } from './guard.js';
 export const EVENTS = ['ticket.created', 'ticket.updated', 'message.agent', 'message.customer', 'ticket.mentioned'];
 export const MAX_HOOKS = 10;
-export const KINDS = ['json', 'slack', 'teams'];
+export const KINDS = ['json', 'slack', 'teams', 'cliq'];
 // Slack and Teams only accept their own addresses, so a chat address cannot be pointed somewhere else
-const KIND_HOSTS = { slack: [/^hooks\.slack\.com$/, /^hooks\.slack-gov\.com$/], teams: [/\.webhook\.office\.com$/, /\.logic\.azure\.com$/, /^outlook\.office\.com$/, /\.powerplatform\.com$/] };
+const KIND_HOSTS = { slack: [/^hooks\.slack\.com$/, /^hooks\.slack-gov\.com$/], teams: [/\.webhook\.office\.com$/, /\.logic\.azure\.com$/, /^outlook\.office\.com$/, /\.powerplatform\.com$/], cliq: [/^cliq\.zoho\.(?:com|eu|in|jp)$/, /^cliq\.zoho\.com\.au$/] };
 export const hostOkFor = (kind, url) => !KIND_HOSTS[kind] || KIND_HOSTS[kind].some(re => re.test(new URL(url).hostname.toLowerCase()));
 const LABEL = { 'ticket.created': 'New ticket', 'ticket.updated': 'Ticket updated', 'message.agent': 'Agent replied', 'message.customer': 'Customer replied', 'ticket.mentioned': 'Teammate mentioned' };
 export const chatText = (event, t, extra = {}) => `${LABEL[event] || event}: #${t.number} ${t.subject} (${t.priority}, ${t.status}) from ${t.requester_name || t.requester_email}` + (extra.message && extra.message.body ? `\n> ${String(extra.message.body).replace(/\s+/g, ' ').slice(0, 300)}` : '') + (extra.by ? `\nBy ${extra.by}` : '');
@@ -28,7 +28,7 @@ export async function saveHook(pool, orgId, b, { lookup } = {}) {
   const kind = KINDS.includes(b.kind) ? b.kind : 'json';
   const url = safeUrl(b.url); if (!url) return { ok: false, status: 400, error: 'Use a public https address, for example https://hooks.example.com/effdesk.' };
   if (!(await publicAddress(new URL(url).hostname, lookup, { allowUnresolved: true }))) return { ok: false, status: 400, error: 'That address does not resolve to a public server. Use a public https address.' };
-  if (!hostOkFor(kind, url)) return { ok: false, status: 400, error: kind === 'slack' ? 'That is not a Slack webhook address (it starts with https://hooks.slack.com/).' : 'That is not a Microsoft Teams webhook address.' };
+  if (!hostOkFor(kind, url)) return { ok: false, status: 400, error: kind === 'slack' ? 'That is not a Slack webhook address (it starts with https://hooks.slack.com/).' : kind === 'cliq' ? 'That is not a Zoho Cliq webhook address (use your regional cliq.zoho domain).' : 'That is not a Microsoft Teams webhook address.' };
   const events = [...new Set((Array.isArray(b.events) ? b.events : []).filter(e => EVENTS.includes(e)))]; if (!events.length) return { ok: false, status: 400, error: 'Choose at least one event.' };
   return withOrg(pool, orgId, async c => {
     if (b.id) { const r = await c.query('update webhooks set url = $3, events = $4, active = $5, kind = $6 where org_id = $1 and id = $2 returning id', [orgId, Number(b.id) || 0, url, events, b.active !== false, kind]); return r.rowCount ? { ok: true, id: r.rows[0].id } : { ok: false, status: 404, error: 'No such webhook.' }; }
@@ -52,7 +52,7 @@ export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = g
     await Promise.allSettled(data.hooks.map(async h => {
       let status = 'error';
       try {
-        const chat = h.kind === 'slack' ? JSON.stringify({ text }) : h.kind === 'teams' ? JSON.stringify(teamsCard(text)) : null;
+        const chat = h.kind === 'slack' || h.kind === 'cliq' ? JSON.stringify({ text }) : h.kind === 'teams' ? JSON.stringify(teamsCard(text)) : null;
         const sig = crypto.createHmac('sha256', h.secret).update(ts + '.' + body).digest('hex');
         const r = await fetchFn(h.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5000), headers: chat ? { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1' } : { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1', 'X-EffDesk-Event': event, 'X-EffDesk-Timestamp': ts, 'X-EffDesk-Signature': 'sha256=' + sig }, body: chat || body });
         status = String(r.status);
