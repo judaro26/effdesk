@@ -63,7 +63,7 @@ function normalize(provider,body,raw) {
   const impact=sev1?'critical':sev2?'high':sev4?'low':'medium';
   const url=safeExternalUrl(clean(first(attrs.html_url,attrs.url,attrs.web_url,attrs.short_url),'1000'));
   const summary=clean(first(attrs.description,attrs.summary,attrs.details,attrs.description_text),'3000');
-  const eventId=clean(first(event.id,body.event_id,body.webhook_id,body.id,body.delivery_id),200)||digest(raw);
+  const eventId=clean(first(event!==body?event.id:undefined,body.event_id,body.webhook_id,body.delivery_id,body.id&&String(body.id)!==id?body.id:undefined),200)||digest(raw);
   return {id,title,eventId,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary};
 }
 
