@@ -17,7 +17,7 @@ export function normalizeIncident(input={}){
   commanderId:clean(input.commanderId,128),
   publicSummary:clean(input.publicSummary,3000),
   internalSummary:clean(input.internalSummary,5000),
-  nextUpdateAt:input.nextUpdateAt?new Date(input.nextUpdateAt):null
+  nextUpdateAt:input.nextUpdateAt&&Number.isFinite(new Date(input.nextUpdateAt).getTime())?new Date(input.nextUpdateAt):null
  };
 }
 export async function listServices(pool,orgId){
