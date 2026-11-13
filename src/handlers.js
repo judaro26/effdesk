@@ -514,6 +514,7 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
   if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
+  if (res.ok && res.action === 'followup') await notifyTicket(pool, mailer, res.orgId, res.number, { kind: 'new', summary: 'Follow-up from a permanently closed ticket' });
   logInfo('inbound_email', { action: res.action, dropped: res.dropped, org: res.orgId, ticket: res.number });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
