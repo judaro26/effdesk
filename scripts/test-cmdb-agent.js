@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { createWindowsAgent, listWindowsAgents } from '../src/cmdb-agent.js';
+import { createWindowsAgent, listWindowsAgents, normalizeWindowsPayload } from '../src/cmdb-agent.js';
 assert.equal(typeof createWindowsAgent,'function');
 assert.equal(typeof listWindowsAgents,'function');
+const payload=normalizeWindowsPayload({hostname:' PC-01 ',manufacturer:'Acme',model:'M1',serial:'S1',os:'Windows 11',osVersion:'10.0.1',software:[{name:' Office ',publisher:'Acme',version:'1'},{name:'',version:'2'}]});
+assert.equal(payload.hostname,'PC-01');
+assert.equal(payload.software.length,1);
+assert.equal(payload.software[0].name,'Office');
+assert.equal(normalizeWindowsPayload({software:Array.from({length:520},(_,i)=>({name:'App '+i}))}).software.length,500);
 console.log('Windows discovery agent module exports passed.');
