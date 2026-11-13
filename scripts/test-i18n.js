@@ -10,6 +10,7 @@ const dom = new JSDOM('<!doctype html><html lang="en"><body><header><nav></nav><
 dom.window.eval(source);
 const { document, EffI18n } = dom.window;
 assert.equal(EffI18n.getLocale(), 'en');
+
 EffI18n.setLocale('es');
 assert.equal(document.documentElement.lang, 'es');
 assert.equal(document.querySelector('h1').textContent, 'Panel principal');
@@ -17,9 +18,21 @@ assert.equal(document.querySelector('button').textContent, 'Buscar tickets');
 assert.equal(document.querySelector('button').title, 'Buscar tickets');
 assert.equal(document.querySelector('input').placeholder, 'Buscar tickets, contactos, empresas y agentes…');
 assert.equal(document.querySelector('.mt').textContent, 'Open', 'ticket conversation content must not be translated');
+
+const dynamic = document.createElement('section');
+dynamic.innerHTML = '<h2>Conversation tools</h2><p>Write a public reply. The customer is emailed.</p><button title="Refresh">Refresh</button>';
+document.querySelector('main').appendChild(dynamic);
+await new Promise(resolve => dom.window.queueMicrotask(resolve));
+assert.equal(dynamic.querySelector('h2').textContent, 'Herramientas de conversación', 'newly rendered agent UI is translated');
+assert.equal(dynamic.querySelector('p').textContent, 'Escribe una respuesta pública. Se enviará un correo electrónico al cliente.');
+assert.equal(dynamic.querySelector('button').title, 'Actualizar', 'newly rendered attributes are translated');
+
 EffI18n.setLocale('en');
 assert.equal(document.querySelector('h1').textContent, 'Dashboard');
 assert.equal(document.querySelector('button').textContent, 'Search tickets');
+assert.equal(dynamic.querySelector('h2').textContent, 'Conversation tools', 'dynamically rendered UI can switch back to English');
+assert.equal(dynamic.querySelector('p').textContent, 'Write a public reply. The customer is emailed.');
 assert.equal(document.documentElement.lang, 'en');
+assert.equal(EffI18n.t('Unknown future label', 'es'), 'Unknown future label', 'unknown strings safely fall back to source text');
 dom.window.close();
-console.log('✓ interface locale switches both ways and preserves user-authored content');
+console.log('✓ Spanish localization switches both ways, translates dynamic UI and attributes, and preserves user-authored content');
