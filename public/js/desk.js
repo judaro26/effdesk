@@ -23,7 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
-    var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [];
+    var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
@@ -259,6 +259,38 @@
       return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
     }
     function changeDateLabel(v) { return v?new Date(v).toLocaleString():'Not scheduled'; }
+    function loadCabPolicy() {
+      cabPolicyLoading=true;draw();
+      return api('itsm-change-policy-get').then(function(r){
+        cabPolicyLoading=false;
+        if(!r.ok){say(r.body.error||'Could not load CAB policy.',true);cabPolicyOpen=false;draw();return;}
+        cabPolicy=r.body.policy;draw();
+      });
+    }
+    function cabPolicyPane() {
+      if(!cabPolicyOpen)return null;
+      var p=cabPolicy||{conflictMode:'warn',emergencyConflictOverride:false,requiredStages:{standard:0,normal:1,emergency:1},minApproversByRisk:{low:1,medium:1,high:2,critical:3},standardMaxRisk:'low',standardMaxImpact:'medium'};
+      var conflictMode=el('select',{'aria-label':'Maintenance conflict handling'});
+      [['warn','Warn and allow scheduling'],['block','Block scheduling until resolved']].forEach(function(x){conflictMode.appendChild(el('option',{value:x[0]},x[1]));});conflictMode.value=p.conflictMode||'warn';
+      var override=el('input',{type:'checkbox','aria-label':'Allow emergency changes to override conflicts'});override.checked=!!p.emergencyConflictOverride;
+      function numberField(label,value,min,max){var n=el('input',{type:'number',min:String(min),max:String(max),step:'1','aria-label':label,value:String(value)});return el('label',{class:'change-policy-field'},el('span',{},label),n);}
+      function riskSelect(label,value){var x=el('select',{'aria-label':label});[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].forEach(function(o){x.appendChild(el('option',{value:o[0]},o[1]));});x.value=value;return el('label',{class:'change-policy-field'},el('span',{},label),x);}
+      var stages={standard:numberField('Standard · minimum stages',p.requiredStages.standard,0,10),normal:numberField('Normal · minimum stages',p.requiredStages.normal,0,10),emergency:numberField('Emergency · minimum stages',p.requiredStages.emergency,0,10)};
+      var approvers={low:numberField('Low risk · minimum approvers per stage',p.minApproversByRisk.low,1,30),medium:numberField('Medium risk · minimum approvers per stage',p.minApproversByRisk.medium,1,30),high:numberField('High risk · minimum approvers per stage',p.minApproversByRisk.high,1,30),critical:numberField('Critical risk · minimum approvers per stage',p.minApproversByRisk.critical,1,30)};
+      var maxRisk=riskSelect('Standard pre-approval · maximum risk',p.standardMaxRisk||'low'),maxImpact=riskSelect('Standard pre-approval · maximum impact',p.standardMaxImpact||'medium');
+      var save=el('button',{type:'button',class:'btn',onclick:function(){
+        var read=function(x){return Number(x.querySelector('input').value);};
+        var next={conflictMode:conflictMode.value,emergencyConflictOverride:override.checked,
+          requiredStages:{standard:read(stages.standard),normal:read(stages.normal),emergency:read(stages.emergency)},
+          minApproversByRisk:{low:read(approvers.low),medium:read(approvers.medium),high:read(approvers.high),critical:read(approvers.critical)},
+          standardMaxRisk:maxRisk.querySelector('select').value,standardMaxImpact:maxImpact.querySelector('select').value};
+        api('itsm-change-policy-save',{policy:next}).then(function(r){if(!r.ok)return say(r.body.error||'Could not save CAB policy.',true);cabPolicy=r.body.policy;draw();say('CAB policy saved.');});
+      }},'Save CAB policy');
+      return el('section',{class:'pcard change-policy-card'},el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Configurable CAB policy'),el('p',{class:'m'},'Set approval thresholds and maintenance-window conflict handling for this workspace.')),el('button',{type:'button',class:'btn l sm',onclick:function(){cabPolicyOpen=false;draw();}},'Close')),
+        cabPolicyLoading?el('p',{class:'m'},'Loading CAB policy…'):null,
+        el('div',{class:'change-policy-grid'},el('label',{class:'change-policy-field'},el('span',{},'Overlapping changes on the same service'),conflictMode),el('label',{class:'change-policy-check'},override,el('span',{},'Allow emergency changes to override a blocking conflict')),stages.standard,stages.normal,stages.emergency,approvers.low,approvers.medium,approvers.high,approvers.critical,maxRisk,maxImpact),
+        el('div',{class:'itsm-save-row'},save));
+    }
     function changesPane() {
       var rows=changeRows||[];
       var active=rows.filter(function(x){return ['submitted','assessing','awaiting_approval','approved','scheduled','implementing'].indexOf(x.status)>=0;}).length;
@@ -368,6 +400,11 @@
             detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Your approval is required'),actions));
           }
         }
+        if(changeDetail&&changeDetail.conflicts&&changeDetail.conflicts.length){
+          var conflicts=el('div',{class:'problem-form-section change-conflicts'},el('h4',{},'Maintenance-window conflicts'),el('p',{class:'m'},'These approved or in-flight changes overlap this window on one or more selected services.'));
+          changeDetail.conflicts.forEach(function(x){conflicts.appendChild(el('div',{class:'change-conflict-row'},el('strong',{},'CHG-'+x.id+' · '+x.title),el('span',{class:'m'},cap(x.status)+' · '+changeDateLabel(x.planned_start)+' – '+changeDateLabel(x.planned_end)),el('small',{},(x.shared_services||[]).join(', '))));});
+          detail.appendChild(conflicts);
+        }
         if(changeDetail&&changeDetail.decisions&&changeDetail.decisions.length){
           var history=el('div',{class:'problem-history'},el('h4',{},'Approval decisions'));
           changeDetail.decisions.forEach(function(x){var s=(ch.approval_stages||[])[x.stage_index]||{};var a=agents.filter(function(v){return v.id===x.approver_id;})[0];history.appendChild(el('div',{class:'problem-history-item'},el('strong',{},a?a.name||a.email:x.approver_id),el('span',{class:'m'},'Round '+(x.round_index||1)+' · '+(s.name||'Stage '+(x.stage_index+1))+' · '+x.decision+(x.comment?' · '+x.comment:'')),el('small',{},changeDateLabel(x.created_at))));});detail.appendChild(history);
@@ -385,7 +422,7 @@
       var calendar=el('section',{class:'pcard change-calendar'},el('h3',{},'Upcoming maintenance windows'),el('p',{class:'m'},'Approved and scheduled changes with planned start and end times.'));
       if(!upcoming.length)calendar.appendChild(el('p',{class:'m'},'No approved maintenance windows are scheduled.'));
       upcoming.forEach(function(x){calendar.appendChild(el('button',{type:'button',class:'change-calendar-row',onclick:function(){openChange(x.id);}},el('span',{class:'change-calendar-date'},changeDateLabel(x.planned_start)),el('span',{class:'change-calendar-title'},el('strong',{},'CHG-'+x.id+' · '+x.title),el('small',{},changeDateLabel(x.planned_end))),el('span',{class:'itsm-severity '+String(x.risk||'medium').toLowerCase()},cap(x.risk))));});
-      return el('div',{class:'page wide itsm-page changes-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Change management'),el('p',{class:'m'},'Assess risk, coordinate approvals and schedule controlled service changes.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();changesOpen=true;changeCreating=true;changeSelected=0;changeDetail=null;changeApprovalStages=[{name:'CAB review',mode:'all',approverIds:[]}];draw();}},'＋ New change'))),stats,el('div',{class:'itsm-layout change-layout'},el('div',{class:'itsm-main-col'},listCard,calendar),el('div',{class:'itsm-detail-col'},detail)));
+      return el('div',{class:'page wide itsm-page changes-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Change management'),el('p',{class:'m'},'Assess risk, coordinate approvals and schedule controlled service changes.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),(role==='owner'||role==='admin')?el('button',{type:'button',class:'btn l',onclick:function(){cabPolicyOpen=!cabPolicyOpen;if(cabPolicyOpen)loadCabPolicy();else draw();}},'CAB policy'):null,el('button',{type:'button',class:'btn',onclick:function(){closePanes();changesOpen=true;changeCreating=true;changeSelected=0;changeDetail=null;changeApprovalStages=[{name:'CAB review',mode:'all',approverIds:[]}];draw();}},'＋ New change'))),cabPolicyPane(),stats,el('div',{class:'itsm-layout change-layout'},el('div',{class:'itsm-main-col'},listCard,calendar),el('div',{class:'itsm-detail-col'},detail)));
     }
     function refreshChangeList(redraw) {
       changeLoading=true;if(redraw!==false)draw();
