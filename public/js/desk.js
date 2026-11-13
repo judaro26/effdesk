@@ -1971,7 +1971,7 @@
         else if (!isAdmin) body = guardAdmin;
         else if (rules === null || lifecyclePolicy === null) {
           if (rules === null && !rulesLoading) { rulesLoading = true; api('rules-list').then(function (r) { rulesLoading = false; rules = r.ok ? r.body.rules : []; draw(); }); }
-          if (lifecyclePolicy === null && !lifecyclePolicyLoading) { lifecyclePolicyLoading = true; api('lifecycle-get').then(function (r) { lifecyclePolicyLoading = false; lifecyclePolicy = r.ok ? r.body.policy : {}; draw(); }); }
+          if (lifecyclePolicy === null && !lifecyclePolicyLoading) { lifecyclePolicyLoading = true; api('lifecycle-get').then(function (r) { lifecyclePolicyLoading = false; lifecyclePolicy = r.ok ? r.body.policy : {autoCloseEnabled:false,autoCloseDays:4,customerReminderEnabled:false,customerReminderHours:48,customerReminderRepeatHours:72,agentReminderEnabled:false,agentReminderHours:24,agentReminderRepeatHours:48,reopenEnabled:false,reopenAfterDays:14,permanentCloseEnabled:false,permanentCloseDays:30}; draw(); }); }
           body = el('p', { class: 'm' }, 'Loading automation settings…');
         }
         else if (rd) body = ruleEditor();
