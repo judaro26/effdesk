@@ -262,7 +262,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(req.method==='POST' && path.endsWith('/link-existing')) {
     const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,id=clean(b.issueId,200);
-    if(!PROVIDERS.has(p)||!n||!id) return fail(400,'Choose a provider, ticket, and external issue.');
+    if(!ISSUE_PROVIDERS.has(p)||!n||!id) return fail(400,'Choose a provider, ticket, and external issue.');
     try {
       const conn=PROVIDERS.has(p)?(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]:(await withOrg(pool,org,db=>db.query('select provider from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,p]))).rows[0];
       if(!conn) return fail(409,'Connect '+p+' first.');
@@ -292,7 +292,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(req.method==='POST' && path.endsWith('/create-issue')) {
     const b=await req.json().catch(()=>({})),p=clean(b.provider,20),n=Number(b.ticketNumber)||0,templateId=Number(b.templateId)||0; let project=clean(b.projectId,100),title=clean(b.title,500),description=String(b.description||'').slice(0,20000),template=null,templateFields=[];
-    if(!PROVIDERS.has(p)||!n||(!templateId&&(!project||!title))) return fail(400,'Choose a ticket, project/team, and issue title or a saved template.');
+    if(!ISSUE_PROVIDERS.has(p)||!n||(!templateId&&(!project||!title))||(templateId&&!PROVIDERS.has(p))) return fail(400,'Choose a ticket, project, and issue title. Templates are available for Jira and Linear.');
     try {
       const ticket=(await withOrg(pool,org,db=>db.query('select number,subject,status,priority,requester_name,requester_email from tickets where org_id=$1 and number=$2',[org,n]))).rows[0];
       if(!ticket) return fail(404,'EffDesk ticket not found.');
