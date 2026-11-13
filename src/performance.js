@@ -1,8 +1,47 @@
 // src/performance.js: sampled, privacy-conscious request performance aggregates for the platform owner.
+import crypto from 'node:crypto';
 const clampRate = value => { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.1; };
 export function normalizePath(path) {
   return String(path || '/').split('?')[0].replace(/\/(w|workspace|portal)\/[^/]+/gi, '/$1/:tenant').replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ':id').replace(/\/(\d+)(?=\/|$)/g, '/:id').slice(0, 180) || '/';
 }
+
+const sqlText = value => typeof value === 'string' ? value : value && typeof value.text === 'string' ? value.text : '';
+export function normalizeSql(sql) {
+  return String(sql || '').replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/'(?:''|[^'])*'/g, '?').replace(/\b\d+(?:\.\d+)?\b/g, '?').replace(/\$\d+/g, '?').replace(/\s+/g, ' ').trim().slice(0, 12000);
+}
+export async function recordSqlQuery(pool, sample, env = process.env, random = Math.random) {
+  const rate = clampRate(env.PERFORMANCE_SQL_SAMPLE_RATE == null ? 0.03 : env.PERFORMANCE_SQL_SAMPLE_RATE);
+  const sql = sqlText(sample.sql);
+  if (!pool || !sql || rate === 0 || random() >= rate || /performance_(?:minute|query_minute|vitals_minute)/i.test(sql) || /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.test(sql)) return { recorded: false };
+  const normalized = normalizeSql(sql); if (!normalized) return { recorded: false };
+  const fingerprint = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  const operation = (normalized.match(/^(SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|ALTER|DROP|SET|SHOW)/i) || ['OTHER'])[0].toUpperCase();
+  const ms = Math.max(0, Math.min(2147483647, Math.round(Number(sample.ms) || 0)));
+  const bucket = ms < 25 ? 0 : ms < 100 ? 1 : ms < 500 ? 2 : 3;
+  const minute = new Date(Math.floor((Number(sample.at) || Date.now()) / 60000) * 60000).toISOString();
+  try {
+    await pool.query('insert into performance_query_minute (minute,query_hash,operation,function_name,org_id,samples,errors,total_ms,max_ms,bucket_lt25,bucket_25to99,bucket_100to499,bucket_gte500) values ($1,$2,$3,$4,$5,1,$6,$7,$7,$8,$9,$10,$11) on conflict (minute,query_hash,operation,function_name,org_id) do update set samples=performance_query_minute.samples+1,errors=performance_query_minute.errors+excluded.errors,total_ms=performance_query_minute.total_ms+excluded.total_ms,max_ms=greatest(performance_query_minute.max_ms,excluded.max_ms),bucket_lt25=performance_query_minute.bucket_lt25+excluded.bucket_lt25,bucket_25to99=performance_query_minute.bucket_25to99+excluded.bucket_25to99,bucket_100to499=performance_query_minute.bucket_100to499+excluded.bucket_100to499,bucket_gte500=performance_query_minute.bucket_gte500+excluded.bucket_gte500',
+      [minute,fingerprint,operation,String(sample.fn||'unknown').slice(0,60),String(sample.org||'').slice(0,80),sample.error?1:0,ms,bucket===0?1:0,bucket===1?1:0,bucket===2?1:0,bucket===3?1:0]);
+    return { recorded: true, fingerprint };
+  } catch { return { recorded: false }; }
+}
+const vitalThresholds = { LCP:[2500,4000], INP:[200,500], CLS:[0.1,0.25], TTFB:[800,1800], FCP:[1800,3000] };
+export function vitalRating(name, value) {
+  const t=vitalThresholds[name]; if(!t) return null;
+  return Number(value)<=t[0]?'good':Number(value)<=t[1]?'needs_improvement':'poor';
+}
+export async function recordWebVital(pool, sample) {
+  const name=String(sample.name||'').toUpperCase(), value=Number(sample.value), rating=vitalRating(name,value);
+  if(!pool||!rating||!Number.isFinite(value)||value<0||value>60000) return {recorded:false};
+  const org=String(sample.org||'').slice(0,80), page=normalizePath(sample.page), device=['mobile','tablet','desktop'].includes(sample.device)?sample.device:'unknown';
+  const minute=new Date(Math.floor((Number(sample.at)||Date.now())/60000)*60000).toISOString();
+  try {
+    await pool.query('insert into performance_vitals_minute (minute,org_id,page,device,metric,samples,total_value,max_value,good_count,needs_improvement_count,poor_count) values ($1,$2,$3,$4,$5,1,$6,$6,$7,$8,$9) on conflict (minute,org_id,page,device,metric) do update set samples=performance_vitals_minute.samples+1,total_value=performance_vitals_minute.total_value+excluded.total_value,max_value=greatest(performance_vitals_minute.max_value,excluded.max_value),good_count=performance_vitals_minute.good_count+excluded.good_count,needs_improvement_count=performance_vitals_minute.needs_improvement_count+excluded.needs_improvement_count,poor_count=performance_vitals_minute.poor_count+excluded.poor_count',
+    [minute,org,page,device,name,value,rating==='good'?1:0,rating==='needs_improvement'?1:0,rating==='poor'?1:0]);
+    return {recorded:true,rating};
+  } catch { return {recorded:false}; }
+}
+
 export async function recordRequest(pool, sample, env = process.env, random = Math.random) {
   const rate = clampRate(env.PERFORMANCE_SAMPLE_RATE == null ? 0.1 : env.PERFORMANCE_SAMPLE_RATE);
   if (!pool || rate === 0 || random() >= rate) return { recorded: false, sampled: false };
@@ -27,7 +66,7 @@ const p95Bucket = r => {
 const decorate = r => ({ ...r, avg_ms: Number(r.requests) ? Math.round(Number(r.duration_total_ms) / Number(r.requests)) : 0, p95_bucket: p95Bucket(r), error_rate: Number(r.requests) ? Number((Number(r.errors) / Number(r.requests) * 100).toFixed(2)) : 0 });
 export async function performanceOverview(pool, range = '24h', env = process.env) {
   const hours = range === '1h' ? 1 : 24;
-  await pool.query("delete from performance_minute where minute < now() - interval '14 days'");
+  await Promise.all(['performance_minute','performance_query_minute','performance_vitals_minute'].map(t => pool.query("delete from " + t + " where minute < now() - interval '14 days'").catch(() => null)));
   const [summary, series, routes, tenants] = await Promise.all([
     pool.query('select coalesce(sum(requests),0)::int requests,coalesce(sum(errors),0)::int errors,coalesce(sum(slow_requests),0)::int slow_requests,coalesce(sum(duration_total_ms),0)::bigint duration_total_ms,coalesce(max(duration_max_ms),0)::int max_ms,coalesce(sum(bucket_lt100),0)::int bucket_lt100,coalesce(sum(bucket_100to499),0)::int bucket_100to499,coalesce(sum(bucket_500to999),0)::int bucket_500to999,coalesce(sum(bucket_gte1000),0)::int bucket_gte1000,coalesce(max(pool_waiting_max),0)::int pool_waiting_max,coalesce(max(pool_total_max),0)::int pool_total_max from performance_minute where minute >= now() - ($1::int * interval \'1 hour\')', [hours]),
     pool.query("select to_char(date_trunc('hour',minute AT TIME ZONE 'UTC'),'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') hour,sum(requests)::int requests,sum(errors)::int errors,round(sum(duration_total_ms)::numeric/greatest(sum(requests),1))::int avg_ms from performance_minute where minute >= now() - ($1::int * interval '1 hour') group by date_trunc('hour',minute AT TIME ZONE 'UTC') order by date_trunc('hour',minute AT TIME ZONE 'UTC')", [hours]),
