@@ -269,10 +269,11 @@
     }
     function cabPolicyPane() {
       if(!cabPolicyOpen)return null;
-      var p=cabPolicy||{conflictMode:'warn',emergencyConflictOverride:false,requiredStages:{standard:0,normal:1,emergency:1},minApproversByRisk:{low:1,medium:1,high:2,critical:3},standardMaxRisk:'low',standardMaxImpact:'medium'};
+      var p=cabPolicy||{conflictMode:'warn',emergencyConflictOverride:false,approvalMode:'all',requiredStages:{standard:0,normal:1,emergency:1},minApproversByRisk:{low:1,medium:1,high:2,critical:3},standardMaxRisk:'low',standardMaxImpact:'medium'};
       var conflictMode=el('select',{'aria-label':'Maintenance conflict handling'});
       [['warn','Warn and allow scheduling'],['block','Block scheduling until resolved']].forEach(function(x){conflictMode.appendChild(el('option',{value:x[0]},x[1]));});conflictMode.value=p.conflictMode||'warn';
       var override=el('input',{type:'checkbox','aria-label':'Allow emergency changes to override conflicts'});override.checked=!!p.emergencyConflictOverride;
+      var approvalMode=el('select',{'aria-label':'CAB approval quorum'});[['all','All assigned approvers must approve'],['any','Any one assigned approver may approve']].forEach(function(x){approvalMode.appendChild(el('option',{value:x[0]},x[1]));});approvalMode.value=p.approvalMode||'all';
       function numberField(label,value,min,max){var n=el('input',{type:'number',min:String(min),max:String(max),step:'1','aria-label':label,value:String(value)});return el('label',{class:'change-policy-field'},el('span',{},label),n);}
       function riskSelect(label,value){var x=el('select',{'aria-label':label});[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].forEach(function(o){x.appendChild(el('option',{value:o[0]},o[1]));});x.value=value;return el('label',{class:'change-policy-field'},el('span',{},label),x);}
       var stages={standard:numberField('Standard · minimum stages',p.requiredStages.standard,0,10),normal:numberField('Normal · minimum stages',p.requiredStages.normal,0,10),emergency:numberField('Emergency · minimum stages',p.requiredStages.emergency,0,10)};
@@ -280,7 +281,7 @@
       var maxRisk=riskSelect('Standard pre-approval · maximum risk',p.standardMaxRisk||'low'),maxImpact=riskSelect('Standard pre-approval · maximum impact',p.standardMaxImpact||'medium');
       var save=el('button',{type:'button',class:'btn',onclick:function(){
         var read=function(x){return Number(x.querySelector('input').value);};
-        var next={conflictMode:conflictMode.value,emergencyConflictOverride:override.checked,
+        var next={conflictMode:conflictMode.value,emergencyConflictOverride:override.checked,approvalMode:approvalMode.value,
           requiredStages:{standard:read(stages.standard),normal:read(stages.normal),emergency:read(stages.emergency)},
           minApproversByRisk:{low:read(approvers.low),medium:read(approvers.medium),high:read(approvers.high),critical:read(approvers.critical)},
           standardMaxRisk:maxRisk.querySelector('select').value,standardMaxImpact:maxImpact.querySelector('select').value};
@@ -288,7 +289,7 @@
       }},'Save CAB policy');
       return el('section',{class:'pcard change-policy-card'},el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Configurable CAB policy'),el('p',{class:'m'},'Set approval thresholds and maintenance-window conflict handling for this workspace.')),el('button',{type:'button',class:'btn l sm',onclick:function(){cabPolicyOpen=false;draw();}},'Close')),
         cabPolicyLoading?el('p',{class:'m'},'Loading CAB policy…'):null,
-        el('div',{class:'change-policy-grid'},el('label',{class:'change-policy-field'},el('span',{},'Overlapping changes on the same service'),conflictMode),el('label',{class:'change-policy-check'},override,el('span',{},'Allow emergency changes to override a blocking conflict')),stages.standard,stages.normal,stages.emergency,approvers.low,approvers.medium,approvers.high,approvers.critical,maxRisk,maxImpact),
+        el('div',{class:'change-policy-grid'},el('label',{class:'change-policy-field'},el('span',{},'Overlapping changes on the same service'),conflictMode),el('label',{class:'change-policy-field'},el('span',{},'Approval quorum for each CAB stage'),approvalMode),el('label',{class:'change-policy-check'},override,el('span',{},'Allow emergency changes to override a blocking conflict')),stages.standard,stages.normal,stages.emergency,approvers.low,approvers.medium,approvers.high,approvers.critical,maxRisk,maxImpact),
         el('div',{class:'itsm-save-row'},save));
     }
     function changesPane() {
