@@ -558,7 +558,7 @@
           api('itsm-ci-agent-create',{name:n.trim()}).then(function(r){
             if(!r.ok)return say(r.body.error||'Could not create discovery agent.',true);
             ciNewAgentToken=r.body.token;
-             ciNewAgentCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\effdesk-discovery.ps1 -EnrollmentToken "'+ciNewAgentToken+'" -InstallScheduledTask';
+             ciNewAgentCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\effdesk-discovery.ps1 -EnrollmentToken "'+ciNewAgentToken+'" -InstallScheduledTask -ApiUrl \"'+(root.location&&root.location.origin||'https://app.effdesk.com')+'/api/cmdb-agent\"';
              loadWindowsAgentRows();
           });
         }},'＋ Create Windows agent')));
