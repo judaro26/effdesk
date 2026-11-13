@@ -78,8 +78,10 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   if(serviceIds.length){const r=await c.query('select id from business_services where org_id=$1 and id=any($2::bigint[])',[orgId,serviceIds]);if(r.rowCount!==serviceIds.length)return fail('One or more selected services do not belong to this workspace.');}
   if(incidentNumbers.length){const r=await c.query("select id,number from tickets where org_id=$1 and type='incident' and number=any($2::int[])",[orgId,incidentNumbers]);if(r.rowCount!==incidentNumbers.length)return fail('Every linked ticket must be an incident in this workspace.');}
   let before=null,saved,event='updated';
-  if(id){before=(await c.query('select status from change_requests where org_id=$1 and id=$2 for update',[orgId,id])).rows[0];if(!before)return fail('No such change request.',404);
+  if(id){before=(await c.query('select status,approval_stages from change_requests where org_id=$1 and id=$2 for update',[orgId,id])).rows[0];if(!before)return fail('No such change request.',404);
    if(!(transitions[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
+   if(before.status==='awaiting_approval'&&JSON.stringify(before.approval_stages||[])!==JSON.stringify(cfg.stages))return fail('Approval stages cannot be changed while a decision is in progress.',409);
+   if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType!=='standard')return fail('Normal and emergency changes must pass their configured approval stages before approval.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
   if(d.status==='awaiting_approval'){
    if(!cfg.stages.length||cfg.stages.some(s=>!s.approverIds.length))return fail('Add at least one full-agent approver before requesting approval.');
@@ -107,7 +109,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   await log(c,orgId,saved.id,actor,event,(event==='created'?'Change request created: ':event==='status_changed'?'Status changed to ':'Change request updated: ')+d.title);
   if(newServices.filter(x=>!oldServices.includes(x)).length)await log(c,orgId,saved.id,actor,'service_linked','Affected services updated');
   if(newIncidents.filter(x=>!oldIncidents.includes(x)).length)await log(c,orgId,saved.id,actor,'incident_linked','Related incidents updated');
-  if(d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval'))await c.query('update change_requests set current_stage=0 where org_id=$1 and id=$2',[orgId,saved.id]);
+  if(d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval')){await c.query('delete from change_decisions where org_id=$1 and change_id=$2',[orgId,saved.id]);await c.query('update change_requests set current_stage=0 where org_id=$1 and id=$2',[orgId,saved.id]);}
   return {ok:true,id:saved.id,status:saved.status,notify:d.status==='awaiting_approval'&&(!before||before.status!=='awaiting_approval')};
  });
  if(result.ok&&result.notify)await notifyChangeApproval(pool,mailer,orgId,result.id,0,'requested');
