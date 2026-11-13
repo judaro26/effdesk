@@ -314,7 +314,7 @@
       var lifecycle=el('section',{class:'pcard'},el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Procurement & lifecycle'),el('p',{class:'m'},'Manage suppliers, commercial agreements, software entitlements and upcoming warranty dates.'))));
       var actions=el('div',{class:'itsm-toolbar'});
       var exportBtn=el('button',{type:'button',class:'btn l sm',onclick:function(){api('itsm-ci-export-csv').then(function(r){if(!r.ok)return say(r.body.error||'Could not export assets.',true);saveFile(r.body.filename||'effdesk-assets.csv',r.body.csv||'','text/csv;charset=utf-8');say('Asset CSV exported.');});}},'Export CSV');
-      actions.appendChild(exportBtn);
+      if(isAdmin)actions.appendChild(exportBtn);
       if(isAdmin){var importInput=el('input',{type:'file',accept:'.csv,text/csv','aria-label':'Import asset CSV',style:'max-width:190px'});importInput.addEventListener('change',function(){var file=importInput.files&&importInput.files[0];if(!file)return;if(file.size>400000)return say('CSV must be smaller than 400 KB.',true);var reader=new root.FileReader();reader.onload=function(){api('itsm-ci-import-csv',{csv:String(reader.result||'')}).then(function(r){if(!r.ok)return say(r.body.error||'Could not import assets.',true);say('Import complete: '+r.body.imported+' created, '+r.body.updated+' updated, '+r.body.failed+' skipped.');loadConfigurationItems();});};reader.onerror=function(){say('Could not read that CSV file.',true);};reader.readAsText(file);importInput.value='';});actions.appendChild(importInput);}
       var refreshLife=el('button',{type:'button',class:'btn l sm',onclick:loadConfigurationItems},'Refresh lifecycle');
       actions.appendChild(refreshLife);lifecycle.appendChild(actions);
