@@ -160,3 +160,183 @@
 .deskapp .integration-identity-chip{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border:1px solid var(--d-line);border-radius:999px;background:var(--d-bg);font-size:11px;font-weight:650;color:var(--d-ink)}
 .deskapp .integration-identity-chip .integration-provider-logo{width:28px;height:28px;padding:4px;border:0;background:var(--d-panel)}
 .deskapp .integration-identity-chip .integration-provider-logo img{max-width:20px;max-height:20px}
+
+
+/* EffDesk premium workspace system — cohesive hierarchy, calm surfaces and precise interaction states. */
+.deskapp{
+  --eff-surface:var(--d-panel);
+  --eff-surface-soft:color-mix(in srgb,var(--d-panel) 78%,var(--d-bg));
+  --eff-border:color-mix(in srgb,var(--d-line) 88%,transparent);
+  --eff-muted:var(--d-muted);
+  --eff-elev-1:0 1px 2px rgba(15,23,42,.035),0 4px 12px rgba(15,23,42,.035);
+  --eff-elev-2:0 12px 32px rgba(15,23,42,.09),0 2px 8px rgba(15,23,42,.04);
+  --eff-ring:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent);
+  --eff-radius-sm:9px;
+  --eff-radius-md:13px;
+  --eff-radius-lg:17px;
+  --eff-space:clamp(16px,2vw,30px);
+}
+.deskapp .shell{background:var(--d-bg)}
+.deskapp .rail{
+  width:68px;position:relative;z-index:12;padding:17px 0 14px;
+  background:var(--d-rail);border-right:1px solid color-mix(in srgb,var(--d-rail) 75%,var(--d-line));
+}
+.deskapp .rail .logo{width:39px;height:39px;border-radius:13px;margin-bottom:17px}
+.deskapp .rail .ri{width:46px;height:46px;border-radius:13px;margin:1px 0}
+.deskapp .rail .ri svg{width:21px;height:21px;stroke-width:1.75}
+.deskapp .rail .ri[title]::after{
+  content:attr(title);position:absolute;left:calc(100% + 12px);top:50%;z-index:40;
+  transform:translate(-4px,-50%);padding:8px 11px;border:1px solid rgba(255,255,255,.12);
+  border-radius:9px;background:#17232b;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.2);
+  font:600 12px/1.2 Inter,ui-sans-serif,system-ui,sans-serif;letter-spacing:.01em;
+  white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;
+  transition:opacity .14s ease,transform .14s ease,visibility .14s ease;
+}
+.deskapp .rail .ri[title]:hover::after,.deskapp .rail .ri[title]:focus-visible::after{
+  opacity:1;visibility:visible;transform:translate(0,-50%);
+}
+.deskapp .rail .ri[aria-current=true]::before{left:-11px;width:3px;border-radius:0 4px 4px 0}
+.deskapp .work{min-width:0;background:var(--d-bg)}
+.deskapp .top{
+  min-height:68px;align-items:center;gap:12px;padding:10px 22px;
+  background:color-mix(in srgb,var(--d-panel) 92%,transparent);
+  border-bottom:1px solid var(--eff-border);box-shadow:0 2px 10px rgba(15,23,42,.025);
+}
+.deskapp .top .tabs{align-self:stretch;align-items:center;gap:5px}
+.deskapp .top .tab{align-self:center;border:1px solid transparent;border-radius:10px;padding:9px 12px;font-size:13px;font-weight:560}
+.deskapp .top .tab[aria-selected=true]{align-self:center;margin:0;padding:9px 12px;border:1px solid var(--eff-border);border-radius:10px;background:var(--eff-surface-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 5%,transparent)}
+.deskapp .top #q{width:min(25vw,300px);height:40px;margin:0 2px 0 0;padding:0 13px 0 38px;border-radius:11px;background-color:var(--eff-surface-soft)}
+.deskapp .top #q:focus{box-shadow:var(--eff-ring);background:var(--d-panel)}
+.deskapp .top #newbtn{height:40px;margin:0;padding:0 16px;border-radius:11px;font-size:13px;font-weight:700}
+.deskapp .top #orgsel,.deskapp .top .usermenu{margin:0}
+.deskapp .who{min-height:40px;padding:4px 9px 4px 5px;border:1px solid var(--eff-border);border-radius:12px}
+.deskapp .who .av{width:30px;height:30px}
+.deskapp main{background:var(--d-bg)}
+.deskapp .page,.deskapp .contact-workspace,.deskapp .integrations-desk-page{
+  gap:16px;padding:var(--eff-space);max-width:1500px;margin-inline:auto;
+}
+.deskapp .page.wide{max-width:1600px;padding:var(--eff-space)}
+.deskapp .page>h2,.deskapp .contact-workspace>h2,.deskapp .integrations-desk-page>h2{
+  font-size:25px;line-height:1.2;letter-spacing:-.045em;font-weight:760;color:var(--d-ink)
+}
+.deskapp .page>h2+p,.deskapp .page>h2+.m{margin-top:-7px;max-width:780px;font-size:13px;line-height:1.6}
+.deskapp h3{font-size:10px;letter-spacing:.095em;font-weight:760}
+.deskapp .stat,.deskapp .rcard,.deskapp .pcard,.deskapp .side-c,
+.deskapp .integration-provider-card,.deskapp .views .side{
+  border:1px solid var(--eff-border);background:var(--eff-surface);box-shadow:var(--eff-elev-1)
+}
+.deskapp .stat,.deskapp .rcard,.deskapp .pcard,.deskapp .side-c{border-radius:var(--eff-radius-md)}
+.deskapp .stat{padding:19px 20px}
+.deskapp .stat .sv{font-size:32px;font-weight:760;letter-spacing:-.055em}
+.deskapp .stat .sl{font-size:12px;font-weight:560}
+.deskapp .rcard{padding:20px}
+.deskapp .pcard{padding:16px}
+.deskapp .stats{gap:14px}
+.deskapp .btn{
+  min-height:36px;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:680;
+  box-shadow:none;transition:transform .16s ease,box-shadow .16s ease,background .16s ease,border-color .16s ease
+}
+.deskapp .btn:not(.l):not([disabled]){box-shadow:0 1px 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+.deskapp .btn:not(.l):not([disabled]):hover{transform:translateY(-1px);box-shadow:0 5px 13px color-mix(in srgb,var(--accent) 20%,transparent)}
+.deskapp .btn.l{border:1px solid var(--eff-border);background:var(--eff-surface);box-shadow:none}
+.deskapp .btn.l:hover{background:var(--eff-surface-soft);border-color:color-mix(in srgb,var(--accent) 30%,var(--d-line))}
+.deskapp input,.deskapp select,.deskapp textarea{
+  min-height:38px;border:1px solid var(--eff-border);border-radius:10px;background:var(--eff-surface);
+  box-shadow:inset 0 1px 1px rgba(15,23,42,.018);font-size:13px
+}
+.deskapp textarea{min-height:108px;line-height:1.6}
+.deskapp input:focus,.deskapp select:focus,.deskapp textarea:focus{
+  outline:0;border-color:var(--accent);box-shadow:var(--eff-ring)
+}
+.deskapp input::placeholder,.deskapp textarea::placeholder{color:color-mix(in srgb,var(--d-muted) 78%,transparent)}
+.deskapp .views{grid-template-columns:248px minmax(0,1fr);gap:0}
+.deskapp .views .side{padding:20px 14px;border:0;border-right:1px solid var(--eff-border);border-radius:0;box-shadow:none;background:var(--eff-surface)}
+.deskapp .views .side h3{padding:0 10px;margin:0 0 9px}
+.deskapp .views .side h3:not(:first-child){margin-top:23px}
+.deskapp .flt{min-height:38px;padding:9px 11px;border-radius:9px;font-size:13px;font-weight:540}
+.deskapp .flt[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 9%,var(--d-bg));color:var(--accent-d);box-shadow:inset 3px 0 0 var(--accent);font-weight:700}
+.deskapp .views .tbl{min-width:0;background:var(--d-bg)}
+.deskapp .views-head{padding:23px 26px;background:var(--d-bg);border-bottom:1px solid var(--eff-border)}
+.deskapp .views-head h2{font-size:24px;font-weight:760;letter-spacing:-.045em}
+.deskapp .views-head p{font-size:12px}
+.deskapp .views table{font-size:13px}
+.deskapp .views th{padding:13px 15px;background:var(--eff-surface-soft);font-size:10px;letter-spacing:.075em}
+.deskapp .views td{padding:13px 15px;border-bottom:1px solid color-mix(in srgb,var(--d-line) 72%,transparent)}
+.deskapp .views .subj{font-weight:660}
+.deskapp .views tr.row:hover{background:color-mix(in srgb,var(--accent) 5%,var(--d-bg))}
+.deskapp .badge{padding:4px 9px;border:1px solid color-mix(in srgb,currentColor 13%,transparent);font-size:10px;font-weight:700;letter-spacing:.025em}
+.deskapp .tag,.deskapp .chip{border-radius:8px}
+.deskapp .ticket{grid-template-columns:276px minmax(420px,1fr) 292px;background:var(--d-bg)}
+.deskapp .ticket .props,.deskapp .ticket .info{padding:20px 18px;background:var(--eff-surface)}
+.deskapp .ticket .props{border-right:1px solid var(--eff-border)}
+.deskapp .ticket .info{border-left:1px solid var(--eff-border)}
+.deskapp .ticket .col{scrollbar-gutter:stable}
+.deskapp .prop{margin-bottom:18px}
+.deskapp .prop .pl{margin-bottom:6px;font-size:10px;font-weight:760;letter-spacing:.075em;color:var(--d-muted)}
+.deskapp .prop select,.deskapp .prop input{min-height:36px}
+.deskapp .conv{background:var(--d-bg)}
+.deskapp .conv .ch{padding:22px 26px 16px;border-bottom:1px solid var(--eff-border)}
+.deskapp .msg-b{padding:13px 15px;border:1px solid var(--eff-border);border-radius:14px;box-shadow:0 2px 6px rgba(15,23,42,.025)}
+.deskapp .conv .composer,.deskapp .composer{border-top:1px solid var(--eff-border);background:var(--eff-surface)}
+.deskapp .menu{border:1px solid var(--eff-border);box-shadow:var(--eff-elev-2);backdrop-filter:blur(18px)}
+.deskapp .menu a,.deskapp .menu button{min-height:38px;font-size:13px}
+.deskapp .integration-providers-grid{gap:14px}
+.deskapp .integration-provider-card{
+  padding:18px;border-radius:var(--eff-radius-lg);box-shadow:var(--eff-elev-1);
+  transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease
+}
+.deskapp .integration-provider-card:hover{
+  transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 34%,var(--d-line));box-shadow:var(--eff-elev-2)
+}
+.deskapp .integration-provider-card h3,.deskapp .integration-provider-card h4{letter-spacing:-.015em;text-transform:none;font-size:14px}
+.deskapp .integration-provider-logo{border-radius:12px;background:var(--eff-surface-soft)}
+.deskapp .timeline li{padding-block:3px;line-height:1.55}
+.deskapp .msg.toast{border-radius:12px;box-shadow:var(--eff-elev-2)}
+.deskapp a{ text-underline-offset:3px;text-decoration-thickness:1px }
+.deskapp button:focus-visible,.deskapp a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 12%,transparent)}
+.deskapp .lock{font-size:11px}
+@media(max-width:1120px){
+  .deskapp .ticket{grid-template-columns:240px minmax(360px,1fr)}
+  .deskapp .ticket .info{grid-column:1/-1;border:0;border-top:1px solid var(--eff-border);max-height:260px}
+}
+@media(max-width:900px){
+  .deskapp .rail{width:60px}
+  .deskapp .top{gap:8px;padding-inline:13px}
+  .deskapp .top #q{width:min(23vw,220px)}
+  .deskapp .ticket{grid-template-columns:220px minmax(0,1fr)}
+  .deskapp .views{grid-template-columns:210px minmax(0,1fr)}
+}
+@media(max-width:680px){
+  .deskapp .rail{width:52px;padding-top:10px}
+  .deskapp .rail .ri{width:40px;height:40px}
+  .deskapp .top{min-height:58px;gap:7px;padding:8px}
+  .deskapp .top .tabs{order:5;width:100%}
+  .deskapp .top #q{width:auto;min-width:0;flex:1}
+  .deskapp .top #newbtn{height:38px;padding-inline:10px;font-size:12px}
+  .deskapp .top #orgsel{max-width:30vw}
+  .deskapp .who #who{display:none}
+  .deskapp .page,.deskapp .page.wide,.deskapp .contact-workspace,.deskapp .integrations-desk-page{padding:17px 13px}
+  .deskapp .page>h2,.deskapp .contact-workspace>h2,.deskapp .integrations-desk-page>h2{font-size:22px}
+  .deskapp .views{grid-template-columns:minmax(0,1fr)}
+  .deskapp .views .side{max-height:210px;border:0;border-bottom:1px solid var(--eff-border)}
+  .deskapp .views-head{padding:17px 14px}
+  .deskapp .views td,.deskapp .views th{padding:10px 9px}
+  .deskapp .ticket{display:flex;flex-direction:column;height:auto;min-height:100%}
+  .deskapp .ticket .col{max-height:none;overflow:visible!important}
+  .deskapp .ticket .props,.deskapp .ticket .info{border:0;border-bottom:1px solid var(--eff-border)}
+  .deskapp .conv .ch{padding:17px 14px}
+  .deskapp .msg-b{max-width:100%;overflow-wrap:anywhere}
+  .deskapp .integration-providers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:420px){
+  .deskapp .integration-providers-grid{grid-template-columns:1fr}
+  .deskapp .top #newbtn{font-size:0;min-width:38px}
+  .deskapp .top #newbtn::first-letter{font-size:14px}
+}
+@media(hover:none){
+  .deskapp .rail .ri[title]::after{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .deskapp .rail .ri[title]::after{transition:none}
+  .deskapp button,.deskapp a,.deskapp input,.deskapp select,.deskapp textarea{transition:none!important}
+}
