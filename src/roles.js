@@ -14,6 +14,7 @@ export const PERMS = [
   { id: 'articles', label: 'Write and delete help articles', actions: ['article-save', 'article-delete'] },
   { id: 'reports', label: 'See reports', actions: ['report', 'report-csv'] },
   { id: 'ai', label: 'Use AI to draft and rewrite replies', actions: ['ai-suggest', 'ai-rewrite'] },
+  { id: 'approvals', label: 'Approve service requests and manage fulfillment tasks', actions: ['approval-decide', 'task-update'] },
 ];
 const PERM_OF = Object.fromEntries(PERMS.flatMap(p => p.actions.map(a => [a, p.id])));
 const fail = (error, status = 400) => ({ ok: false, status, error });
