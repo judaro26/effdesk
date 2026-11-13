@@ -117,3 +117,12 @@
 .deskapp .incident-provider-link-row a:hover{text-decoration:underline}
 .deskapp .incident-provider-section .integration-provider-card{min-width:0}
 .deskapp .incident-provider-section .integration-provider-description{min-height:0}
+
+
+/* Incident response provider connection cards */
+.deskapp .incident-provider-section .integration-providers-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.deskapp .incident-provider-section .integration-provider-card{padding:15px;border:1px solid var(--d-line);border-radius:13px;background:var(--d-bg);box-shadow:none}
+.deskapp .incident-provider-section .integration-provider-mark{width:42px;height:42px;border-radius:11px;font-size:15px;background:var(--d-panel);color:var(--d-ink);border:1px solid var(--d-line);box-shadow:none}
+.deskapp .incident-provider-section .integration-provider-description{margin:12px 0;min-height:48px;font-size:12px}
+.deskapp .incident-provider-section .integration-provider-card>input{width:100%;min-width:0;margin-top:10px;padding:8px 10px;border:1px solid var(--d-line);border-radius:8px;background:var(--d-panel);color:var(--d-ink);font:inherit;font-size:12px}
+@media(max-width:900px){.deskapp .incident-provider-section .integration-providers-grid{grid-template-columns:1fr}}
