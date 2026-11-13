@@ -38,7 +38,7 @@ async function authenticate(pool, req) {
 }
 export async function listScimTokens(pool, orgId) {
   return withOrg(pool, orgId, async c => ({
-    ok: true, tokens: (await c.query('select id,name,created_at,last_used_at,revoked_at from scim_tokens where org_id=$1 order by created_at desc', [orgId])).rows,
+    ok: true, tokens: (await c.query('select id,name,created_at,last_used_at,revoked_at from scim_tokens where org_id=$1 and revoked_at is null order by created_at desc', [orgId])).rows,
   }));
 }
 export async function createScimToken(pool, orgId, actorId, name) {
@@ -158,6 +158,28 @@ export async function scim(req, { pool }) {
   const orgId = await authenticate(pool, req);
   if (!orgId) return scimError(401, 'A valid SCIM bearer token is required.');
   const url = new URL(req.url), base = url.origin + url.pathname.replace(/\/+$/, '');
+  if (req.method === 'GET' && /\/ServiceProviderConfig\/?$/i.test(url.pathname)) return response(200, {
+    schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
+    patch: { supported: true }, bulk: { supported: false, maxOperations: 0, maxPayloadSize: 0 },
+    filter: { supported: true, maxResults: 200 }, changePassword: { supported: false },
+    sort: { supported: false }, etag: { supported: false },
+    authenticationSchemes: [{ type: 'oauthbearertoken', name: 'OAuth Bearer Token', description: 'Tenant-specific EffDesk SCIM bearer token', primary: true }],
+  });
+  if (req.method === 'GET' && /\/ResourceTypes\/?$/i.test(url.pathname)) return response(200, {
+    schemas: [LIST_SCHEMA], totalResults: 1, startIndex: 1, itemsPerPage: 1,
+    Resources: [{ schemas: ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'], id: 'User', name: 'User', endpoint: '/Users', schema: USER_SCHEMA }],
+  });
+  if (req.method === 'GET' && /\/Schemas\/?$/i.test(url.pathname)) return response(200, {
+    schemas: [LIST_SCHEMA], totalResults: 1, startIndex: 1, itemsPerPage: 1,
+    Resources: [{ schemas: ['urn:ietf:params:scim:schemas:core:2.0:Schema'], id: USER_SCHEMA, name: 'User', description: 'EffDesk user resource', attributes: [
+      { name: 'userName', type: 'string', multiValued: false, required: true, caseExact: false, mutability: 'readWrite', returned: 'always', uniqueness: 'server' },
+      { name: 'name', type: 'complex', multiValued: false, required: false, subAttributes: [{ name: 'givenName', type: 'string' }, { name: 'familyName', type: 'string' }] },
+      { name: 'displayName', type: 'string', multiValued: false, required: false },
+      { name: 'active', type: 'boolean', multiValued: false, required: false },
+      { name: 'externalId', type: 'string', multiValued: false, required: false },
+      { name: 'emails', type: 'complex', multiValued: true, required: false, subAttributes: [{ name: 'value', type: 'string' }, { name: 'type', type: 'string' }, { name: 'primary', type: 'boolean' }] },
+    ] }],
+  });
   const usersPath = url.pathname.match(/\/Users(?:\/([^/]+))?\/?$/i);
   if (!usersPath) return scimError(404, 'SCIM resource not found.');
   const id = usersPath[1] ? decodeURIComponent(usersPath[1]) : '';
