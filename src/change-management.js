@@ -140,7 +140,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
    if(!(CHANGE_TRANSITIONS[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
    if(before.status==='awaiting_approval'&&JSON.stringify((before.approval_stages||[]).map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]})))!==JSON.stringify(cfg.stages.map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]}))))return fail('Approval stages cannot be changed while a decision is in progress.',409);
    if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType!=='standard')return fail('Normal and emergency changes must pass their configured approval stages before approval.',409);
-   if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType==='standard'&&(d.risk!=='low'||['high','critical'].includes(d.impact)))return fail('The pre-authorized path is limited to low-risk standard changes with low or medium impact.',409);
+   if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType==='standard'&&(RISK_RANK[d.risk]>RISK_RANK[policy.standardMaxRisk]||RISK_RANK[d.impact]>RISK_RANK[policy.standardMaxImpact]))return fail('This standard change exceeds the risk or impact limit configured by your CAB policy.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
   if(d.status==='awaiting_approval'){
    const minStages=policy.requiredStages[d.changeType]||0;
