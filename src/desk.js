@@ -136,15 +136,16 @@ const cleanTicketFilters = input => {
   return out;
 };
 export const getTicketPreferences = (pool, orgId, userId) => withOrg(pool, orgId, async c => {
-  const row = (await c.query('select filters, columns from agent_ticket_preferences where org_id = $1 and user_id = $2', [orgId, userId])).rows[0];
-  return { ok: true, ticketPrefs: { filters: cleanTicketFilters(row?.filters), columns: Array.isArray(row?.columns) && row.columns.length ? [...new Set(row.columns.filter(k => VIEW_COLUMNS.includes(k)))] : DEFAULT_VIEW_COLUMNS } };
+  const row = (await c.query('select filters, columns, locale from agent_ticket_preferences where org_id = $1 and user_id = $2', [orgId, userId])).rows[0];
+  return { ok: true, ticketPrefs: { filters: cleanTicketFilters(row?.filters), columns: Array.isArray(row?.columns) && row.columns.length ? [...new Set(row.columns.filter(k => VIEW_COLUMNS.includes(k)))] : DEFAULT_VIEW_COLUMNS, locale: row?.locale === 'es' || row?.locale === 'en' ? row.locale : null } };
 });
 export const saveTicketPreferences = (pool, orgId, userId, input) => withOrg(pool, orgId, async c => {
   const filters = cleanTicketFilters(input.filters);
   const columns = [...new Set((Array.isArray(input.columns) ? input.columns : DEFAULT_VIEW_COLUMNS).filter(k => VIEW_COLUMNS.includes(k)))];
   if (!columns.length) return fail('Choose at least one ticket column.');
-  await c.query('insert into agent_ticket_preferences (org_id, user_id, filters, columns, updated_at) values ($1,$2,$3,$4,now()) on conflict (org_id,user_id) do update set filters = excluded.filters, columns = excluded.columns, updated_at = now()', [orgId, userId, JSON.stringify(filters), JSON.stringify(columns)]);
-  return { ok: true, ticketPrefs: { filters, columns } };
+  const locale = input.locale === 'es' || input.locale === 'en' ? input.locale : null;
+  await c.query('insert into agent_ticket_preferences (org_id, user_id, filters, columns, locale, updated_at) values ($1,$2,$3,$4,$5,now()) on conflict (org_id,user_id) do update set filters = excluded.filters, columns = excluded.columns, locale = coalesce(excluded.locale, agent_ticket_preferences.locale), updated_at = now()', [orgId, userId, JSON.stringify(filters), JSON.stringify(columns), locale]);
+  return { ok: true, ticketPrefs: { filters, columns, locale } };
 });
 export const listViews = (pool, orgId, actor) => withOrg(pool, orgId, async c => ({ ok: true, views: (await c.query('select id, name, owner_id, filter, columns from saved_views where org_id = $1 and (owner_id is null or owner_id = $2) order by lower(name)', [orgId, actor.id])).rows.map(v => ({ id: v.id, name: v.name, shared: v.owner_id === null, mine: v.owner_id === actor.id, filter: v.filter, columns: Array.isArray(v.columns) && v.columns.length ? v.columns : DEFAULT_VIEW_COLUMNS })) }));
 export const saveView = (pool, orgId, actor, b) => withOrg(pool, orgId, async c => {

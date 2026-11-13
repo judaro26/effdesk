@@ -61,16 +61,17 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'note') return ok({ ok: true, message: { id: 99 }, mentioned: 0 });
   if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|mint|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
-  if (b.action === 'list') return ok({ tickets: [T], counts: { open: 1, pending: 0, solved: 0, closed: 0 } });
+  if (b.action === 'list') return ok({ tickets: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? [] : [T], counts: { open: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? 0 : 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
   if (b.action === 'create' && !/@/.test(b.requesterEmail)) return { ok: false, status: 400, json: async () => ({ error: 'Enter the requester\'s email address.' }) };
   if (b.action === 'create') return ok({ ticket: { ...T, number: 8, subject: b.subject } });
   return ok({ ok: true });
 };
-const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/desk.js'));
+const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/i18n.js')); w.eval(pub('js/desk.js'));
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
-const $ = s => w.document.querySelector(s), $$ = s => [...w.document.querySelectorAll(s)];
+const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
+$('#userbtn').click(); await tick(); check('the agent profile menu includes an English/Spanish language selector', !!$('select[aria-label="Language"]')); $('select[aria-label="Language"]').value = 'es'; $('select[aria-label="Language"]').dispatchEvent(new w.Event('change')); await tick(420); check('the agent language choice updates the document and is saved with tenant-scoped preferences', w.document.documentElement.lang === 'es' && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].locale === 'es')); $('select[aria-label="Idioma"]').value = 'en'; $('select[aria-label="Idioma"]').dispatchEvent(new w.Event('change')); await tick(420);
 check('the desk lands on a dashboard with counts, my tickets and what is left to set up', /Good (morning|afternoon|evening), /.test($('h2').textContent) && $('[data-stat-open] .sv').textContent === '3' && $$('[data-list-mine] .hrow').length === 1 && /Every active ticket has an owner/.test($('[data-list-unassigned]').textContent) && /Set up your support email/.test($('[data-setup]').textContent) && !$('[data-stat-breached]') === (FEATURES.indexOf('sla') < 0));
 check('the dashboard shows the organization\'s own portal address', $('[data-portal] a').getAttribute('href') === 'https://acme.effdesk.com');
 check('the top-left logo goes to the dashboard, not the marketing site', $('a.logo').getAttribute('href').indexOf('/desk.html') === 0 && $('a.logo').dataset.home === '1');
@@ -80,6 +81,7 @@ $('[data-nav]').click(); await tick();
 $('[data-home-tab]').click(); await tick(); $('a.logo').click(); await tick(); $('[data-nav]').click(); await tick();
 check('the desk lists the organization\'s tickets with the signed-in email shown', $$('tr.row').length === 1 && /#7/.test($('.row').textContent) && /Heater/.test($('.row').textContent) && w.document.getElementById('who').textContent === 'ann@acme.test');
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
+{ const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && !$('tr.row').length && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $('tr.row').length === 1); }
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $$('.msg-b').length === 4 && $$('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($$('.msg-b')[1].textContent));
 check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!$$('.msg-b')[3].querySelector('h2') && $$('.msg-b')[3].querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test($$('.msg-b')[3].textContent));
