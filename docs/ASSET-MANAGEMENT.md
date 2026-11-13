@@ -25,12 +25,13 @@ All actions use the existing authenticated `POST /api/tickets` endpoint and acti
 - `itsm-ci-licenses-list`, `itsm-ci-license-save`: software entitlements, seat counts and renewal dates.
 - `itsm-ci-warranty-report`: active assets with warranties due or expired within the requested day window.
 - `itsm-ci-import-csv`, `itsm-ci-export-csv`: admin-only asset CSV transfer.
+- `itsm-ci-agent-list`, `itsm-ci-agent-create`, `itsm-ci-agent-revoke`: view, enroll and revoke tenant-bound Windows discovery agents; create/revoke are owner/admin-only.
 
 All owner and service references are validated against the current workspace. Cross-workspace references are rejected by both application checks and composite foreign keys.
 
 ## Rollout
 
-Apply migrations `048_configuration_items.sql` and `049_cmdb_lifecycle_and_procurement.sql` in order before deploying the application code. Both are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
+Apply migrations `048_configuration_items.sql`, `049_cmdb_lifecycle_and_procurement.sql`, `050_cmdb_intune_discovery.sql` and `051_cmdb_windows_discovery_agent.sql` in order before deploying the application code. These are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
 
 ## Procurement and lifecycle extension
 
@@ -42,7 +43,7 @@ Warranty reporting identifies active assets with expired or upcoming warranties 
 
 ## Deliberate next steps
 
-This is not yet a discovery-grade CMDB. Next work should add reconciliation and duplicate detection, scheduled discovery through tenant-authorized endpoint/RMM/MDM connectors (for example Microsoft Intune via Microsoft Graph), automated license assignment reconciliation, renewal email escalations and a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
+Further CMDB work can expand discovery to macOS/Linux and authorized SNMP/network inventory, improve duplicate-resolution workflows, reconcile discovered applications against purchased license entitlements, add renewal email escalations and provide a richer dependency graph. Discovery credentials must be stored using the platform's tenant-secret encryption mechanism before a live connector is enabled.
 
 ## Automated discovery: Microsoft Intune
 
@@ -57,3 +58,20 @@ A workspace owner/admin enters the customer's Entra tenant ID or verified tenant
 Sync is manually initiated from **Assets & CMDB → Procurement & lifecycle → Automated discovery**. It imports at most 2,500 devices per run, links an existing CI by serial number where possible, otherwise creates an Intune-tagged hardware CI, and updates inventory fields plus compliance/OS metadata. Devices not seen in a successful full sync are marked **missing**; EffDesk does not automatically retire or delete them. Disconnecting deletes EffDesk's stored encrypted tokens while retaining discovered CIs. It does not revoke the customer's Entra consent grant; an administrator can revoke that grant from Microsoft Entra separately.
 
 The tenant must grant admin consent for the delegated permission. If consent or the Microsoft app registration is not configured, the integration remains unavailable; CSV import/export and manual asset management continue to work. Scheduled background sync, webhook-driven change notifications, write-back/remediation, and broader Entra user/group discovery are intentionally deferred.
+
+
+## Automated discovery: native Windows agent (no Microsoft subscription)
+
+Migration `051_cmdb_windows_discovery_agent.sql` adds tenant-scoped agent enrollment and installed-software snapshots. This provider does not use Microsoft Entra, Intune, Graph API, or a paid endpoint-management subscription. The customer installs a signed-in-workspace enrollment script on each Windows device; each agent receives a unique, revocable, one-year bearer token. EffDesk stores only a SHA-256 token hash. The token is displayed once when the owner/admin creates the agent and is never returned by list APIs.
+
+In **Assets & CMDB → Procurement & lifecycle → Automated discovery**, create a Windows agent, copy its one-time token, and download `/agents/windows/effdesk-discovery.ps1`. On the target Windows device, open PowerShell and run:
+
+```powershell
+.\effdesk-discovery.ps1 -EnrollmentToken "PASTE_ONE_TIME_TOKEN" -InstallScheduledTask -ApiUrl "https://app.effdesk.com/api/cmdb-agent"
+```
+
+The script performs read-only local CIM/WMI and uninstall-registry inventory, then sends the snapshot over HTTPS to `/api/cmdb-agent`. It reports hostname, manufacturer, model, BIOS serial, Windows version and up to 500 installed-app name/publisher/version entries. It deliberately does not collect passwords, processes, browser data, documents, IP addresses, or logged-on user details. The optional scheduled-task setup runs every six hours while that Windows user is logged in and protects the saved token with Windows DPAPI for that user. It does not require a Microsoft subscription or an EffDesk Microsoft OAuth app. The agent does not remotely scan other devices; deploy it separately to each endpoint.
+
+The ingestion endpoint binds the bearer token to the encoded workspace ID and a single agent ID, validates the token hash inside that workspace's RLS transaction, and rejects revoked/expired tokens. Hardware is reconciled to an existing manually managed hardware CI by serial number when safe, otherwise a new Windows-agent CI is created. Software snapshots are reconciled per agent; items absent from the latest complete snapshot are marked missing rather than deleted. Owners/admins can revoke an agent at any time. The dashboard shows agent health, last check-in, device details and discovered software.
+
+This first release is a customer-installed Windows endpoint agent, not a network-wide scanner or a centrally managed service. The script should be distributed only to devices the customer owns or is authorized to inventory. Customers should review their own endpoint-management and employee-notice requirements before deployment.
