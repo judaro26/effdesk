@@ -2,6 +2,6 @@
 import { logged, captureConsole } from '../../src/log.js';
 captureConsole();
 import { context } from '../../src/context.js';
-import { ingestWindowsAgent } from '../../src/cmdb-agent.js';
+import { ingestDiscoveryAgent } from '../../src/cmdb-agent.js';
 export default logged('cmdb-agent', async req => ingestWindowsAgent(req, context()));
 export const config = { path: '/api/cmdb-agent' };
