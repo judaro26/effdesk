@@ -72,7 +72,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
  if(input.plannedStart&&!d.plannedStart||input.plannedEnd&&!d.plannedEnd)return fail('Enter a valid maintenance window date and time.');
  if(hasId&&(!Number.isSafeInteger(id)||id<1))return fail('Choose a valid change request.');
  if(d.plannedStart&&d.plannedEnd&&d.plannedEnd<=d.plannedStart)return fail('The maintenance window must end after it starts.');
- const serviceIds=linkIds(input.serviceIds,50),incidentNumbers=linkIds(input.incidentNumbers,100);
+ const serviceIds=linkIds(input.serviceIds,50),incidentNumbers=linkIds(input.incidentNumbers,100).filter(n=>n<=2147483647);
  const cfg=normalizeApprovalConfig({enabled:true,stages:Array.isArray(input.approvalStages)?input.approvalStages:[]});
  const result=await withOrg(pool,orgId,async c=>{
   if(d.ownerId){const m=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,d.ownerId])).rows[0];if(!m||m.role==='light')return fail('The change owner must be a full workspace member.');}
