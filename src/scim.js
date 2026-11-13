@@ -131,6 +131,10 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
       on conflict (org_id,user_id) do update set external_id=excluded.external_id,active=excluded.active,display_name=excluded.display_name,given_name=excluded.given_name,family_name=excluded.family_name,updated_at=now()
       returning id as scim_id,external_id,active,display_name,given_name,family_name,created_at,updated_at`,
       [scimId, orgId, user.id, externalId, active, names.display || (createdUser ? user.name : null), names.given || null, names.family || null]);
+    await c.query('insert into audit_log (org_id,actor_id,action,target,meta) values ($1,null,$2,$3,$4)', [
+      orgId, active ? (existing ? 'scim.user.updated' : 'scim.user.provisioned') : 'scim.user.deprovisioned',
+      user.email, JSON.stringify({ scimId: q.rows[0].id, externalId, active }),
+    ]);
     return q.rows[0];
   });
   return { ok: true, row: { ...saved, user_id: user.id, name: user.name, email: user.email } };
@@ -221,7 +225,10 @@ export async function scim(req, { pool }) {
   if (req.method === 'DELETE' && id) {
     const row = await readUser(pool, orgId, id); if (!row) return scimError(404, 'User not found.');
     await deactivateMembership(pool, orgId, row.user_id);
-    await withOrg(pool, orgId, c => c.query('update scim_users set active=false,updated_at=now() where org_id=$1 and id=$2', [orgId, id]));
+    await withOrg(pool, orgId, async c => {
+      await c.query('update scim_users set active=false,updated_at=now() where org_id=$1 and id=$2', [orgId, id]);
+      await c.query('insert into audit_log (org_id,actor_id,action,target,meta) values ($1,null,$2,$3,$4)', [orgId, 'scim.user.deprovisioned', row.email, JSON.stringify({ scimId: id, externalId: row.external_id, active: false })]);
+    });
     return response(204, null);
   }
   return scimError(405, 'Method not allowed.');
