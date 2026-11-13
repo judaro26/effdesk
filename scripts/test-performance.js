@@ -5,7 +5,7 @@ check('normalizes UUID path segments', normalizePath('/api/agent/123e4567-e89b-1
 let calls = [];
 const pool = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [], rowCount: 1 }; } };
 const sample = { fn: 'tickets', path: '/api/tickets/123?email=private@example.com', status: 500, ms: 1200, org: 'org-1', at: 1760000000000, pool: { waiting: 2, total: 10 } };
-const written = await recordRequest(pool, sample, { PERFORMANCE_SAMPLE_RATE: '1' }, () => 0);
+let draws = 0; const written = await recordRequest(pool, sample, { PERFORMANCE_SAMPLE_RATE: '1' }, () => draws++ === 0 ? 0 : 0.5);
 check('records one aggregate without storing query strings or request content', written.recorded && calls.length === 1 && !calls[0].params[2].includes('?') && calls[0].params[3] === 'org-1');
 check('captures status, latency bucket and pool pressure', calls[0].params[4] === 1 && calls[0].params[5] === 1 && calls[0].params[6] === 1200 && calls[0].params[10] === 1 && calls[0].params[11] === 2 && calls[0].params[12] === 10);
 calls = []; const skipped = await recordRequest(pool, sample, { PERFORMANCE_SAMPLE_RATE: '0.1' }, () => 0.9);
