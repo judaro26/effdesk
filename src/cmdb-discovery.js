@@ -13,7 +13,7 @@ const enc=(env,v)=>seal(secret(env),v);
 const dec=(env,v)=>unseal(secret(env),v);
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const b64u=v=>Buffer.from(v).toString('base64url');
-const validTenant=v=>/^[a-f0-9-]{36}$/i.test(v)||/^[a-z0-9][a-z0-9.-]{1,118}[a-z0-9]$/i.test(v);
+export const isValidTenant=v=>/^[a-f0-9-]{36}$/i.test(v)||/^[a-z0-9][a-z0-9.-]{1,118}[a-z0-9]$/i.test(v);
 const scopes='openid profile offline_access https://graph.microsoft.com/DeviceManagementManagedDevices.Read.All';
 async function postForm(url,body){
  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json'},body:new URLSearchParams(body),signal:AbortSignal.timeout(15000),redirect:'error'});
@@ -52,7 +52,7 @@ export async function discoveryStatus(pool,org){
 }
 export async function startDiscovery(pool,env,org,actor,tenantInput){
  const tenantId=clean(tenantInput,120);
- if(!validTenant(tenantId))return {ok:false,status:400,error:'Enter a valid Microsoft Entra tenant ID (GUID) or verified tenant domain.'};
+ if(!isValidTenant(tenantId))return {ok:false,status:400,error:'Enter a valid Microsoft Entra tenant ID (GUID) or verified tenant domain.'};
  const clientId=String(env.MICROSOFT_CLIENT_ID||''),clientSecret=String(env.MICROSOFT_CLIENT_SECRET||'');
  if(!clientId||!clientSecret)return {ok:false,status:503,error:'EffDesk Microsoft OAuth app is not configured yet. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on the deployment.'};
  if(!secret(env))return {ok:false,status:503,error:'BETTER_AUTH_SECRET is required to encrypt Microsoft credentials.'};
@@ -82,7 +82,7 @@ export async function discoveryCallback(req,{pool,env=process.env}){
   return Response.redirect(appBase(env)+'/desk.html?cmdbDiscovery=connected',302);
  }catch(e){console.error('Intune OAuth callback:',e.message);return failRedirect('authorization_failed');}
 }
-function normalizeDevice(d){
+export function normalizeDevice(d){
  const id=clean(d.id,120);if(!id)return null;
  return {id,name:clean(d.deviceName,180)||('Intune device '+id.slice(0,8)),manufacturer:clean(d.manufacturer,120),model:clean(d.model,120),serial:clean(d.serialNumber,180),os:clean(d.operatingSystem,80),osVersion:clean(d.osVersion,100),compliance:clean(d.complianceState,60),ownerType:clean(d.managedDeviceOwnerType,40),user:clean(d.userPrincipalName,254),lastSync:d.lastSyncDateTime||null};
 }
