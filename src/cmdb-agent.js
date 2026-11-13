@@ -8,8 +8,16 @@ const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const fail=(status,error)=>new Response(JSON.stringify({ok:false,error}),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const ok=body=>new Response(JSON.stringify({ok:true,...body}),{status:200,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const b64u=v=>Buffer.from(v).toString('base64url');
+function ipv4Number(ip){const p=String(ip).split('.').map(Number);if(p.length!==4||p.some(x=>!Number.isInteger(x)||x<0||x>255))return null;return (((p[0]<<24)>>>0)+(p[1]<<16)+(p[2]<<8)+p[3])>>>0;}
+export function normalizeAllowedNetworks(values){
+ if(!Array.isArray(values)||!values.length)return {ok:false,error:'Add at least one customer-approved private IPv4 network range.'};
+ const out=[];let total=0;
+ for(const raw of values.slice(0,16)){const s=String(raw||'').trim(),m=s.match(/^(\\d{1,3}(?:\\.\\d{1,3}){3})(?:\\/(\\d{1,2}))?$/);if(!m)return {ok:false,error:'Use private IPv4 CIDR notation, such as 10.20.0.0/24.'};const ip=ipv4Number(m[1]),prefix=m[2]===undefined?32:Number(m[2]);if(ip===null||prefix<16||prefix>32)return {ok:false,error:'Network ranges must use valid private IPv4 prefixes from /16 through /32.'};const a=ip>>>24,b=(ip>>>16)&255,privateIp=a===10||(a===172&&b>=16&&b<=31)||(a===192&&b===168);if(!privateIp)return {ok:false,error:'Only RFC1918 private IPv4 ranges are permitted.'};const size=2**(32-prefix);total+=prefix>=31?size:Math.max(0,size-2);if(total>1024)return {ok:false,error:'An SNMP poller is limited to 1,024 target addresses.'};const mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;const network=(ip&mask)>>>0;out.push([network>>>24,(network>>>16)&255,(network>>>8)&255,network&255].join('.')+'/'+prefix);}
+ return {ok:true,networks:[...new Set(out)]};
+}
 
-export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='windows_agent'){
+
+export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='windows_agent',config={}){
  if(!['windows_agent','osquery_agent','snmp_agent'].includes(provider))return {ok:false,status:400,error:'Unsupported discovery provider.'};
  const name=clean(nameInput,120);
  if(!name)return {ok:false,status:400,error:'Give this discovery agent a name.'};
@@ -19,13 +27,14 @@ export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='
  const token='edk1.'+b64u(orgId)+'.'+id+'.'+secret;
  const expiresAt=new Date(Date.now()+365*24*60*60*1000);
  const initialPlatform=provider==='windows_agent'?'windows':provider==='snmp_agent'?'network':'';
- await withOrg(pool,orgId,c=>c.query('insert into cmdb_discovery_agents(id,org_id,name,provider,platform,token_hash,created_by,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[id,orgId,name,provider,initialPlatform,hash(token),actor?.id||null,expiresAt]));
+ const approved=provider==='snmp_agent'?normalizeAllowedNetworks(config.allowedNetworks):{ok:true,networks:[]};if(!approved.ok)return {ok:false,status:400,error:approved.error};
+ await withOrg(pool,orgId,c=>c.query('insert into cmdb_discovery_agents(id,org_id,name,provider,platform,token_hash,created_by,expires_at,allowed_networks) values($1,$2,$3,$4,$5,$6,$7,$8,$9::cidr[])',[id,orgId,name,provider,initialPlatform,hash(token),actor?.id||null,expiresAt,approved.networks]));
  return {ok:true,agent:{id,name,expiresAt},token};
 }
 export async function listDiscoveryAgents(pool,orgId){
  return withOrg(pool,orgId,async c=>{
   const [agents,software,softwareItems]=await Promise.all([
-   c.query("select id,name,provider,platform,created_at,expires_at,revoked_at,last_seen_at,last_sync_status,last_sync_error,hostname,manufacturer,model,serial_number,os_version,software_count,network_device_count,last_network_scan_at from cmdb_discovery_agents where org_id=$1 order by created_at desc",[orgId]),
+   c.query("select id,name,provider,platform,created_at,expires_at,revoked_at,last_seen_at,last_sync_status,last_sync_error,hostname,manufacturer,model,serial_number,os_version,software_count,network_device_count,last_network_scan_at,allowed_networks from cmdb_discovery_agents where org_id=$1 order by created_at desc",[orgId]),
    c.query("select count(*)::int total,count(*) filter(where status='current')::int current from cmdb_discovered_software where org_id=$1",[orgId]),
    c.query("select s.name,s.publisher,s.version,s.last_seen_at,a.hostname from cmdb_discovered_software s join cmdb_discovery_agents a on a.org_id=s.org_id and a.id=s.agent_id where s.org_id=$1 and s.status='current' order by lower(s.name),s.version limit 500",[orgId])
   ]);
