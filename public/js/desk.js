@@ -1052,7 +1052,7 @@
           el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (current && current.ticket.number === t.number) current = null; draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
-      if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; closePanes(); openTabs = []; ticketTasks = {}; ticketApprovals = {}; approvalRows = null; rules = null; rulesLoading = false; lifecyclePolicy = null; lifecyclePolicyLoading = false; rd = null; loadInit().then(refresh); }));
+      if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; sandboxInfo = null; sandboxLoading = false; closePanes(); openTabs = []; ticketTasks = {}; ticketApprovals = {}; approvalRows = null; rules = null; rulesLoading = false; lifecyclePolicy = null; lifecyclePolicyLoading = false; rd = null; loadInit().then(refresh); }));
     }
 
     // ── Views: filters, queues, saved views and the ticket table ──
