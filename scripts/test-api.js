@@ -26,6 +26,16 @@ await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organiza
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
 const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 const A = (who, action, extra = {}) => call(who, { orgId: acme.id, action, ...extra }), B = (who, action, extra = {}) => call(who, { orgId: beta.id, action, ...extra });
+// Customer self-service sandbox provisioning is restricted to Pro owners/admins.
+const beforeSandbox = await A(olivia, 'sandbox-get');
+check('sandbox settings report production with no sandbox before provisioning', beforeSandbox.status === 200 && beforeSandbox.body.environment === 'production' && beforeSandbox.body.sandbox === null);
+check('only a workspace owner or admin can provision a sandbox', (await A(ann, 'sandbox-create')).status === 403);
+const createdSandbox = await A(olivia, 'sandbox-create'), sandboxOrg = createdSandbox.body.sandbox;
+check('a Pro customer can self-serve an isolated sandbox', createdSandbox.status === 200 && sandboxOrg.slug === 'acme-sandbox' && sandboxOrg.name === 'Acme — Sandbox' && createdSandbox.body.members === 2);
+check('the sandbox copies workspace memberships and roles, not production ticket data', (await pool.query('select count(*)::int n from member where "organizationId"=$1', [sandboxOrg.id])).rows[0].n === 2 && (await pool.query('select count(*)::int n from tickets where org_id=$1', [sandboxOrg.id])).rows[0].n === 0);
+check('sandbox creation is idempotent and visible in the workspace list', (await A(olivia, 'sandbox-create')).body.existing === true && (await me(new Request('http://x/api/me', { headers: { cookie: olivia.cookie } }), { pool, auth, env: ENV }).then(r => r.json())).organizations.some(o => o.id === sandboxOrg.id));
+check('a free-plan customer cannot provision a sandbox', (await B(otto, 'sandbox-create')).status === 402);
+check('the environment page identifies the linked sandbox', (await A(olivia, 'sandbox-get')).body.sandbox.id === sandboxOrg.id);
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 const api = async (token, method, path, body) => { const r = await apiV1(new Request('https://x.test/api/v1' + path, { method, headers: { ...(token ? { authorization: 'Bearer ' + token } : {}), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), { pool, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 check('only an admin on a plan with the API can make tokens', (await A(ann, 'token-create', { name: 'x' })).status === 403 && (await B(otto, 'token-create', { name: 'x' })).status === 402 && (await A(olivia, 'token-create', { name: '' })).status === 400);
