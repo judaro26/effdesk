@@ -53,14 +53,14 @@ function normalize(provider,body,raw){
    provider==='grafana'?labels.alertname:undefined,
    provider==='grafana'?annotations.summary:undefined,
    provider==='sentry'?issue.title:undefined,
-   item.title,item.name,item.search_name,item.alert_name,item.monitor_name,
+   item.title,item.name,item.search_name,item.alert_name,item.monitor_name,body.search_name,body.alert_name,body.title,
    provider==='sentry'?issue.culprit:undefined,
    provider+' alert'
   ),200);
   const key=clean(first(
    provider==='grafana'?item.fingerprint:undefined,
    provider==='sentry'?issue.id:undefined,
-   item.alert_id,item.monitor_id,item.savedsearch_id,item.search_id,
+   item.alert_id,item.monitor_id,item.savedsearch_id,item.search_id,body.alert_id,body.monitor_id,body.savedsearch_id,body.search_name,
    provider==='datadog'?(String(item.title||'')+'|'+String(item.host||'')+'|'+String(item.monitor_name||'')):undefined,
    provider==='splunk'?(String(item.search_name||'')+'|'+String(item.alert_name||'')):undefined,
    provider==='grafana'?(String(labels.alertname||title)+'|'+String(labels.instance||labels.host||'')):undefined,
@@ -72,15 +72,15 @@ function normalize(provider,body,raw){
   const resolved=!reopened&&/resolv|recover|closed|normal|clear|fixed|regression_end/.test(statusRaw);
   const acknowledged=/acknowledg|assign|muted/.test(statusRaw);
   const ticketStatus=resolved?'solved':acknowledged?'pending':'open';
-  const severityRaw=clean(first(item.severity,item.priority,item.level,labels.severity,annotations.severity,item.alert_type),'80').toLowerCase();
+  const severityRaw=clean(first(item.severity,item.priority,item.level,labels.severity,annotations.severity,item.alert_type,body.severity,body.priority),'80').toLowerCase();
   const sev1=/fatal|critical|emergency|sev[- ]?1|p1/.test(severityRaw);
   const sev2=/error|high|sev[- ]?2|p2|urgent/.test(severityRaw);
   const sev4=/info|informational|low|sev[- ]?4|p4/.test(severityRaw);
   const severity=sev1?'P1':sev2?'P2':sev4?'P4':'P3';
   const priority=sev1?'urgent':sev2?'high':sev4?'low':'normal';
   const impact=sev1?'critical':sev2?'high':sev4?'low':'medium';
-  const message=clean(first(item.text,item.message,annotations.description,item.description,item.culprit,item.summary,data.message),'4000');
-  const url=safeUrl(first(item.url,item.permalink,item.generatorURL,item.dashboardURL,item.link,issue.permalink));
+  const message=clean(first(item.text,item.message,annotations.description,item.description,item.culprit,item.summary,data.message,body.message,body.text),'4000');
+  const url=safeUrl(first(item.url,item.permalink,item.generatorURL,item.dashboardURL,item.link,issue.permalink,body.url,body.permalink,body.link));
   const deliveryId=clean(first(body.event_id,body.delivery_id,body.webhook_id),160);
   const eventId=deliveryId?deliveryId+':'+digest(key).slice(0,24):digest(raw+'|'+key+'|'+statusRaw+'|'+index);
   return {key,title,statusRaw,ticketStatus,severity,priority,impact,message,url,eventId};
