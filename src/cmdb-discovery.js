@@ -13,7 +13,7 @@ const enc=(env,v)=>seal(secret(env),v);
 const dec=(env,v)=>unseal(secret(env),v);
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const b64u=v=>Buffer.from(v).toString('base64url');
-export const isValidTenant=v=>/^[a-f0-9-]{36}$/i.test(v)||/^[a-z0-9][a-z0-9.-]{1,118}[a-z0-9]$/i.test(v);
+export const isValidTenant=v=>{const x=String(v||'');return x.length<=120&&(/^[a-f0-9-]{36}$/i.test(x)||/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(x));};
 const scopes='openid profile offline_access https://graph.microsoft.com/DeviceManagementManagedDevices.Read.All';
 async function postForm(url,body){
  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json'},body:new URLSearchParams(body),signal:AbortSignal.timeout(15000),redirect:'error'});
