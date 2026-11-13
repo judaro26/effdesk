@@ -9,7 +9,6 @@ const PROVIDERS = {
   gitlab: { id: 'gitlab', name: 'GitLab', category: 'Developer tools', endpoint: 'https://gitlab.com/api/v4/user' },
 };
 const clean = (v, n = 300) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, n);
-const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const secret = env => String(env.BETTER_AUTH_SECRET || '');
 const enc = (env, value) => seal(secret(env), value);
 const dec = (env, value) => unseal(secret(env), value);
@@ -27,7 +26,7 @@ async function verify(provider, token, fetchFn = fetch) {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: {
         accept: 'application/json',
-        authorization: 'Bearer ' + token,
+        ...(provider === 'github' ? { authorization: 'Bearer ' + token } : { 'private-token': token }),
         'user-agent': 'EffDesk-Integration/1',
         ...(provider === 'github' ? { 'x-github-api-version': '2022-11-28' } : {}),
       },
