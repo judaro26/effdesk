@@ -6,7 +6,7 @@ import { migrate } from './migrate.js';
 import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
-import { tickets, inboundEmail } from '../src/handlers.js';
+import { tickets, inboundEmail, me } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 import { ticketToken } from '../src/ticket-mail.js';
 import { apiV1 } from '../src/handlers.js';
