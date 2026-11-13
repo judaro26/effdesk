@@ -18,7 +18,8 @@ export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='
  const id=crypto.randomUUID(),secret=crypto.randomBytes(32).toString('base64url');
  const token='edk1.'+b64u(orgId)+'.'+id+'.'+secret;
  const expiresAt=new Date(Date.now()+365*24*60*60*1000);
- await withOrg(pool,orgId,c=>c.query('insert into cmdb_discovery_agents(id,org_id,name,provider,token_hash,created_by,expires_at) values($1,$2,$3,$4,$5,$6,$7)',[id,orgId,name,provider,hash(token),actor?.id||null,expiresAt]));
+ const initialPlatform=provider==='windows_agent'?'windows':'';
+ await withOrg(pool,orgId,c=>c.query('insert into cmdb_discovery_agents(id,org_id,name,provider,platform,token_hash,created_by,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[id,orgId,name,provider,initialPlatform,hash(token),actor?.id||null,expiresAt]));
  return {ok:true,agent:{id,name,expiresAt},token};
 }
 export async function listDiscoveryAgents(pool,orgId){
@@ -59,7 +60,7 @@ export function normalizeDiscoveryPayload(input){
   hostname:clean(d.hostname,180),manufacturer:clean(d.manufacturer,120),model:clean(d.model,120),
   serial:clean(d.serial,180),osVersion:clean(d.osVersion,120),os:clean(d.os,80),
   software,
-  platform:clean(d.platform||'windows',16),
+  platform:['windows','darwin','linux'].includes(clean(d.platform||'windows',16))?clean(d.platform||'windows',16):'windows',
   softwareComplete:d.softwareComplete===true
  };
 }
@@ -78,18 +79,19 @@ export async function ingestDiscoveryAgent(req,{pool}){
   const result=await withOrg(pool,parsed.orgId,async c=>{
    const agent=(await c.query("select id,name,provider from cmdb_discovery_agents where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null and expires_at>now() for update",[parsed.orgId,parsed.id,hash(parsed.token)])).rows[0];
    if(!agent)return null;
-   await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':windows-agent:'+agent.id]);
+   await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':discovery-agent:'+agent.id]);
    const provider=agent.provider;
    const source=provider;
+   if((provider==='windows_agent'&&d.platform!=='windows')||(provider==='osquery_agent'&&!['darwin','linux'].includes(d.platform)))return null;
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,$2,'running') returning id,started_at",[parsed.orgId,provider])).rows[0];
    let ci=(await c.query("select id from configuration_items where org_id=$1 and discovery_source=$3 and discovery_external_id=$2",[parsed.orgId,String(agent.id),source])).rows[0];
    if(!ci&&!d.serial.startsWith('NO-SERIAL-')){
-    const matches=await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and (discovery_source is null or (discovery_source='windows_agent' and discovery_status='disconnected')) order by id limit 2",[parsed.orgId,d.serial]);
+    const matches=await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and (discovery_source is null or (discovery_source in ('windows_agent','osquery_agent') and discovery_status='disconnected')) order by id limit 2",[parsed.orgId,d.serial]);
     if(matches.rows.length===1)ci=matches.rows[0];
    }
    if(ci){
     await c.query(`update configuration_items set discovery_source=$10,discovery_external_id=$3,discovery_status='current',discovery_last_seen_at=now(),
-      name=case when coalesce(discovery_source,'')='windows_agent' or name='' then $4 else name end,
+      name=case when coalesce(discovery_source,'') in ('windows_agent','osquery_agent') or name='' then $4 else name end,
       manufacturer=case when $5<>'' then $5 else manufacturer end,model=case when $6<>'' then $6 else model end,
       serial_number=$7,operating_system=$8,os_version=$9,updated_at=now() where org_id=$1 and id=$2`,
       [parsed.orgId,ci.id,String(agent.id),d.hostname,d.manufacturer,d.model,d.serial,d.os,d.osVersion,source]);
@@ -115,7 +117,7 @@ export async function ingestDiscoveryAgent(req,{pool}){
   if(!result)return fail(401,'This discovery agent has been revoked or expired.');
   return ok({receivedAt:new Date().toISOString(),softwareCount:result.softwareCount});
  }catch(e){
-  console.error('Windows discovery ingestion failed:',clean(e.message,240));
+  console.error('Discovery agent ingestion failed:',clean(e.message,240));
   await withOrg(pool,parsed.orgId,c=>c.query("update cmdb_discovery_agents set last_sync_status='failed',last_sync_error='Inventory could not be saved.' where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null",[parsed.orgId,parsed.id,hash(parsed.token)])).catch(()=>{});
   return fail(500,'Inventory could not be saved. The agent can retry on its next run.');
  }
