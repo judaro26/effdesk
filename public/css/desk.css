@@ -816,3 +816,14 @@ html{-webkit-text-size-adjust:100%}
 
 /* Customer-owned developer platform connections */
 .integration-token-editor{max-width:100%}.integration-token-editor input{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--d-line);border-radius:9px;background:var(--d-panel);color:var(--d-ink);font:inherit}.integration-provider-github .integration-provider-mark{background:#24292f;color:#fff}.integration-provider-gitlab .integration-provider-mark{background:#fc6d26;color:#fff}.integration-provider-foot>.bar{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Keep native selection controls compact and consistent across every desk section. */
+.deskapp input[type="checkbox"],
+.deskapp input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0;
+  flex: 0 0 16px;
+}
