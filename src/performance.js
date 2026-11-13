@@ -7,7 +7,7 @@ export function normalizePath(path) {
 
 const sqlText = value => typeof value === 'string' ? value : value && typeof value.text === 'string' ? value.text : '';
 export function normalizeSql(sql) {
-  return String(sql || '').replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/'(?:''|[^'])*'/g, '?').replace(/\b\d+(?:\.\d+)?\b/g, '?').replace(/\$\d+/g, '?').replace(/\s+/g, ' ').trim().slice(0, 12000);
+  return String(sql || '').replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/'(?:''|[^'])*'/g, '?').replace(/\$\d+/g, '?').replace(/\b\d+(?:\.\d+)?\b/g, '?').replace(/\s+/g, ' ').trim().slice(0, 12000);
 }
 export async function recordSqlQuery(pool, sample, env = process.env, random = Math.random) {
   const rate = clampRate(env.PERFORMANCE_SQL_SAMPLE_RATE == null ? 0.03 : env.PERFORMANCE_SQL_SAMPLE_RATE);
