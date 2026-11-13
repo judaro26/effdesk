@@ -42,8 +42,8 @@
     if (!node) return;
     if (node.nodeType === 3) return translateText(node);
     if (node.nodeType !== 1 && node.nodeType !== 9) return;
-    if (node.nodeType === 1 && excluded(node)) return;
     if (node.nodeType === 1) translateAttrs(node);
+    if (node.nodeType === 1 && excluded(node)) return;
     var child=node.firstChild;while(child){walk(child);child=child.nextSibling;}
   }
   function setLocale(lang, options) {
