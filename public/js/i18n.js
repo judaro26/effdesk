@@ -331,6 +331,14 @@
     "You are not a member of the workspace ":"No eres miembro del espacio de trabajo ",
     "open your own workspaces":"abre tus propios espacios de trabajo"
   });
+
+  Object.assign(dict, {
+    "View contact profile →":"Ver perfil del contacto →","Channel:":"Canal:","Incident of problem:":"Incidente del problema:",
+    "EffDesk ticket #":"Ticket de EffDesk n.º","Variable":"Variable","tickets ·":"tickets ·","open ·":"abiertos ·","solved":"resueltos",
+    "No queue":"Sin cola","No client":"Sin cliente","Search by issue key or title":"Buscar por clave o título de la incidencia",
+    "Choose an issue type to load the fields required by this Jira project.":"Elige un tipo de incidencia para cargar los campos obligatorios de este proyecto de Jira.",
+    "No company linked yet. Add a company domain or link this contact to a company from their profile.":"Todavía no hay ninguna empresa vinculada. Añade el dominio de una empresa o vincula este contacto a una empresa desde su perfil."
+  });
   var originals = new WeakMap(), attrOriginals = new WeakMap(), current = 'en', observer = null;
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();
