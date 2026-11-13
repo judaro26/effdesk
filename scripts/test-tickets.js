@@ -32,7 +32,7 @@ r = await call(otto, { orgId: beta.id, action: 'create', subject: 'Beta first', 
 check('numbers count per organization (Beta also starts at #1)', r.body.ticket.number === 1 && (await call(olivia, { orgId: acme.id, action: 'list' })).body.tickets.length === 2);
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
 check('opening a ticket returns it with its messages', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant');
-check('rich HTML on a newly created ticket is sanitized server-side before storage', /<strong>It is cold.<\\/strong>/.test(r.body.messages[0].html_body || '') && !/<script|onerror/i.test(r.body.messages[0].html_body || ''));
+check('rich HTML on a newly created ticket is sanitized server-side before storage', String(r.body.messages[0].html_body || '').indexOf('<strong>It is cold.</strong>') >= 0 && !/<script|onerror/i.test(r.body.messages[0].html_body || ''));
 check('a ticket of another organization is a 404, not a leak', (await call(otto, { orgId: beta.id, action: 'get', number: 2 })).status === 404 && (await call(otto, { orgId: beta.id, action: 'get', number: 1 })).body.ticket.subject === 'Beta first');
 r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone.', html: '<p><strong>We are sending someone.</strong></p>' });
 let t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
