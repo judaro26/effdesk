@@ -68,7 +68,8 @@ function normalize(provider,body,raw){
    digest(title+'|'+String(item.host||labels.host||labels.instance||''))
   ),200);
   const statusRaw=clean(first(item.status,item.state,item.alert_transition,item.action,body.status,body.action),'100').toLowerCase();
-  const resolved=/resolv|recover|closed|normal|clear|fixed|regression_end/.test(statusRaw);
+  const reopened=/unresolved|reopen|regression|firing|triggered|active/.test(statusRaw);
+  const resolved=!reopened&&/resolv|recover|closed|normal|clear|fixed|regression_end/.test(statusRaw);
   const acknowledged=/acknowledg|assign|muted/.test(statusRaw);
   const ticketStatus=resolved?'solved':acknowledged?'pending':'open';
   const severityRaw=clean(first(item.severity,item.priority,item.level,labels.severity,annotations.severity,item.alert_type),'80').toLowerCase();
@@ -80,7 +81,8 @@ function normalize(provider,body,raw){
   const impact=sev1?'critical':sev2?'high':sev4?'low':'medium';
   const message=clean(first(item.text,item.message,annotations.description,item.description,item.culprit,item.summary,data.message),'4000');
   const url=safeUrl(first(item.url,item.permalink,item.generatorURL,item.dashboardURL,item.link,issue.permalink));
-  const eventId=clean(first(body.event_id,body.delivery_id,body.webhook_id,provider==='sentry'?body.id:undefined),200)||digest(raw+'|'+key+'|'+statusRaw+'|'+index);
+  const deliveryId=clean(first(body.event_id,body.delivery_id,body.webhook_id),160);
+  const eventId=deliveryId?deliveryId+':'+digest(key).slice(0,24):digest(raw+'|'+key+'|'+statusRaw+'|'+index);
   return {key,title,statusRaw,ticketStatus,severity,priority,impact,message,url,eventId};
  }).filter(x=>x.key&&x.title);
 }
