@@ -13,8 +13,9 @@ export async function validateApprovalConfig(c,orgId,input){
  const config=normalizeApprovalConfig(input); if(!config.enabled)return {ok:true,config};
  if(!config.approverIds.length)return fail('Choose at least one approver.');
  const ids=[...new Set([...config.approverIds,...config.tasks.map(t=>t.assigneeId).filter(Boolean)])];
- const rows=(await c.query('select "userId" from member where "organizationId"=$1 and "userId"=any($2)',[orgId,ids])).rows;
+ const rows=(await c.query('select "userId",role from member where "organizationId"=$1 and "userId"=any($2)',[orgId,ids])).rows;
  if(rows.length!==ids.length)return fail('Approvers and task assignees must be members of this workspace.');
+ if(rows.some(x=>x.role==='light'))return fail('Light agents cannot be approvers or fulfillment task assignees. Choose a full agent or workspace admin.');
  return {ok:true,config};
 }
 export async function createForTicket(pool,orgId,ticket,formId,actorId=null){
