@@ -14,10 +14,10 @@
     var out = dict[key]; if (!out) return s;
     return s.slice(0, s.indexOf(key)) + out + s.slice(s.indexOf(key) + key.length);
   }
-  function excluded(node) {
+  function excluded(node, allowControls) {
     var p = node && (node.nodeType === 1 ? node : node.parentElement);
     while (p && p.nodeType === 1) {
-      if (p.matches('script,style,textarea,input,select,option,pre,code,[contenteditable="true"],[data-no-translate],.mt,.rich,.email-html,.article-body,.article-content,.hc-article,.ticket-table tbody')) return true;
+      if (p.matches('script,style,pre,code,[contenteditable="true"],[data-no-translate],.mt,.rich,.email-html,.article-body,.article-content,.hc-article,.ticket-table tbody') || (!allowControls && p.matches('textarea,input,select,option'))) return true;
       p = p.parentElement;
     }
     return false;
@@ -29,7 +29,7 @@
     if (n.nodeValue !== next) n.nodeValue = next;
   }
   function translateAttrs(el) {
-    if (!el || el.nodeType !== 1 || excluded(el)) return;
+    if (!el || el.nodeType !== 1 || excluded(el, true)) return;
     ['placeholder','aria-label','title','aria-description'].forEach(function (name) {
       if (!el.hasAttribute(name)) return;
       var key = name, store = attrOriginals.get(el) || {};
