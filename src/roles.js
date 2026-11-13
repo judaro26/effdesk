@@ -15,7 +15,7 @@ export const PERMS = [
   { id: 'reports', label: 'See reports', actions: ['report', 'report-csv'] },
   { id: 'ai', label: 'Use AI to draft and rewrite replies', actions: ['ai-suggest', 'ai-rewrite'] },
   { id: 'approvals', label: 'Approve service requests, changes and manage fulfillment tasks', actions: ['approval-decide', 'task-update', 'itsm-change-decide'] },
-  { id: 'itsm', label: 'Manage ITSM incidents, problems, changes and service records', actions: ['itsm-incident-save', 'itsm-service-save', 'itsm-problem-save', 'itsm-change-save'] },
+  { id: 'itsm', label: 'Manage ITSM incidents, problems, changes, services and configuration items', actions: ['itsm-incident-save', 'itsm-service-save', 'itsm-problem-save', 'itsm-change-save', 'itsm-ci-save', 'itsm-ci-relationship-save', 'itsm-ci-record-link'] },
 ];
 const PERM_OF = Object.fromEntries(PERMS.flatMap(p => p.actions.map(a => [a, p.id])));
 const fail = (error, status = 400) => ({ ok: false, status, error });
