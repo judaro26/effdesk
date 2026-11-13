@@ -70,7 +70,7 @@ export async function ingestWindowsAgent(req,{pool}){
    await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':windows-agent:'+agent.id]);
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,'windows_agent','running') returning id,started_at",[parsed.orgId])).rows[0];
    let ci=(await c.query("select id from configuration_items where org_id=$1 and discovery_source='windows_agent' and discovery_external_id=$2",[parsed.orgId,String(agent.id)])).rows[0];
-   if(!ci)ci=(await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and discovery_source is null order by id limit 1",[parsed.orgId,d.serial])).rows[0];
+   if(!ci&&!d.serial.startsWith('NO-SERIAL-'))ci=(await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and discovery_source is null order by id limit 1",[parsed.orgId,d.serial])).rows[0];
    if(ci){
     await c.query(`update configuration_items set discovery_source='windows_agent',discovery_external_id=$3,discovery_status='current',discovery_last_seen_at=now(),
       name=case when coalesce(discovery_source,'')='windows_agent' or name='' then $4 else name end,
@@ -80,7 +80,7 @@ export async function ingestWindowsAgent(req,{pool}){
    }else{
     await c.query(`insert into configuration_items(org_id,asset_tag,name,ci_type,lifecycle,criticality,manufacturer,model,serial_number,discovery_source,discovery_external_id,discovery_status,discovery_last_seen_at,operating_system,os_version,description)
       values($1,$2,$3,'hardware','in_use','medium',$4,$5,$6,'windows_agent',$7,'current',now(),$8,$9,'Discovered by the EffDesk Windows agent')`,
-      [parsed.orgId,'WIN-'+agent.id.slice(0,8).toUpperCase(),d.hostname,d.manufacturer,d.model,d.serial,String(agent.id),d.os,d.osVersion]);
+      [parsed.orgId,'WIN-'+agent.id.toUpperCase(),d.hostname,d.manufacturer,d.model,d.serial,String(agent.id),d.os,d.osVersion]);
    }
    // A capped 500-row payload is not a complete snapshot, so do not mark unseen software missing in that case.
    if(d.software.length<500)await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[parsed.orgId,agent.id]);
