@@ -79,7 +79,7 @@ export async function decideApproval(pool,orgId,actorId,id,decision,comment='',m
   return {ok:true,status,approved:count.approved,rejected:count.rejected,required:stage.mode==='any'?1:stage.approverIds.length,stageIndex,nextStage,createdBy:a.created_by,event};
  });
  if(result.ok&&mailer){
-  await notifyApproval(pool,mailer,orgId,Number(id),result.stageIndex,result.event,result.createdBy);
+  await notifyApproval(pool,mailer,orgId,Number(id),result.stageIndex,result.event,result.createdBy,String(actorId));
   if(result.nextStage!==null)await notifyApproval(pool,mailer,orgId,Number(id),result.nextStage,'requested');
  }
  return result;
