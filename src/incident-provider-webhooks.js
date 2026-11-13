@@ -46,7 +46,7 @@ function normalize(provider,body,raw) {
   const data=event.data || body.data || event.incident || body.incident || body;
   const incident=data.incident || data.resource || data;
   const attrs=incident.attributes || incident;
-  const eventType=clean(first(event.event_type,event.type,body.event_type,body.type,body.action,attrs.event_type),'120').toLowerCase();
+  const eventType=clean(first(event.event_type,event.type,typeof body.event==='string'?body.event:undefined,body.event_type,body.type,body.action,attrs.event_type),'120').toLowerCase();
   const statusRaw=clean(first(attrs.status,attrs.state,attrs.current_status,attrs.lifecycle_state,eventType),'80').toLowerCase();
   const severityRaw=clean(first(attrs.severity,attrs.urgency,attrs.priority?.name,attrs.priority,attrs.severity_name),'80').toLowerCase();
   const id=clean(first(incident.id,attrs.id,attrs.incident_id,attrs.uuid,attrs.number),'180');
