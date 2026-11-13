@@ -129,6 +129,8 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
  const serviceIds=linkIds(input.serviceIds,50),incidentNumbers=linkIds(input.incidentNumbers,100).filter(n=>n<=2147483647);
  const cfg=normalizeApprovalConfig({enabled:true,stages:Array.isArray(input.approvalStages)?input.approvalStages:[]});
  const result=await withOrg(pool,orgId,async c=>{
+  const policyRow=(await c.query('select policy from change_cab_policies where org_id=$1',[orgId])).rows[0];
+  const policy=normalizeCabPolicy(policyRow&&policyRow.policy||DEFAULT_CAB_POLICY);
   if(d.ownerId){const m=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,d.ownerId])).rows[0];if(!m||m.role==='light')return fail('The change owner must be a full workspace member.');}
   if(serviceIds.length){const r=await c.query('select id from business_services where org_id=$1 and id=any($2::bigint[])',[orgId,serviceIds]);if(r.rowCount!==serviceIds.length)return fail('One or more selected services do not belong to this workspace.');}
   if(incidentNumbers.length){const r=await c.query("select id,number from tickets where org_id=$1 and type='incident' and number=any($2::int[])",[orgId,incidentNumbers]);if(r.rowCount!==incidentNumbers.length)return fail('Every linked ticket must be an incident in this workspace.');}
@@ -140,7 +142,10 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
    if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType==='standard'&&(d.risk!=='low'||['high','critical'].includes(d.impact)))return fail('The pre-authorized path is limited to low-risk standard changes with low or medium impact.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
   if(d.status==='awaiting_approval'){
-   if(!cfg.stages.length||cfg.stages.some(s=>!s.approverIds.length))return fail('Add at least one full-agent approver before requesting approval.');
+   const minStages=policy.requiredStages[d.changeType]||0;
+   const requiredApprovers=policy.minApproversByRisk[(RISK_RANK[d.risk]>=RISK_RANK[d.impact]?d.risk:d.impact)]||1;
+   if(cfg.stages.length<minStages)return fail('This CAB policy requires at least '+minStages+' approval stage(s) for '+d.changeType+' changes.');
+   if(!cfg.stages.length||cfg.stages.some(s=>s.approverIds.length<requiredApprovers))return fail('This CAB policy requires at least '+requiredApprovers+' approver(s) in every stage for '+d.risk+' risk / '+d.impact+' impact changes.');
    const v=await validateApprovalConfig(c,orgId,{enabled:true,stages:cfg.stages});if(!v.ok)return v;
   }
   if(d.status==='approved'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can approve this change.');
