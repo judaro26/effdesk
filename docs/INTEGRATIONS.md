@@ -57,7 +57,7 @@ The first developer-platform adapter phase supports GitHub and GitLab account co
 
 ## GitHub and GitLab ticket issue workflow
 
-Connected GitHub and GitLab accounts appear in the ticket's External issues panel alongside Jira and Linear.
+Connected GitHub.com and GitLab.com accounts appear in the ticket's External issues panel alongside Jira and Linear. GitHub Enterprise Server and self-managed GitLab hosts are not supported by this initial fixed-host adapter.
 
 - Browse up to 100 repositories (GitHub) or projects (GitLab) available to the connected account.
 - Search accessible issues and link an existing issue to an EffDesk ticket.
