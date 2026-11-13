@@ -22,19 +22,30 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
     const unassigned = (await c.query(`select ${COLS} from tickets where org_id = $1 and status in ('open','pending','on_hold') and assignee_id is null order by case priority when 'urgent' then 0 when 'high' then 1 else 2 end, created_at limit 5`, [orgId])).rows.map(row);
     const recent = (await c.query(`select ${COLS} from tickets where org_id = $1 order by updated_at desc limit 6`, [orgId])).rows.map(row);
     const daily = (await c.query(`
-      select to_char(d.day, 'Dy') as label,
-        coalesce(created.n, 0)::int as created,
-        coalesce(solved.n, 0)::int as solved
-      from generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') as d(day)
-      left join lateral (
-        select count(*)::int as n from tickets
-        where org_id = $1 and created_at >= d.day and created_at < d.day + interval '1 day'
-      ) created on true
-      left join lateral (
-        select count(*)::int as n from tickets
-        where org_id = $1 and solved_at >= d.day and solved_at < d.day + interval '1 day'
-      ) solved on true
-      order by d.day
+      with bounds as (
+        select date_trunc('day', now()) - interval '6 days' as first_day,
+               date_trunc('day', now()) + interval '1 day' as after_last_day
+      ), days as (
+        select generate_series(first_day, after_last_day - interval '1 day', interval '1 day') as day
+        from bounds
+      ), created as (
+        select date_trunc('day', created_at) as day, count(*)::int as n
+        from tickets, bounds
+        where org_id = $1 and created_at >= bounds.first_day and created_at < bounds.after_last_day
+        group by 1
+      ), solved as (
+        select date_trunc('day', solved_at) as day, count(*)::int as n
+        from tickets, bounds
+        where org_id = $1 and solved_at >= bounds.first_day and solved_at < bounds.after_last_day
+        group by 1
+      )
+      select to_char(days.day, 'Dy') as label,
+             coalesce(created.n, 0)::int as created,
+             coalesce(solved.n, 0)::int as solved
+      from days
+      left join created on created.day = days.day
+      left join solved on solved.day = days.day
+      order by days.day
     `, [orgId])).rows;
     const breached = sla ? (sla.enabled ? (await slaNumbers(pool, orgId, 'breached', sla)).length : (await one(`select count(*)::int n from tickets where org_id = $1 and ${slaWhere('breached')}`)).n) : null;
     const articles = (await one('select count(*)::int n from help_articles where org_id = $1', [orgId])).n;
