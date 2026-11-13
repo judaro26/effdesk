@@ -55,4 +55,26 @@ await clear(); await page.evaluate(() => {
 check('a Markdown pipe table wins over wrapper HTML and pastes as real table cells with links', await page.locator('.ed-area table').count() === 1 && await page.locator('.ed-area table tbody tr').count() === 2 && await page.locator('.ed-area table a').count() === 2 && /Hardware/.test(await page.locator('.ed-area table').innerText()));
 await clear(); await page.keyboard.type('```'); 
 check('typing three backticks makes a code block at once', await page.locator('.ed-area pre').count() === 1);
+await page.addScriptTag({ content: read('js/article-editor.js') });
+await page.evaluate(() => {
+  document.body.innerHTML = '<main></main>';
+  const rich = EffArticleEditor.create(document, { html: '', canSource: true, canImport: false, hideVideo: true, say() {}, upload: async () => '/img/00000000-0000-0000-0000-000000000000' });
+  document.querySelector('main').appendChild(rich.el);
+});
+const articleArea = page.locator('[data-article-editor]'), clearArticle = async () => { await page.evaluate(() => { document.querySelector('[data-article-editor]').innerHTML = '<p><br></p>'; }); await articleArea.click(); };
+check('the shared article editor exposes the rich toolbar and HTML source mode', await page.locator('.ae-bar .ed-btn').count() >= 20 && await page.locator('[data-cmd=source]').count() === 1);
+await clearArticle(); await page.keyboard.type('---'); await page.keyboard.press('Enter');
+check('the shared editor converts --- then Enter into a horizontal rule', await page.locator('[data-article-editor] hr').count() === 1);
+await clearArticle(); await page.keyboard.type(String.fromCharCode(96).repeat(3)); await page.keyboard.press('Enter'); await page.keyboard.type('const x = 1;');
+check('the shared editor converts a code fence then Enter into a code block', await page.locator('[data-article-editor] pre code').count() === 1 && /const x = 1;/.test(await page.locator('[data-article-editor] pre').innerText()));
+await clearArticle(); await page.keyboard.type('#'); await page.keyboard.press('Space'); await page.keyboard.type('A heading');
+check('the shared editor supports Markdown heading shortcuts', await page.locator('[data-article-editor] h2').count() === 1 && /A heading/.test(await page.locator('[data-article-editor] h2').innerText()));
+await clearArticle(); await page.evaluate(() => {
+  const a = document.querySelector('[data-article-editor]'); a.focus();
+  const markdown = ['| **Category** | **Item** | **Link** |', '| ------------ | -------- | ---- |', '| Hardware | Cleaner | [Target](https://target.example/item) |'].join('\n');
+  const dt = new DataTransfer(); dt.setData('text/plain', markdown);
+  dt.setData('text/html', '<div>' + markdown.split('\n').map(x => '<p>' + x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>').join('') + '</div>');
+  a.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+});
+check('the shared editor converts pasted Markdown tables into editable tables and preserves links', await page.locator('[data-article-editor] table').count() === 1 && await page.locator('[data-article-editor] table a').count() === 1);
 await browser.close(); done();

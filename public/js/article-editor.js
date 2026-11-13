@@ -104,7 +104,7 @@
     var area = el('div', { class: 'ed-area ae-area hc-article', contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Article text', 'data-article-editor': '1' });
     var src = el('textarea', { class: 'ae-src', 'aria-label': 'Article HTML', spellcheck: 'false', hidden: 'hidden', rows: '16' });
     var dlg = el('div', { class: 'ae-dlg', hidden: 'hidden' }), imgBar = el('div', { class: 'ae-dlg', hidden: 'hidden', 'data-image-bar': '1' }), picked = null, sourceMode = false;
-    function setHtml(h) { area.innerHTML = clean(h) || '<p><br></p>'; if (typeof countWords === 'function') countWords(); }
+    function setHtml(h) { area.innerHTML = clean(h) || '<p><br></p>'; if (typeof countWords === 'function') countWords(); area.dispatchEvent(new win.Event('input', { bubbles: true })); }
     function getHtml() { if (sourceMode) applySource(); var h = clean(area.innerHTML); return /^(<p>(<br>)?<\/p>)?$/.test(h.trim()) ? '' : h; }
     try { doc.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { }
     function focusEnd() { area.focus(); }
@@ -134,7 +134,14 @@
     area.addEventListener('paste', function (ev) {
       var cd = ev.clipboardData; if (!cd) return;
       if (cd.files && cd.files.length) { ev.preventDefault(); return uploadFiles(cd.files); }
-      var h = cd.getData && cd.getData('text/html'); if (h) { ev.preventDefault(); insertHtml(h); }       // pasted pages and documents come in cleaned
+      var h = cd.getData && cd.getData('text/html'), t = cd.getData && cd.getData('text/plain');
+      var lines = String(t || '').replace(/\r\n?/g, '\n').split('\n');
+      var tabbed = lines.filter(function (line) { return line.indexOf('\t') >= 0; }).length >= 2;
+      var pipeTable = lines.some(function (line, i) { return line.indexOf('|') >= 0 && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(lines[i + 1]); });
+      if ((tabbed || pipeTable) && !/<table\b/i.test(h || '') && root.EffFormat) {
+        ev.preventDefault(); var parsed = doc.createElement('div'); root.EffFormat.toDom(doc, t, parsed); return insertHtml(parsed.innerHTML);
+      }
+      if (h) { ev.preventDefault(); insertHtml(h); }       // pasted pages and documents come in cleaned
     });
     area.addEventListener('click', function (ev) { var t = ev.target; if (t && t.nodeName === 'IMG') pickImage(t); else if (!imgBar.contains(t)) { picked = null; imgBar.setAttribute('hidden', 'hidden'); } });
     function pickImage(img) {
@@ -265,9 +272,34 @@
     [['table-row+', 'Add a row below', '+ Row'], ['table-row-', 'Delete this row', '− Row'], ['table-col+', 'Add a column to the right', '+ Column'], ['table-col-', 'Delete this column', '− Column'], ['table-shade', 'Shade this cell', 'Shade cell'], ['table-striped', 'Striped rows', 'Stripes'], ['table-plain', 'Remove borders', 'No borders'], ['table-del', 'Delete the table', 'Delete table']].forEach(function (t) { button(tblRow, t[0], t[1], t[2]); });
     ['keyup', 'mouseup', 'input'].forEach(function (e) { area.addEventListener(e, function () { updateTools(); countWords(); }); });
     area.addEventListener('focus', function () { try { doc.execCommand('styleWithCSS', false, true); } catch (e) { } });
+    function activeBlock() {
+      var s = win.getSelection && win.getSelection(), n = s && s.anchorNode;
+      while (n && n !== area) { if (n.nodeType === 1 && /^(P|DIV|H[1-6]|LI|PRE|BLOCKQUOTE)$/.test(n.tagName)) return n; n = n.parentNode; }
+      return null;
+    }
+    function placeCaret(node) { var s = win.getSelection && win.getSelection(), r = doc.createRange(); if (!s) return; r.selectNodeContents(node); r.collapse(false); s.removeAllRanges(); s.addRange(r); }
     area.addEventListener('keydown', function (ev) {
-      var mod = ev.ctrlKey || ev.metaKey; if (!mod) return;
-      var k = String(ev.key).toLowerCase(); if (k === 'k') { ev.preventDefault(); run('link'); }
+      var mod = ev.ctrlKey || ev.metaKey, k = String(ev.key).toLowerCase();
+      if (mod && k === 'k') { ev.preventDefault(); run('link'); return; }
+      if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+        var block = activeBlock(), value = block && block.textContent.replace(/[\u00a0\u200b]/g, ' ').trim();
+        if (block && block !== area && /^(---+|___+|\*\*\*+)$/.test(value) && block.tagName !== 'PRE') {
+          ev.preventDefault(); var rule = doc.createElement('hr'), next = doc.createElement('p'); next.appendChild(doc.createElement('br')); block.parentNode.replaceChild(rule, block); rule.parentNode.insertBefore(next, rule.nextSibling); placeCaret(next); updateTools(); countWords(); return;
+        }
+        var fence = block && block !== area && new RegExp('^' + String.fromCharCode(96).repeat(3) + '\\s*([A-Za-z0-9+#_.-]{0,20})$').exec(value);
+        if (fence && block.tagName !== 'PRE' && block.tagName !== 'LI') {
+          ev.preventDefault(); var pre = doc.createElement('pre'), code = doc.createElement('code'); code.appendChild(doc.createTextNode('\u200b')); pre.appendChild(code); block.parentNode.replaceChild(pre, block); placeCaret(code); updateTools(); countWords(); return;
+        }
+      }
+      if (ev.key === ' ' && !mod && !ev.altKey) {
+        var line = activeBlock(), marker = line && line !== area && line.textContent.replace(/[\u00a0\u200b]/g, ' ').trim();
+        if (!line || !/^(P|DIV)$/.test(line.tagName) || !/^(#{1,3}|>|-|\*|\+|1[.)])$/.test(marker)) return;
+        ev.preventDefault(); var target, inner;
+        if (marker.charAt(0) === '#') target = doc.createElement('h' + (marker.length + 1));
+        else if (marker === '>') { target = doc.createElement('blockquote'); inner = doc.createElement('p'); target.appendChild(inner); }
+        else { target = doc.createElement(/^1/.test(marker) ? 'ol' : 'ul'); inner = doc.createElement('li'); target.appendChild(inner); }
+        if (!inner) inner = target; inner.appendChild(doc.createElement('br')); line.parentNode.replaceChild(target, line); placeCaret(inner); updateTools(); countWords();
+      }
     });
     [bar, dlg, imgBar, area, src, fileIn, pdfIn].forEach(function (x) { wrap.appendChild(x); });
     setHtml(opts.html || ''); countWords();

@@ -1273,6 +1273,7 @@
     }
     function htmlEsc(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); }
     function uploadHelpImage(file) { return fetchFn('/api/help-assets/image?org=' + encodeURIComponent(orgId), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'That picture could not be uploaded.'); return j.url; }); }); }
+    function uploadHelpPdf(file) { return fetchFn('/api/help-assets/pdf?org=' + encodeURIComponent(orgId), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type || 'application/pdf' }, body: file }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'That PDF could not be imported.'); return j; }); }); }
     // a message box with the formatting toolbar; the plain text box inside stays the value, and a pasted picture is attached
     function editor(ta, t) {
       if (!root.EffEditor) return ta;
@@ -1296,7 +1297,7 @@
     function ticketPane() {
       var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
       body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
-      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, say: say, upload: uploadHelpImage }) : null;
+      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
       if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var after = function () { return Promise.all([open(t.number), refresh()]); };
@@ -1776,7 +1777,7 @@
         el('div', { class: 'rgrid' }, hlist('By status', r.byStatus), hlist('By priority', r.byPriority), hlist('By channel', r.byChannel), hlist('By type', r.byType), hlist('By queue', r.byQueue), hlist('Solved by', r.solvedBy), hlist('Busiest labels', r.labels)));
     }
     function field(k, ph) { return el('input', { 'aria-label': k, placeholder: ph, maxlength: '200' }); }
-    var blankNew = function () { return { subject: '', requesterName: '', requesterEmail: '', body: '', firstKind: 'agent', status: 'open', assigneeId: '', queueId: '', clientId: '', type: 'question', priority: 'normal', tags: '', cc: '', follow: false, custom: {} }; };
+    var blankNew = function () { return { subject: '', requesterName: '', requesterEmail: '', body: '', bodyHtml: '', firstKind: 'agent', status: 'open', assigneeId: '', queueId: '', clientId: '', type: 'question', priority: 'normal', tags: '', cc: '', follow: false, custom: {} }; };
     var newf = blankNew();
     // the New ticket form: properties on the left, the subject and the first message on the right, and a choice of how it is sent
     function newPane() {
@@ -1786,7 +1787,10 @@
       var kk = { agent: ['Public reply', 'placeholder-agent'], note: ['Internal note', ''], requester: ['Customer message', ''] };
       var PH = { agent: 'Write the first reply. The requester is emailed.', note: 'Write an internal note. Only your team sees it.', requester: 'What is the request? Paste a picture here or attach files.' };
       var body = el('textarea', { 'aria-label': 'First message', placeholder: PH[newf.firstKind] }); body.value = newf.body;
-      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null)); var bodyBox = editor(body, null);
+      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null));
+      var richNewEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: newf.bodyHtml || (newf.body ? '<p>' + htmlEsc(newf.body).replace(/\n/g, '<br>') + '</p>' : ''), canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
+      if (richNewEditor) richNewEditor.area.addEventListener('input', function () { newf.bodyHtml = richNewEditor.getHtml(); newf.body = htmlPlain(newf.bodyHtml); body.value = newf.body; });
+      var bodyBox = richNewEditor ? richNewEditor.el : editor(body, null);
       var put = function (k) { return function (v) { newf[k] = v; }; };
       var reset = function () { newf = blankNew(); pending = []; };
       var tags = inp('tags', 'Labels', 'Labels, separated by commas'), cc = inp('cc', 'CC', 'Copy these people on replies');
@@ -1809,12 +1813,14 @@
         prop('Labels', el('div', {}, tags, dl)), prop('CC', cc),
         has('custom_fields') ? fields.map(function (fd) { return prop(fd.label, fieldIn(fd)); }) : null);
       var modeTab = function (k) { return el('button', { type: 'button', role: 'tab', 'data-new-kind': k, 'aria-selected': String(newf.firstKind === k), onclick: function () { newf.firstKind = k; if (k === 'requester') newf.status = newf.status; draw(); } }, kk[k][0]); };
-      var macroSel = macros.length ? sel('Apply macro', '', [['', 'Apply macro']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var first = String(newf.requesterName || '').split(' ')[0] || 'there'; newf.body = (newf.body ? newf.body + '\n\n' : '') + m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); if (m.status) newf.status = m.status; if (m.priority) newf.priority = m.priority; if (m.add_tags) newf.tags = [newf.tags, m.add_tags].filter(Boolean).join(', '); draw(); }) : null;
+      var macroSel = macros.length ? sel('Apply macro', '', [['', 'Apply macro']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var first = String(newf.requesterName || '').split(' ')[0] || 'there'; var oldBody = newf.body, macroBody = m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); newf.body = (oldBody ? oldBody + '\n\n' : '') + macroBody; newf.bodyHtml = (newf.bodyHtml || (oldBody ? '<p>' + htmlEsc(oldBody).replace(/\n/g, '<br>') + '</p>' : '')) + (macroBody ? '<p>' + htmlEsc(macroBody).replace(/\n/g, '<br>') + '</p>' : ''); if (m.status) newf.status = m.status; if (m.priority) newf.priority = m.priority; if (m.add_tags) newf.tags = [newf.tags, m.add_tags].filter(Boolean).join(', '); draw(); }) : null;
       var statusSel = sel('Submit as', newf.status, [['open', 'Open'], ['pending', 'Pending'], ['on_hold', 'On hold'], ['solved', 'Solved']], function (v) { newf.status = v; draw(); });
       var submit = function () {
         var patch = { status: newf.status }; if (newf.assigneeId) patch.assigneeId = newf.assigneeId; if (newf.queueId) patch.queueId = newf.queueId; if (newf.clientId) patch.clientId = newf.clientId; if (newf.type !== 'question') patch.type = newf.type; if (newf.priority !== 'normal') patch.priority = newf.priority; if (newf.cc.trim()) patch.cc = newf.cc; if (Object.keys(newf.custom).length) patch.custom = newf.custom;
         if (newf.status === 'open') delete patch.status;
-        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) {
+        var htmlBody = richNewEditor ? richNewEditor.getHtml() : undefined, bodyText = richNewEditor ? htmlPlain(htmlBody) : body.value;
+        newf.body = bodyText;
+        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: bodyText, htmlBody: htmlBody, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) {
           if (!r.ok) return say(r.body.error, true); note = ''; var warn = r.body.warning; reset(); creating = false;
           return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]).then(function () { if (warn) say('Created, but some properties were not saved: ' + warn, true); });
         });
@@ -1860,7 +1866,7 @@
           : a.type === 'assign' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'Nobody']].concat([['round_robin', 'Next available agent']].concat(agents.map(function (x) { return [x.id, x.name || x.email]; }))), function (x) { a.value = x; })
           : a.type === 'set_queue' ? sel('Action value', a.value, [['', 'Choose…'], ['none', 'No queue']].concat(queues.map(function (x) { return [String(x.id), x.name]; })), function (x) { a.value = x; })
           : a.type === 'auto_reply' ? (function() {
-              var rich = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: a.value || '', canSource: has('article_import'), canImport: false, hideImport: true, hideVideo: true, emailMode: true, say: say, upload: uploadHelpImage }) : null;
+              var rich = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: a.value || '', canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, emailMode: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
               var box = el('div', { style: 'width:100%;margin-top:8px;margin-bottom:8px;' },
                 el('p', { class: 'm' }, 'Compose a formatted public reply or edit its HTML source. Variables such as {{name}}, {{ticket_number}} and {{ticket_subject}} are supported.'),
                 rich ? rich.el : el('textarea', { 'aria-label': 'Action value', rows: '14', placeholder: 'Write the automated reply or paste HTML.' }));
