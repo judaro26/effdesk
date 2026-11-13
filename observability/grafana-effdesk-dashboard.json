@@ -245,7 +245,7 @@
       },
       "targets": [
         {
-          "expr": "avg(effdesk_web_vital_avg_24h)",
+          "expr": "avg(effdesk_web_vital_avg_ms_24h)",
           "legendFormat": "Average web vital",
           "refId": "A"
         }
