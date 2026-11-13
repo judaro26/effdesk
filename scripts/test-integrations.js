@@ -95,8 +95,8 @@ check('disconnect removes the stored GitHub credential and leaves GitLab intact'
 
 // GitHub and GitLab now use the same ticket-side search, create, link and sync workflow as Jira/Linear.
 await connectIntegration(pool, ENV, acme.id, olivia.user.id, 'github', { token: githubToken }, { fetchFn: githubFetch });
-const projectRequest = async (who, route, method='GET', body=null) => {
-  const req = new Request('http://localhost/api/integrations/'+route+'?org='+encodeURIComponent(acme.id), {
+const projectRequest = async (who, route, method='GET', body=null, workspace=acme.id) => {
+  const req = new Request('http://localhost/api/integrations/'+route+'?org='+encodeURIComponent(workspace), {
     method, headers: { cookie: who.cookie, origin: 'http://localhost', ...(body?{'content-type':'application/json'}:{}) },
     ...(body?{body:JSON.stringify(body)}:{})
   });
@@ -125,6 +125,9 @@ globalThis.fetch=async (url,init={}) => {
 try {
   const ctx=await projectRequest(olivia,'ticket-context&ticketNumber='+t1.number);
   check('ticket context includes tenant-owned GitHub and GitLab connections alongside Jira/Linear',ctx.status===200&&ctx.body.connections.some(x=>x.provider==='github')&&ctx.body.connections.some(x=>x.provider==='gitlab'));
+  const betaContext=await projectRequest(otto,'ticket-context&ticketNumber='+t1.number,'GET',null,beta.id);
+  const betaCatalog=await projectRequest(otto,'catalog&provider=github','GET',null,beta.id);
+  check('GitHub/GitLab connections and issue links are never visible across customer workspaces',betaContext.status===200&&!betaContext.body.connections.some(x=>x.provider==='github'||x.provider==='gitlab')&&betaContext.body.links.length===0&&betaCatalog.status===409);
   const ghCatalog=await projectRequest(olivia,'catalog&provider=github');
   const glCatalog=await projectRequest(olivia,'catalog&provider=gitlab');
   check('GitHub repositories and GitLab projects load in the ticket issue picker',ghCatalog.status===200&&ghCatalog.body.items[0].id==='acme/desk'&&glCatalog.status===200&&glCatalog.body.items[0].id==='20');
