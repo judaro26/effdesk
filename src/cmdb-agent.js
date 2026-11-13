@@ -32,8 +32,13 @@ export async function listWindowsAgents(pool,orgId){
 }
 export async function revokeWindowsAgent(pool,orgId,id){
  const replacement=hash(crypto.randomBytes(32).toString('base64url'));
- const r=await withOrg(pool,orgId,c=>c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=$3 where org_id=$1 and id=$2 returning id",[orgId,String(id),replacement]));
- return r.rowCount?{ok:true}:{ok:false,status:404,error:'No such discovery agent.'};
+ return withOrg(pool,orgId,async c=>{
+  const r=await c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=$3 where org_id=$1 and id=$2 returning id",[orgId,String(id),replacement]);
+  if(!r.rowCount)return {ok:false,status:404,error:'No such discovery agent.'};
+  await c.query("update configuration_items set discovery_status='disconnected',updated_at=now() where org_id=$1 and discovery_source='windows_agent' and discovery_external_id=$2",[orgId,String(id)]);
+  await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[orgId,String(id)]);
+  return {ok:true};
+ });
 }
 function parseToken(token){
  const p=String(token||'').split('.');
@@ -75,7 +80,7 @@ export async function ingestWindowsAgent(req,{pool}){
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,'windows_agent','running') returning id,started_at",[parsed.orgId])).rows[0];
    let ci=(await c.query("select id from configuration_items where org_id=$1 and discovery_source='windows_agent' and discovery_external_id=$2",[parsed.orgId,String(agent.id)])).rows[0];
    if(!ci&&!d.serial.startsWith('NO-SERIAL-')){
-    const matches=await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and discovery_source is null order by id limit 2",[parsed.orgId,d.serial]);
+    const matches=await c.query("select id from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and (discovery_source is null or (discovery_source='windows_agent' and discovery_status='disconnected')) order by id limit 2",[parsed.orgId,d.serial]);
     if(matches.rows.length===1)ci=matches.rows[0];
    }
    if(ci){
