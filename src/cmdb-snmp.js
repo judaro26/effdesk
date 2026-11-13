@@ -17,7 +17,7 @@ function privateAddress(ip){
  if(isIP(ip)!==4)return false;
  const a=ip.split('.').map(Number);return a[0]===10||(a[0]===172&&a[1]>=16&&a[1]<=31)||(a[0]===192&&a[1]===168);
 }
-function inAllowedNetwork(ip,networks){
+export function isWithinAllowedNetwork(ip,networks){
  const parts=ip.split('.').map(Number);if(parts.length!==4||!Array.isArray(networks))return false;
  const value=parts.reduce((n,x)=>((n<<8)|x)>>>0,0);
  return networks.some(raw=>{const p=String(raw).split('/'),base=p[0].split('.').map(Number),prefix=Math.max(0,Math.min(32,Number(p[1]||32)));if(base.length!==4||base.some(x=>!Number.isInteger(x)||x<0||x>255))return false;const target=base.reduce((n,x)=>((n<<8)|x)>>>0,0),mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;return (value&mask)===(target&mask);});
@@ -42,7 +42,7 @@ export async function ingestSnmpDiscoveryAgent(req,{pool}){
   const result=await withOrg(pool,parsed.orgId,async c=>{
    const agent=(await c.query("select id,name,provider,allowed_networks from cmdb_discovery_agents where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null and expires_at>now() for update",[parsed.orgId,parsed.id,hash(parsed.token)])).rows[0];
    if(!agent||agent.provider!=='snmp_agent')return null;
-   if(!devices.every(d=>inAllowedNetwork(d.ip,agent.allowed_networks)))return {scopeError:true};
+   if(!devices.every(d=>isWithinAllowedNetwork(d.ip,agent.allowed_networks)))return {scopeError:true};
    await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':snmp-agent:'+agent.id]);
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,'snmp_agent','running') returning id",[parsed.orgId])).rows[0];
    let created=0,updated=0;
