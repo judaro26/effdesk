@@ -41,16 +41,6 @@ async function refreshToken(pool,env,org,row){
  }
  return dec(env,row.access_token_enc);
 }
-async function consumeOAuthState(pool,stateHash){
- const c=await pool.connect();
- try{
-  await c.query('begin');
-  await c.query("select set_config('app.discovery_state_hash',$1,true)",[stateHash]);
-  const row=(await c.query('delete from cmdb_discovery_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,tenant_id,verifier_enc',[stateHash])).rows[0]||null;
-  await c.query('commit');
-  return row;
- }catch(e){try{await c.query('rollback');}catch{}throw e;}finally{c.release();}
-}
 async function connection(pool,org){return withOrg(pool,org,c=>c.query('select * from cmdb_discovery_connections where org_id=$1',[org])).then(r=>r.rows[0]||null);}
 export async function discoveryStatus(pool,org){
  const [conn,runs,assets]=await Promise.all([
@@ -67,7 +57,8 @@ export async function startDiscovery(pool,env,org,actor,tenantInput){
  if(!clientId||!clientSecret)return {ok:false,status:503,error:'EffDesk Microsoft OAuth app is not configured yet. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on the deployment.'};
  if(!secret(env))return {ok:false,status:503,error:'BETTER_AUTH_SECRET is required to encrypt Microsoft credentials.'};
  const state=crypto.randomBytes(32).toString('base64url'),verifier=b64u(crypto.randomBytes(48)),challenge=b64u(crypto.createHash('sha256').update(verifier).digest());
- await withOrg(pool,org,async c=>{await c.query('delete from cmdb_discovery_oauth_states where org_id=$1 and expires_at<now()',[org]);await c.query('insert into cmdb_discovery_oauth_states(state_hash,org_id,user_id,tenant_id,verifier_enc,expires_at) values($1,$2,$3,$4,$5,now()+interval \'10 minutes\')',[hash(state),org,actor.id,tenantId,enc(env,verifier)]);});
+ await pool.query('delete from cmdb_discovery_oauth_states where expires_at<now()');
+ await pool.query('insert into cmdb_discovery_oauth_states(state_hash,org_id,user_id,tenant_id,verifier_enc,expires_at) values($1,$2,$3,$4,$5,now()+interval \'10 minutes\')',[hash(state),org,actor.id,tenantId,enc(env,verifier)]);
  const u=new URL('https://login.microsoftonline.com/'+encodeURIComponent(tenantId)+'/oauth2/v2.0/authorize');
  Object.entries({client_id:clientId,response_type:'code',redirect_uri:callbackUrl(env),response_mode:'query',scope,state,code_challenge:challenge,code_challenge_method:'S256',prompt:'admin_consent'}).forEach(([k,v])=>u.searchParams.set(k,v));
  return {ok:true,url:u.toString()};
@@ -76,7 +67,7 @@ export async function discoveryCallback(req,{pool,env=process.env}){
  const u=new URL(req.url),state=clean(u.searchParams.get('state'),200),code=clean(u.searchParams.get('code'),4000),error=clean(u.searchParams.get('error_description')||u.searchParams.get('error'),300);
  const failRedirect=msg=>Response.redirect(appBase(env)+'/desk.html?cmdbDiscovery='+encodeURIComponent(msg),302);
  if(error||!state||!code)return failRedirect(error?'authorization_failed':'invalid_callback');
- const row=await consumeOAuthState(pool,hash(state));
+ const row=(await pool.query('delete from cmdb_discovery_oauth_states where state_hash=$1 and expires_at>now() returning org_id,user_id,tenant_id,verifier_enc',[hash(state)])).rows[0];
  if(!row)return failRedirect('expired_state');
  try{
   const role=(await pool.query('select role from member where "organizationId"=$1 and "userId"=$2',[row.org_id,row.user_id])).rows[0]?.role;
