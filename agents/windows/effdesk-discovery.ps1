@@ -24,7 +24,7 @@ if ($InstallScheduledTask) {
   $protectedToken = Join-Path $installDir "enrollment.dat"
   Copy-Item -LiteralPath $PSCommandPath -Destination $installedScript -Force
   (ConvertTo-SecureString $EnrollmentToken -AsPlainText -Force | ConvertFrom-SecureString) | Set-Content -LiteralPath $protectedToken -NoNewline
-  $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installedScript`" -TokenFile `"$protectedToken`""
+  $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installedScript`" -TokenFile `"$protectedToken`" -ApiUrl `"$ApiUrl`""
   $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)
   $taskPrincipal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
   Register-ScheduledTask -TaskName "EffDesk Windows Discovery" -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Description "Read-only hardware and installed-software inventory for EffDesk." -Force | Out-Null
