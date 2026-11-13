@@ -43,11 +43,13 @@ const policy=normalizeCabPolicy({
  standardMaxRisk:'medium',standardMaxImpact:'high'
 });
 assert.equal(policy.conflictMode,'block');
+assert.equal(policy.approvalMode,'all');
 assert.equal(policy.emergencyConflictOverride,true);
 assert.deepEqual(policy.requiredStages,{standard:0,normal:3,emergency:10});
 assert.deepEqual(policy.minApproversByRisk,{low:1,medium:2,high:4,critical:30});
 assert.equal(policy.standardMaxRisk,'medium');
 assert.equal(policy.standardMaxImpact,'high');
+assert.equal(normalizeCabPolicy({approvalMode:'any'}).approvalMode,'any');
 assert.equal(normalizeCabPolicy({conflictMode:'anything',standardMaxRisk:'invalid'}).conflictMode,'warn');
 assert.equal(normalizeCabPolicy({conflictMode:'anything',standardMaxRisk:'invalid'}).standardMaxRisk,'low');
 console.log('CAB policy normalization tests passed.');
