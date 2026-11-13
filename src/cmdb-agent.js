@@ -37,7 +37,7 @@ export async function revokeDiscoveryAgent(pool,orgId,id){
  return withOrg(pool,orgId,async c=>{
   const r=await c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=$3 where org_id=$1 and id=$2 returning id",[orgId,String(id),replacement]);
   if(!r.rowCount)return {ok:false,status:404,error:'No such discovery agent.'};
-  await c.query("update configuration_items set discovery_status='disconnected',updated_at=now() where org_id=$1 and discovery_source in ('windows_agent','osquery_agent') and discovery_external_id=$2",[orgId,String(id)]);
+  await c.query("update configuration_items set discovery_status='disconnected',updated_at=now() where org_id=$1 and discovery_source in ('windows_agent','osquery_agent','snmp_agent') and discovery_external_id=$2",[orgId,String(id)]);
   await c.query("update cmdb_discovered_software set status='missing' where org_id=$1 and agent_id=$2",[orgId,String(id)]);
   return {ok:true};
  });
@@ -81,6 +81,7 @@ export async function ingestDiscoveryAgent(req,{pool}){
    if(!agent)return null;
    await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':discovery-agent:'+agent.id]);
    const provider=agent.provider;
+   if(provider==='snmp_agent')return null;
    const source=provider;
    if((provider==='windows_agent'&&d.platform!=='windows')||(provider==='osquery_agent'&&!['darwin','linux'].includes(d.platform)))return null;
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,$2,'running') returning id,started_at",[parsed.orgId,provider])).rows[0];
