@@ -84,6 +84,7 @@ export async function linkConfigurationRecord(pool,orgId,actor,input={}){
  if(!spec)return fail('Choose a supported record type.');
  if(!Number.isSafeInteger(ciId)||ciId<1||!Number.isSafeInteger(recordId)||recordId<1)return fail('Choose a valid configuration item and record.');
  return withOrg(pool,orgId,async c=>{
+  if(!(await c.query('select 1 from configuration_items where org_id=$1 and id=$2',[orgId,ciId])).rowCount)return fail('The configuration item must belong to this workspace.',404);
   const target=(await c.query('select id from '+spec.target+' where org_id=$1 and id=$2',[orgId,recordId])).rows[0];
   if(!target)return fail('The linked record must belong to this workspace.',404);
   const r=await c.query('insert into '+spec.table+'(org_id,ci_id,'+spec.column+') values($1,$2,$3) on conflict do nothing returning ci_id',[orgId,ciId,recordId]);
