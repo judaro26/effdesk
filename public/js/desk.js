@@ -1321,6 +1321,7 @@
         };
         var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
         var loadTemplates=function(){
+          if(ui.provider==='github'||ui.provider==='gitlab'){ui.templates=[];ui.templatesLoadedProvider=ui.provider;return Promise.resolve(ui.templates);}
           if(ui.templatesLoadedProvider===ui.provider)return Promise.resolve(ui.templates);
           return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;return ui.templates;});
         };
@@ -1353,9 +1354,10 @@
         var loadCatalog=function(){
           if(ui.catalog&&ui.catalog.provider===ui.provider)return Promise.resolve(ui.catalog);
           ui.catalog=null;ui.options=null;ui.projectId='';ui.projectId2='';ui.stateId='';ui.labelIds=[];ui.issueTypeId='';
-          return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};return ui.catalog;});
+          return request('GET','catalog&provider='+ui.provider).then(function(d){ui.catalog={provider:ui.provider,items:d.items||[],cloudId:d.cloudId,siteHost:d.siteHost};if(ui.provider==='github'||ui.provider==='gitlab')ui.options={simple:true};return ui.catalog;});
         };
         var loadOptions=function(project,issueType){
+          if(ui.provider==='github'||ui.provider==='gitlab'){ui.options={simple:true};return Promise.resolve(ui.options);}
           ui.options=null;
           return request('GET','issue-options&provider='+ui.provider+'&project='+encodeURIComponent(project||'')+'&issueType='+encodeURIComponent(issueType||'')).then(function(d){ui.options=d;return d;});
         };
@@ -1376,16 +1378,17 @@
         loadContext();
         var box=el('div',{class:'pcard external-issues'});
         if(!ui.loaded){box.appendChild(el('p',{class:'m'},ui.loading?'Loading external connections…':ui.error||'Loading…'));return box;}
-        var connectedProviders=['linear','jira'].filter(connected);
+        var connectedProviders=['linear','jira','github','gitlab'].filter(connected);
+        var providerLabel=function(p){return p==='linear'?'Linear':p==='jira'?'Jira':p==='github'?'GitHub':'GitLab';};
         if(!connectedProviders.length){
           box.appendChild(el('p',{class:'m'},'No external project tools are connected to this workspace.'));
           box.appendChild(el('a',{class:'btn l sm',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Configure integrations'));
           return box;
         }
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
-        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':'🔷 Jira'));});
+        connectedProviders.forEach(function(p){tabs.appendChild(el('button',{type:'button',class:'external-provider-tab'+(ui.provider===p?' active':''),'aria-selected':String(ui.provider===p),onclick:function(){ui.provider=p;ui.mode='idle';ui.catalog=null;ui.options=null;ui.results=[];ui.templatesLoadedProvider='';ui.templates=[];ui.templateId='';ui.template=null;ui.error='';redraw();}},p==='linear'?'◈ Linear':p==='jira'?'🔷 Jira':p==='github'?'GH GitHub':'GL GitLab'));});
         box.appendChild(tabs);
-        if(connectedProviders.length<2)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Connect '+(connectedProviders[0]==='linear'?'Jira':'Linear')+' too'));
+        if(connectedProviders.length<4)box.appendChild(el('a',{class:'external-connect-another',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Manage connected issue trackers'));
         var links=ui.links.filter(function(x){return x.provider===ui.provider;});
         if(links.length){
           links.forEach(function(link){
@@ -1395,7 +1398,7 @@
               el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm||root.confirm('Unlink this issue from EffDesk? The issue will not be deleted.'))request('POST','unlink',{ticketNumber:t.number,linkId:link.id}).then(function(){ui.loaded=false;loadContext();}).catch(function(e){ui.error=e.message;redraw();});}},'Unlink')
             ));
           });
-        } else box.appendChild(el('p',{class:'m'},'No '+(ui.provider==='linear'?'Linear':'Jira')+' issues linked to this ticket yet.'));
+        } else box.appendChild(el('p',{class:'m'},'No '+providerLabel(ui.provider)+' issues linked to this ticket yet.'));
         var actions=el('div',{class:'external-issue-actions'},
           el('button',{type:'button',class:'btn l sm',onclick:function(){ui.mode=ui.mode==='search'?'idle':'search';ui.error='';ui.results=[];redraw();}},'⌕ Search existing'),
           el('button',{type:'button',class:'btn sm',onclick:function(){ui.mode=ui.mode==='create'?'idle':'create';ui.error='';redraw();if(ui.mode==='create')Promise.all([loadCatalog(),loadTemplates()]).then(redraw).catch(function(e){ui.error=e.message;redraw();});}},'+ Create new'));
@@ -1412,7 +1415,7 @@
         if(ui.mode==='create'){
           if(!ui.catalog){box.appendChild(el('p',{class:'m'},'Loading provider projects…'));return box;}
           var projectItems=ui.catalog.items||[];
-          var projectLabel=ui.provider==='linear'?'Linear team':'Jira project';
+          var projectLabel=ui.provider==='linear'?'Linear team':ui.provider==='jira'?'Jira project':ui.provider==='github'?'GitHub repository':'GitLab project';
           if(ui.templates.length){
             var templateSelect=el('select',{'aria-label':'Issue template'},[el('option',{value:''},'Use standard issue form')].concat(ui.templates.map(function(x){return el('option',{value:String(x.id)},x.name+' · '+(x.project_name||x.project_id));})));
             templateSelect.value=ui.templateId||'';
@@ -1437,7 +1440,7 @@
           }
           if(ui.provider==='linear'&&ui.projectId&&!ui.options){box.appendChild(el('p',{class:'m'},'Loading team fields…'));}
           if(ui.provider==='jira'&&ui.issueTypeId&&(!ui.options||!ui.options.fields)){box.appendChild(el('p',{class:'m'},'Loading required fields…'));}
-          if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.options.fields)){
+          if(ui.options&&(ui.provider==='linear'?ui.options.team:ui.provider==='jira'?ui.options.fields:ui.options.simple)){
             var titleCfg=templateField('title');
             if(!ui.template||titleCfg){
               var titleInput=el('input',{type:'text',maxlength:'500',value:ui.title,'aria-label':'Issue title'});titleInput.required=titleCfg?!!titleCfg.required:true;titleInput.addEventListener('input',function(){ui.title=titleInput.value;ui.fields.title=titleInput.value;});
