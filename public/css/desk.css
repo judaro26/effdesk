@@ -783,3 +783,6 @@ html{-webkit-text-size-adjust:100%}
 .change-conflict-row{display:grid;gap:3px;padding:9px 0;border-top:1px solid var(--d-line);font-size:12px}
 .change-conflict-row small{color:var(--d-muted)}
 @media(max-width:600px){.change-policy-grid{grid-template-columns:1fr}}
+
+.change-conflict-preview{display:grid;gap:6px;margin-top:9px;font-size:12px}
+.change-conflict-preview:empty{display:none}
