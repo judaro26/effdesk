@@ -15,7 +15,7 @@ const orgBySlug = async (pool, slug) => (await pool.query('select id, name, slug
 const intOrNull = (v, lo, hi) => { if (v === '' || v == null) return null; const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : undefined; };
 const feats = v => [...new Set((Array.isArray(v) ? v : []).map(String).filter(f => ALL_FEATURES.includes(f)))];
 
-export const MUTATING = new Set(['error-resolve', 'error-delete', 'error-test', 'logging-test', 'status-component-save', 'status-component-delete', 'status-incident-create', 'status-incident-update', 'status-incident-edit', 'status-incident-delete', 'settings-save', 'customer-save', 'customer-suspend', 'user-signout', 'user-verify']);
+export const MUTATING = new Set(['error-resolve', 'error-delete', 'error-test', 'logging-test', 'status-component-save', 'status-component-delete', 'status-incident-create', 'status-incident-update', 'status-incident-edit', 'status-incident-delete', 'settings-save', 'customer-save', 'customer-suspend', 'customer-sandbox-create', 'user-signout', 'user-verify']);
 
 export async function run(action, b, { pool, mailer, env = process.env, actor }) {
   switch (action) {
@@ -71,6 +71,41 @@ export async function run(action, b, { pool, mailer, env = process.env, actor })
       await pool.query(`insert into org_overrides (org_id, suspended, suspended_reason, updated_by) values ($1,$2,$3,$4) on conflict (org_id) do update set suspended = $2, suspended_reason = $3, updated_at = now(), updated_by = $4`, [o.id, on, on ? why : '', actor]);
       dropEntitlements(o.id);
       await audit(pool, actor, on ? 'customer.suspend' : 'customer.restore', o.slug, { why }); return { ok: true };
+    }
+    // ----- isolated customer sandbox workspace
+    case 'customer-sandbox-create': {
+      const source = await orgBySlug(pool, b.slug);
+      if (!source) return fail('No such customer.', 404);
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        const current = (await client.query('select id, name, slug, metadata from "organization" where id=$1 for update', [source.id])).rows[0];
+        if (!current) { await client.query('rollback'); return fail('No such customer.', 404); }
+        const slug = (current.slug.slice(0, 52).replace(/-+$/,'') + '-sandbox').slice(0, 60);
+        const existing = (await client.query('select id, name, slug, metadata from "organization" where slug=$1 for update', [slug])).rows[0];
+        if (existing) {
+          let meta = {}; try { meta = JSON.parse(existing.metadata || '{}'); } catch { }
+          if (meta.environment === 'sandbox' && meta.sandboxOf === current.id) {
+            await client.query('commit');
+            return { ok: true, existing: true, sandbox: { id: existing.id, name: existing.name, slug: existing.slug }, members: (await pool.query('select count(*)::int n from member where "organizationId"=$1',[existing.id])).rows[0].n };
+          }
+          await client.query('rollback'); return fail('The proposed sandbox address is already in use. Rename the customer workspace first or contact support.', 409);
+        }
+        const id = crypto.randomUUID();
+        const metadata = JSON.stringify({ environment: 'sandbox', sandboxOf: current.id, createdBy: actor, createdAt: new Date().toISOString() });
+        await client.query('insert into "organization"(id,name,slug,logo,"createdAt",metadata) values($1,$2,$3,null,now(),$4)', [id, current.name + ' — Sandbox', slug, metadata]);
+        const members = await client.query('insert into member(id,"organizationId","userId",role,"createdAt") select gen_random_uuid()::text,$1,"userId",role,now() from member where "organizationId"=$2 returning id', [id, current.id]);
+        await client.query(`insert into org_overrides(org_id,seat_limit,note,updated_by) values($1,$2,$3,$4)
+          on conflict(org_id) do update set seat_limit=excluded.seat_limit,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
+          [id, Math.max(2, members.rowCount), 'Customer sandbox; isolated from production. No separate subscription.', actor]);
+        await client.query('commit');
+        await audit(pool, actor, 'customer.sandbox.create', slug, { source: current.slug, members: members.rowCount });
+        return { ok: true, existing: false, sandbox: { id, name: current.name + ' — Sandbox', slug }, members: members.rowCount };
+      } catch (e) {
+        try { await client.query('rollback'); } catch { }
+        if (e.code === '23505') return fail('A sandbox with that address already exists.', 409);
+        throw e;
+      } finally { client.release(); }
     }
     // ----- people
     case 'user-search': {
