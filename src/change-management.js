@@ -8,7 +8,7 @@ const fail=(error,status=400)=>({ok:false,status,error});
 export const CHANGE_TYPES=['standard','normal','emergency'];
 export const CHANGE_STATUSES=['draft','submitted','assessing','awaiting_approval','approved','rejected','scheduled','implementing','completed','failed','cancelled'];
 export const CHANGE_RISKS=['low','medium','high','critical'];
-const transitions={
+export const CHANGE_TRANSITIONS={
  draft:['draft','submitted','assessing','awaiting_approval','cancelled'],
  submitted:['submitted','assessing','awaiting_approval','approved','cancelled'],
  assessing:['assessing','awaiting_approval','approved','cancelled'],
@@ -80,7 +80,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   if(incidentNumbers.length){const r=await c.query("select id,number from tickets where org_id=$1 and type='incident' and number=any($2::int[])",[orgId,incidentNumbers]);if(r.rowCount!==incidentNumbers.length)return fail('Every linked ticket must be an incident in this workspace.');}
   let before=null,saved,event='updated';
   if(id){before=(await c.query('select status,approval_stages,approval_round from change_requests where org_id=$1 and id=$2 for update',[orgId,id])).rows[0];if(!before)return fail('No such change request.',404);
-   if(!(transitions[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
+   if(!(CHANGE_TRANSITIONS[before.status]||[]).includes(d.status))return fail('That change-status transition is not allowed. Move the request through the change lifecycle.',409);
    if(before.status==='awaiting_approval'&&JSON.stringify((before.approval_stages||[]).map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]})))!==JSON.stringify(cfg.stages.map(s=>({name:s.name,mode:s.mode,approverIds:s.approverIds||[]}))))return fail('Approval stages cannot be changed while a decision is in progress.',409);
    if(d.status==='approved'&&before.status!=='awaiting_approval'&&d.changeType!=='standard')return fail('Normal and emergency changes must pass their configured approval stages before approval.',409);
   }else if(d.status!=='draft'&&d.status!=='submitted'&&d.status!=='assessing'&&d.status!=='awaiting_approval')return fail('A new change request must start as a draft or enter assessment.');
