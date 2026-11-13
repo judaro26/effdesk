@@ -667,3 +667,7 @@ html{-webkit-text-size-adjust:100%}
 .approval-status.rejected{background:rgba(189,69,69,.12);color:#bd4545}
 .approval-status.pending{background:rgba(196,144,44,.13);color:#a87920}
 .ticket-approval>.approval-decision{display:block;border-radius:8px;line-height:1.5;white-space:normal}
+
+/* Sequential approval stage editor */
+.form-task-row>.form-task-fields>strong{font-size:12px;letter-spacing:.04em;color:var(--d-muted)}
+.form-task-row .perms{display:flex;flex-wrap:wrap;gap:6px}
