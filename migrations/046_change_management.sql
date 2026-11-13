@@ -61,7 +61,7 @@ create table if not exists change_decisions (
  foreign key(org_id,change_id) references change_requests(org_id,id) on delete cascade
 );
 create unique index if not exists change_decisions_round_approver_uq on change_decisions(org_id,change_id,round_index,stage_index,approver_id);
-create index if not exists change_decisions_change on change_decisions(org_id,change_id,stage_index,created_at);
+create index if not exists change_decisions_change on change_decisions(org_id,change_id,round_index,stage_index,created_at);
 create table if not exists change_events (
  id bigserial primary key,
  org_id text not null,
