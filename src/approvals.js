@@ -7,7 +7,7 @@ export function normalizeApprovalConfig(b){
  b=b&&typeof b==='object'?b:{};
  return {enabled:b.enabled===true,mode:b.mode==='any'?'any':'all',
  approverIds:[...new Set((Array.isArray(b.approverIds)?b.approverIds:[]).map(x=>clean(x,128)).filter(Boolean))].slice(0,30),
- tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t.title,160),description:clean(t.description,3000),assigneeId:clean(t.assigneeId,128),position:i})).filter(t=>t.title)};
+ tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t&&t.title,160),description:clean(t&&t.description,3000),assigneeId:clean(t&&t.assigneeId,128),position:i})).filter(t=>t.title)};
 }
 export async function validateApprovalConfig(c,orgId,input){
  const config=normalizeApprovalConfig(input); if(!config.enabled)return {ok:true,config};
