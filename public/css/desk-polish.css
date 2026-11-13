@@ -599,3 +599,62 @@
 
 /* Provider marks are imported as inline SVG nodes to avoid image-request failures. */
 .deskapp .integration-provider-logo svg.integration-provider-svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain}
+
+/* Compact native selection controls: override the later global input sizing rules. */
+.deskapp input[type="checkbox"],
+.deskapp input[type="radio"]{
+  box-sizing:content-box!important;
+  width:14px!important;height:14px!important;
+  min-width:14px!important;min-height:14px!important;
+  max-width:14px!important;max-height:14px!important;
+  padding:0!important;margin:0 2px 0 0!important;
+  flex:0 0 14px!important;align-self:center;
+  appearance:auto;-webkit-appearance:auto;
+  accent-color:var(--accent);
+}
+
+/* Company directory — account-level overview and polished records. */
+.deskapp .company-workspace{display:grid;gap:18px;width:100%;max-width:1500px;margin:0 auto;padding:var(--eff-space,24px)}
+.deskapp .company-hero{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:clamp(22px,3vw,34px);border:1px solid color-mix(in srgb,var(--accent) 18%,var(--d-line));border-radius:19px;background:linear-gradient(115deg,color-mix(in srgb,var(--d-panel) 96%,var(--accent) 4%),var(--d-panel) 62%,color-mix(in srgb,var(--d-panel) 88%,var(--accent) 12%));box-shadow:var(--eff-elev-1,0 2px 12px rgba(15,23,42,.04))}
+.deskapp .company-hero-copy{display:grid;gap:7px}.deskapp .company-eyebrow{font-size:9px;font-weight:850;letter-spacing:.14em;color:var(--accent-d)}
+.deskapp .company-hero h2{font-size:clamp(25px,3vw,34px);letter-spacing:-.05em}.deskapp .company-hero p{max-width:650px;margin:0;color:var(--d-muted);font-size:13px;line-height:1.6}
+.deskapp .company-hero-count{display:grid;gap:2px;min-width:108px;padding:15px 18px;border:1px solid var(--eff-border,var(--d-line));border-radius:14px;background:color-mix(in srgb,var(--d-panel) 84%,transparent);text-align:center}
+.deskapp .company-hero-count strong{font-size:27px;line-height:1.1;letter-spacing:-.05em}.deskapp .company-hero-count span{font-size:10px;color:var(--d-muted);font-weight:650}
+.deskapp .company-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.deskapp .company-summary-card{display:grid;grid-template-columns:36px 1fr;grid-template-rows:auto auto;column-gap:11px;align-items:center;padding:15px 17px;border:1px solid var(--eff-border,var(--d-line));border-radius:13px;background:var(--eff-surface,var(--d-panel));box-shadow:var(--eff-elev-1)}
+.deskapp .company-summary-icon{grid-row:1/3;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--accent) 10%,var(--d-bg));color:var(--accent-d);font-size:15px;font-weight:800}
+.deskapp .company-summary-card strong{font-size:22px;line-height:1.1;letter-spacing:-.04em}.deskapp .company-summary-card>span:last-child{font-size:10px;color:var(--d-muted);font-weight:620}
+.deskapp .company-editor-card{display:grid;gap:15px;padding:19px;border:1px solid var(--eff-border,var(--d-line));border-radius:16px;background:var(--eff-surface,var(--d-panel));box-shadow:var(--eff-elev-1)}
+.deskapp .company-editor-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.deskapp .company-editor-heading h3{margin:4px 0;font-size:17px;letter-spacing:-.025em;text-transform:none;color:var(--d-ink)}
+.deskapp .company-editor-heading p{margin:0;font-size:11px}.deskapp .company-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.deskapp .company-form-grid label{display:grid;gap:6px;min-width:0}.deskapp .company-form-grid label>span{font-size:10px;font-weight:750;color:var(--d-muted)}
+.deskapp .company-form-grid input,.deskapp .company-form-grid textarea{width:100%;min-width:0;max-width:none;background:var(--d-bg)}
+.deskapp .company-notes-field{grid-column:1/-1}.deskapp .company-form-grid textarea{min-height:76px}
+.deskapp .company-form-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--eff-border,var(--d-line))}
+.deskapp .company-form-foot .m{font-size:10px}
+.deskapp .company-directory-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.deskapp .company-directory-head h3{margin:0 0 4px;font-size:15px;letter-spacing:-.02em;text-transform:none;color:var(--d-ink)}
+.deskapp .company-directory-head p{margin:0;font-size:11px}.deskapp .company-directory-count{padding:5px 9px;border:1px solid var(--d-line);border-radius:999px;color:var(--d-muted);font-size:10px;font-weight:750;white-space:nowrap}
+.deskapp .company-record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:13px;align-items:stretch}
+.deskapp .company-record-card{display:grid;align-content:start;gap:12px;min-width:0;padding:17px;border:1px solid var(--eff-border,var(--d-line));border-radius:15px;background:var(--eff-surface,var(--d-panel));box-shadow:var(--eff-elev-1);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.deskapp .company-record-card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 32%,var(--d-line));box-shadow:var(--eff-elev-2)}
+.deskapp .company-record-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.deskapp .company-monogram{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:color-mix(in srgb,var(--accent) 12%,var(--d-bg));color:var(--accent-d);font-size:13px;font-weight:850;letter-spacing:-.03em}
+.deskapp .company-record-actions{display:flex;gap:6px;flex-wrap:wrap}.deskapp .company-record-actions .btn{min-height:29px;padding:5px 9px;font-size:10px}
+.deskapp .company-record-actions .company-delete{color:#b74747}
+.deskapp .company-record-name{margin:0!important;font-size:16px!important;letter-spacing:-.025em!important;text-transform:none!important;color:var(--d-ink)!important;overflow-wrap:anywhere}
+.deskapp .company-domain{display:flex;align-items:center;gap:7px;color:var(--d-muted);font-size:11px;overflow-wrap:anywhere}
+.deskapp .company-domain-icon{display:grid;place-items:center;width:21px;height:21px;border-radius:7px;background:var(--d-hover);color:var(--accent-d);font-weight:800}
+.deskapp .company-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:11px 0;border-top:1px solid var(--eff-border,var(--d-line));border-bottom:1px solid var(--eff-border,var(--d-line))}
+.deskapp .company-metrics>div{display:grid;gap:2px}.deskapp .company-metrics>div+div{padding-left:13px;border-left:1px solid var(--eff-border,var(--d-line))}
+.deskapp .company-metrics strong{font-size:19px;line-height:1.1;letter-spacing:-.04em}.deskapp .company-metrics span{font-size:10px;color:var(--d-muted);font-weight:650}
+.deskapp .company-card-section,.deskapp .company-card-notes{display:grid;gap:7px;min-width:0}.deskapp .company-section-label{font-size:9px;font-weight:850;letter-spacing:.1em;color:var(--d-muted)}
+.deskapp .company-contact-chips{display:flex;flex-wrap:wrap;gap:6px}.deskapp .company-contact-link{display:inline-flex;align-items:center;gap:5px;max-width:100%;margin:0;padding:4px 8px 4px 4px;border:1px solid var(--eff-border,var(--d-line));border-radius:999px;background:var(--d-bg);color:var(--accent-d);font-size:10px;font-weight:650;cursor:pointer}
+.deskapp .company-contact-link:hover{border-color:var(--accent);background:var(--d-hover)}
+.deskapp .company-contact-dot{display:grid;place-items:center;width:19px;height:19px;flex:none;border-radius:50%;background:color-mix(in srgb,var(--accent) 12%,var(--d-panel));font-size:8px;font-weight:850}
+.deskapp .company-empty-copy{margin:0;color:var(--d-muted);font-size:10px}
+.deskapp .company-card-notes{padding-top:10px;border-top:1px solid var(--eff-border,var(--d-line))}
+.deskapp .company-card-notes p{margin:0;color:var(--d-muted);font-size:11px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.deskapp .company-empty-state{display:grid;justify-items:center;gap:8px;padding:42px 20px;border:1px dashed var(--d-line);border-radius:16px;background:var(--d-panel);text-align:center}
+.deskapp .company-empty-icon{display:grid;place-items:center;width:45px;height:45px;border-radius:14px;background:var(--d-hover);color:var(--accent-d);font-size:20px}
+.deskapp .company-empty-state h3{margin:0;font-size:15px;letter-spacing:-.02em;text-transform:none;color:var(--d-ink)}
+.deskapp .company-empty-state p{max-width:480px;margin:0;color:var(--d-muted);font-size:12px;line-height:1.6}
+@media(max-width:680px){.deskapp .company-workspace{padding:16px 12px}.deskapp .company-hero{align-items:flex-start;flex-direction:column}.deskapp .company-hero-count{min-width:0;grid-template-columns:auto auto;align-items:center;gap:8px;padding:8px 11px}.deskapp .company-summary-grid{grid-template-columns:1fr}.deskapp .company-form-grid{grid-template-columns:1fr}.deskapp .company-notes-field{grid-column:auto}.deskapp .company-form-foot{align-items:flex-start;flex-direction:column}.deskapp .company-directory-head{align-items:flex-start;flex-direction:column}}
