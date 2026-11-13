@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeChange, CHANGE_TYPES, CHANGE_STATUSES, CHANGE_RISKS, CHANGE_TRANSITIONS } from '../src/change-management.js';
+import { normalizeChange, normalizeCabPolicy, DEFAULT_CAB_POLICY, CHANGE_TYPES, CHANGE_STATUSES, CHANGE_RISKS, CHANGE_TRANSITIONS } from '../src/change-management.js';
 const empty=normalizeChange();
 assert.equal(empty.changeType,'normal');
 assert.equal(empty.status,'draft');
@@ -33,3 +33,21 @@ assert.deepEqual(CHANGE_TRANSITIONS.draft,['draft','submitted','assessing','awai
 assert.deepEqual(CHANGE_TRANSITIONS.awaiting_approval,['awaiting_approval','approved','rejected','cancelled']);
 assert.deepEqual(CHANGE_TRANSITIONS.implementing,['implementing','completed','failed']);
 assert.deepEqual(CHANGE_TRANSITIONS.completed,['completed']);
+
+const defaultPolicy=normalizeCabPolicy();
+assert.deepEqual(defaultPolicy,DEFAULT_CAB_POLICY);
+const policy=normalizeCabPolicy({
+ conflictMode:'block',emergencyConflictOverride:true,
+ requiredStages:{standard:-3,normal:3,emergency:99},
+ minApproversByRisk:{low:0,medium:2,high:4,critical:50},
+ standardMaxRisk:'medium',standardMaxImpact:'high'
+});
+assert.equal(policy.conflictMode,'block');
+assert.equal(policy.emergencyConflictOverride,true);
+assert.deepEqual(policy.requiredStages,{standard:0,normal:3,emergency:10});
+assert.deepEqual(policy.minApproversByRisk,{low:1,medium:2,high:4,critical:30});
+assert.equal(policy.standardMaxRisk,'medium');
+assert.equal(policy.standardMaxImpact,'high');
+assert.equal(normalizeCabPolicy({conflictMode:'anything',standardMaxRisk:'invalid'}).conflictMode,'warn');
+assert.equal(normalizeCabPolicy({conflictMode:'anything',standardMaxRisk:'invalid'}).standardMaxRisk,'low');
+console.log('CAB policy normalization tests passed.');
