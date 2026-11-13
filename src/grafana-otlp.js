@@ -6,7 +6,7 @@ export function grafanaConfig(env = process.env) {
   const instance = String(env.GRAFANA_CLOUD_INSTANCE_ID || '').trim();
   const token = String(env.GRAFANA_CLOUD_API_KEY || '').trim();
   let host = '';
-  try { const u = new URL(endpoint); if (u.protocol === 'https:' && u.hostname.endsWith('.grafana.net')) host = u.host; } catch { }
+  try { const u = new URL(endpoint); if (u.protocol === 'https:' && u.hostname.endsWith('.grafana.net') && !u.search && !u.hash) host = u.host; } catch { }
   const configured = !!(host && instance && token);
   return { configured, host: host || null, missing: [!host && 'GRAFANA_OTLP_ENDPOINT (HTTPS Grafana Cloud OTLP URL)', !instance && 'GRAFANA_CLOUD_INSTANCE_ID', !token && 'GRAFANA_CLOUD_API_KEY'].filter(Boolean) };
 }
@@ -19,7 +19,7 @@ function point(value, attributes, now) {
 }
 function safeEndpoint(env) {
   const u = new URL(String(env.GRAFANA_OTLP_ENDPOINT).trim());
-  if (u.protocol !== 'https:' || !u.hostname.endsWith('.grafana.net')) throw new Error('Grafana OTLP endpoint must be an HTTPS Grafana Cloud endpoint.');
+  if (u.protocol !== 'https:' || !u.hostname.endsWith('.grafana.net') || u.search || u.hash) throw new Error('Grafana OTLP endpoint must be an HTTPS Grafana Cloud endpoint without query parameters.');
   const base = u.toString().replace(/\/+$/, '').replace(/\/v1\/metrics$/i, '');
   return base + '/v1/metrics';
 }
@@ -49,9 +49,12 @@ export async function buildGrafanaPayload(pool, now = Date.now()) {
   add('effdesk_sql_avg_latency_ms_24h', 'Average sampled SQL query latency over the previous 24 hours', sq, 'avg_ms', sqlAttrs, 'ms');
   add('effdesk_sql_max_latency_ms_24h', 'Maximum sampled SQL query latency over the previous 24 hours', sq, 'max_ms', sqlAttrs, 'ms');
   const vitalAttrs = r => ({ vital: String(r.metric || ''), page: normalizePath(r.page), device: String(r.device || 'unknown') });
+  const timedVitals = vv.filter(r => String(r.metric).toUpperCase() !== 'CLS'), clsVitals = vv.filter(r => String(r.metric).toUpperCase() === 'CLS');
   add('effdesk_web_vital_samples_24h', 'Real-user web vital samples over the previous 24 hours', vv, 'samples', vitalAttrs, '{sample}');
-  add('effdesk_web_vital_avg_24h', 'Average real-user web vital value over the previous 24 hours', vv, 'avg_value', vitalAttrs, 'ms_or_score');
-  add('effdesk_web_vital_max_24h', 'Maximum real-user web vital value over the previous 24 hours', vv, 'max_value', vitalAttrs, 'ms_or_score');
+  add('effdesk_web_vital_avg_ms_24h', 'Average time-based real-user web vital value over the previous 24 hours', timedVitals, 'avg_value', vitalAttrs, 'ms');
+  add('effdesk_web_vital_max_ms_24h', 'Maximum time-based real-user web vital value over the previous 24 hours', timedVitals, 'max_value', vitalAttrs, 'ms');
+  add('effdesk_web_vital_avg_cls_24h', 'Average cumulative layout shift over the previous 24 hours', clsVitals, 'avg_value', vitalAttrs, '1');
+  add('effdesk_web_vital_max_cls_24h', 'Maximum cumulative layout shift over the previous 24 hours', clsVitals, 'max_value', vitalAttrs, '1');
   return { resourceMetrics: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'effdesk' } }, { key: 'deployment.environment', value: { stringValue: String(process.env.CONTEXT || 'production') } }] }, scopeMetrics: [{ scope: { name: 'effdesk.observability', version: '1.0.0' }, metrics }] }] };
 }
 
