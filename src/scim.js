@@ -9,10 +9,10 @@ import { checkSeat } from './billing.js';
 const USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse';
 const ERROR_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:Error';
-const clean = (v, max = 250) => String(v ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, '').trim().slice(0, max);
+const clean = (v, max = 250) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
 const digest = token => crypto.createHash('sha256').update(String(token)).digest('hex');
 const fail = (detail, status = 400, scimType) => ({ ok: false, status, error: detail, ...(scimType ? { scimType } : {}) });
-const validEmail = v => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);
+const validEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 const response = (status, body, headers = {}) => new Response(body == null ? null : JSON.stringify(body), {
   status, headers: { 'content-type': 'application/scim+json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers },
 });
@@ -28,7 +28,7 @@ const userResource = (row, base) => {
   };
 };
 async function authenticate(pool, req) {
-  const m = String(req.headers.get('authorization') || '').match(/^Bearer\\s+(\\S+)$/i);
+  const m = String(req.headers.get('authorization') || '').match(/^Bearer\s+(\S+)$/i);
   if (!m || m[1].length < 32) return null;
   const hash = digest(m[1]);
   const r = await pool.query("select org_id, id from scim_tokens where token_hash=$1 and revoked_at is null", [hash]);
@@ -157,13 +157,13 @@ async function patchUser(pool, orgId, row, body) {
 export async function scim(req, { pool }) {
   const orgId = await authenticate(pool, req);
   if (!orgId) return scimError(401, 'A valid SCIM bearer token is required.');
-  const url = new URL(req.url), base = url.origin + url.pathname.replace(/\\/+$/, '');
-  const usersPath = url.pathname.match(/\\/Users(?:\\/([^/]+))?\\/?$/i);
+  const url = new URL(req.url), base = url.origin + url.pathname.replace(/\/+$/, '');
+  const usersPath = url.pathname.match(/\/Users(?:\/([^/]+))?\/?$/i);
   if (!usersPath) return scimError(404, 'SCIM resource not found.');
   const id = usersPath[1] ? decodeURIComponent(usersPath[1]) : '';
   if (req.method === 'GET' && !id) {
     const start = Math.max(1, Number(url.searchParams.get('startIndex')) || 1), count = Math.min(200, Math.max(1, Number(url.searchParams.get('count')) || 100));
-    const filter = clean(url.searchParams.get('filter'), 500).match(/^(?:userName|externalId)\\s+eq\\s+"([^"]+)"$/i);
+    const filter = clean(url.searchParams.get('filter'), 500).match(/^(?:userName|externalId)\s+eq\s+"([^"]+)"$/i);
     const params = [orgId]; let where = ' where su.org_id=$1';
     if (filter) { params.push(filter[1]); where += filter[0].toLowerCase().startsWith('username') ? ' and lower(u.email)=lower($2)' : ' and su.external_id=$2'; }
     const all = await withOrg(pool, orgId, async c => (await c.query(selectUsers + where + ' order by su.created_at desc', params)).rows);
