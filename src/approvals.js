@@ -44,7 +44,7 @@ export async function decideApproval(pool,orgId,actorId,id,decision,comment=''){
   const terminal=decision==='rejected'||(a.mode==='any'&&count.approved>0)||(a.mode==='all'&&count.approved>=a.approver_ids.length);
   const status=decision==='rejected'?'rejected':terminal?'approved':'pending';
   if(terminal){await c.query('update approval_requests set status=$3,decided_at=now() where org_id=$1 and id=$2',[orgId,a.id,status]);if(status==='rejected')await c.query("update fulfillment_tasks set status='cancelled',updated_at=now() where org_id=$1 and approval_id=$2 and status<>'done'",[orgId,a.id]);}
-  await c.query('insert into ticket_events(org_id,ticket_id,actor,kind,detail) values($1,$2,$3,$4,$5)',[orgId,a.ticket_id,String(actorId),'approval','Approval '+decision+(terminal?' · request '+status:'')]);
+  await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)',[orgId,a.ticket_id,String(actorId),'approval','Approval '+decision+(terminal?' · request '+status:'')]);
   return {ok:true,status,approved:count.approved,rejected:count.rejected,required:a.mode==='all'?a.approver_ids.length:1};
  });
 }
