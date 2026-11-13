@@ -543,8 +543,6 @@
       var planned=[
         ['Identity & access','Microsoft Entra ID','Okta','Google Workspace'],
         ['Developer tools','Azure DevOps'],
-        ['Incident response','PagerDuty','Rootly','FireHydrant'],
-        ['Monitoring & observability','Datadog','Grafana','Splunk','Sentry'],
         ['Endpoint & cloud','Microsoft Intune','Jamf','AWS','Microsoft Azure'],
         ['CRM & automation','Salesforce','HubSpot','Zapier','Make','n8n'],
         ['Security','Microsoft Defender','CrowdStrike']
