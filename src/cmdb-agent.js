@@ -58,6 +58,7 @@ export function normalizeWindowsPayload(input){
 }
 export async function ingestWindowsAgent(req,{pool}){
  if(req.method!=='POST')return fail(405,'Method not allowed.');
+ try{if(new URL(req.url).protocol!=='https:')return fail(400,'Discovery check-ins must use HTTPS.');}catch{return fail(400,'Invalid request URL.');}
  const auth=String(req.headers.get('authorization')||'');
  if(!auth.startsWith('Bearer ')||auth.length>512)return fail(401,'A valid discovery-agent token is required.');
  const parsed=parseToken(auth.slice(7));if(!parsed)return fail(401,'Invalid discovery-agent token.');
