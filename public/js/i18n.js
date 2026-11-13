@@ -61,9 +61,9 @@
     if (!root.document || root.document.querySelector('[data-effdesk-locale-switcher]')) return;
     var host = root.document.querySelector('header nav, header .in, #head') || root.document.body;
     var wrap = root.document.createElement('label'); wrap.setAttribute('data-effdesk-locale-switcher','1');
-    wrap.style.cssText='display:inline-flex;align-items:center;gap:6px;margin:0 0 0 12px;font:12px/1.4 system-ui,sans-serif;color:inherit;white-space:nowrap';
-    var label=root.document.createElement('span');label.textContent=current==='es'?'Idioma':'Language';
-    var select=root.document.createElement('select');select.setAttribute('data-effdesk-locale-select','1');select.setAttribute('aria-label','Language');select.style.cssText='font:inherit;padding:5px 7px;border:1px solid #cbd1d5;border-radius:7px;background:#fff;color:#20282d';
+    wrap.style.cssText='position:fixed;top:12px;right:16px;z-index:20000;display:inline-flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #d9dee2;border-radius:9px;background:#fff;color:#263238;box-shadow:0 3px 12px rgba(20,30,40,.10);font:12px/1.4 system-ui,sans-serif;white-space:nowrap';
+    var label=root.document.createElement('span');label.textContent=current==='es'?'Idioma':'Language';select.setAttribute('aria-label',current==='es'?'Idioma':'Language');
+    var select=root.document.createElement('select');select.setAttribute('data-effdesk-locale-select','1');select.setAttribute('aria-label',current==='es'?'Idioma':'Language');select.style.cssText='font:inherit;padding:5px 7px;border:1px solid #cbd1d5;border-radius:7px;background:#fff;color:#20282d';
     [['en','English'],['es','Español']].forEach(function(x){var o=root.document.createElement('option');o.value=x[0];o.textContent=x[1];select.appendChild(o);});
     select.value=current;select.addEventListener('change',function(){setLocale(select.value);label.textContent=current==='es'?'Idioma':'Language';});
     wrap.appendChild(label);wrap.appendChild(select);host.appendChild(wrap);
