@@ -741,3 +741,31 @@ html{-webkit-text-size-adjust:100%}
 .problem-history-item{display:grid;grid-template-columns:minmax(80px,140px) 1fr auto;gap:10px;align-items:center;font-size:11px;padding:8px 0;border-bottom:1px solid var(--d-line)}
 @media(max-width:1000px){.problem-form-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.problem-form-grid{grid-template-columns:1fr}.problem-history-item{grid-template-columns:1fr;gap:3px}}
+
+
+/* Change Management workspace */
+.change-table{min-width:760px}
+.change-detail-card{max-width:100%}
+.change-form-grid{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(110px,.7fr));gap:10px;margin-top:15px}
+.change-form-grid label{display:grid;gap:6px;min-width:0}
+.change-form-grid label>span{font-size:11px;font-weight:750;color:var(--d-muted)}
+.change-form-grid input,.change-form-grid select{width:100%;max-width:none}
+.change-detail-card .problem-form-section select[multiple],.change-detail-card .change-stage-card select[multiple]{width:100%;min-height:88px;max-width:none}
+.change-approval-stages{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.change-stage-card{display:grid;gap:8px;border:1px solid var(--d-line);border-radius:10px;padding:11px;min-width:0}
+.change-stage-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.change-stage-card input,.change-stage-card select{width:100%;max-width:none}
+.change-stage-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.change-stage-title h4{margin:0}
+.change-decision-actions{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}
+.change-decision-actions textarea{min-width:0}
+.change-calendar{margin-top:14px;padding:16px}
+.change-calendar h3{margin:0 0 4px}
+.change-calendar-row{width:100%;display:grid;grid-template-columns:minmax(130px,190px) 1fr auto;gap:12px;align-items:center;text-align:left;border:0;border-top:1px solid var(--d-line);padding:12px 2px;background:transparent;color:inherit;cursor:pointer}
+.change-calendar-row:hover{background:var(--d-hover,rgba(127,127,127,.06))}
+.change-calendar-date{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.change-calendar-title{display:grid;gap:3px;min-width:0}
+.change-calendar-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.change-calendar-title small{font-size:11px;color:var(--d-muted)}
+@media(max-width:1000px){.change-form-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.change-form-grid{grid-template-columns:1fr}.change-decision-actions{grid-template-columns:1fr 1fr}.change-decision-actions textarea{grid-column:1/-1}.change-calendar-row{grid-template-columns:1fr auto;gap:5px}.change-calendar-title{grid-column:1/-1;grid-row:2}}
