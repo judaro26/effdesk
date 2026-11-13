@@ -72,7 +72,7 @@ $payload = [ordered]@{
 $json = $payload | ConvertTo-Json -Depth 5 -Compress
 $headers = @{ Authorization = "Bearer $EnrollmentToken"; Accept = "application/json" }
 try {
-  $response = Invoke-RestMethod -Method Post -Uri $ApiUrl -Headers $headers -ContentType "application/json" -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 45
+  $response = Invoke-RestMethod -Method Post -Uri $ApiUrl -Headers $headers -ContentType "application/json; charset=utf-8" -Body $json -TimeoutSec 45
   Write-Output "EffDesk discovery succeeded. $($response.softwareCount) software entries reported."
 } catch {
   $status = $_.Exception.Response.StatusCode.value__
