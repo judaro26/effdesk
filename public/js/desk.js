@@ -1788,7 +1788,7 @@
       var PH = { agent: 'Write the first reply. The requester is emailed.', note: 'Write an internal note. Only your team sees it.', requester: 'What is the request? Paste a picture here or attach files.' };
       var body = el('textarea', { 'aria-label': 'First message', placeholder: PH[newf.firstKind] }); body.value = newf.body;
       body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null));
-      var richNewEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: newf.bodyHtml || (newf.body ? '<p>' + htmlEsc(newf.body).replace(/\\n/g, '<br>') + '</p>' : ''), canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
+      var richNewEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: newf.bodyHtml || (newf.body ? '<p>' + htmlEsc(newf.body).replace(/\n/g, '<br>') + '</p>' : ''), canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
       if (richNewEditor) richNewEditor.area.addEventListener('input', function () { newf.bodyHtml = richNewEditor.getHtml(); newf.body = htmlPlain(newf.bodyHtml); body.value = newf.body; });
       var bodyBox = richNewEditor ? richNewEditor.el : editor(body, null);
       var put = function (k) { return function (v) { newf[k] = v; }; };
