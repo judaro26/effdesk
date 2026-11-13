@@ -53,6 +53,25 @@
     'Welcome to EffDesk':'Te damos la bienvenida a EffDesk','Your workspace is ready':'Tu espacio de trabajo está listo',
     'Get started':'Comenzar','Go to your workspace':'Ir a tu espacio de trabajo'
   });
+
+  Object.assign(dict, {
+    'What it does':'Qué ofrece','Pricing':'Precios','Developers':'Desarrolladores','Start free':'Comenzar gratis',
+    'Developer guide':'Guía para desarrolladores','Create and update tickets from your own systems, and get told when something happens. Everything here works with a plain HTTP client.':'Crea y actualiza tickets desde tus propios sistemas y recibe notificaciones cuando ocurran eventos. Todo funciona con un cliente HTTP estándar.',
+    'Plans.':'Planes.','Quickstart':'Inicio rápido','Authentication':'Autenticación','Errors':'Errores','List tickets':'Listar tickets',
+    'Create a ticket':'Crear un ticket','Get a ticket':'Obtener un ticket','Update a ticket':'Actualizar un ticket',
+    'Reply or add a note':'Responder o añadir una nota','Custom fields':'Campos personalizados',
+    'Events and payload':'Eventos y contenido','Verify a signature':'Verificar una firma','Slack and Teams':'Slack y Teams',
+    'You were signed in, but the session did not stay':'Iniciaste sesión, pero la sesión no se mantuvo',
+    'Your browser did not keep the sign-in. This happens when cookies are blocked for this site or when the page was opened from a different web address. Open app.effdesk.com, allow cookies, and sign in again.':'Tu navegador no mantuvo la sesión. Esto puede ocurrir si las cookies están bloqueadas para este sitio o si abriste la página desde otra dirección web. Abre app.effdesk.com, permite las cookies e inicia sesión de nuevo.',
+    'Go to app.effdesk.com':'Ir a app.effdesk.com','Confirm your email first':'Primero confirma tu correo electrónico',
+    'Open the link we emailed you, then come back.':'Abre el enlace que te enviamos por correo y vuelve aquí.',
+    'We could not load your account':'No pudimos cargar tu cuenta',
+    'Something went wrong on our side, or your connection dropped. Try again in a moment.':'Algo salió mal de nuestro lado o se interrumpió tu conexión. Inténtalo de nuevo en un momento.',
+    'Try again':'Intentar de nuevo','Sign in again':'Volver a iniciar sesión','Creating your workspace…':'Creando tu espacio de trabajo…',
+    'Your workspace is ready':'Tu espacio de trabajo está listo','Choose your plan':'Elige tu plan','Continue':'Continuar',
+    'Monthly':'Mensual','Yearly':'Anual','Seats':'Licencias','Create workspace':'Crear espacio de trabajo',
+    'The workspace could not be created.':'No se pudo crear el espacio de trabajo.'
+  });
   var originals = new WeakMap(), attrOriginals = new WeakMap(), current = 'en', observer = null;
   function t(value, lang) {
     var s = String(value == null ? '' : value), key = s.trim();
