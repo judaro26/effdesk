@@ -20,7 +20,6 @@ export function normalizeLifecycle(input = {}) {
     reopenEnabled: c.reopenEnabled === true, reopenAfterDays: bounded(c.reopenAfterDays, DEFAULT_LIFECYCLE.reopenAfterDays, 1, 365),
     permanentCloseEnabled: c.permanentCloseEnabled === true, permanentCloseDays: bounded(c.permanentCloseDays, DEFAULT_LIFECYCLE.permanentCloseDays, 1, 3650)
   };
-  if (out.autoCloseEnabled && out.reopenEnabled && out.reopenAfterDays >= out.autoCloseDays) return { error: 'Automatic reopening must happen before automatic closure. Increase the closure delay or shorten the reopening delay.' };
   return out;
 }
 export async function getLifecyclePolicy(pool, orgId) {
@@ -68,8 +67,8 @@ export async function runTicketLifecycle(pool, mailer, env = process.env, nowMs 
       for (const t of rows.rows) {
         try {
           const idle = hoursSince(t.updated_at,nowMs), customerIdle = hoursSince(t.last_customer_at || t.created_at || t.updated_at,nowMs), solvedAge = hoursSince(t.solved_at,nowMs), closedAge = hoursSince(t.closed_at || t.updated_at,nowMs);
-          if (t.status === 'solved' && p.reopenEnabled && solvedAge >= p.reopenAfterDays*24 && (!p.autoCloseEnabled || solvedAge < p.autoCloseDays*24)) {
-            if (await act(pool,orgId,t,'reopen-after-idle-'+new Date(t.solved_at).toISOString(),async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'open'});if(!r.ok)throw new Error(r.error||'Unable to reopen ticket');})) actions++;
+          if (['pending','on_hold'].includes(t.status) && p.reopenEnabled && idle >= p.reopenAfterDays*24) {
+            if (await act(pool,orgId,t,'reopen-after-idle-'+new Date(t.updated_at).toISOString(),async()=>{const r=await updateTicket(pool,orgId,{id:null,name:'Ticket lifecycle automation'},t.number,{status:'open'});if(!r.ok)throw new Error(r.error||'Unable to reopen ticket');})) actions++;
             continue;
           }
           if (t.status === 'solved' && p.autoCloseEnabled && solvedAge >= p.autoCloseDays*24) {
