@@ -95,10 +95,11 @@ def main():
             rows = run_query(binary, "SELECT name, bundle_identifier AS publisher, coalesce(bundle_short_version, bundle_version, '') AS version FROM apps;", args.timeout)
             software = [
                 {"name": str(row.get("name") or "").strip(),
-                 "publisher": str(row.get("bundle_identifier") or "").strip(),
+                 "publisher": str(row.get("publisher") or "").strip(),
                  "version": str(row.get("version") or "").strip()}
                 for row in rows if str(row.get("name") or "").strip()
             ]
+            software_complete = len(software) > 0
         except Exception:
             software_complete = False
     else:
@@ -119,7 +120,7 @@ def main():
             except Exception:
                 # Most Linux distributions use one of these package databases.
                 continue
-        software_complete = successful_package_tables > 0
+        software_complete = successful_package_tables > 0 and len(software) > 0
 
     unique = {}
     for app in software:
