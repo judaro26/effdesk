@@ -22,7 +22,7 @@ export const CHANGE_TRANSITIONS={
 const validDate=v=>v&&Number.isFinite(new Date(v).getTime())?new Date(v):null;
 const RISK_RANK={low:1,medium:2,high:3,critical:4};
 export const DEFAULT_CAB_POLICY={
- conflictMode:'warn',emergencyConflictOverride:false,
+ conflictMode:'warn',emergencyConflictOverride:false,approvalMode:'all',
  requiredStages:{standard:0,normal:1,emergency:1},
  minApproversByRisk:{low:1,medium:1,high:2,critical:3},
  standardMaxRisk:'low',standardMaxImpact:'medium'
@@ -34,6 +34,7 @@ export function normalizeCabPolicy(input={}){
  return {
   conflictMode:input.conflictMode==='block'?'block':'warn',
   emergencyConflictOverride:input.emergencyConflictOverride===true,
+  approvalMode:input.approvalMode==='any'?'any':'all',
   requiredStages:Object.fromEntries(CHANGE_TYPES.map(t=>[t,n(stages[t],DEFAULT_CAB_POLICY.requiredStages[t],t==='standard'?0:1,10)])),
   minApproversByRisk:Object.fromEntries(CHANGE_RISKS.map(r=>[r,n(approvers[r],DEFAULT_CAB_POLICY.minApproversByRisk[r],1,30)])),
   standardMaxRisk:CHANGE_RISKS.includes(input.standardMaxRisk)?input.standardMaxRisk:DEFAULT_CAB_POLICY.standardMaxRisk,
@@ -146,6 +147,7 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
    const requiredApprovers=policy.minApproversByRisk[(RISK_RANK[d.risk]>=RISK_RANK[d.impact]?d.risk:d.impact)]||1;
    if(cfg.stages.length<minStages)return fail('This CAB policy requires at least '+minStages+' approval stage(s) for '+d.changeType+' changes.');
    if(!cfg.stages.length||cfg.stages.some(s=>s.approverIds.length<requiredApprovers))return fail('This CAB policy requires at least '+requiredApprovers+' approver(s) in every stage for '+d.risk+' risk / '+d.impact+' impact changes.');
+   if(cfg.stages.some(s=>s.mode!==policy.approvalMode))return fail('This CAB policy requires '+(policy.approvalMode==='all'?'all approvers to approve each stage.':'any one assigned approver to approve each stage.'));
    const v=await validateApprovalConfig(c,orgId,{enabled:true,stages:cfg.stages});if(!v.ok)return v;
   }
   if(d.status==='approved'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can approve this change.');
