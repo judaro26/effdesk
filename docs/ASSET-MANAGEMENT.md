@@ -46,7 +46,7 @@ This is not yet a discovery-grade CMDB. Next work should add reconciliation and 
 
 ## Automated discovery: Microsoft Intune
 
-Migration `050_cmdb_intune_discovery.sql` adds tenant-isolated Intune discovery. Configure the shared EffDesk Entra application on the deployment with `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`; keep `BETTER_AUTH_SECRET` configured for authenticated encryption. Register this exact redirect URI on the Entra app:
+Migration `050_cmdb_intune_discovery.sql` adds tenant-isolated Intune discovery. Configure the shared EffDesk Entra application as a **multi-tenant** app (accounts in any organizational directory), with the delegated Microsoft Graph `DeviceManagementManagedDevices.Read.All` permission, and set its `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` on the EffDesk deployment; keep `BETTER_AUTH_SECRET` configured for authenticated encryption. Register this exact redirect URI on the Entra app:
 
 `https://app.effdesk.com/api/integrations/cmdb-discovery/oauth/callback`
 
@@ -54,6 +54,6 @@ For non-production deployments, use that deployment's `APP_URL` plus `/api/integ
 
 A workspace owner/admin enters the customer's Entra tenant ID or verified tenant domain and completes Microsoft's admin-consent flow. EffDesk requests the delegated `DeviceManagementManagedDevices.Read.All` permission and uses PKCE. Access and refresh tokens are encrypted with the existing application secret and stored per workspace; they are never returned to the browser. The first release reads Intune managed-device inventory only.
 
-Sync is manually initiated from **Assets & CMDB → Procurement & lifecycle → Automated discovery**. It imports at most 2,500 devices per run, links an existing CI by serial number where possible, otherwise creates an Intune-tagged hardware CI, and updates inventory fields plus compliance/OS metadata. Devices not seen in a successful full sync are marked **missing**; EffDesk does not automatically retire or delete them. Disconnecting revokes EffDesk's stored access by deleting its encrypted tokens while retaining discovered CIs.
+Sync is manually initiated from **Assets & CMDB → Procurement & lifecycle → Automated discovery**. It imports at most 2,500 devices per run, links an existing CI by serial number where possible, otherwise creates an Intune-tagged hardware CI, and updates inventory fields plus compliance/OS metadata. Devices not seen in a successful full sync are marked **missing**; EffDesk does not automatically retire or delete them. Disconnecting deletes EffDesk's stored encrypted tokens while retaining discovered CIs. It does not revoke the customer's Entra consent grant; an administrator can revoke that grant from Microsoft Entra separately.
 
 The tenant must grant admin consent for the delegated permission. If consent or the Microsoft app registration is not configured, the integration remains unavailable; CSV import/export and manual asset management continue to work. Scheduled background sync, webhook-driven change notifications, write-back/remediation, and broader Entra user/group discovery are intentionally deferred.
