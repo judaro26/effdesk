@@ -92,7 +92,7 @@ def main():
     software_complete = True
     if os_platform == "darwin":
         try:
-            rows = run_query(binary, "SELECT name, bundle_identifier, version FROM apps;", args.timeout)
+            rows = run_query(binary, "SELECT name, bundle_identifier AS publisher, coalesce(bundle_short_version, bundle_version, '') AS version FROM apps;", args.timeout)
             software = [
                 {"name": str(row.get("name") or "").strip(),
                  "publisher": str(row.get("bundle_identifier") or "").strip(),
@@ -105,11 +105,14 @@ def main():
         successful_package_tables = 0
         for table in ("deb_packages", "rpm_packages"):
             try:
-                rows = run_query(binary, "SELECT name, version, source FROM " + table + ";", args.timeout)
+                sql = ("SELECT name, version, maintainer AS publisher FROM deb_packages WHERE status LIKE '%installed%';"
+                       if table == "deb_packages"
+                       else "SELECT name, version, vendor AS publisher FROM rpm_packages;")
+                rows = run_query(binary, sql, args.timeout)
                 successful_package_tables += 1
                 software.extend(
                     {"name": str(row.get("name") or "").strip(),
-                     "publisher": str(row.get("source") or "").strip(),
+                     "publisher": str(row.get("publisher") or "").strip(),
                      "version": str(row.get("version") or "").strip()}
                     for row in rows if str(row.get("name") or "").strip()
                 )
