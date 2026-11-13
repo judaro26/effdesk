@@ -478,10 +478,38 @@
     function integrationsPane(){
       var rows=integrationsRows||[],hookRows=integrationsHooks||[];
       function integrationLogo(name,key){
-        var assets={linear:'linear',jira:'jira',github:'github',gitlab:'gitlab',slack:'slack',cliq:null,teams:'teams',entra:'microsoft',okta:'okta',googleworkspace:'google-workspace',pagerduty:'pagerduty',rootly:null,firehydrant:null,datadog:'datadog',grafana:'grafana',splunk:'splunk',sentry:'sentry',intune:'intune',jamf:null,aws:'aws',azure:'azure'};
+        var assets={
+          linear:'linear',jira:'jira',github:'github',gitlab:'gitlab',slack:'slack',cliq:null,
+          teams:'teams',entra:'microsoft',microsoftentra:'microsoft',okta:'okta',
+          googleworkspace:'google-workspace',pagerduty:'pagerduty',rootly:null,firehydrant:null,
+          datadog:'datadog',grafana:'grafana',splunk:'splunk',sentry:'sentry',intune:'intune',
+          microsoftintune:'intune',jamf:null,aws:'aws',azure:'azure',microsoftazure:'azure',
+          azuredevops:'azure'
+        };
+        var aliases={
+          googleworkspace:'googleworkspace',microsoftentra:'entra',microsoftintune:'intune',
+          microsoftazure:'azure',azuredevops:'azure'
+        };
+        var raw=String(key||'').toLowerCase().replace(/[^a-z]/g,'');
+        var named=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
+        var lookup=aliases[raw]||raw||named;
+        var src=assets[lookup]||assets[named]||null;
         var fallback={cliq:'Z',rootly:'R',firehydrant:'FH',jamf:'J'};
-        var src=assets[key||String(name).toLowerCase().replace(/[^a-z]/g,'')];
-        return el('div',{class:'integration-provider-mark integration-provider-logo',role:'img','aria-label':name+' logo',title:name},src?el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'lazy'}):el('span',{'aria-hidden':'true'},fallback[key]||String(name).slice(0,2).toUpperCase()));
+        var initials=fallback[raw]||String(name||'').trim().split(/\s+/).slice(0,2).map(function(part){return part.charAt(0);}).join('').toUpperCase()||'IN';
+        var mark=el('div',{class:'integration-provider-mark integration-provider-logo',role:'img','aria-label':name+' logo',title:name});
+        if(src){
+          var img=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'lazy',decoding:'async',onerror:function(){
+            if(!img.parentNode)return;
+            var textMark=el('span',{'aria-hidden':'true'},initials);
+            img.parentNode.replaceChild(textMark,img);
+            mark.setAttribute('data-logo-fallback','true');
+          }});
+          mark.appendChild(img);
+        }else{
+          mark.appendChild(el('span',{'aria-hidden':'true'},initials));
+          mark.setAttribute('data-logo-fallback','true');
+        }
+        return mark;
       }
       var providers=[{id:'linear',name:'Linear',detail:'Engineering issues, teams and cycles.'},{id:'jira',name:'Jira',detail:'Projects, workflows and issue synchronization.'}];
       var comms=[{id:'slack',name:'Slack',detail:'Channel notifications for tickets and customer replies.'},{id:'cliq',name:'Zoho Cliq',detail:'Team and operations notifications in Cliq channels.'},{id:'teams',name:'Microsoft Teams',detail:'Channel notifications through Teams webhooks.'}];
