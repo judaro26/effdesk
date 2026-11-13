@@ -28,6 +28,12 @@ export async function createForTicket(pool,orgId,ticket,formId,actorId=null){
   return {ok:true,approvalId:a.id};
  });
 }
+export async function getApprovalForTicket(pool,orgId,ticketNumber){
+ return withOrg(pool,orgId,async c=>{
+  const a=(await c.query("select a.id,a.ticket_id,a.ticket_number,a.status,a.mode,a.approver_ids,a.title,a.created_at,a.decided_at,coalesce((select json_agg(json_build_object('approverId',d.approver_id,'decision',d.decision,'comment',d.comment,'createdAt',d.created_at) order by d.created_at) from approval_decisions d where d.org_id=a.org_id and d.approval_id=a.id),'[]'::json) decisions from approval_requests a join tickets t on t.id=a.ticket_id and t.org_id=a.org_id where a.org_id=$1 and t.number=$2",[orgId,Number(ticketNumber)])).rows[0];
+  return {ok:true,approval:a||null};
+ });
+}
 export async function listApprovals(pool,orgId,actorId,{mine=false,status='pending'}={}){
  return withOrg(pool,orgId,async c=>({ok:true,approvals:(await c.query("select a.id,a.ticket_id,a.ticket_number,a.status,a.mode,a.approver_ids,a.title,a.created_at,t.subject,t.requester_name,t.requester_email,coalesce((select json_agg(json_build_object('approverId',d.approver_id,'decision',d.decision,'comment',d.comment,'createdAt',d.created_at) order by d.created_at) from approval_decisions d where d.org_id=a.org_id and d.approval_id=a.id),'[]'::json) decisions from approval_requests a join tickets t on t.id=a.ticket_id and t.org_id=a.org_id where a.org_id=$1 and ($2::text is null or a.status=$2) and (not $3::boolean or $4=any(a.approver_ids)) order by a.created_at desc limit 200",[orgId,status||null,!!mine,actorId])).rows}));
 }
