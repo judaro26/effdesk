@@ -10,6 +10,7 @@ import { tickets, inboundEmail } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 import { ticketToken } from '../src/ticket-mail.js';
 import { emit, safeUrl } from '../src/webhooks.js';
+import { connectIntegration, listIntegrationConnections, testIntegrationConnection, disconnectIntegration } from '../src/integration-hub.js';
 import { validAvatar } from '../src/avatar.js';
 import { handlesIn } from '../src/mentions.js';
 
@@ -68,6 +69,29 @@ const bad = await emit(pool, acme.id, 'ticket.created', t1.number, {}, { fetchFn
 check('a listener that is down never breaks the desk, and shows as an error', bad.sent === 1 && (await A(olivia, 'webhooks-list')).body.webhooks[0].last_status === 'error');
 check('another organization cannot see or delete these webhooks', (await B(otto, 'webhooks-list')).status === 402 && (await A(olivia, 'webhook-delete', { id: 999 })).status === 404);
 check('a webhook can be deleted', (await A(olivia, 'webhook-delete', { id: saved.body.id })).status === 200 && (await A(olivia, 'webhooks-list')).body.webhooks.length === 0);
+const githubToken = 'ghp_test_token_that_is_never_returned';
+const githubFetch = async (url, init) => {
+  check('GitHub token verification uses a fixed provider endpoint and bearer authorization', url === 'https://api.github.com/user' && init.headers.authorization === 'Bearer ' + githubToken && init.redirect === 'error');
+  return new Response(JSON.stringify({ id: 123, login: 'acme-engineering', name: 'Acme Engineering' }), { status: 200, headers: { 'x-oauth-scopes': 'read:user' } });
+};
+const gh = await connectIntegration(pool, ENV, acme.id, olivia.user.id, 'github', { token: githubToken }, { fetchFn: githubFetch });
+const ghList = await A(olivia, 'integration-hub-list');
+const ghStored = (await pool.query('select credentials_enc from integration_connections where org_id=$1 and provider=$2', [acme.id, 'github'])).rows[0];
+check('GitHub credentials are verified, encrypted at rest, and only safe connection metadata is listed', gh.ok && gh.accountUsername === 'acme-engineering' && ghList.status === 200 && ghList.body.connections[0].provider === 'github' && ghList.body.connections[0].account_username === 'acme-engineering' && !JSON.stringify(ghList.body).includes(githubToken) && ghStored.credentials_enc !== githubToken && !ghStored.credentials_enc.includes(githubToken));
+const ghTest = await testIntegrationConnection(pool, ENV, acme.id, 'github', { fetchFn: githubFetch });
+check('GitHub connection health can be retested without exposing its token', ghTest.ok && ghTest.accountUsername === 'acme-engineering' && (await A(olivia, 'integration-hub-list')).body.connections[0].status === 'connected');
+const gitlabToken = 'glpat_test_token_that_is_never_returned';
+const gl = await connectIntegration(pool, ENV, acme.id, olivia.user.id, 'gitlab', { token: gitlabToken }, { fetchFn: async (url, init) => url === 'https://gitlab.com/api/v4/user' && init.headers['private-token'] === gitlabToken ? new Response(JSON.stringify({ id: 456, username: 'acme-dev', name: 'Acme Dev' }), { status: 200, headers: { 'x-oauth-scopes': 'read_user' } }) : new Response('{}', { status: 401 }) });
+check('GitLab tokens are verified against the fixed GitLab profile endpoint', gl.ok && gl.accountUsername === 'acme-dev');
+const rejected = await connectIntegration(pool, ENV, acme.id, olivia.user.id, 'github', { token: 'ghp_invalid_token_for_test' }, { fetchFn: async () => new Response('{}', { status: 401 }) });
+check('invalid GitHub tokens are refused and are not saved', !rejected.ok && (await listIntegrationConnections(pool, acme.id)).connections.length === 2);
+const isolated = await listIntegrationConnections(pool, beta.id);
+check('integration connections are isolated between customer organizations', isolated.connections.length === 0);
+check('only workspace admins can view or manage provider credentials', (await A(ann, 'integration-hub-list')).status === 403 && (await B(otto, 'integration-hub-list')).status === 402);
+const degraded = await testIntegrationConnection(pool, ENV, acme.id, 'github', { fetchFn: async () => new Response('{}', { status: 403 }) });
+check('failed provider health checks mark the connection degraded without deleting credentials', !degraded.ok && (await A(olivia, 'integration-hub-list')).body.connections.find(x => x.provider === 'github').status === 'degraded');
+check('disconnect removes the stored GitHub credential and leaves GitLab intact', (await disconnectIntegration(pool, acme.id, 'github')).ok && (await listIntegrationConnections(pool, acme.id)).connections.length === 1);
+
 const sl = await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://hooks.slack.com/services/T000/B000/XXXX', events: ['ticket.created'] });
 check('a Slack webhook only accepts Slack addresses, and has no secret', sl.status === 200 && sl.body.secret === undefined && (await A(olivia, 'webhook-save', { kind: 'slack', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400 && (await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://evil.example.org/x', events: ['ticket.created'] })).status === 400);
 const tm = await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://contoso.webhook.office.com/webhookb2/abc', events: ['ticket.created'] });
