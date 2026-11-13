@@ -74,7 +74,7 @@ The Windows script performs read-only local CIM/WMI and uninstall-registry inven
 
 The ingestion endpoint binds the bearer token to the encoded workspace ID and a single agent ID, validates the token hash inside that workspace's RLS transaction, and rejects revoked/expired tokens. Hardware is reconciled to an existing manually managed hardware CI by serial number when safe, otherwise a new Windows-agent CI is created. Software snapshots are reconciled per agent; items absent from the latest complete snapshot are marked missing rather than deleted. Owners/admins can revoke an agent at any time. The dashboard shows agent health, last check-in, device details and discovered software.
 
-This first release is a customer-installed Windows endpoint agent, not a network-wide scanner or a centrally managed service. The script should be distributed only to devices the customer owns or is authorized to inventory. Customers should review their own endpoint-management and employee-notice requirements before deployment.
+This first release uses customer-installed endpoint agents, not a network-wide scanner or a centrally managed fleet service. Deploy the appropriate script only to devices the customer owns or is authorized to inventory. Customers should review their own endpoint-management and employee-notice requirements before deployment.
 
 
 ### macOS and Linux with osquery
