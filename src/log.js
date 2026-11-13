@@ -18,7 +18,7 @@ export function scrub(v, depth = 0) {
   return String(v).slice(0, 100);
 }
 const base = (env = process.env) => ({ service: 'effdesk', deploy: String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12) || undefined, ctx: env.CONTEXT || undefined });
-export const sinks = { fetch: (...a) => fetch(...a), env: () => process.env, now: () => Date.now(), onError: null };   // onError(entry) records a failure in the error tracker (set by context.js)
+export const sinks = { fetch: (...a) => fetch(...a), env: () => process.env, now: () => Date.now(), onError: null, onRequest: null };   // hooks are installed by context.js; telemetry must never affect a visitor response
 
 // one line: goes to the request's buffer (sent when the request ends) or, outside a request, straight out
 export function log(level, event, fields = {}) {
@@ -68,7 +68,9 @@ export function logged(name, handler) {
       log(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'request', { method: req.method, path: url.pathname, status, ms: sinks.now() - t0, ...s.meta, ref: (() => { try { return new URL(req.headers.get('referer') || '').host || undefined; } catch { return undefined; } })(), country: req.headers.get('x-country') || undefined });
     });
     try { res.headers.set('x-request-id', id); } catch { /* an immutable response keeps its headers */ }
-    const send = Promise.all([ship(s.lines, sinks.env()), reportErrors(s, req, url, res)]);
+    const metricHook = sinks.onRequest;
+    const metric = { fn: name, path: url.pathname, status: res.status, ms: sinks.now() - t0, org: s.meta.org, at: sinks.now() };
+    const send = Promise.all([ship(s.lines, sinks.env()), reportErrors(s, req, url, res), typeof metricHook === 'function' ? Promise.resolve().then(() => metricHook(metric)).catch(() => null) : Promise.resolve(null)]);
     if (nctx && typeof nctx.waitUntil === 'function') nctx.waitUntil(send); else await send;
     return res;
   };

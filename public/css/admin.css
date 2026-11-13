@@ -55,3 +55,13 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visib
   .grid2,.grid4{grid-template-columns:minmax(0,1fr)}.crow{grid-template-columns:minmax(0,1fr)}
   .btn,input,select{min-height:42px}.bar input,.bar select{flex:1 1 100%;max-width:none}
 }
+
+.perf-tiles{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.perf-tiles .tile{min-width:0}
+.perf-table{min-width:680px}
+.perf-table td{overflow-wrap:anywhere}
+.perf-finding{border-left:3px solid var(--line)}
+.perf-finding.warning{border-left-color:#e8a317}
+.perf-finding.critical{border-left-color:#cc3340}
+.perf-finding.success{border-left-color:#2e9e5b}
+@media(max-width:760px){.perf-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.perf-table{font-size:13px}}

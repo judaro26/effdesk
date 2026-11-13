@@ -96,6 +96,41 @@
       panels.status = { el: box, load: loadAll };
     })();
 
+    // ---------- Performance & health
+    (function () {
+      var box = el('div', { 'data-performance': '1' }), body = el('div', { class: 'stack' }), range = '24h';
+      var metric = function (label, value, hint) { return el('div', { class: 'tile' }, el('div', { class: 'tv' }, String(value)), el('div', { class: 'tl' }, label), hint ? el('div', { class: 'm fh' }, hint) : null); };
+      function load() {
+        clear(body); body.appendChild(el('p', { class: 'm' }, 'Loading sampled performance data…'));
+        return act('performance', { range: range }).then(function (r) {
+          clear(body); if (!r.ok) return body.appendChild(el('p', { class: 'msg err' }, r.body.error || 'Performance data could not be loaded.'));
+          var d = r.body, s = d.summary, pct = s.error_rate + '%', rate = Math.round(d.sampleRate * 100) + '%';
+          body.appendChild(el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn ' + (range === '1h' ? '' : 'l'), 'data-perf-range': '1h', onclick: function () { range = '1h'; load(); } }, 'Last hour'), el('button', { type: 'button', class: 'btn ' + (range === '24h' ? '' : 'l'), 'data-perf-range': '24h', onclick: function () { range = '24h'; load(); } }, 'Last 24 hours'), el('button', { type: 'button', class: 'btn l', 'data-perf-refresh': '1', onclick: load }, 'Refresh')));
+          body.appendChild(el('p', { class: 'm' }, 'Sampled server requests · ' + rate + ' sampling · 14-day rolling retention. Measurements begin after this release is deployed.'));
+          body.appendChild(el('div', { class: 'tiles perf-tiles' }, metric('Sampled requests', s.requests.toLocaleString()), metric('Average latency', s.avg_ms + ' ms'), metric('p95 latency band', s.p95_bucket || '—', 'Approximate histogram band'), metric('HTTP 5xx rate', pct), metric('Slow requests ≥1s', s.slow_requests.toLocaleString()), metric('Max pool waiters', s.pool_waiting_max, 'Observed at request completion')));
+          body.appendChild(el('h3', {}, 'Automated findings'));
+          var diag = el('div', { class: 'stack' });
+          d.diagnostics.forEach(function (x) { diag.appendChild(el('article', { class: 'erow perf-finding ' + x.severity }, el('div', { class: 'ehead' }, el('strong', {}, x.title), el('span', { class: 'chip ' + (x.severity === 'critical' ? 'bad' : x.severity === 'success' ? 'info' : '') }, x.severity)), el('p', { class: 'm' }, x.detail))); });
+          body.appendChild(diag);
+          body.appendChild(el('h3', {}, 'Hourly trend · selected period'));
+          if (!d.series.length) body.appendChild(el('p', { class: 'm' }, 'Hourly trends will appear as requests are sampled.'));
+          else body.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable perf-table' }, el('thead', {}, el('tr', {}, ['Hour (UTC)', 'Samples', 'Avg latency', '5xx errors'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.series.map(function (x) { return el('tr', {}, el('td', {}, new Date(x.hour).toLocaleString()), el('td', {}, x.requests.toLocaleString()), el('td', {}, x.avg_ms + ' ms'), el('td', {}, x.errors)); })))));
+          body.appendChild(el('h3', {}, 'Slowest endpoints · last 24 hours'));
+          if (!d.routes.length) body.appendChild(el('div', { class: 'empty' }, 'No endpoint samples yet.'));
+          else body.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable perf-table' }, el('thead', {}, el('tr', {}, ['Function', 'Endpoint', 'Samples', 'Avg', 'p95 band', 'Max'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.routes.map(function (x) { return el('tr', {}, el('td', {}, x.function_name), el('td', {}, x.path), el('td', {}, x.requests.toLocaleString()), el('td', {}, x.avg_ms + ' ms'), el('td', {}, x.p95_bucket), el('td', {}, x.max_ms + ' ms')); })))));
+          body.appendChild(el('h3', {}, 'Tenant performance · last 24 hours'));
+          if (!d.tenants.length) body.appendChild(el('p', { class: 'm' }, 'Tenant comparisons will appear as sampled requests arrive with workspace context.'));
+          else body.appendChild(el('div', { class: 'tablewrap' }, el('table', { class: 'adtable perf-table' }, el('thead', {}, el('tr', {}, ['Workspace ID', 'Samples', 'Avg latency', 'Errors', 'Max latency'].map(function (x) { return el('th', { scope: 'col' }, x); }))), el('tbody', {}, d.tenants.map(function (x) { return el('tr', {}, el('td', {}, x.org_id), el('td', {}, x.requests.toLocaleString()), el('td', {}, x.avg_ms + ' ms'), el('td', {}, x.errors), el('td', {}, x.max_ms + ' ms')); })))));
+          body.appendChild(el('h3', {}, 'Coverage and limitations'));
+          body.appendChild(el('ul', { class: 't' }, d.notes.map(function (x) { return el('li', {}, x); })));
+          body.appendChild(el('p', { class: 'm' }, 'Observed request volume: ' + s.requests.toLocaleString() + ' samples over ' + d.range + '. This is sampled telemetry, not a full request census.'));
+        });
+      }
+      box.appendChild(el('div', { class: 'phead' }, el('h2', {}, 'Performance & health')));
+      box.appendChild(el('p', { class: 'm' }, 'Spot slow endpoints, elevated server errors and database connection-pool contention across the EffDesk platform.'));
+      box.appendChild(body); panels.performance = { el: box, load: load };
+    })();
+
     // ---------- Logging
     (function () {
       var box = el('div', { 'data-logging': '1' }), body = el('div', { class: 'stack' });

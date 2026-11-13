@@ -33,6 +33,9 @@ const boss2 = { ...boss, user: { ...boss.user } };
 const D = async (who, action, extra = {}) => { const r = await adminDo(new Request('http://x/api/admin/do', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 check('only the platform owner can use the console', (await D(olivia, 'system')).status === 403);
 check('the owner can', (await D(boss, 'system')).status === 200);
+const perf = await D(boss, 'performance', { range: '1h' });
+check('the platform owner can read sampled performance diagnostics', perf.status === 200 && perf.body.range === '1h' && Array.isArray(perf.body.diagnostics) && Array.isArray(perf.body.routes));
+check('tenant administrators cannot read platform-wide performance telemetry', (await D(olivia, 'performance')).status === 403);
 
 const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 // ---- error tracking
