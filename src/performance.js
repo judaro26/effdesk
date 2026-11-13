@@ -66,6 +66,19 @@ const p95Bucket = r => {
 };
 const decorate = r => ({ ...r, avg_ms: Number(r.requests) ? Math.round(Number(r.duration_total_ms) / Number(r.requests)) : 0, p95_bucket: p95Bucket(r), error_rate: Number(r.requests) ? Number((Number(r.errors) / Number(r.requests) * 100).toFixed(2)) : 0 });
 export async function performanceOverview(pool, range = '24h', env = process.env) {
+  const schema = await pool.query("select to_regclass('public.performance_minute') as request_table, to_regclass('public.performance_query_minute') as sql_table, to_regclass('public.performance_vitals_minute') as vitals_table");
+  const schemaRow = schema.rows && schema.rows[0] || {};
+  const missingTables = [['performance_minute', schemaRow.request_table], ['performance_query_minute', schemaRow.sql_table], ['performance_vitals_minute', schemaRow.vitals_table]].filter(([, value]) => !value).map(([name]) => name);
+  if (missingTables.length) return {
+    ok: true, schemaReady: false, missingTables, range: range === '1h' ? '1h' : '24h',
+    sampleRate: clampRate(env.PERFORMANCE_SAMPLE_RATE == null ? 0.1 : env.PERFORMANCE_SAMPLE_RATE),
+    sqlSampleRate: clampRate(env.PERFORMANCE_SQL_SAMPLE_RATE == null ? 0.03 : env.PERFORMANCE_SQL_SAMPLE_RATE),
+    summary: { requests: 0, errors: 0, slow_requests: 0, avg_ms: 0, p95_bucket: null, error_rate: 0, pool_waiting_max: 0 },
+    series: [], routes: [], tenants: [], sqlQueries: [], vitals: [],
+    diagnostics: [{ severity: 'warning', title: 'Performance database migrations are incomplete', detail: 'The performance telemetry tables are not all present in the production database.' }],
+    retentionDays: 14,
+    notes: ['Missing tables: ' + missingTables.join(', '), 'Deploy the latest production build so the migration runner can apply the performance telemetry migrations.']
+  };
   const hours = range === '1h' ? 1 : 24;
   const [summary, series, routes, tenants, sqlQueries, vitals] = await Promise.all([
     pool.query('select coalesce(sum(requests),0)::int requests,coalesce(sum(errors),0)::int errors,coalesce(sum(slow_requests),0)::int slow_requests,coalesce(sum(duration_total_ms),0)::bigint duration_total_ms,coalesce(max(duration_max_ms),0)::int max_ms,coalesce(sum(bucket_lt100),0)::int bucket_lt100,coalesce(sum(bucket_100to499),0)::int bucket_100to499,coalesce(sum(bucket_500to999),0)::int bucket_500to999,coalesce(sum(bucket_gte1000),0)::int bucket_gte1000,coalesce(max(pool_waiting_max),0)::int pool_waiting_max,coalesce(max(pool_total_max),0)::int pool_total_max from performance_minute where minute >= now() - ($1::int * interval \'1 hour\')', [hours]),
