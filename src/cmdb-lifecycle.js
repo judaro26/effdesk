@@ -20,7 +20,7 @@ export function parseCsv(text,maxRows=500){
  if(!rows.length)return [];
  const headers=rows.shift().map(v=>clean(v,80).toLowerCase().replace(/[ -]+/g,'_'));
  if(new Set(headers).size!==headers.length||headers.some(v=>!v))throw new Error('CSV headers must be non-empty and unique.');
- return rows.map((values,i)=>Object.fromEntries(headers.map((h,j)=>[h,values[j]??''])).__row=i+2).map(x=>{const n=x.__row;delete x.__row;return {...x,__row:n};});
+ return rows.map((values,i)=>({...Object.fromEntries(headers.map((h,j)=>[h,values[j]??''])),__row:i+2}));
 }
 const VENDOR_FIELDS={name:180,website:500,supportEmail:254,supportPhone:80,notes:3000};
 export function normalizeVendor(b={}){return Object.fromEntries(Object.entries(VENDOR_FIELDS).map(([k,n])=>[k,clean(b[k],n)]));}
