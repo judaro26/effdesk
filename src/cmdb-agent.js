@@ -1,6 +1,7 @@
 // Native Windows discovery agent enrollment and inventory ingestion.
 import crypto from 'node:crypto';
 import { withOrg } from './db.js';
+import { rateLimit } from './guard.js';
 
 const clean=(v,n=500)=>String(v??'').replace(/[\\u0000-\\u001f\\u007f]/g,' ').trim().slice(0,n);
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -59,6 +60,7 @@ export async function ingestWindowsAgent(req,{pool}){
  const auth=String(req.headers.get('authorization')||'');
  if(!auth.startsWith('Bearer ')||auth.length>512)return fail(401,'A valid discovery-agent token is required.');
  const parsed=parseToken(auth.slice(7));if(!parsed)return fail(401,'Invalid discovery-agent token.');
+ if(await rateLimit(pool,'cmdb-agent:'+hash(parsed.token),10,60))return fail(429,'Too many check-ins. Please wait before retrying.');
  const raw=await req.text();if(raw.length>300000)return fail(413,'Inventory payload is too large.');
  let body;try{body=JSON.parse(raw);}catch{return fail(400,'Inventory payload must be JSON.');}
  const d=normalizeWindowsPayload(body);
