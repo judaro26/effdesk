@@ -676,7 +676,7 @@ html{-webkit-text-size-adjust:100%}
 /* ITSM incident workspace */
 .itsm-page{max-width:none;gap:16px;padding:24px;align-items:stretch}
 .itsm-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-.itsm-page-head h2{font-size:26px;margin:3px 0 4px}
+.itsm-page-head h2{font-size:26px;margin:3px 0 4px}.itsm-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
 .itsm-kicker{font-size:10px;letter-spacing:.13em;font-weight:800;color:var(--accent-d)}
 .itsm-plan-pill{font-size:10px;font-weight:800;letter-spacing:.08em;padding:6px 10px;border:1px solid var(--d-line);border-radius:999px;color:var(--d-muted)}
 .itsm-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
