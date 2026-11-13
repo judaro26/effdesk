@@ -56,6 +56,7 @@ import { PLANS, has as planHas } from './plans.js';
 import { listApprovals, getApprovalForTicket, decideApproval, listTasks, updateTask } from './approvals.js';
 import { listServices, saveService, listIncidents, getIncident, saveIncident } from './itsm.js';
 import { listProblems, getProblem, saveProblem } from './problems.js';
+import { listChanges, getChange, saveChange, decideChange } from './change-management.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -120,7 +121,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get', 'global-search', 'contact-list', 'contact-get', 'approval-get', 'tasks-list']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -203,6 +204,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-problem-list': if ((g = need('itsm'))) return g; r = await listProblems(pool, orgId, b); break;
     case 'itsm-problem-get': if ((g = need('itsm'))) return g; r = await getProblem(pool, orgId, b.id); break;
     case 'itsm-problem-save': if ((g = need('itsm'))) return g; r = await saveProblem(pool, orgId, actor, b); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'problem.updated' : 'problem.created', 'Problem #' + r.problem.id, { status: r.problem.status, priority: r.problem.priority }); break;
+    case 'itsm-change-list': if ((g = need('itsm'))) return g; r = await listChanges(pool, orgId, b); break;
+    case 'itsm-change-get': if ((g = need('itsm'))) return g; r = await getChange(pool, orgId, b.id); break;
+    case 'itsm-change-save': if ((g = need('itsm'))) return g; r = await saveChange(pool, orgId, actor, b, mailer); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'change.updated' : 'change.created', 'Change CHG-' + r.change.id, { status: r.change.status, risk: r.change.risk }); break;
+    case 'itsm-change-decide': if ((g = need('itsm'))) return g; r = await decideChange(pool, orgId, actor, b.id, b.decision, b.comment, mailer); if (r.ok) await audit(pool, orgId, actor.id, 'change.approval_decided', 'Change CHG-' + r.change.id, { status: r.change.status }); break;
     case 'task-update': if ((g = need('request_forms'))) return g; r = await updateTask(pool, orgId, b.id, b); break;
     case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;
     case 'form-delete': if ((g = adminOnly() || need('request_forms'))) return g; if (!(await deleteForm(pool, orgId, b.id))) return json(404, { error: 'No such form.' }); r = { ok: true }; break;

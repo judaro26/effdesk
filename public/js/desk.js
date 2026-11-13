@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6', changes: 'M4 7h16M4 12h16M4 17h10 M17 15l3 3 3-3' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -23,6 +23,7 @@
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
+    var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [];
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
@@ -46,7 +47,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -59,10 +60,10 @@
         var pm = /^(?:\/w\/([a-z0-9-]+))?(?:\/agent\/\d+)?(?:\/tickets\/(\d+))?/.exec(nav.path || ''), want = new URLSearchParams(nav.search || '').get('org'); var o = (hostSlug && orgs.filter(function (x) { return x.slug === hostSlug; })[0]) || (!hostSlug && pm && pm[1] && orgs.filter(function (x) { return x.slug === pm[1]; })[0]) || orgs.filter(function (x) { return x.id === want; })[0] || (new URLSearchParams(nav.search || '').get('support') && want ? { id: want, role: 'admin', slug: '' } : orgs[0]);
         if (!o) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'Create an organization first on the ', el('a', { href: '/app.html' }, 'account page'), '.')); return; }
         if (hostSlug && o.slug !== hostSlug) { main.textContent = ''; main.appendChild(el('p', { class: 'pad' }, 'You are not a member of the workspace ' + hostSlug + '. Ask an owner to invite you, or ', el('a', { href: 'https://app.' + base + '/app.html' }, 'open your own workspaces'), '.')); return; }
-        if (base && !hostSlug && o.slug && !support0(nav) && nav.go) { var np = r.body.user.agentNumber; return nav.go('https://' + o.slug + '.' + base + '/agent/' + (np || 0) + '/tickets' + (pm && pm[2] ? '/' + pm[2] : '')); }
+        if (base && !hostSlug && o.slug && !support0(nav) && nav.go) { var np = r.body.user.agentNumber, changeLink = new URLSearchParams(nav.search || '').get('change'); return nav.go('https://' + o.slug + '.' + base + '/agent/' + (np || 0) + '/tickets' + (pm && pm[2] ? '/' + pm[2] : '') + (changeLink ? '?change=' + encodeURIComponent(changeLink) : '')); }
         announce(r.body.banner);
         if (o.suspended && !support0(nav)) { main.textContent = ''; main.appendChild(el('div', { class: 'pad', 'data-suspended': '1', role: 'alert' }, el('h2', {}, 'This workspace is suspended'), el('p', {}, typeof o.suspended === 'string' ? o.suspended : 'Access has been paused.'), el('p', { class: 'm' }, 'Write to support@effdesk.com to get it back.'))); return; }
-        orgId = o.id; role = o.role; slug = o.slug; var tn = Number(new URLSearchParams(nav.search || '').get('ticket')) || (pm && Number(pm[2])) || 0; myNo = r.body.user.agentNumber || ''; return loadInit().then(refresh).then(function () { if (tn > 0) return open(tn); return goHome(); });
+        orgId = o.id; role = o.role; slug = o.slug; var params = new URLSearchParams(nav.search || ''), tn = Number(params.get('ticket')) || (pm && Number(pm[2])) || 0, changeNo = Number(params.get('change')) || 0; myNo = r.body.user.agentNumber || ''; return loadInit().then(refresh).then(function () { if (changeNo > 0) return loadChanges().then(function () { return openChange(changeNo); }); if (tn > 0) return open(tn); return goHome(); });
       });
     }
     // the platform owner's announcement, shown above everything and never rewritten by a page
@@ -233,6 +234,163 @@
       return el('div',{class:'page wide itsm-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Incident management'),el('p',{class:'m'},'Coordinate service disruptions using the ticket, service and approval foundations already in EffDesk.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();creating=true;newf=blankNew();newf.type='incident';pending=[];draw();}},'＋ Create incident'))),stats,el('div',{class:'itsm-layout'},el('div',{class:'itsm-main-col'},listCard,servicesCard),el('div',{class:'itsm-detail-col'},detailCard)));
     }
 
+
+
+    // ── Change Management: risk, change calendar, sequential approvals and controlled implementation ──
+    function loadChanges() {
+      closePanes(); changesOpen=true; changeRows=null; changeDetail=null; changeSelected=0; changeCreating=false; changeLoading=true; changeApprovalStages=[]; draw();
+      return Promise.all([api('itsm-change-list',{limit:200,status:changeStatus,risk:changeRisk}),api('itsm-services-list')]).then(function(rs){
+        changeLoading=false;
+        if(!rs[0].ok||!rs[1].ok){changeRows=[];changeServices=[];say((!rs[0].ok?rs[0].body.error:rs[1].body.error)||'Could not load changes.',true);}
+        else{changeRows=rs[0].body.changes||[];changeServices=rs[1].body.services||[];}
+        draw();
+      });
+    }
+    function openChange(id) {
+      changeSelected=Number(id)||0;changeCreating=false;changeDetail=null;draw();
+      return api('itsm-change-get',{id:changeSelected}).then(function(r){
+        if(!r.ok){changeSelected=0;say(r.body.error||'Could not load change request.',true);return;}
+        changeDetail=r.body;changeApprovalStages=(r.body.change.approval_stages||[]).map(function(s){return {name:s.name||'',mode:s.mode||'all',approverIds:(s.approverIds||[]).slice()};});draw();
+      });
+    }
+    function changeDateInput(v) {
+      if(!v)return '';var d=new Date(v);if(!Number.isFinite(d.getTime()))return '';
+      var pad=function(n){return String(n).padStart(2,'0');};
+      return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+    }
+    function changeDateLabel(v) { return v?new Date(v).toLocaleString():'Not scheduled'; }
+    function changesPane() {
+      var rows=changeRows||[];
+      var active=rows.filter(function(x){return ['submitted','assessing','awaiting_approval','approved','scheduled','implementing'].indexOf(x.status)>=0;}).length;
+      var awaiting=rows.filter(function(x){return x.status==='awaiting_approval';}).length;
+      var highRisk=rows.filter(function(x){return x.risk==='high'||x.risk==='critical';}).length;
+      var upcoming=rows.filter(function(x){return x.planned_start&&new Date(x.planned_start)>=new Date()&&['approved','scheduled'].indexOf(x.status)>=0;}).length;
+      var stats=el('div',{class:'stats itsm-stats'},
+        el('div',{class:'stat'},el('div',{class:'sv'},String(rows.length)),el('div',{class:'sl'},'Change requests')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(awaiting)),el('div',{class:'sl'},'Awaiting approval')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(highRisk)),el('div',{class:'sl'},'High / critical risk')),
+        el('div',{class:'stat'},el('div',{class:'sv'},String(upcoming)),el('div',{class:'sl'},'Upcoming windows')));
+      var statusFilter=el('select',{'aria-label':'Filter changes by status'});
+      [['','All statuses'],['draft','Draft'],['submitted','Submitted'],['assessing','Assessing'],['awaiting_approval','Awaiting approval'],['approved','Approved'],['rejected','Rejected'],['scheduled','Scheduled'],['implementing','Implementing'],['completed','Completed'],['failed','Failed'],['cancelled','Cancelled']].forEach(function(x){var o=el('option',{value:x[0]},x[1]);o.selected=x[0]===changeStatus;statusFilter.appendChild(o);});
+      statusFilter.addEventListener('change',function(){changeStatus=statusFilter.value;refreshChangeList();});
+      var riskFilter=el('select',{'aria-label':'Filter changes by risk'});
+      [['','All risk levels'],['critical','Critical'],['high','High'],['medium','Medium'],['low','Low']].forEach(function(x){var o=el('option',{value:x[0]},x[1]);o.selected=x[0]===changeRisk;riskFilter.appendChild(o);});
+      riskFilter.addEventListener('change',function(){changeRisk=riskFilter.value;refreshChangeList();});
+      var list=el('div',{class:'itsm-table-wrap'});
+      if(changeLoading)list.appendChild(el('p',{class:'m'},'Loading change requests…'));
+      else if(!rows.length)list.appendChild(el('div',{class:'itsm-detail-empty'},el('h3',{},'No change requests yet'),el('p',{class:'m'},'Create a change request to assess risk, plan a maintenance window and coordinate approvals.')));
+      else {
+        var tbl=el('table',{class:'itsm-table change-table'});
+        tbl.appendChild(el('thead',{},el('tr',{},['Change','Type','Risk','Status','Window','Owner'].map(function(x){return el('th',{},x);}))));
+        var body=el('tbody');
+        rows.forEach(function(x){
+          var tr=el('tr',{class:changeSelected===Number(x.id)?'selected':'',tabindex:'0',role:'button','aria-label':'Open change CHG-'+x.id+' '+x.title});
+          tr.appendChild(el('td',{},el('strong',{},'CHG-'+x.id+' · '+x.title),el('span',{class:'itsm-subline'},(x.service_count||0)+' services · '+(x.incident_count||0)+' incidents')));
+          tr.appendChild(el('td',{},cap(x.change_type)));
+          tr.appendChild(el('td',{},el('span',{class:'itsm-severity '+String(x.risk||'medium').toLowerCase()},cap(x.risk))));
+          tr.appendChild(el('td',{},el('span',{class:'badge s-'+(x.status==='completed'?'solved':x.status==='rejected'||x.status==='failed'?'closed':x.status==='awaiting_approval'?'pending':'open')},cap(x.status.replace(/_/g,' ')))));
+          tr.appendChild(el('td',{},changeDateLabel(x.planned_start)));
+          tr.appendChild(el('td',{},x.owner_name||x.owner_email||'Unassigned'));
+          var choose=function(){openChange(x.id);};tr.addEventListener('click',choose);tr.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}});body.appendChild(tr);
+        });
+        tbl.appendChild(body);list.appendChild(tbl);
+      }
+      var listCard=el('section',{class:'pcard itsm-list-card'},el('div',{class:'itsm-card-head'},el('div',{},el('h3',{},'Change register'),el('p',{class:'m'},'Review proposed work, risk, approvals and upcoming maintenance windows.')),el('div',{class:'itsm-toolbar'},statusFilter,riskFilter,el('button',{type:'button',class:'btn l sm',onclick:loadChanges},'Refresh'))),list);
+      var detail=el('section',{class:'pcard itsm-detail-card change-detail-card'});
+      var ch=changeDetail&&changeDetail.change;
+      if(!changeCreating&&!changeSelected)detail.appendChild(el('div',{class:'itsm-detail-empty'},el('span',{class:'itsm-empty-icon'},'↗'),el('h3',{},'Change workspace'),el('p',{class:'m'},'Select a change request or create one to assess risk, define implementation and rollback plans, and schedule a controlled release.')));
+      else if(changeSelected&&!ch)detail.appendChild(el('p',{class:'m'},'Loading change request…'));
+      else {
+        ch=ch||{title:'',description:'',change_type:'normal',status:'draft',risk:'medium',impact:'medium',implementation_plan:'',test_plan:'',rollback_plan:'',outcome:'',owner_id:'',approval_stages:[]};
+        var pendingApproval=ch.status==='awaiting_approval',terminal=['completed','failed','cancelled'].indexOf(ch.status)>=0;
+        var title=el('input',{type:'text',maxlength:'180',placeholder:'Change title','aria-label':'Change title',value:ch.title||''});
+        var description=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Describe the proposed change, reason and scope…','aria-label':'Change description'});description.value=ch.description||'';
+        var type=el('select',{'aria-label':'Change type'});[['standard','Standard'],['normal','Normal'],['emergency','Emergency']].forEach(function(x){type.appendChild(el('option',{value:x[0]},x[1]));});type.value=ch.change_type||'normal';
+        var status=el('select',{'aria-label':'Change status'});
+        var allowed={draft:['draft','submitted','assessing','awaiting_approval','cancelled'],submitted:['submitted','assessing','awaiting_approval','approved','cancelled'],assessing:['assessing','awaiting_approval','approved','cancelled'],awaiting_approval:['awaiting_approval','cancelled'],approved:['approved','scheduled','cancelled'],rejected:['rejected','draft','cancelled'],scheduled:['scheduled','implementing','cancelled'],implementing:['implementing','completed','failed'],completed:['completed'],failed:['failed'],cancelled:['cancelled']};
+        (allowed[ch.status]||[ch.status]).forEach(function(x){status.appendChild(el('option',{value:x},cap(x.replace(/_/g,' '))));});status.value=ch.status||'draft';
+        var risk=el('select',{'aria-label':'Change risk'});[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].forEach(function(x){risk.appendChild(el('option',{value:x[0]},x[1]));});risk.value=ch.risk||'medium';
+        var impact=el('select',{'aria-label':'Change impact'});[['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].forEach(function(x){impact.appendChild(el('option',{value:x[0]},x[1]));});impact.value=ch.impact||'medium';
+        var owner=el('select',{'aria-label':'Change owner'});owner.appendChild(el('option',{value:''},'Unassigned'));agents.forEach(function(a){if(a.role!=='light')owner.appendChild(el('option',{value:a.id},a.name||a.email));});owner.value=ch.owner_id||'';
+        var start=el('input',{type:'datetime-local','aria-label':'Planned start',value:changeDateInput(ch.planned_start)});
+        var end=el('input',{type:'datetime-local','aria-label':'Planned end',value:changeDateInput(ch.planned_end)});
+        var implementation=el('textarea',{rows:'4',maxlength:'8000',placeholder:'Step-by-step implementation plan…','aria-label':'Implementation plan'});implementation.value=ch.implementation_plan||'';
+        var testing=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Validation steps and success criteria…','aria-label':'Test plan'});testing.value=ch.test_plan||'';
+        var rollback=el('textarea',{rows:'3',maxlength:'5000',placeholder:'Rollback triggers and recovery steps…','aria-label':'Rollback plan'});rollback.value=ch.rollback_plan||'';
+        var outcome=el('textarea',{rows:'2',maxlength:'5000',placeholder:'Record the outcome after implementation…','aria-label':'Change outcome'});outcome.value=ch.outcome||'';
+        var serviceSelect=el('select',{multiple:true,'aria-label':'Affected services',size:Math.min(5,Math.max(3,changeServices.length))});
+        changeServices.forEach(function(s){var o=el('option',{value:s.id},s.name+' · '+cap(s.criticality));o.selected=(changeDetail&&changeDetail.services||[]).some(function(x){return Number(x.id)===Number(s.id);});serviceSelect.appendChild(o);});
+        var incidentInput=el('input',{type:'text',placeholder:'Incident ticket numbers, separated by commas','aria-label':'Related incident numbers',value:(changeDetail&&changeDetail.incidents||[]).map(function(x){return x.number;}).join(', ')});
+        var approvalBox=el('div',{class:'change-approval-stages'});
+        function renderStages(){
+          approvalBox.textContent='';
+          changeApprovalStages.forEach(function(stage,ix){
+            var name=el('input',{type:'text',maxlength:'80',placeholder:'Stage '+(ix+1)+' name',value:stage.name||('Stage '+(ix+1)),disabled:pendingApproval});
+            var mode=el('select',{'aria-label':'Approval rule for stage '+(ix+1),disabled:pendingApproval});[['all','All approvers'],['any','Any one approver']].forEach(function(x){mode.appendChild(el('option',{value:x[0]},x[1]));});mode.value=stage.mode||'all';
+            var people=el('select',{multiple:true,disabled:pendingApproval,size:Math.min(5,Math.max(3,agents.filter(function(a){return a.role!=='light';}).length)),'aria-label':'Approvers for stage '+(ix+1)});
+            agents.forEach(function(a){if(a.role!=='light'){var o=el('option',{value:a.id},a.name||a.email);o.selected=(stage.approverIds||[]).indexOf(a.id)>=0;people.appendChild(o);}});
+            var remove=el('button',{type:'button',class:'btn l sm',disabled:pendingApproval,onclick:function(){changeApprovalStages.splice(ix,1);renderStages();}},'Remove stage');
+            approvalBox.appendChild(el('div',{class:'change-stage-card'},el('div',{class:'change-stage-head'},el('strong',{},'Stage '+(ix+1)),remove),name,mode,people));
+            stage._controls={name:name,mode:mode,people:people};
+          });
+        }
+        if(!changeApprovalStages.length&&!pendingApproval)changeApprovalStages=[{name:'CAB review',mode:'all',approverIds:[]}];
+        renderStages();
+        var addStage=el('button',{type:'button',class:'btn l sm',disabled:pendingApproval||changeApprovalStages.length>=10,onclick:function(){changeApprovalStages.push({name:'Stage '+(changeApprovalStages.length+1),mode:'all',approverIds:[]});renderStages();}},'＋ Add approval stage');
+        var save=el('button',{type:'button',class:'btn',disabled:terminal,onclick:function(){
+          if(!title.value.trim())return say('Give the change request a title.',true);
+          var stages=changeApprovalStages.map(function(s){return {name:s._controls?s._controls.name.value:s.name,mode:s._controls?s._controls.mode.value:s.mode,approverIds:s._controls?Array.prototype.filter.call(s._controls.people.options,function(o){return o.selected;}).map(function(o){return o.value;}):s.approverIds};});
+          var services=Array.prototype.filter.call(serviceSelect.options,function(o){return o.selected;}).map(function(o){return Number(o.value);});
+          var incidents=incidentInput.value.split(',').map(function(x){return Number(x.trim());}).filter(function(x){return Number.isSafeInteger(x)&&x>0;});
+          api('itsm-change-save',{id:changeSelected||undefined,title:title.value,description:description.value,changeType:type.value,status:status.value,risk:risk.value,impact:impact.value,plannedStart:start.value||null,plannedEnd:end.value||null,implementationPlan:implementation.value,testPlan:testing.value,rollbackPlan:rollback.value,outcome:outcome.value,ownerId:owner.value,serviceIds:services,incidentNumbers:incidents,approvalStages:stages}).then(function(r){
+            if(!r.ok)return say(r.body.error||'Could not save change request.',true);
+            changeSelected=Number(r.body.change.id);changeCreating=false;changeDetail=r.body;
+            return refreshChangeList(false).then(function(){draw();say('Change request saved.');});
+          });
+        }},changeCreating?'Create change request':'Save changes');
+        detail.appendChild(el('div',{class:'itsm-detail-head'},el('div',{},el('span',{class:'itsm-kicker'},changeCreating?'NEW CHANGE':'CHANGE CHG-'+ch.id),el('h3',{},changeCreating?'New change request':ch.title||'Change request'),el('p',{class:'m'},'Created '+changeDateLabel(ch.created_at)+' · Updated '+changeDateLabel(ch.updated_at))),el('div',{class:'itsm-detail-actions'},changeSelected?el('button',{type:'button',class:'btn l sm',onclick:function(){openChange(changeSelected);}},'Reload'):null)));
+        detail.appendChild(el('div',{class:'change-form-grid'},el('label',{},el('span',{},'Title'),title),el('label',{},el('span',{},'Type'),type),el('label',{},el('span',{},'Status'),status),el('label',{},el('span',{},'Risk'),risk),el('label',{},el('span',{},'Impact'),impact),el('label',{},el('span',{},'Change owner'),owner),el('label',{},el('span',{},'Planned start'),start),el('label',{},el('span',{},'Planned end'),end)));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Description and business justification'),description));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Implementation plan'),implementation));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Test and validation plan'),testing));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Rollback plan'),rollback));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Affected business services'),el('p',{class:'m'},'Select services impacted by this change. Use Ctrl/Cmd to select multiple.'),serviceSelect));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Related incidents'),el('p',{class:'m'},'Link incident ticket numbers from this workspace.'),incidentInput));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('div',{class:'change-stage-title'},el('h4',{},'Sequential approval stages'),el('span',{class:'m'},pendingApproval?'Approval stages are locked while decisions are in progress.':'All stages must complete in order.')),approvalBox,addStage));
+        if(pendingApproval&&changeDetail){
+          var ix=Math.max(0,Math.min(Number(ch.current_stage)||0,(ch.approval_stages||[]).length-1)),stage=(ch.approval_stages||[])[ix]||{};
+          var already=(changeDetail.decisions||[]).some(function(d){return Number(d.round_index)===Number(ch.approval_round||1)&&Number(d.stage_index)===ix&&d.approver_id===meId;});
+          if((stage.approverIds||[]).indexOf(meId)>=0&&!already){
+            var comment=el('textarea',{rows:'2',maxlength:'2000',placeholder:'Optional approval comment…','aria-label':'Approval comment'});
+            var actions=el('div',{class:'change-decision-actions'},comment,
+              el('button',{type:'button',class:'btn',onclick:function(){api('itsm-change-decide',{id:ch.id,decision:'approved',comment:comment.value}).then(function(r){if(!r.ok)return say(r.body.error||'Could not approve change.',true);changeDetail=r.body;refreshChangeList(false).then(draw);say('Change approved.');});}},'Approve'),
+              el('button',{type:'button',class:'btn l',onclick:function(){api('itsm-change-decide',{id:ch.id,decision:'rejected',comment:comment.value}).then(function(r){if(!r.ok)return say(r.body.error||'Could not reject change.',true);changeDetail=r.body;refreshChangeList(false).then(draw);say('Change rejected.');});}},'Reject'));
+            detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Your approval is required'),actions));
+          }
+        }
+        if(changeDetail&&changeDetail.decisions&&changeDetail.decisions.length){
+          var history=el('div',{class:'problem-history'},el('h4',{},'Approval decisions'));
+          changeDetail.decisions.forEach(function(x){var s=(ch.approval_stages||[])[x.stage_index]||{};var a=agents.filter(function(v){return v.id===x.approver_id;})[0];history.appendChild(el('div',{class:'problem-history-item'},el('strong',{},a?a.name||a.email:x.approver_id),el('span',{class:'m'},'Round '+(x.round_index||1)+' · '+(s.name||'Stage '+(x.stage_index+1))+' · '+x.decision+(x.comment?' · '+x.comment:'')),el('small',{},changeDateLabel(x.created_at))));});detail.appendChild(history);
+        }
+        if(changeDetail&&changeDetail.events&&changeDetail.events.length){
+          var activity=el('div',{class:'problem-history'},el('h4',{},'Change activity'));
+          changeDetail.events.forEach(function(x){activity.appendChild(el('div',{class:'problem-history-item'},el('strong',{},x.actor_name||'System'),el('span',{class:'m'},x.detail),el('small',{},changeDateLabel(x.created_at))));});detail.appendChild(activity);
+        }
+        detail.appendChild(el('div',{class:'itsm-save-row'},save));
+        if(ch.status==='implementing'||ch.status==='completed'||ch.status==='failed'){
+          detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Implementation outcome'),outcome));
+        }
+      }
+      var upcoming=rows.filter(function(x){return x.planned_start&&['approved','scheduled','implementing'].indexOf(x.status)>=0;}).sort(function(a,b){return new Date(a.planned_start)-new Date(b.planned_start);}).slice(0,8);
+      var calendar=el('section',{class:'pcard change-calendar'},el('h3',{},'Upcoming maintenance windows'),el('p',{class:'m'},'Approved and scheduled changes with planned start and end times.'));
+      if(!upcoming.length)calendar.appendChild(el('p',{class:'m'},'No approved maintenance windows are scheduled.'));
+      upcoming.forEach(function(x){calendar.appendChild(el('button',{type:'button',class:'change-calendar-row',onclick:function(){openChange(x.id);}},el('span',{class:'change-calendar-date'},changeDateLabel(x.planned_start)),el('span',{class:'change-calendar-title'},el('strong',{},'CHG-'+x.id+' · '+x.title),el('small',{},changeDateLabel(x.planned_end))),el('span',{class:'itsm-severity '+String(x.risk||'medium').toLowerCase()},cap(x.risk))));});
+      return el('div',{class:'page wide itsm-page changes-page'},el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'SERVICE MANAGEMENT'),el('h2',{},'Change management'),el('p',{class:'m'},'Assess risk, coordinate approvals and schedule controlled service changes.')),el('div',{class:'itsm-head-actions'},el('span',{class:'itsm-plan-pill'},'PRO'),el('button',{type:'button',class:'btn',onclick:function(){closePanes();changesOpen=true;changeCreating=true;changeSelected=0;changeDetail=null;changeApprovalStages=[{name:'CAB review',mode:'all',approverIds:[]}];draw();}},'＋ New change'))),stats,el('div',{class:'itsm-layout change-layout'},el('div',{class:'itsm-main-col'},listCard,calendar),el('div',{class:'itsm-detail-col'},detail)));
+    }
+    function refreshChangeList(redraw) {
+      changeLoading=true;if(redraw!==false)draw();
+      return api('itsm-change-list',{limit:200,status:changeStatus,risk:changeRisk}).then(function(r){changeLoading=false;if(!r.ok){say(r.body.error||'Could not refresh changes.',true);return;}changeRows=r.body.changes||[];if(redraw!==false)draw();});
+    }
 
     // ── Problem management: root-cause records linked to existing incidents ──
     function loadProblems() {
@@ -444,14 +602,14 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
-      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); }
+      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
@@ -1701,7 +1859,7 @@
       qBox.placeholder = tr('Search tickets, contacts, companies, agents…'); qBox.setAttribute('aria-label', tr('Search tickets')); newBtn.textContent = tr('+ New ticket');
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }
