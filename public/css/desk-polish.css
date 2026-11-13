@@ -658,3 +658,23 @@
 .deskapp .company-empty-state h3{margin:0;font-size:15px;letter-spacing:-.02em;text-transform:none;color:var(--d-ink)}
 .deskapp .company-empty-state p{max-width:480px;margin:0;color:var(--d-muted);font-size:12px;line-height:1.6}
 @media(max-width:680px){.deskapp .company-workspace{padding:16px 12px}.deskapp .company-hero{align-items:flex-start;flex-direction:column}.deskapp .company-hero-count{min-width:0;grid-template-columns:auto auto;align-items:center;gap:8px;padding:8px 11px}.deskapp .company-summary-grid{grid-template-columns:1fr}.deskapp .company-form-grid{grid-template-columns:1fr}.deskapp .company-notes-field{grid-column:auto}.deskapp .company-form-foot{align-items:flex-start;flex-direction:column}.deskapp .company-directory-head{align-items:flex-start;flex-direction:column}}
+
+
+/* Customer sandbox environment management */
+.deskapp .sandbox-workspace{max-width:980px;gap:16px}
+.deskapp .sandbox-page-head{padding:4px 0 8px}
+.deskapp .sandbox-page-head h2{margin:5px 0 6px}
+.deskapp .sandbox-eyebrow{font-size:10px;font-weight:800;letter-spacing:.13em;color:var(--accent)}
+.deskapp .sandbox-env-card{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:19px 20px;border:1px solid var(--d-line);border-radius:14px;background:var(--d-panel);box-shadow:var(--d-shadow)}
+.deskapp .sandbox-env-card p{margin:6px 0 0;max-width:660px;line-height:1.5}
+.deskapp .sandbox-env-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.deskapp .sandbox-env-state{font-size:9px;font-weight:800;letter-spacing:.08em;padding:4px 8px;border-radius:999px;background:color-mix(in srgb,#16a36a 12%,var(--d-panel));color:#168052}
+.deskapp .sandbox-env-card.sandbox{border-color:color-mix(in srgb,#d99a28 42%,var(--d-line));background:color-mix(in srgb,#d99a28 4%,var(--d-panel))}
+.deskapp .sandbox-env-card.sandbox .sandbox-env-state{background:color-mix(in srgb,#d99a28 16%,var(--d-panel));color:#9a650c}
+.deskapp .sandbox-create-card{display:flex;align-items:center;gap:17px;padding:22px;border:1px dashed color-mix(in srgb,var(--accent) 42%,var(--d-line));border-radius:14px;background:color-mix(in srgb,var(--accent) 4%,var(--d-panel))}
+.deskapp .sandbox-create-card h3{margin:0 0 6px;color:var(--d-ink);font-size:14px;letter-spacing:0;text-transform:none}
+.deskapp .sandbox-create-card p{margin:0;line-height:1.5}
+.deskapp .sandbox-create-card .btn{flex:none;white-space:nowrap}
+.deskapp .sandbox-create-icon{width:44px;height:44px;display:grid;place-items:center;flex:none;border-radius:13px;background:color-mix(in srgb,var(--accent) 13%,var(--d-panel));color:var(--accent);font-size:23px}
+.deskapp .sandbox-footnote{font-size:12px}
+@media(max-width:680px){.deskapp .sandbox-create-card{align-items:flex-start;flex-wrap:wrap}.deskapp .sandbox-create-card .btn{margin-left:61px}.deskapp .sandbox-env-card{flex-direction:column}}
