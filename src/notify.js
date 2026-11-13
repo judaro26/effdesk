@@ -55,7 +55,7 @@ export async function notifyChangeApproval(pool,mailer,orgId,changeId,stageIndex
    try{
     const kind=event==='requested'?'change_approval_requested':event==='rejected'?'change_approval_rejected':event==='completed'?'change_approval_completed':'change_approval_decided';
     const summary=event==='requested'?'Your approval is needed'+(data.stage?' for '+data.stage.name:'')+'.':event==='rejected'?'The change request was rejected.':event==='completed'?'All approval stages are complete.':'A change approval decision was recorded.';
-    await mailer.agentNotice(person.email,{kind,orgName:data.orgName,number:'CHG-'+Number(changeId),subject:data.row.title,summary,url:PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)});
+    await mailer.agentNotice(person.email,{kind,orgName:data.orgName,number:'CHG-'+Number(changeId),subject:data.row.title,summary,url:PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)+'&change='+Number(changeId)});
     await withOrg(pool,orgId,c=>c.query("update change_approval_notifications set delivery_status='sent',last_error=null,updated_at=now() where org_id=$1 and id=$2",[orgId,claim.rows[0].id]));
     sent++;
    }catch(e){
