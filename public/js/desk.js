@@ -494,6 +494,7 @@
         var named=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
         var lookup=aliases[raw]||raw||named;
         var src=assets[lookup]||assets[named]||null;
+        if(!src){var candidates=[raw,named].map(function(v){return v.replace(/^(microsoft|zoho)/,'');});for(var i=0;i<candidates.length&&!src;i++)src=assets[candidates[i]]||null;}
         var fallback={cliq:'Z',rootly:'R',firehydrant:'FH',jamf:'J'};
         var initials=fallback[raw]||String(name||'').trim().split(/\s+/).slice(0,2).map(function(part){return part.charAt(0);}).join('').toUpperCase()||'IN';
         var mark=el('div',{class:'integration-provider-mark integration-provider-logo',role:'img','aria-label':name+' logo',title:name});
