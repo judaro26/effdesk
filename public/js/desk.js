@@ -1818,8 +1818,9 @@
       var submit = function () {
         var patch = { status: newf.status }; if (newf.assigneeId) patch.assigneeId = newf.assigneeId; if (newf.queueId) patch.queueId = newf.queueId; if (newf.clientId) patch.clientId = newf.clientId; if (newf.type !== 'question') patch.type = newf.type; if (newf.priority !== 'normal') patch.priority = newf.priority; if (newf.cc.trim()) patch.cc = newf.cc; if (Object.keys(newf.custom).length) patch.custom = newf.custom;
         if (newf.status === 'open') delete patch.status;
-        var htmlBody = richNewEditor ? richNewEditor.getHtml() : undefined;
-        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: body.value, htmlBody: htmlBody, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) {
+        var htmlBody = richNewEditor ? richNewEditor.getHtml() : undefined, bodyText = richNewEditor ? htmlPlain(htmlBody) : body.value;
+        newf.body = bodyText;
+        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: bodyText, htmlBody: htmlBody, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) {
           if (!r.ok) return say(r.body.error, true); note = ''; var warn = r.body.warning; reset(); creating = false;
           return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]).then(function () { if (warn) say('Created, but some properties were not saved: ' + warn, true); });
         });
