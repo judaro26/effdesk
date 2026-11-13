@@ -141,6 +141,14 @@ const { mailLimit } = await import('../src/plans.js'); const { getEntitlements }
 check('the mail limit and storage follow too', mailLimit(entA) === 9000 && entA.storageBytes === 123 * 1048576 && entA.aiMonthly === 5);
 await D(boss, 'customer-save', { slug: 'acme', featuresOn: ['whatsapp'] });
 check('clearing a limit puts the plan\'s back, and a feature can be switched on', (await A(olivia, 'whatsapp-templates')).status === 200 && (await getEntitlements(pool, acme.id)).seats === Infinity);
+// ---- customer sandbox provisioning
+const sb = await D(boss, 'customer-sandbox-create', { slug: 'acme' });
+const sandbox = sb.body.sandbox;
+check('the platform owner can provision an isolated sandbox for a customer', sb.status === 200 && sandbox.slug === 'acme-sandbox' && sandbox.name === 'Acme — Sandbox' && sb.body.members === 2);
+check('the sandbox gets the same team members and roles without touching production membership', (await pool.query('select count(*)::int n from member where "organizationId"=$1', [sandbox.id])).rows[0].n === 2 && (await pool.query('select count(*)::int n from member where "organizationId"=$1 and role=\'owner\'', [sandbox.id])).rows[0].n === 1);
+check('the sandbox is marked as a separate environment and has no production ticket data', JSON.parse((await pool.query('select metadata from "organization" where id=$1', [sandbox.id])).rows[0].metadata).sandboxOf === acme.id && (await pool.query('select count(*)::int n from tickets where org_id=$1', [sandbox.id])).rows[0].n === 0);
+check('sandbox provisioning is idempotent and does not create a duplicate', (await D(boss, 'customer-sandbox-create', { slug: 'acme' })).body.existing === true && (await pool.query('select count(*)::int n from "organization" where slug=\'acme-sandbox\'')).rows[0].n === 1);
+check('non-platform users cannot provision a customer sandbox', (await D(olivia, 'customer-sandbox-create', { slug: 'acme' })).status === 403);
 check('a suspension needs a reason', (await D(boss, 'customer-suspend', { slug: 'acme', suspended: true })).status === 400);
 await D(boss, 'customer-suspend', { slug: 'acme', suspended: true, reason: 'Payment dispute' });
 const sus = await A(olivia, 'list'); check('a suspended workspace is refused with the reason', sus.status === 403 && sus.body.suspended === true && /Payment dispute/.test(sus.body.error));
