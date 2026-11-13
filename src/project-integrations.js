@@ -8,6 +8,7 @@ import { effectiveHelpSettings } from './help.js';
 import { discoveryCallback } from './cmdb-discovery.js';
 
 const PROVIDERS = new Set(['linear','jira']);
+const ISSUE_PROVIDERS = new Set(['linear','jira','github','gitlab']);
 const clean = (v,n=500) => String(v ?? '').replace(/\u0000/g,'').trim().slice(0,n);
 const json = (status, body) => new Response(JSON.stringify(body), {status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const fail = (status,error) => json(status,{error});
@@ -37,20 +38,33 @@ async function requestToken(url,body) {
   const r=await fetch(url,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json'},body:new URLSearchParams(body),signal:AbortSignal.timeout(12000),redirect:'error'});
   const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error('OAuth token exchange failed ('+r.status+').'); return d;
 }
-async function apiCall(provider,token,method,pathOrQuery,body) {
-  let url,headers={authorization:'Bearer '+token,accept:'application/json'};
+async function apiCall(provider,token,method,pathOrQuery,body={}) {
   if(provider==='linear') {
-    url='https://api.linear.app/graphql'; headers['content-type']='application/json';
-    const r=await fetch(url,{method:'POST',headers,body:JSON.stringify({query:pathOrQuery,variables:body||{}}),signal:AbortSignal.timeout(12000)});
-    const d=await r.json(); if(!r.ok || d.errors?.length) throw new Error(d.errors?.[0]?.message || 'Linear API request failed.'); return d.data;
+    const headers={authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'};
+    const r=await fetch('https://api.linear.app/graphql',{method:'POST',headers,body:JSON.stringify({query:pathOrQuery,variables:body||{}}),signal:AbortSignal.timeout(12000),redirect:'error'});
+    const d=await r.json().catch(()=>({})); if(!r.ok || d.errors?.length) throw new Error(d.errors?.[0]?.message || 'Linear API request failed.'); return d.data;
   }
-  url='https://api.atlassian.com/ex/jira/'+encodeURIComponent(body.cloudId)+pathOrQuery;
-  if(method==='GET') { const r=await fetch(url,{headers,signal:AbortSignal.timeout(12000)}); const d=await r.json(); if(!r.ok) throw new Error('Jira API request failed ('+r.status+').'); return d; }
+  if(provider==='github'||provider==='gitlab') {
+    const base=provider==='github'?'https://api.github.com':'https://gitlab.com/api/v4';
+    const headers={accept:'application/json','content-type':'application/json','user-agent':'EffDesk-Integration/1',...(provider==='github'?{authorization:'Bearer '+token,'x-github-api-version':'2022-11-28'}:{'private-token':token})};
+    const r=await fetch(base+pathOrQuery,{method,headers,...(method==='GET'||method==='HEAD'?{}:{body:JSON.stringify(body||{})}),signal:AbortSignal.timeout(12000),redirect:'error'});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error((provider==='github'?'GitHub':'GitLab')+' API request failed ('+r.status+').');
+    return d;
+  }
+  const headers={authorization:'Bearer '+token,accept:'application/json'};
+  const url='https://api.atlassian.com/ex/jira/'+encodeURIComponent(body.cloudId)+pathOrQuery;
+  if(method==='GET') { const r=await fetch(url,{headers,signal:AbortSignal.timeout(12000),redirect:'error'}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error('Jira API request failed ('+r.status+').'); return d; }
   headers['content-type']='application/json';
-  const r=await fetch(url,{method,headers,body:JSON.stringify(body.payload||{}),signal:AbortSignal.timeout(12000)});
+  const r=await fetch(url,{method,headers,body:JSON.stringify(body.payload||{}),signal:AbortSignal.timeout(12000),redirect:'error'});
   const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error('Jira API request failed ('+r.status+').'); return d;
 }
 async function tokenFor(pool,env,org,provider) {
+  if(provider==='github'||provider==='gitlab') {
+    const row=(await withOrg(pool,org,c=>c.query('select credentials_enc from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,provider]))).rows[0];
+    if(!row) throw new Error('Connect '+provider+' first.');
+    return dec(env,row.credentials_enc);
+  }
   const row=(await withOrg(pool,org,c=>c.query('select access_token_enc,refresh_token_enc,expires_at from project_integrations where org_id=$1 and provider=$2',[org,provider]))).rows[0];
   if(!row) throw new Error('Connect '+provider+' first.');
   if(row.expires_at && new Date(row.expires_at).getTime()<Date.now()+60000 && row.refresh_token_enc) {
@@ -193,7 +207,7 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     const n=Number(url.searchParams.get('ticketNumber'))||0;
     if(!n) return fail(400,'Choose an EffDesk ticket.');
     const data=await withOrg(pool,org,async db=>{
-      const connections=(await db.query('select provider,external_workspace_name,external_workspace_url from project_integrations where org_id=$1 order by provider',[org])).rows;
+      const connections=(await db.query('select provider,external_workspace_name,external_workspace_url from project_integrations where org_id=$1 union all select provider,account_name as external_workspace_name,null::text as external_workspace_url from integration_connections where org_id=$1 and status in (\'connected\',\'degraded\') order by provider',[org,org])).rows;
       const links=(await db.query('select id,provider,external_issue_id,external_issue_key,external_issue_url,external_project_id,last_synced_at,created_at from project_issue_links where org_id=$1 and ticket_number=$2 order by created_at desc',[org,n])).rows;
       return {connections,links};
     });
@@ -201,12 +215,20 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
   if(req.method==='GET' && path.endsWith('/search')) {
     const p=clean(url.searchParams.get('provider'),20), q=clean(url.searchParams.get('q'),180);
-    if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    if(!ISSUE_PROVIDERS.has(p)) return fail(400,'Choose a connected issue provider.');
     if(q.length<2) return json(200,{items:[]});
     try {
-      const conn=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
-      if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first.');
+      const conn=PROVIDERS.has(p)?(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]:(await withOrg(pool,org,db=>db.query('select provider from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,p]))).rows[0];
+      if(!conn) return fail(409,'Connect '+p+' first.');
       const token=await tokenFor(pool,env,org,p);
+      if(p==='github') {
+        const d=await apiCall(p,token,'GET','/search/issues?q='+encodeURIComponent(q)+'&per_page=20');
+        return json(200,{items:(d.items||[]).filter(x=>!x.pull_request).map(x=>{const repo=String(x.repository_url||'').split('/repos/')[1]||'';return {id:repo+'#'+x.number,key:repo+'#'+x.number,title:x.title,url:x.html_url,status:x.state,project:repo,updatedAt:x.updated_at};})});
+      }
+      if(p==='gitlab') {
+        const d=await apiCall(p,token,'GET','/issues?scope=all&search='+encodeURIComponent(q)+'&per_page=20&order_by=updated_at');
+        return json(200,{items:(Array.isArray(d)?d:[]).map(x=>({id:String(x.project_id)+'#'+x.iid,key:(x.references?.full||('Issue #'+x.iid)),title:x.title,url:x.web_url,status:x.state,project:String(x.project_id),updatedAt:x.updated_at}))});
+      }
       if(p==='linear') {
         const d=await apiCall(p,token,'POST','query SearchIssues($term:String!){ searchIssues(term:$term,first:20){ nodes { id identifier title url updatedAt state { name } team { id name } project { name } } } }',{term:q});
         return json(200,{items:(d.issueSearch?.nodes||[]).map(linearIssueShape)});
@@ -245,7 +267,18 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       const conn=(await withOrg(pool,org,db=>db.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
       if(!conn) return fail(409,'Connect '+p+' first.');
       const token=await tokenFor(pool,env,org,p); let ext;
-      if(p==='linear') {
+      if(p==='github') {
+        const match=id.match(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/);
+        if(!match) return fail(400,'Choose a valid GitHub issue result.');
+        const d=await apiCall(p,token,'GET','/repos/'+match[1].split('/').map(encodeURIComponent).join('/')+'/issues/'+match[2]);
+        if(d.pull_request) return fail(400,'Pull requests cannot be linked as issues in this workflow.');
+        ext={id:String(d.id),key:match[1]+'#'+d.number,url:d.html_url,projectId:match[1]};
+      } else if(p==='gitlab') {
+        const match=id.match(/^(\d+)#(\d+)$/);
+        if(!match) return fail(400,'Choose a valid GitLab issue result.');
+        const d=await apiCall(p,token,'GET','/projects/'+match[1]+'/issues/'+match[2]);
+        ext={id:String(d.id),key:(d.references?.full||('Issue #'+d.iid)),url:d.web_url,projectId:String(d.project_id)};
+      } else if(p==='linear') {
         const d=await apiCall(p,token,'POST','query IssueForLink($id:String!){ issue(id:$id){ id identifier title url updatedAt state { name } team { id name } project { name } } }',{id});
         if(!d.issue) return fail(404,'That Linear issue could not be found.');
         ext={id:d.issue.id,key:d.issue.identifier,url:d.issue.url,projectId:d.issue.team?.id};
@@ -289,7 +322,15 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
       }
       if(!project||!title) return fail(400,'Complete the project/team and issue title.');
       const token=await tokenFor(pool,env,org,p); let ext;
-      if(p==='linear') {
+      if(p==='github') {
+        if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(project)) return fail(400,'Choose a valid GitHub repository.');
+        const d=await apiCall(p,token,'POST','/repos/'+project.split('/').map(encodeURIComponent).join('/')+'/issues',{title,body:description||'EffDesk ticket #'+n});
+        ext={id:String(d.id),key:project+'#'+d.number,url:d.html_url,projectId:project};
+      } else if(p==='gitlab') {
+        if(!/^\d+$/.test(project)) return fail(400,'Choose a valid GitLab project.');
+        const d=await apiCall(p,token,'POST','/projects/'+project+'/issues',{title,description:description||'EffDesk ticket #'+n});
+        ext={id:String(d.id),key:(d.references?.full||('Issue #'+d.iid)),url:d.web_url,projectId:String(d.project_id)};
+      } else if(p==='linear') {
         const input={teamId:project,title,description:description||'EffDesk ticket #'+n};
         const values=b.fields&&typeof b.fields==='object'?b.fields:{}; const requiredMissing=templateFields.filter(f=>f.required&&(values[f.id]===undefined||values[f.id]===null||values[f.id]===''||(Array.isArray(values[f.id])&&!values[f.id].length))).map(f=>f.name||f.id); if(requiredMissing.length) return fail(400,'Complete the required fields: '+requiredMissing.join(', ')+'.');
         const priorityValue=values.priority!==undefined?values.priority:b.priority; if(priorityValue!==undefined&&priorityValue!==null&&priorityValue!=='') input.priority=Math.max(0,Math.min(4,Number(priorityValue)));
@@ -330,12 +371,20 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
     return json(200,{connections:rows,links});
   }
   if(req.method==='GET' && path.endsWith('/catalog')) {
-    const p=clean(url.searchParams.get('provider'),20); if(!PROVIDERS.has(p)) return fail(400,'Choose Linear or Jira.');
+    const p=clean(url.searchParams.get('provider'),20); if(!ISSUE_PROVIDERS.has(p)) return fail(400,'Choose a supported issue provider.');
     try {
-      const conn=(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0];
+      const conn=PROVIDERS.has(p)?(await withOrg(pool,org,c=>c.query('select external_workspace_id,external_workspace_url from project_integrations where org_id=$1 and provider=$2',[org,p]))).rows[0]:(await withOrg(pool,org,c=>c.query('select provider from integration_connections where org_id=$1 and provider=$2 and status in (\'connected\',\'degraded\')',[org,p]))).rows[0];
       // An unconnected provider is a normal setup state, not an upstream gateway failure.
       if(!conn) return fail(409,'Connect '+(p==='linear'?'Linear':'Jira')+' first to load its teams or projects.');
       const token=await tokenFor(pool,env,org,p);
+      if(p==='github') {
+        const d=await apiCall(p,token,'GET','/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member');
+        return json(200,{items:(Array.isArray(d)?d:[]).map(x=>({id:x.full_name,name:x.name,key:x.full_name,private:!!x.private,url:x.html_url}))});
+      }
+      if(p==='gitlab') {
+        const d=await apiCall(p,token,'GET','/projects?membership=true&simple=true&per_page=100&order_by=last_activity_at');
+        return json(200,{items:(Array.isArray(d)?d:[]).map(x=>({id:String(x.id),name:x.name_with_namespace||x.name,key:x.path_with_namespace,url:x.web_url}))});
+      }
       if(p==='linear') { const d=await apiCall(p,token,'POST','query { teams { nodes { id name } } }'); return json(200,{items:d.teams.nodes.map(x=>({id:x.id,name:x.name}))}); }
       const d=await apiCall(p,token,'GET','/rest/api/3/project/search?maxResults=100',{cloudId:conn.external_workspace_id});
       return json(200,{cloudId:conn.external_workspace_id,siteHost:String(conn.external_workspace_url||'').split('://').pop().replace(/\/+$/, ''),items:(d.values||[]).map(x=>({id:x.key,name:x.name,key:x.key}))});
@@ -478,7 +527,7 @@ async function receiveWebhook(req,{pool,env,provider}) {
 // Push ticket changes and agent replies to the linked external issue. Failures are logged but never block EffDesk ticket work.
 export async function syncTicketUpdate(pool,env,org,number,patch={}) {
   try {
-    const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,l.external_project_id,i.external_workspace_id from project_issue_links l join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
+    const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,l.external_issue_key,l.external_project_id,i.external_workspace_id from project_issue_links l left join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
     if(!links.rowCount) return {synced:0};
     const t=(await withOrg(pool,org,c=>c.query('select subject,status,priority from tickets where org_id=$1 and number=$2',[org,Number(number)]))).rows[0]; if(!t) return {synced:0};
     let synced=0;
@@ -493,6 +542,20 @@ export async function syncTicketUpdate(pool,env,org,number,patch={}) {
           const st=states.team.states.nodes.find(x=>x.type===want); if(st) input.stateId=st.id;
         }
         if(Object.keys(input).length) await apiCall('linear',token,'POST',`mutation IssueUpdate($id:String!,$input:IssueUpdateInput!){ issueUpdate(id:$id,input:$input){success} }`,{id:link.external_issue_id,input});
+      } else if(link.provider==='github'||link.provider==='gitlab') {
+        const match=String(link.external_issue_key||'').match(/^(.*)#(\d+)$/);
+        if(!match) throw new Error('The linked issue reference is invalid.');
+        if(link.provider==='github') {
+          const path='/repos/'+match[1].split('/').map(encodeURIComponent).join('/')+'/issues/'+match[2], body={};
+          if(patch.subject!==undefined) body.title=t.subject;
+          if(patch.status!==undefined) body.state=t.status==='solved'||t.status==='closed'?'closed':'open';
+          if(Object.keys(body).length) await apiCall('github',token,'PATCH',path,body);
+        } else {
+          const path='/projects/'+encodeURIComponent(link.external_project_id)+'/issues/'+match[2], body={};
+          if(patch.subject!==undefined) body.title=t.subject;
+          if(patch.status!==undefined) body.state_event=t.status==='solved'||t.status==='closed'?'close':'reopen';
+          if(Object.keys(body).length) await apiCall('gitlab',token,'PUT',path,body);
+        }
       } else {
         const cloudId=link.external_workspace_id, fields={}; if(patch.subject!==undefined) fields.summary=t.subject;
         if(patch.priority!==undefined) fields.priority={name:({urgent:'Highest',high:'High',normal:'Medium',low:'Low'})[t.priority]};
@@ -510,12 +573,16 @@ export async function syncTicketUpdate(pool,env,org,number,patch={}) {
 }
 export async function syncTicketComment(pool,env,org,number,body) {
   const text=clean(body,8000); if(!text) return {synced:0};
-  const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,i.external_workspace_id from project_issue_links l join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
+  const links=await withOrg(pool,org,c=>c.query('select l.provider,l.external_issue_id,l.external_issue_key,l.external_project_id,i.external_workspace_id from project_issue_links l left join project_integrations i on i.org_id=l.org_id and i.provider=l.provider where l.org_id=$1 and l.ticket_number=$2',[org,Number(number)]));
   let synced=0;
   for(const link of links.rows) try {
     const token=await tokenFor(pool,env,org,link.provider);
     if(link.provider==='linear') await apiCall('linear',token,'POST',`mutation CommentCreate($input:CommentCreateInput!){ commentCreate(input:$input){success} }`,{input:{issueId:link.external_issue_id,body:'EffDesk agent: '+text}});
-    else await apiCall('jira',token,'POST','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id)+'/comment',{cloudId:link.external_workspace_id,payload:{body:{type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'EffDesk agent: '+text}]}]}}});
+    else if(link.provider==='github'||link.provider==='gitlab') {
+      const match=String(link.external_issue_key||'').match(/^(.*)#(\d+)$/); if(!match) throw new Error('The linked issue reference is invalid.');
+      if(link.provider==='github') await apiCall('github',token,'POST','/repos/'+match[1].split('/').map(encodeURIComponent).join('/')+'/issues/'+match[2]+'/comments',{body:'EffDesk agent: '+text});
+      else await apiCall('gitlab',token,'POST','/projects/'+encodeURIComponent(link.external_project_id)+'/issues/'+match[2]+'/notes',{body:'EffDesk agent: '+text});
+    } else await apiCall('jira',token,'POST','/rest/api/3/issue/'+encodeURIComponent(link.external_issue_id)+'/comment',{cloudId:link.external_workspace_id,payload:{body:{type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'EffDesk agent: '+text}]}]}}});
     synced++;
   } catch(e) { console.warn('external comment sync failed:',link.provider,e.message); }
   return {synced};
