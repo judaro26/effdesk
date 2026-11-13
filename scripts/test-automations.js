@@ -75,6 +75,7 @@ const reopenRun=await runTicketLifecycle(pool,mailer,ENV);
 check('idle on-hold tickets automatically return to open',reopenRun.actions>=1&&(await A(olivia,'get',{number:lifeReopen.number})).body.ticket.status==='open');
 const lifeCustomer=(await A(olivia,'create',{subject:'Customer reminder',body:'Need assistance',requesterEmail:'life-customer@example.com'})).body.ticket;
 await A(olivia,'update',{number:lifeCustomer.number,patch:{status:'pending'}});
+await withOrg(pool,acme.id,c=>c.query("update tickets set updated_at=now()-interval '3 hours' where org_id=$1 and number=$2",[acme.id,lifeCustomer.number]));
 await withOrg(pool,acme.id,c=>c.query("update ticket_messages set created_at=now()-interval '3 hours' where org_id=$1 and ticket_id=(select id from tickets where org_id=$1 and number=$2) and kind='requester'",[acme.id,lifeCustomer.number]));
 await A(olivia,'lifecycle-save',{policy:{autoCloseEnabled:false,autoCloseDays:4,customerReminderEnabled:true,customerReminderHours:1,customerReminderRepeatHours:1,agentReminderEnabled:false,agentReminderHours:24,agentReminderRepeatHours:48,reopenEnabled:false,reopenAfterDays:14,permanentCloseEnabled:false,permanentCloseDays:30}});
 outbox.length=0;
