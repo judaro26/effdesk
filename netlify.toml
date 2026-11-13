@@ -1,5 +1,5 @@
 [build]
-  command = "node scripts/migrate-on-build.js && (node scripts/minify-assets.js || echo minify skipped)"
+  command = "node --check public/js/desk.js && node scripts/migrate-on-build.js && (node scripts/minify-assets.js || echo minify skipped)"
   publish = "public"
   functions = "netlify/functions"
 
@@ -200,3 +200,8 @@
   for = "/brand/*"
   [headers.values]
     Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/desk.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
