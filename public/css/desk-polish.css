@@ -858,3 +858,10 @@
 @media(prefers-reduced-motion:reduce){
   .deskapp .rail,.deskapp .ticket .compose{scroll-behavior:auto}
 }
+
+
+/* Keep the profile popover above workspace content without trapping navigation underneath it. */
+.deskapp .top{z-index:80}
+.deskapp .usermenu{z-index:81}
+.deskapp .usermenu>.menu{z-index:1000;max-height:min(70vh,560px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:680px){.deskapp .top{z-index:80}.deskapp .usermenu>.menu{z-index:500;max-height:calc(70vh - env(safe-area-inset-bottom))}}
