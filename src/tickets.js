@@ -184,6 +184,7 @@ export async function addRequesterMessage(pool, orgId, number, { body, htmlBody,
       const follow = (await c.query(`insert into tickets(org_id,number,subject,priority,channel,requester_name,requester_email,tags,client_id,lifecycle_parent_ticket_id)
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id,number`,[orgId,next,clean('Follow-up: '+t.subject,200),t.priority,t.channel,t.requester_name,t.requester_email,t.tags,t.client_id,t.id])).rows[0];
       await logEvent(c,orgId,follow.id,clean(authorName,100)||t.requester_email,'created','Follow-up to permanently closed ticket #'+t.number);
+      const assigned = await autoAssign(c,orgId,follow.id); if (assigned) { await c.query('update tickets set assignee_id=$3 where org_id=$1 and id=$2',[orgId,follow.id,assigned.id]); await logEvent(c,orgId,follow.id,'Routing','assigned','Assigned to '+assigned.name+' automatically'); }
       await logEvent(c,orgId,t.id,'Ticket lifecycle automation','follow_up_created','New follow-up ticket #'+next+' created after permanent closure');
       const mid=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_name,body,message_id,html_body) values($1,$2,$3,$4,$5,$6,$7) returning id',[orgId,follow.id,'requester',clean(authorName,100),text,messageId?clean(messageId,300):null,String(htmlBody||'').slice(0,100000)||null])).rows[0].id;
       return { ok:true, followup:true, number:next, messageRowId:mid };
