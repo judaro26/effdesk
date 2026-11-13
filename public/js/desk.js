@@ -445,6 +445,31 @@
     }
 
     // ── Problem management: root-cause records linked to existing incidents ──
+    function integrationRequest(method,path,body){
+      return fetchFn('/api/integrations'+path+'?org='+encodeURIComponent(orgId),{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().catch(function(){return {};}).then(function(j){return {ok:r.ok,status:r.status,body:j};});});
+    }
+    function loadIntegrations(){
+      if(!isAdmin)return Promise.resolve();
+      closePanes();integrationsOpen=true;integrationsRows=null;integrationsLoading=true;draw();
+      return integrationRequest('GET','/connections').then(function(r){integrationsLoading=false;if(!r.ok){integrationsRows=[];say(r.body.error||'Could not load external integrations.',true);}else integrationsRows=r.body.connections||[];draw();});
+    }
+    function integrationsPane(){
+      var providers=[{id:'linear',name:'Linear',detail:'Issue tracking, teams and cycles.'},{id:'jira',name:'Jira',detail:'Projects, workflows and issues.'}],rows=integrationsRows||[];
+      var cards=providers.map(function(p){
+        var connection=rows.filter(function(x){return x.provider===p.id;})[0],connected=!!connection;
+        return el('article',{class:'integration-provider-card integration-provider-'+p.id},
+          el('div',{class:'integration-provider-top'},el('div',{class:'integration-provider-mark'},p.id==='linear'?'L':'J'),el('div',{class:'integration-provider-title'},el('h3',{},p.name),el('p',{class:'m'},p.detail)),el('span',{class:'integration-status '+(connected?'is-connected':'is-disconnected')},connected?'Connected':'Not connected')),
+          el('p',{class:'integration-provider-description'},connected?'Connected to '+(connection.external_workspace_name||'your '+p.name+' workspace')+'. Ticket and issue updates can synchronize with EffDesk.':'Connect your '+p.name+' workspace to link external issues with EffDesk tickets.'),
+          el('div',{class:'integration-provider-foot'},el('span',{class:'integration-provider-meta'},connected?'Workspace connection active':'Secure OAuth connection'),
+            connected?el('button',{type:'button',class:'btn l sm',onclick:function(){if(!root.confirm('Disconnect '+p.name+' from this workspace?'))return;integrationRequest('POST','/disconnect',{provider:p.id}).then(function(r){if(!r.ok)return say(r.body.error||'Could not disconnect '+p.name+'.',true);say(p.name+' disconnected.');loadIntegrations();});}},'Disconnect'):el('button',{type:'button',class:'btn',onclick:function(e){var b=e.currentTarget;b.disabled=true;b.textContent='Connecting…';integrationRequest('POST','/oauth/start',{provider:p.id}).then(function(r){if(!r.ok||!r.body.url){b.disabled=false;b.textContent='Connect '+p.name;return say(r.body.error||'Could not start OAuth connection.',true);}root.location.assign(r.body.url);}).catch(function(){b.disabled=false;b.textContent='Connect '+p.name;say('Could not start OAuth connection.',true);});}},'Connect '+p.name))
+        );
+      });
+      return el('div',{class:'page wide integrations-desk-page'},
+        el('div',{class:'itsm-page-head'},el('div',{},el('span',{class:'itsm-kicker'},'WORKSPACE CONNECTIONS'),el('h2',{},'External integrations'),el('p',{class:'m'},'Connect issue-tracking workspaces and synchronize linked work with EffDesk.'))),
+        integrationsLoading?el('p',{class:'m'},'Loading workspace connections…'):el('div',{class:'integration-providers-grid'},cards),
+        el('p',{class:'m'},'Connections are scoped to this workspace. Each customer organization manages its own credentials and authorization.')
+      );
+    }
     function loadConfigurationItems(){
       closePanes();ciOpen=true;ciRows=null;ciDetail=null;ciSelected=0;ciEditing=null;ciLoading=true;draw();
       return Promise.all([api('itsm-ci-list',{limit:500}),api('itsm-services-list'),api('itsm-ci-vendors-list'),api('itsm-ci-contracts-list'),api('itsm-ci-licenses-list'),api('itsm-ci-warranty-report',{days:90}),api('itsm-ci-discovery-status'),api('itsm-ci-agent-list'),api('itsm-ci-license-reconciliation'),api('itsm-ci-ownership-report'),api('itsm-ci-compliance-list'),api('itsm-ci-compliance-evaluate')]).then(function(rs){
@@ -823,17 +848,17 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = integrationsOpen ? 'integrations' : ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
-      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems)); }
+      if (has('itsm') && role !== 'light') { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }\n      if (role !== 'light') rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems));
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
-      if (isAdmin) rail.appendChild(el('a', { class: 'ri', href: 'https://app.effdesk.com/integrations.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'aria-label': 'External project integrations', title: 'External project integrations' }, icon('integrations')));
+      if (isAdmin) rail.appendChild(item('integrations', 'External integrations', 'data-integrations', loadIntegrations));
       rail.appendChild(item('reports', 'Reports', 'data-reports', loadReport));
       if (isAdmin || support) rail.appendChild(item('mail', 'Email settings', 'data-mail', function () { api('mail-get').then(function (r) { if (!r.ok) return say(r.body.error, true); closePanes(); settings = r.body; draw(); }); }));
       rail.appendChild(item('help', 'Help center', 'data-help', loadArticles));
@@ -2080,7 +2105,7 @@
       qBox.placeholder = tr('Search tickets, contacts, companies, agents…'); qBox.setAttribute('aria-label', tr('Search tickets')); newBtn.textContent = tr('+ New ticket');
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
     }
     return boot();
   }
