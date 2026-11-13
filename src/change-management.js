@@ -152,7 +152,9 @@ export async function saveChange(pool,orgId,actor,input={},mailer=null){
   }
   if(d.status==='approved'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can approve this change.');
   if(d.status==='rejected'&&before&&before.status==='awaiting_approval')return fail('Only the assigned approvers can reject this change.');
-  if(d.status==='scheduled'&&(!d.plannedStart||!d.plannedEnd))return fail('Set both planned start and end before scheduling the change.');\n  const conflicts=await changeConflicts(c,orgId,{id,start:d.plannedStart,end:d.plannedEnd,serviceIds});\n  if(d.status==='scheduled'&&conflicts.length&&policy.conflictMode==='block'&&!(d.changeType==='emergency'&&policy.emergencyConflictOverride))return { ...fail('This maintenance window conflicts with another change affecting the same service. Choose another window or resolve the conflict.',409),conflicts };
+  if(d.status==='scheduled'&&(!d.plannedStart||!d.plannedEnd))return fail('Set both planned start and end before scheduling the change.');
+  const conflicts=await changeConflicts(c,orgId,{id,start:d.plannedStart,end:d.plannedEnd,serviceIds});
+  if(d.status==='scheduled'&&conflicts.length&&policy.conflictMode==='block'&&!(d.changeType==='emergency'&&policy.emergencyConflictOverride))return { ...fail('This maintenance window conflicts with another change affecting the same service. Choose another window or resolve the conflict.',409),conflicts };
   if(d.status==='implementing'&&(!d.implementationPlan||!d.rollbackPlan))return fail('Document the implementation and rollback plans before starting work.');
   if((d.status==='completed'||d.status==='failed')&&!d.outcome)return fail('Record the implementation outcome before closing the change.');
   const values=[d.title,d.description,d.changeType,d.status,d.risk,d.impact,d.plannedStart,d.plannedEnd,d.implementationPlan,d.testPlan,d.rollbackPlan,d.outcome,d.ownerId||null,JSON.stringify(cfg.stages)];
