@@ -106,3 +106,18 @@
 @media(prefers-reduced-motion:reduce){
   .deskapp *, .deskapp *::before,.deskapp *::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+
+/* Monitoring alert provider setup and incident source links */
+.deskapp .monitoring-alert-section .integration-providers-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.deskapp .monitoring-alert-section .integration-provider-card{padding:14px;border:1px solid var(--d-line);border-radius:13px;background:var(--d-bg);box-shadow:none}
+.deskapp .monitoring-alert-section .integration-provider-mark{width:40px;height:40px;border-radius:11px;background:var(--d-panel);color:var(--d-ink);border:1px solid var(--d-line);box-shadow:none;font-size:14px}
+.deskapp .monitoring-alert-section .integration-provider-description{min-height:50px;margin:12px 0;font-size:12px}
+.deskapp .monitoring-alert-section .integration-provider-card>input{width:100%;min-width:0;margin-top:10px;padding:8px 10px;border:1px solid var(--d-line);border-radius:8px;background:var(--d-panel);color:var(--d-ink);font:inherit;font-size:12px}
+.deskapp .monitoring-alert-links .incident-provider-link-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--d-line);border-radius:10px;background:var(--d-bg)}
+.deskapp .monitoring-alert-links .incident-provider-link-brand{min-width:80px;font-size:12px;font-weight:750;color:var(--d-ink)}
+.deskapp .monitoring-alert-links .incident-provider-link-row .m{flex:1;min-width:150px;font-size:11px}
+.deskapp .monitoring-alert-links .incident-provider-link-row a{font-size:11px;font-weight:700;color:var(--accent);text-decoration:none}
+.deskapp .monitoring-alert-links .incident-provider-link-row a:hover{text-decoration:underline}
+@media(max-width:1000px){.deskapp .monitoring-alert-section .integration-providers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.deskapp .monitoring-alert-section .integration-providers-grid{grid-template-columns:1fr}}
