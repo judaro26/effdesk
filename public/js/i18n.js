@@ -17,7 +17,7 @@
   function excluded(node, allowControls) {
     var p = node && (node.nodeType === 1 ? node : node.parentElement);
     while (p && p.nodeType === 1) {
-      if (p.matches('script,style,pre,code,[contenteditable="true"],[data-no-translate],.mt,.rich,.email-html,.article-body,.article-content,.hc-article,.ticket-table tbody') || (!allowControls && p.matches('textarea,input,select,option'))) return true;
+      if (p.matches('script,style,pre,code,[contenteditable="true"],[data-no-translate],.mt,.rich,.email-html,.article-body,.article-content,.hc-article,.ticket-table tbody') || (!allowControls && p.matches('textarea,input'))) return true;
       p = p.parentElement;
     }
     return false;
