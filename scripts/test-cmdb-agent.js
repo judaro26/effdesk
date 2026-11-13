@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { createWindowsAgent, listWindowsAgents, normalizeWindowsPayload } from '../src/cmdb-agent.js';
-assert.equal(typeof createWindowsAgent,'function');
-assert.equal(typeof listWindowsAgents,'function');
-const payload=normalizeWindowsPayload({hostname:' PC-01 ',manufacturer:'Acme',model:'M1',serial:'S1',os:'Windows 11',osVersion:'10.0.1',softwareComplete:true,software:[{name:' Office ',publisher:'Acme',version:'1'},{name:'',version:'2'}]});
+import { createDiscoveryAgent, listDiscoveryAgents, normalizeDiscoveryPayload } from '../src/cmdb-agent.js';
+assert.equal(typeof createDiscoveryAgent,'function');
+assert.equal(typeof listDiscoveryAgents,'function');
+const payload=normalizeDiscoveryPayload({hostname:' PC-01 ',manufacturer:'Acme',model:'M1',serial:'S1',os:'Windows 11',osVersion:'10.0.1',softwareComplete:true,software:[{name:' Office ',publisher:'Acme',version:'1'},{name:'',version:'2'}]});
 assert.equal(payload.hostname,'PC-01');
+assert.equal(payload.platform,'windows');
 assert.equal(payload.software.length,1);
 assert.equal(payload.software[0].name,'Office');
 assert.equal(payload.softwareComplete,true);
 assert.equal(normalizeWindowsPayload({softwareComplete:false}).softwareComplete,false);
 assert.equal(normalizeWindowsPayload({software:Array.from({length:520},(_,i)=>({name:'App '+i}))}).software.length,500);
-console.log('Windows discovery agent module exports passed.');
+console.log('Cross-platform discovery agent module exports and payload normalization passed.');
