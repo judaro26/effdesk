@@ -63,7 +63,9 @@ export async function getProblem(pool,orgId,id){
 export async function saveProblem(pool,orgId,actor={},input={}){
  const d=normalizeProblem(input);
  if(!d.title)return fail('Give the problem a title.');
- const id=Number(input.id)||0;
+ const hasId=input.id!==undefined&&input.id!==null&&input.id!=='';
+ const id=hasId?Number(input.id):0;
+ if(hasId&&(!Number.isSafeInteger(id)||id<1))return fail('Choose a valid problem record.');
  const incidentNumbers=[...new Set((Array.isArray(input.incidentNumbers)?input.incidentNumbers:[]).map(Number).filter(n=>Number.isSafeInteger(n)&&n>0))].slice(0,100);
  return withOrg(pool,orgId,async c=>{
   if(d.ownerId){
