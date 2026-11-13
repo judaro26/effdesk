@@ -72,8 +72,24 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
   const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 100), offset = Math.max(parseInt(q.offset, 10) || 0, 0);
   return withOrg(pool, orgId, async c => {
-    const rows = (await c.query(`select ${ticketCols} from tickets where ${where.join(' and ')} order by updated_at desc, id desc limit ${limit} offset ${offset}`, args)).rows;
-    const counts = Object.fromEntries((await c.query('select status, count(*)::int n from tickets where org_id = $1 group by status', [orgId])).rows.map(r => [r.status, r.n]));
+    // Fetch the page and tenant-wide status totals in one database round trip.
+    // The counts CTE always returns one row, including when the requested page is empty.
+    const result = await c.query(`
+      with ticket_counts as (
+        select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
+        from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
+      ), ticket_page as (
+        select ${ticketCols} from tickets
+        where ${where.join(' and ')}
+        order by updated_at desc, id desc
+        limit ${limit} offset ${offset}
+      )
+      select ticket_page.*, ticket_counts.by_status as "__counts"
+      from ticket_counts left join ticket_page on true
+    `, args);
+    const first = result.rows[0];
+    const counts = first && first.__counts || {};
+    const rows = result.rows.filter(row => row.id !== null).map(({ __counts, ...ticket }) => ticket);
     return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts } };
   });
 }
@@ -86,13 +102,19 @@ export async function getTicket(pool, orgId, actor, number) {
     const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
     const lifecycleParent = t.lifecycle_parent_ticket_id ? (await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.lifecycle_parent_ticket_id])).rows[0] || null : null;
     const lifecycleFollowUps = (await c.query('select number,subject,status from tickets where org_id=$1 and lifecycle_parent_ticket_id=$2 order by created_at',[orgId,t.id])).rows;
+    // Group once rather than scanning every attachment for every message (O(messages + files)).
+    const attachmentsByMessage = new Map();
+    for (const file of files) {
+      if (!attachmentsByMessage.has(file.message_id)) attachmentsByMessage.set(file.message_id, []);
+      attachmentsByMessage.get(file.message_id).push({ id: file.id, filename: file.filename, contentType: file.content_type, size: file.size });
+    }
     for (const m of messages) {
       // Older automations or integrations may have stored HTML markup in body before html_body existed.
       if (!m.html_body && /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img)\b/i.test(String(m.body || ''))) {
         const safe = cleanHtml(String(m.body).slice(0, 100000));
         if (safe && /<\/?[a-z][^>]*>/i.test(safe)) { m.html_body = safe; m.body = plainOf(safe) || m.body; }
       }
-      m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
+      m.attachments = attachmentsByMessage.get(m.id) || [];
     }
     return { ok: true, ticket: t, messages, lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
   });
