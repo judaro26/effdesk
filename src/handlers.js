@@ -167,6 +167,57 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
       r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
+    case 'sandbox-get': {
+      if ((g = need('sandbox'))) return g;
+      const current = (await pool.query('select id, name, slug, metadata from "organization" where id=$1', [orgId])).rows[0];
+      let meta = {}; try { meta = typeof current.metadata === 'string' ? JSON.parse(current.metadata || '{}') : (current.metadata || {}); } catch {}
+      if (meta.environment === 'sandbox') {
+        const parent = (await pool.query('select id,name,slug from "organization" where id=$1', [meta.sandboxOf])).rows[0] || null;
+        return json(200, { ok: true, environment: 'sandbox', parent, sandbox: null });
+      }
+      const sandboxSlug = (current.slug.slice(0, 52).replace(/-+$/, '') + '-sandbox').slice(0, 60);
+      const found = (await pool.query('select id,name,slug,metadata from "organization" where slug=$1', [sandboxSlug])).rows[0] || null;
+      let sandbox = null;
+      if (found) { let fm = {}; try { fm = typeof found.metadata === 'string' ? JSON.parse(found.metadata || '{}') : (found.metadata || {}); } catch {} if (fm.environment === 'sandbox' && fm.sandboxOf === current.id) sandbox = { id: found.id, name: found.name, slug: found.slug }; }
+      return json(200, { ok: true, environment: 'production', sandbox });
+    }
+    case 'sandbox-create': {
+      if (support) return json(403, { error: 'Sandbox provisioning is unavailable in read-only support mode.' });
+      if ((g = need('sandbox') || adminOnly())) return g;
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        const current = (await client.query('select id,name,slug,metadata from "organization" where id=$1 for update', [orgId])).rows[0];
+        if (!current) { await client.query('rollback'); return json(404, { error: 'Workspace not found.' }); }
+        let sourceMeta = {}; try { sourceMeta = typeof current.metadata === 'string' ? JSON.parse(current.metadata || '{}') : (current.metadata || {}); } catch {}
+        if (sourceMeta.environment === 'sandbox') { await client.query('rollback'); return json(409, { error: 'A sandbox cannot create another sandbox. Switch to your production workspace first.' }); }
+        const sandboxSlug = (current.slug.slice(0, 52).replace(/-+$/, '') + '-sandbox').slice(0, 60);
+        const existing = (await client.query('select id,name,slug,metadata from "organization" where slug=$1 for update', [sandboxSlug])).rows[0];
+        if (existing) {
+          let em = {}; try { em = typeof existing.metadata === 'string' ? JSON.parse(existing.metadata || '{}') : (existing.metadata || {}); } catch {}
+          if (em.environment === 'sandbox' && em.sandboxOf === current.id) {
+            await client.query('commit');
+            const n = Number((await pool.query('select count(*)::int n from member where "organizationId"=$1', [existing.id])).rows[0].n);
+            return json(200, { ok: true, existing: true, sandbox: { id: existing.id, name: existing.name, slug: existing.slug }, members: n });
+          }
+          await client.query('rollback'); return json(409, { error: 'That sandbox address is already in use. Please contact EffDesk support.' });
+        }
+        const id = crypto.randomUUID(), sandboxName = current.name + ' — Sandbox';
+        const metadata = JSON.stringify({ environment: 'sandbox', sandboxOf: current.id, createdBy: actor.id, createdAt: new Date().toISOString() });
+        await client.query('insert into "organization"(id,name,slug,logo,"createdAt",metadata) values($1,$2,$3,null,now(),$4)', [id, sandboxName, sandboxSlug, metadata]);
+        const copied = await client.query('insert into member(id,"organizationId","userId",role,"createdAt") select gen_random_uuid()::text,$1,"userId",role,now() from member where "organizationId"=$2 returning id', [id, current.id]);
+        await client.query(`insert into org_overrides(org_id,seat_limit,note,updated_by) values($1,$2,$3,$4)
+          on conflict(org_id) do update set seat_limit=excluded.seat_limit,note=excluded.note,updated_at=now(),updated_by=excluded.updated_by`,
+          [id, Math.max(2, copied.rowCount), 'Customer sandbox; isolated from production. No separate subscription.', actor.id]);
+        await client.query('commit');
+        await audit(pool, orgId, actor.id, 'sandbox.created', sandboxSlug, { members: copied.rowCount });
+        return json(200, { ok: true, existing: false, sandbox: { id, name: sandboxName, slug: sandboxSlug }, members: copied.rowCount });
+      } catch (e) {
+        try { await client.query('rollback'); } catch {}
+        if (e.code === '23505') return json(409, { error: 'A sandbox with that address already exists.' });
+        throw e;
+      } finally { client.release(); }
+    }
     case 'ticket-prefs-save': r = await desk.saveTicketPreferences(pool, orgId, actor.id, b); break;
     case 'global-search': r = await globalSearch(pool, orgId, b.q, planHas(ent, 'clients')); break;
     case 'contact-list': if ((g = need('clients'))) return g; r = await listContacts(pool, orgId, b.q); break;
