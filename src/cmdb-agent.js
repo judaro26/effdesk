@@ -10,7 +10,7 @@ const ok=body=>new Response(JSON.stringify({ok:true,...body}),{status:200,header
 const b64u=v=>Buffer.from(v).toString('base64url');
 
 export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='windows_agent'){
- if(!['windows_agent','osquery_agent'].includes(provider))return {ok:false,status:400,error:'Unsupported discovery provider.'};
+ if(!['windows_agent','osquery_agent','snmp_agent'].includes(provider))return {ok:false,status:400,error:'Unsupported discovery provider.'};
  const name=clean(nameInput,120);
  if(!name)return {ok:false,status:400,error:'Give this discovery agent a name.'};
  const active=await withOrg(pool,orgId,c=>c.query("select count(*)::int n from cmdb_discovery_agents where org_id=$1 and revoked_at is null and expires_at>now()",[orgId]));
@@ -18,14 +18,14 @@ export async function createDiscoveryAgent(pool,orgId,actor,nameInput,provider='
  const id=crypto.randomUUID(),secret=crypto.randomBytes(32).toString('base64url');
  const token='edk1.'+b64u(orgId)+'.'+id+'.'+secret;
  const expiresAt=new Date(Date.now()+365*24*60*60*1000);
- const initialPlatform=provider==='windows_agent'?'windows':'';
+ const initialPlatform=provider==='windows_agent'?'windows':provider==='snmp_agent'?'network':'';
  await withOrg(pool,orgId,c=>c.query('insert into cmdb_discovery_agents(id,org_id,name,provider,platform,token_hash,created_by,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[id,orgId,name,provider,initialPlatform,hash(token),actor?.id||null,expiresAt]));
  return {ok:true,agent:{id,name,expiresAt},token};
 }
 export async function listDiscoveryAgents(pool,orgId){
  return withOrg(pool,orgId,async c=>{
   const [agents,software,softwareItems]=await Promise.all([
-   c.query("select id,name,provider,platform,created_at,expires_at,revoked_at,last_seen_at,last_sync_status,last_sync_error,hostname,manufacturer,model,serial_number,os_version,software_count from cmdb_discovery_agents where org_id=$1 order by created_at desc",[orgId]),
+   c.query("select id,name,provider,platform,created_at,expires_at,revoked_at,last_seen_at,last_sync_status,last_sync_error,hostname,manufacturer,model,serial_number,os_version,software_count,network_device_count,last_network_scan_at from cmdb_discovery_agents where org_id=$1 order by created_at desc",[orgId]),
    c.query("select count(*)::int total,count(*) filter(where status='current')::int current from cmdb_discovered_software where org_id=$1",[orgId]),
    c.query("select s.name,s.publisher,s.version,s.last_seen_at,a.hostname from cmdb_discovered_software s join cmdb_discovery_agents a on a.org_id=s.org_id and a.id=s.agent_id where s.org_id=$1 and s.status='current' order by lower(s.name),s.version limit 500",[orgId])
   ]);
