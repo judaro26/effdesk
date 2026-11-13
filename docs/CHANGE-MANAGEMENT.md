@@ -11,7 +11,7 @@ EffDesk Change Management adds a controlled lifecycle for planned, standard, nor
 - Change owner, affected business services and related incident links.
 - Implementation, validation/test, rollback and post-implementation outcome plans.
 - Up to ten sequential approval stages, each using all-approver or any-one policy.
-- Tenant-configurable CAB thresholds: minimum stages by change type and minimum approvers per stage by the higher of risk or impact.
+- Tenant-configurable CAB thresholds: minimum stages by change type and minimum approvers per stage by the higher of risk or impact, and an all-approvers or any-one quorum mode.
 - Configurable standard-change pre-approval risk and impact ceilings.
 - Maintenance-window conflict detection for overlapping changes that affect the same business service, with warning or blocking enforcement and an optional emergency override.
 - Approver notifications, approval decisions, comments and an auditable activity history.
@@ -30,13 +30,13 @@ All actions require the workspace's `itsm` entitlement:
 
 The `itsm` custom-role permission controls change creation and management; the existing `approvals` permission controls approval decisions. Light agents cannot write change records or approve them. Owners and approvers must be full workspace members.
 
-Normal and emergency changes must meet the tenant's configured minimum approval-stage count and minimum approvers per stage. The minimum approver threshold is based on the higher of risk and impact. Standard changes may use the pre-authorized path only within the tenant's configured maximum risk and impact. A change cannot be scheduled without a complete maintenance window, started without implementation and rollback plans, or completed/failed without an outcome. Approval stages are locked while a decision is pending. Resubmitting a rejected request starts a fresh approval round.
+Normal and emergency changes must meet the tenant's configured minimum approval-stage count and minimum approvers per stage. The minimum approver threshold is based on the higher of risk and impact. The configured quorum mode is enforced on every stage, so individual change requesters cannot weaken the CAB approval rule. Standard changes may use the pre-authorized path only within the tenant's configured maximum risk and impact. A change cannot be scheduled without a complete maintenance window, started without implementation and rollback plans, or completed/failed without an outcome. Approval stages are locked while a decision is pending. Resubmitting a rejected request starts a fresh approval round.
 
 ## Conflict detection and CAB policy
 
 Conflict detection compares half-open maintenance intervals (start inclusive, end exclusive) for changes that share one or more affected business services. It considers submitted, assessing, awaiting-approval, approved, scheduled and implementing changes, and returns the overlapping change plus the shared service names. Each tenant can choose warning-only behavior or block scheduling until conflicts are resolved. A separate emergency override can be enabled by an owner/admin. Conflict checks and policy reads/writes are always scoped to the active organization.
 
-The CAB policy is stored in `change_cab_policies` with forced row-level security. Owners and admins can configure the number of approval stages required for standard/normal/emergency changes, minimum approvers per stage for low/medium/high/critical risk, and standard-change pre-approval ceilings.
+The CAB policy is stored in `change_cab_policies` with forced row-level security. Owners and admins can configure the number of approval stages required for standard/normal/emergency changes, minimum approvers per stage for low/medium/high/critical risk, the stage quorum mode, and standard-change pre-approval ceilings.
 
 ## Tenant isolation
 
