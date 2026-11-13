@@ -343,6 +343,23 @@
 
 
 /* Command center: a deliberate operational overview with a strong visual hierarchy. */
+/* The shared .page component intentionally aligns form controls to the start.
+   The dashboard is a full-width composition, so opt back into stretch here. */
+.deskapp .dash-page{
+  width:100%;
+  max-width:1680px;
+  align-items:stretch;
+}
+.deskapp .dash-page > .dash-hero,
+.deskapp .dash-page > .dash-metrics,
+.deskapp .dash-page > .dash-content-grid,
+.deskapp .dash-page > .dash-lower-grid,
+.deskapp .dash-page > .dash-setup,
+.deskapp .dash-page > .dash-portal{
+  width:100%;
+  min-width:0;
+}
+
 .deskapp .dash-page{max-width:1680px;gap:18px;padding:clamp(18px,2.2vw,34px)}
 .deskapp .dash-hero{
   position:relative;display:flex;align-items:stretch;justify-content:space-between;gap:28px;
