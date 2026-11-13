@@ -60,7 +60,9 @@ function normalize(provider,body,raw){
   const key=clean(first(
    provider==='grafana'?item.fingerprint:undefined,
    provider==='sentry'?issue.id:undefined,
-   item.alert_id,item.monitor_id,item.savedsearch_id,item.search_id,body.alert_id,body.monitor_id,body.savedsearch_id,body.search_name,
+   item.alert_id,body.alert_id,
+   provider==='datadog'?(String(item.monitor_id||body.monitor_id||'')+'|'+String(item.alert_group||item.host||item.scope||'')):undefined,
+   item.monitor_id,item.savedsearch_id,item.search_id,body.monitor_id,body.savedsearch_id,body.search_name,
    provider==='datadog'?(String(item.title||'')+'|'+String(item.host||'')+'|'+String(item.monitor_name||'')):undefined,
    provider==='splunk'?(String(item.search_name||'')+'|'+String(item.alert_name||'')):undefined,
    provider==='grafana'?(String(labels.alertname||title)+'|'+String(labels.instance||labels.host||'')):undefined,
