@@ -207,7 +207,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-change-list': if ((g = need('itsm'))) return g; r = await listChanges(pool, orgId, b); break;
     case 'itsm-change-get': if ((g = need('itsm'))) return g; r = await getChange(pool, orgId, b.id); break;
     case 'itsm-change-save': if ((g = need('itsm'))) return g; r = await saveChange(pool, orgId, actor, b, mailer); if (r.ok) await audit(pool, orgId, actor.id, b.id ? 'change.updated' : 'change.created', 'Change CHG-' + r.change.id, { status: r.change.status, risk: r.change.risk }); break;
-    case 'itsm-change-decide': if ((g = need('itsm'))) return g; r = await decideChange(pool, orgId, actor.id, b.id, b.decision, b.comment, mailer); if (r.ok) await audit(pool, orgId, actor.id, 'change.approval_decided', 'Change CHG-' + r.change.id, { status: r.change.status }); break;
+    case 'itsm-change-decide': if ((g = need('itsm'))) return g; r = await decideChange(pool, orgId, actor, b.id, b.decision, b.comment, mailer); if (r.ok) await audit(pool, orgId, actor.id, 'change.approval_decided', 'Change CHG-' + r.change.id, { status: r.change.status }); break;
     case 'task-update': if ((g = need('request_forms'))) return g; r = await updateTask(pool, orgId, b.id, b); break;
     case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;
     case 'form-delete': if ((g = adminOnly() || need('request_forms'))) return g; if (!(await deleteForm(pool, orgId, b.id))) return json(404, { error: 'No such form.' }); r = { ok: true }; break;
