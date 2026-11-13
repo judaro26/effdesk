@@ -41,10 +41,15 @@ await page.evaluate(() => { const a = document.querySelector('.ed-area'); a.focu
 check('cells pasted as tab separated text become a table, even when the copied html has no table', await page.locator('.ed-area table').count() === 1 && await page.locator('.ed-area td, .ed-area th').count() >= 9 && /LED strip/.test(await page.locator('.ed-area table').innerText()));
 await clear(); await page.evaluate(() => {
   const a = document.querySelector('.ed-area'); a.focus();
-  const markdown = '| **Category** | **Item** | **Link** |\\n| ------------ | -------- | ---- |\\n| Hardware | Cleaner | [Target](https://target.example/item?a=1\\&b=2) |\\n| Paint | Drop cloth | [Amazon](https://amazon.example/item) |';
+  const markdown = [
+    '| **Category** | **Item** | **Link** |',
+    '| ------------ | -------- | ---- |',
+    '| Hardware | Cleaner | [Target](https://target.example/item?a=1&b=2) |',
+    '| Paint | Drop cloth | [Amazon](https://amazon.example/item) |'
+  ].join('\\n');
   const dt = new DataTransfer();
   dt.setData('text/plain', markdown);
-  dt.setData('text/html', '<div><p>' + markdown.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '</p><p>') + '</p></div>');
+  dt.setData('text/html', '<div>' + markdown.split('\\n').map(line => '<p>' + line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>').join('') + '</div>');
   a.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
 });
 check('a Markdown pipe table wins over wrapper HTML and pastes as real table cells with links', await page.locator('.ed-area table').count() === 1 && await page.locator('.ed-area table tbody tr').count() === 2 && await page.locator('.ed-area table a').count() === 2 && /Hardware/.test(await page.locator('.ed-area table').innerText()));
