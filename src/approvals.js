@@ -21,7 +21,7 @@ export async function createForTicket(pool,orgId,ticket,formId,actorId=null){
  if(!formId)return {ok:true,skipped:true};
  return withOrg(pool,orgId,async c=>{
   const f=(await c.query('select id,name,approval_config from request_forms where org_id=$1 and id=$2 and active',[orgId,formId])).rows[0];
-  const v=await validateApprovalConfig(c,orgId,f&&f.approval_config); if(!f||!v.config.enabled)return {ok:true,skipped:true}; if(!v.ok)return v;
+  if(!f)return {ok:true,skipped:true}; const v=await validateApprovalConfig(c,orgId,f.approval_config); if(!v.ok)return v; if(!v.config.enabled)return {ok:true,skipped:true};
   const a=(await c.query("insert into approval_requests(org_id,ticket_id,ticket_number,form_id,mode,approver_ids,title) values($1,$2,$3,$4,$5,$6,$7) on conflict(org_id,ticket_id) do nothing returning id",[orgId,ticket.id,ticket.number,f.id,v.config.mode,v.config.approverIds,'Approval: '+f.name])).rows[0];
   if(!a)return {ok:true,skipped:true};
   for(const t of v.config.tasks)await c.query('insert into fulfillment_tasks(org_id,ticket_id,approval_id,title,description,assignee_id,position,created_by) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,ticket.id,a.id,t.title,t.description,t.assigneeId||null,t.position,actorId]);
