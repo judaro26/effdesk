@@ -10,9 +10,9 @@ assert.equal(devices.length,2);
 assert.equal(devices[0].ip,'10.0.0.10');
 assert.equal(devices[0].name,'core-switch');
 assert.equal(devices[1].ip,'192.168.1.5');
-console.log('SNMP payload normalization and private-address restriction passed.');
 
 assert.equal(isWithinAllowedNetwork('192.168.1.22',['192.168.1.0/24']),true);
 assert.equal(isWithinAllowedNetwork('192.168.2.22',['192.168.1.0/24']),false);
 assert.equal(isWithinAllowedNetwork('8.8.8.8',['0.0.0.0/0']),false);
 assert.equal(isWithinAllowedNetwork('fd00::1',['fd00::/64']),false);
+console.log('SNMP payload normalization and tenant CIDR allowlist checks passed.');
