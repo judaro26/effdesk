@@ -64,7 +64,7 @@ export async function saveIncident(pool,orgId,actorId,input={}){
  const number=Number(input.number);if(!Number.isSafeInteger(number)||number<1)return fail('Choose a valid incident ticket.');
  const d=normalizeIncident(input),serviceIds=[...new Set((Array.isArray(input.serviceIds)?input.serviceIds:[]).map(Number).filter(x=>Number.isSafeInteger(x)&&x>0))].slice(0,50);
  const relatedNumbers=[...new Set((Array.isArray(input.relatedNumbers)?input.relatedNumbers:[]).map(Number).filter(x=>Number.isSafeInteger(x)&&x>0&&x!==number))].slice(0,50);
- return withOrg(pool,orgId,async c=>{
+ const result=await withOrg(pool,orgId,async c=>{
   const t=(await c.query(`select id,number,type,status from tickets where org_id=$1 and number=$2 for update`,[orgId,number])).rows[0];
   if(!t||t.type!=='incident')return fail('This ticket is not an incident. Change its ticket type to Incident first.',404);
   if(d.commanderId){
@@ -85,6 +85,7 @@ export async function saveIncident(pool,orgId,actorId,input={}){
    await c.query('insert into incident_relations(org_id,ticket_id,related_ticket_id,relation) values($1,$2,$3,\'related\') on conflict do nothing',[orgId,t.id,other.id]);
   }
   await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)',[orgId,t.id,String(actorId),'incident','Incident details updated · '+d.severity+(d.isMajor?' · Major incident':'')]);
-  return getIncident(pool,orgId,number);
+  return {ok:true};
  });
+ return result.ok?getIncident(pool,orgId,number):result;
 }
