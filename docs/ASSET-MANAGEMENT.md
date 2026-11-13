@@ -20,12 +20,17 @@ All actions use the existing authenticated `POST /api/tickets` endpoint and acti
 - `itsm-ci-save`: CI fields and optional `id` for update.
 - `itsm-ci-relationship-save`: `sourceCiId`, `targetCiId`, `relationship`.
 - `itsm-ci-record-link`: `ciId`, `recordType` (`ticket`, `problem`, `change`), `recordId`.
+- `itsm-ci-vendors-list`, `itsm-ci-vendor-save`: vendor inventory and workspace-scoped vendor creation/update.
+- `itsm-ci-contracts-list`, `itsm-ci-contract-save`: vendor contract inventory and lifecycle dates.
+- `itsm-ci-licenses-list`, `itsm-ci-license-save`: software entitlements, seat counts and renewal dates.
+- `itsm-ci-warranty-report`: active assets with warranties due or expired within the requested day window.
+- `itsm-ci-import-csv`, `itsm-ci-export-csv`: admin-only asset CSV transfer.
 
 All owner and service references are validated against the current workspace. Cross-workspace references are rejected by both application checks and composite foreign keys.
 
 ## Rollout
 
-Apply migration `048_configuration_items.sql` before deploying the application code. This is an additive migration and does not alter existing ticket, incident, problem, change or service records.
+Apply migrations `048_configuration_items.sql` and `049_cmdb_lifecycle_and_procurement.sql` in order before deploying the application code. Both are additive migrations; they do not alter existing ticket, incident, problem, change or service records.
 
 ## Procurement and lifecycle extension
 
