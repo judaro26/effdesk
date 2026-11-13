@@ -174,7 +174,7 @@ Commercial decisions still required:
 ### Phase 0 — Reliability and product architecture
 
 - Maintain a capability inventory so roadmap documents do not become stale.
-- Add migration ordering checks; the current migration directory includes two files numbered 037, so establish a deterministic migration registry/order before adding more schema changes.
+- Add a migration-prefix uniqueness check for future files. The runner sorts filenames lexicographically and records the exact filename; the two existing 037 files therefore have deterministic order, but should remain immutable once applied. Use 040 for the next migration rather than renaming applied files.
 - Expand automated tests for tenant isolation, permissions, plan gates and integration failure modes.
 - Add end-to-end smoke tests for the most important agent and requester journeys.
 - Establish consistent audit events, error reporting, rate limits and background job conventions.
@@ -272,7 +272,7 @@ A feature is not complete until:
 Start with **Phase 0 reliability and Phase 1 service catalog/approvals**. The repository already has request forms and custom fields, so reuse them rather than creating a parallel catalog subsystem.
 
 Before adding the first approval migration:
-1. Resolve the duplicate 037_*.sql migration numbering and confirm the migration runner's ordering behavior.
+1. Preserve both already-applied 037 migration filenames; the runner sorts lexicographically and tracks exact filenames. Start the next migration at 040 and add a check that prevents future duplicate numeric prefixes.
 2. Map current request-form submission, ticket lifecycle, custom role permissions, notification and audit patterns.
 3. Define approval state transitions and the effect of pending/rejected/approved requests on ticket fulfillment.
 4. Add tenant-isolation and authorization tests before exposing the UI.
