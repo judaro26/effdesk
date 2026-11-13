@@ -104,6 +104,7 @@ export async function syncDiscovery(pool,env,org,actor){
   }
   let created=0,updated=0;
   await withOrg(pool,org,async c=>{
+   await c.query('select pg_advisory_xact_lock(hashtext($1))',[org]);
    for(const raw of devices){
     const d=normalizeDevice(raw);if(!d)continue;
     let ci=(await c.query("select id,asset_tag from configuration_items where org_id=$1 and discovery_source='intune' and discovery_external_id=$2",[org,d.id])).rows[0];
