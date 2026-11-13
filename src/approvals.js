@@ -61,7 +61,8 @@ export async function decideApproval(pool,orgId,actorId,id,decision,comment='',m
   if(prior.rowCount)return fail('You have already responded to this stage.',409);
   await c.query('insert into approval_decisions(org_id,approval_id,approver_id,stage_index,decision,comment) values($1,$2,$3,$4,$5,$6)',[orgId,a.id,String(actorId),stageIndex,decision,clean(comment,2000)]);
   const count=(await c.query("select count(*) filter(where decision='approved')::int approved,count(*) filter(where decision='rejected')::int rejected from approval_decisions where org_id=$1 and approval_id=$2 and stage_index=$3",[orgId,a.id,stageIndex])).rows[0];
-  const outcome=decision==='rejected'?'rejected':approvalStageOutcome(stage,count.approved,count.rejected);\n  const stageDone=outcome!=='pending';
+  const outcome=decision==='rejected'?'rejected':approvalStageOutcome(stage,count.approved,count.rejected);
+  const stageDone=outcome!=='pending';
   let status='pending',nextStage=null,event='decided';
   if(decision==='rejected'){
    status='rejected';event='rejected';
