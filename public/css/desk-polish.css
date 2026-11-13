@@ -528,3 +528,26 @@
 @media(prefers-reduced-motion:reduce){
   .deskapp .dash-bar,.deskapp .dash-setup-track span,.deskapp .contact-ticket-row{transition:none}
 }
+
+
+/* Keep provider marks legible in both themes and give failed assets a deliberate fallback. */
+.deskapp .integration-provider-logo{
+  background:#fff!important;
+  color:#263447;
+  border-color:rgba(15,23,42,.12);
+}
+.deskapp .integration-provider-logo img{
+  display:block;
+  width:100%;
+  height:100%;
+  max-width:34px;
+  max-height:34px;
+  object-fit:contain;
+}
+.deskapp .integration-provider-logo[data-logo-fallback=true]{
+  background:linear-gradient(145deg,#f8fafc,#e9eef5)!important;
+  color:#263447;
+}
+.deskapp .integration-catalog-item .integration-provider-logo{
+  background:#fff!important;
+}
