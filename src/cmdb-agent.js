@@ -21,11 +21,12 @@ export async function createWindowsAgent(pool,orgId,actor,nameInput){
 }
 export async function listWindowsAgents(pool,orgId){
  return withOrg(pool,orgId,async c=>{
-  const [agents,software]=await Promise.all([
+  const [agents,software,softwareItems]=await Promise.all([
    c.query("select id,name,created_at,expires_at,revoked_at,last_seen_at,last_sync_status,last_sync_error,hostname,manufacturer,model,serial_number,os_version,software_count from cmdb_discovery_agents where org_id=$1 order by created_at desc",[orgId]),
-   c.query("select count(*)::int total,count(*) filter(where status='current')::int current from cmdb_discovered_software where org_id=$1",[orgId])
+   c.query("select count(*)::int total,count(*) filter(where status='current')::int current from cmdb_discovered_software where org_id=$1",[orgId]),
+   c.query("select s.name,s.publisher,s.version,s.last_seen_at,a.hostname from cmdb_discovered_software s join cmdb_discovery_agents a on a.org_id=s.org_id and a.id=s.agent_id where s.org_id=$1 and s.status='current' order by lower(s.name),s.version limit 500",[orgId])
   ]);
-  return {ok:true,agents:agents.rows,software:software.rows[0]};
+  return {ok:true,agents:agents.rows,software:software.rows[0],softwareItems:softwareItems.rows};
  });
 }
 export async function revokeWindowsAgent(pool,orgId,id){
@@ -42,7 +43,7 @@ function parseToken(token){
   return {orgId,id:p[2],token};
  }catch{return null;}
 }
-function normalizePayload(input){
+export function normalizeWindowsPayload(input){
  const d=input&&typeof input==='object'?input:{};
  const software=Array.isArray(d.software)?d.software.slice(0,500).map(x=>({
   name:clean(x?.name,240),publisher:clean(x?.publisher,180),version:clean(x?.version,100)
@@ -60,7 +61,7 @@ export async function ingestWindowsAgent(req,{pool}){
  const parsed=parseToken(auth.slice(7));if(!parsed)return fail(401,'Invalid discovery-agent token.');
  const raw=await req.text();if(raw.length>300000)return fail(413,'Inventory payload is too large.');
  let body;try{body=JSON.parse(raw);}catch{return fail(400,'Inventory payload must be JSON.');}
- const d=normalizePayload(body);
+ const d=normalizeWindowsPayload(body);
  if(!d.hostname||!d.serial)return fail(400,'The agent must report a hostname and hardware serial number.');
  try{
   const result=await withOrg(pool,parsed.orgId,async c=>{
