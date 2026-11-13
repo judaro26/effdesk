@@ -13,8 +13,9 @@ export async function validateApprovalConfig(c,orgId,input){
  const config=normalizeApprovalConfig(input); if(!config.enabled)return {ok:true,config};
  if(!config.approverIds.length)return fail('Choose at least one approver.');
  const ids=[...new Set([...config.approverIds,...config.tasks.map(t=>t.assigneeId).filter(Boolean)])];
- const rows=(await c.query('select "userId" from member where "organizationId"=$1 and "userId"=any($2)',[orgId,ids])).rows;
+ const rows=(await c.query('select "userId",role from member where "organizationId"=$1 and "userId"=any($2)',[orgId,ids])).rows;
  if(rows.length!==ids.length)return fail('Approvers and task assignees must be members of this workspace.');
+ if(rows.some(x=>x.role==='light'))return fail('Light agents cannot be approvers or fulfillment task assignees. Choose a full agent or workspace admin.');
  return {ok:true,config};
 }
 export async function createForTicket(pool,orgId,ticket,formId,actorId=null){
@@ -26,6 +27,12 @@ export async function createForTicket(pool,orgId,ticket,formId,actorId=null){
   if(!a)return {ok:true,skipped:true};
   for(const t of v.config.tasks)await c.query('insert into fulfillment_tasks(org_id,ticket_id,approval_id,title,description,assignee_id,position,created_by) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,ticket.id,a.id,t.title,t.description,t.assigneeId||null,t.position,actorId]);
   return {ok:true,approvalId:a.id};
+ });
+}
+export async function getApprovalForTicket(pool,orgId,ticketNumber){
+ return withOrg(pool,orgId,async c=>{
+  const a=(await c.query("select a.id,a.ticket_id,a.ticket_number,a.status,a.mode,a.approver_ids,a.title,a.created_at,a.decided_at,coalesce((select json_agg(json_build_object('approverId',d.approver_id,'decision',d.decision,'comment',d.comment,'createdAt',d.created_at) order by d.created_at) from approval_decisions d where d.org_id=a.org_id and d.approval_id=a.id),'[]'::json) decisions from approval_requests a join tickets t on t.id=a.ticket_id and t.org_id=a.org_id where a.org_id=$1 and t.number=$2",[orgId,Number(ticketNumber)])).rows[0];
+  return {ok:true,approval:a||null};
  });
 }
 export async function listApprovals(pool,orgId,actorId,{mine=false,status='pending'}={}){

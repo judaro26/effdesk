@@ -620,3 +620,50 @@ html{-webkit-text-size-adjust:100%}
 .company-contact-link{margin:5px 5px 0 0;padding:3px 7px;border:1px solid var(--d-line);border-radius:999px;background:var(--d-bg);color:var(--accent-d);font-size:10px;cursor:pointer}
 .company-contact-link:hover{border-color:var(--accent);background:var(--d-hover)}
 .company-item .acts{align-self:center}
+
+
+/* Approval inbox and service-request fulfillment */
+.approvals-page{max-width:1080px;margin:0 auto;padding:28px 30px 48px}
+.approval-heading{align-items:center;margin-bottom:22px}
+.approval-heading h2{margin:0 0 5px;font-size:25px;letter-spacing:-.035em}
+.approval-list{display:grid;gap:14px;max-width:900px}
+.approval-card{background:var(--d-panel);border:1px solid var(--d-line);border-radius:14px;padding:20px 22px;box-shadow:var(--d-shadow);display:grid;gap:13px}
+.approval-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.approval-card-title h3{margin:4px 0 5px;font-size:17px;letter-spacing:-.02em}
+.approval-card-title p{margin:3px 0}
+.approval-kicker{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--accent)}
+.approval-rule{flex:none;border:1px solid var(--d-line);border-radius:99px;padding:5px 10px;color:var(--d-muted);font-size:11px}
+.approval-progress{font-size:12px;color:var(--d-muted);padding-top:10px;border-top:1px solid var(--d-line)}
+.approval-decisions{display:flex;flex-wrap:wrap;gap:7px}
+.approval-decision{border-radius:99px;padding:4px 9px;font-size:11px;background:var(--d-in);color:var(--d-muted)}
+.approval-decision.approved{color:#16845c;background:rgba(22,132,92,.1)}
+.approval-decision.rejected{color:#bd4545;background:rgba(189,69,69,.1)}
+.approval-actions{display:grid;gap:9px}
+.approval-actions textarea{width:100%;min-height:54px;resize:vertical;border:1px solid var(--d-line);border-radius:9px;padding:10px;background:var(--d-panel);color:var(--d-ink);font:inherit}
+.approval-actions .bar{gap:8px;margin:0}
+.approval-actions .danger{background:#b94343;color:#fff;border-color:#b94343}
+.approval-empty{text-align:center;padding:42px 20px}
+.approval-empty-icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px;background:rgba(22,132,92,.12);color:#16845c;font-size:22px;font-weight:800}
+.approval-empty h3{margin:0 0 6px}
+.fulfillment-list{display:grid;gap:12px}
+.fulfillment-task{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--d-line)}
+.fulfillment-task:last-child{border-bottom:0;padding-bottom:0}
+.fulfillment-task-copy{min-width:0;display:grid;gap:4px}
+.fulfillment-task-copy strong{font-size:13px}
+.fulfillment-task-copy p{margin:0;white-space:pre-wrap}
+.fulfillment-task select{max-width:130px;flex:none}
+.form-task-editor{display:grid;gap:10px}
+.form-task-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px;border:1px solid var(--d-line);border-radius:10px;background:var(--d-in)}
+.form-task-fields{display:grid;gap:8px;min-width:0}
+.form-task-fields input,.form-task-fields textarea{width:100%;min-width:0}
+.form-task-fields textarea{resize:vertical}
+@media(max-width:680px){.approvals-page{padding:18px 12px 32px}.approval-card{padding:16px}.approval-card-top{display:grid}.approval-rule{justify-self:start}.fulfillment-task{align-items:flex-start;flex-direction:column}.fulfillment-task select{max-width:none;width:100%}.form-task-row{grid-template-columns:1fr}.form-task-row>.btn{justify-self:start}}
+
+
+.ticket-approval{display:grid;gap:9px}
+.approval-status-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.approval-status{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:4px 8px;border-radius:99px;background:var(--d-in);color:var(--d-muted)}
+.approval-status.approved{background:rgba(22,132,92,.12);color:#16845c}
+.approval-status.rejected{background:rgba(189,69,69,.12);color:#bd4545}
+.approval-status.pending{background:rgba(196,144,44,.13);color:#a87920}
+.ticket-approval>.approval-decision{display:block;border-radius:8px;line-height:1.5;white-space:normal}
