@@ -43,6 +43,7 @@ if (-not $serial -or $serial -match '^(0+|Default string|To be filled by O.E.M.)
   $serial = "NO-SERIAL-" + ([string]$computer.Name).ToUpperInvariant()
 }
 $software = @()
+$softwareComplete = $true
 $uninstallRoots = @(
  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
  'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -50,16 +51,18 @@ $uninstallRoots = @(
 )
 foreach ($root in $uninstallRoots) {
   try {
-    Get-ItemProperty -Path $root -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | ForEach-Object {
+    if (Test-Path -Path $root) { Get-ItemProperty -Path $root -ErrorAction Stop | Where-Object { $_.DisplayName } | ForEach-Object {
       $software += [ordered]@{
         name = ([string]$_.DisplayName).Trim()
         publisher = ([string]$_.Publisher).Trim()
         version = ([string]$_.DisplayVersion).Trim()
       }
-    }
-  } catch {}
+    } }
+  } catch { $softwareComplete = $false }
 }
-$software = @($software | Group-Object { "$($_.name.ToLowerInvariant())|$($_.version)" } | ForEach-Object { $_.Group[0] } | Select-Object -First 500)
+$groupedSoftware = @($software | Group-Object { "$($_.name.ToLowerInvariant())|$($_.version)" } | ForEach-Object { $_.Group[0] })
+if ($groupedSoftware.Count -gt 500) { $softwareComplete = $false }
+$software = @($groupedSoftware | Select-Object -First 500)
 $payload = [ordered]@{
   hostname = [string]$computer.Name
   manufacturer = [string]$computer.Manufacturer
@@ -68,6 +71,7 @@ $payload = [ordered]@{
   os = [string]$os.Caption
   osVersion = [string]$os.Version
   software = $software
+  softwareComplete = $softwareComplete
 }
 $json = $payload | ConvertTo-Json -Depth 5 -Compress
 $headers = @{ Authorization = "Bearer $EnrollmentToken"; Accept = "application/json" }
