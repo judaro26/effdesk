@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { normalizeIncident, INCIDENT_SEVERITIES, SERVICE_STATES } from '../src/itsm.js';
+const defaults=normalizeIncident();
+assert.deepEqual(defaults,{impact:'medium',urgency:'medium',severity:'P3',isMajor:false,commanderId:'',publicSummary:'',internalSummary:'',nextUpdateAt:null});
+const clean=normalizeIncident({impact:'critical',urgency:'high',severity:'P1',isMajor:true,commanderId:' agent ',publicSummary:' update ',internalSummary:' note ',nextUpdateAt:'2026-11-13T12:00:00Z'});
+assert.equal(clean.severity,'P1');assert.equal(clean.isMajor,true);assert.equal(clean.commanderId,'agent');assert.equal(clean.publicSummary,'update');assert.equal(clean.nextUpdateAt.toISOString(),'2026-11-13T12:00:00.000Z');
+assert.equal(normalizeIncident({severity:'P0',impact:'extreme'}).severity,'P3');
+assert.deepEqual(INCIDENT_SEVERITIES,['P1','P2','P3','P4']);
+assert.ok(SERVICE_STATES.includes('operational'));
+console.log('ITSM incident foundation tests passed.');
