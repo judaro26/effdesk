@@ -286,14 +286,7 @@
         if (block && block !== area && /^(---+|___+|\*\*\*+)$/.test(value) && block.tagName !== 'PRE') {
           ev.preventDefault(); var rule = doc.createElement('hr'), next = doc.createElement('p'); next.appendChild(doc.createElement('br')); block.parentNode.replaceChild(rule, block); rule.parentNode.insertBefore(next, rule.nextSibling); placeCaret(next); updateTools(); countWords(); return;
         }
-        var fence = block && block !== area && new RegExp('^' + String.fromCharCode(96).repeat(3) + '\\s*([A-Za-z0-9+#_.-]{0,20})
-    [bar, dlg, imgBar, area, src, fileIn, pdfIn].forEach(function (x) { wrap.appendChild(x); });
-    setHtml(opts.html || ''); countWords();
-    return { el: wrap, getHtml: getHtml, setHtml: setHtml, clean: clean, embedUrl: embedUrl, area: area };
-  }
-  root.EffArticleEditor = { create: create, embedUrl: embedUrl };
-})(typeof window !== 'undefined' ? window : this);
-).exec(value);
+        var fence = block && block !== area && new RegExp('^' + String.fromCharCode(96).repeat(3) + '\\s*([A-Za-z0-9+#_.-]{0,20})$').exec(value);
         if (fence && block.tagName !== 'PRE' && block.tagName !== 'LI') {
           ev.preventDefault(); var pre = doc.createElement('pre'), code = doc.createElement('code'); code.appendChild(doc.createTextNode('\u200b')); pre.appendChild(code); block.parentNode.replaceChild(pre, block); placeCaret(code); updateTools(); countWords(); return;
         }
