@@ -353,6 +353,17 @@
         var serviceSelect=el('select',{multiple:true,'aria-label':'Affected services',size:Math.min(5,Math.max(3,changeServices.length))});
         changeServices.forEach(function(s){var o=el('option',{value:s.id},s.name+' · '+cap(s.criticality));o.selected=(changeDetail&&changeDetail.services||[]).some(function(x){return Number(x.id)===Number(s.id);});serviceSelect.appendChild(o);});
         var incidentInput=el('input',{type:'text',placeholder:'Incident ticket numbers, separated by commas','aria-label':'Related incident numbers',value:(changeDetail&&changeDetail.incidents||[]).map(function(x){return x.number;}).join(', ')});
+        var conflictPreview=el('div',{class:'change-conflict-preview'});
+        var checkConflicts=el('button',{type:'button',class:'btn l sm',onclick:function(){
+          var selectedServices=Array.prototype.filter.call(serviceSelect.options,function(o){return o.selected;}).map(function(o){return Number(o.value);});
+          api('itsm-change-conflicts',{id:changeSelected||0,plannedStart:start.value||null,plannedEnd:end.value||null,serviceIds:selectedServices}).then(function(r){
+            conflictPreview.textContent='';
+            if(!r.ok){conflictPreview.appendChild(el('p',{class:'m'},r.body.error||'Could not check this window.'));return;}
+            if(!r.body.conflicts.length){conflictPreview.appendChild(el('p',{class:'m'},'No overlapping changes found for the selected services and window.'));return;}
+            conflictPreview.appendChild(el('strong',{},r.body.conflicts.length+' overlapping change(s) found'));
+            r.body.conflicts.forEach(function(x){conflictPreview.appendChild(el('div',{class:'change-conflict-row'},el('b',{},'CHG-'+x.id+' · '+x.title),el('span',{class:'m'},cap(x.status)+' · '+changeDateLabel(x.planned_start)+' – '+changeDateLabel(x.planned_end)),el('small',{},(x.shared_services||[]).join(', '))));});
+          });
+        }},'Check maintenance conflicts');
         var approvalBox=el('div',{class:'change-approval-stages'});
         function renderStages(){
           approvalBox.textContent='';
@@ -386,7 +397,7 @@
         detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Implementation plan'),implementation));
         detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Test and validation plan'),testing));
         detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Rollback plan'),rollback));
-        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Affected business services'),el('p',{class:'m'},'Select services impacted by this change. Use Ctrl/Cmd to select multiple.'),serviceSelect));
+        detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Affected business services'),el('p',{class:'m'},'Select services impacted by this change. Use Ctrl/Cmd to select multiple.'),serviceSelect,checkConflicts,conflictPreview));
         detail.appendChild(el('div',{class:'problem-form-section'},el('h4',{},'Related incidents'),el('p',{class:'m'},'Link incident ticket numbers from this workspace.'),incidentInput));
         detail.appendChild(el('div',{class:'problem-form-section'},el('div',{class:'change-stage-title'},el('h4',{},'Sequential approval stages'),el('span',{class:'m'},pendingApproval?'Approval stages are locked while decisions are in progress.':'All stages must complete in order.')),approvalBox,addStage));
         if(pendingApproval&&changeDetail){
