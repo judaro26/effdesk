@@ -22,13 +22,19 @@ export async function createIncidentProviderConnection(pool,orgId,actorId,input=
   if(!PROVIDERS.has(provider)) return {ok:false,status:400,error:'Choose PagerDuty, Rootly, or FireHydrant.'};
   if(!name) return {ok:false,status:400,error:'Give this webhook connection a name.'};
   const token='effinc_'+crypto.randomBytes(32).toString('base64url'), tokenHash=digest(token);
-  const saved=await withOrg(pool,orgId,async c=>{
-    const count=await c.query('select count(*)::int n from incident_provider_connections where org_id=$1 and provider=$2 and active=true',[orgId,provider]);
-    if(count.rows[0].n) return null;
-    const row=(await c.query('insert into incident_provider_connections(org_id,provider,name,created_by) values($1,$2,$3,$4) returning id',[orgId,provider,name,actorId])).rows[0];
-    await c.query('insert into incident_provider_token_registry(token_hash,org_id,connection_id,provider) values($1,$2,$3,$4)',[tokenHash,orgId,row.id,provider]);
-    return row;
-  });
+  let saved;
+  try {
+    saved=await withOrg(pool,orgId,async c=>{
+      const count=await c.query('select count(*)::int n from incident_provider_connections where org_id=$1 and provider=$2 and active=true',[orgId,provider]);
+      if(count.rows[0].n) return null;
+      const row=(await c.query('insert into incident_provider_connections(org_id,provider,name,created_by) values($1,$2,$3,$4) returning id',[orgId,provider,name,actorId])).rows[0];
+      await c.query('insert into incident_provider_token_registry(token_hash,org_id,connection_id,provider) values($1,$2,$3,$4)',[tokenHash,orgId,row.id,provider]);
+      return row;
+    });
+  } catch(e) {
+    if(e.code==='23505') return {ok:false,status:409,error:'This workspace already has an active '+provider+' webhook. Revoke it before creating another.'};
+    throw e;
+  }
   if(!saved) return {ok:false,status:409,error:'This workspace already has an active '+provider+' webhook. Revoke it before creating another.'};
   return {ok:true,connection:{id:saved.id,provider,name},secret:token};
 }
