@@ -89,7 +89,7 @@ export async function listCompliancePolicies(pool,orgId){
 export async function saveCompliancePolicy(pool,orgId,actor,b={}){
  const name=clean(b.name,160),description=clean(b.description,1000),severity=['low','medium','high','critical'].includes(b.severity)?b.severity:'high',rules=normalizeComplianceRules(b.rules);
  if(!name)return fail('Policy name is required.');
- if(!Object.values(rules).some(v=>v===true||v!==null))return fail('Enable at least one compliance rule.');
+ if(!Object.values(rules).some(v=>v===true||typeof v==='number'))return fail('Enable at least one compliance rule.');
  return withOrg(pool,orgId,async c=>{
   try{
    const q=b.id?await c.query('update cmdb_compliance_policies set name=$3,description=$4,enabled=$5,severity=$6,rules=$7::jsonb,updated_at=now() where org_id=$1 and id=$2 returning *',
