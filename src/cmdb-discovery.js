@@ -108,7 +108,7 @@ export async function syncDiscovery(pool,env,org,actor){
    for(const raw of devices){
     const d=normalizeDevice(raw);if(!d)continue;
     let ci=(await c.query("select id,asset_tag from configuration_items where org_id=$1 and discovery_source='intune' and discovery_external_id=$2",[org,d.id])).rows[0];
-    if(!ci&&d.serial)ci=(await c.query("select id,asset_tag from configuration_items where org_id=$1 and serial_number=$2 and (discovery_source is null or (discovery_source='intune' and discovery_external_id=$3)) order by id limit 1",[org,d.serial,d.id])).rows[0];
+    if(!ci&&d.serial)ci=(await c.query("select id,asset_tag from configuration_items where org_id=$1 and ci_type='hardware' and serial_number=$2 and (discovery_source is null or (discovery_source='intune' and discovery_external_id=$3)) order by id limit 1",[org,d.serial,d.id])).rows[0];
     if(ci){
      await c.query(`update configuration_items set discovery_source='intune',discovery_external_id=$3,discovery_status='current',discovery_last_seen_at=now(),
       name=case when coalesce(discovery_source,'')='intune' or name='' then $4 else name end,
