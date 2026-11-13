@@ -18,6 +18,7 @@ function privateAddress(ip){
  const a=ip.split('.').map(Number);return a[0]===10||(a[0]===172&&a[1]>=16&&a[1]<=31)||(a[0]===192&&a[1]===168);
 }
 export function isWithinAllowedNetwork(ip,networks){
+ if(!privateAddress(ip))return false;
  const parts=ip.split('.').map(Number);if(parts.length!==4||!Array.isArray(networks))return false;
  const value=parts.reduce((n,x)=>((n<<8)|x)>>>0,0);
  return networks.some(raw=>{const p=String(raw).split('/'),base=p[0].split('.').map(Number),prefix=Math.max(0,Math.min(32,Number(p[1]||32)));if(base.length!==4||base.some(x=>!Number.isInteger(x)||x<0||x>255))return false;const target=base.reduce((n,x)=>((n<<8)|x)>>>0,0),mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;return (value&mask)===(target&mask);});
