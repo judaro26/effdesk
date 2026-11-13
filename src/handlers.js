@@ -191,7 +191,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
     case 'approval-get': if ((g = need('request_forms'))) return g; r = await getApprovalForTicket(pool, orgId, b.number); break;
     case 'approvals-list': if ((g = need('request_forms'))) return g; r = await listApprovals(pool, orgId, actor.id, { mine: true, status: b.status || 'pending' }); break;
-    case 'approval-decide': if ((g = need('request_forms'))) return g; r = await decideApproval(pool, orgId, actor.id, b.id, b.decision, b.comment); break;
+    case 'approval-decide': if ((g = need('request_forms'))) return g; r = await decideApproval(pool, orgId, actor.id, b.id, b.decision, b.comment, mailer); break;
     case 'tasks-list': if ((g = need('request_forms'))) return g; r = await listTasks(pool, orgId, b.number); break;
     case 'task-update': if ((g = need('request_forms'))) return g; r = await updateTask(pool, orgId, b.id, b); break;
     case 'form-save': if ((g = adminOnly() || need('request_forms'))) return g; r = await saveForm(pool, orgId, b); break;

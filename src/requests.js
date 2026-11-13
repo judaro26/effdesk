@@ -77,7 +77,7 @@ export async function submit(pool, env, org, input, { mailer, custom = false, fi
   const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal' });
   if (!r.ok) return r;
   await withOrg(pool, org.id, c => c.query('update tickets set via_portal = true, form_id = $3, queue_id = coalesce($4, queue_id), type = $5 where org_id = $1 and id = $2', [org.id, r.ticket.id, form ? form.id : null, form ? form.queue_id : null, form ? form.type : 'question']));
-  if (form) { try { await createForTicket(pool, org.id, r.ticket, form.id, null); } catch (e) { console.warn('request approval creation failed:', e.message); } }
+  if (form) { try { await createForTicket(pool, org.id, r.ticket, form.id, null, mailer); } catch (e) { console.warn('request approval creation failed:', e.message); } }
   await emit(pool, org.id, 'ticket.created', r.ticket.number);
   if (mailer) { try { await notifyTicket(pool, mailer, org.id, r.ticket.number, { kind: 'reply', summary: body }); } catch { } }
   return { ok: true, number: r.ticket.number };
