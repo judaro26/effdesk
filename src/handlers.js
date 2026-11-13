@@ -40,6 +40,7 @@ import { listIncidentProviderConnections, createIncidentProviderConnection, revo
 import { listMonitoringAlertConnections, createMonitoringAlertConnection, revokeMonitoringAlertConnection } from './monitoring-alert-webhooks.js';
 import { listScimTokens, createScimToken, revokeScimToken } from './scim.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
+import { getLifecyclePolicy, saveLifecyclePolicy } from './ticket-lifecycle.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
 import { listTokens, createToken, deleteToken, authenticate } from './api.js';
 import { info as logInfo, annotate } from './log.js';
@@ -131,7 +132,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'incident-provider-create', 'incident-provider-revoke', 'monitoring-alert-create', 'monitoring-alert-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'lifecycle-save', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'incident-provider-create', 'incident-provider-revoke', 'monitoring-alert-create', 'monitoring-alert-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get', 'global-search', 'contact-list', 'contact-get', 'approval-get', 'tasks-list']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -180,6 +181,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       await pool.query('insert into desk_prefs (user_id, theme, notify, avatar) values ($1, coalesce($2, \'classic\'), coalesce($3, true), $5) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), avatar = case when $4 then $5 else desk_prefs.avatar end, updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null, setAv, av]);
       r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}), ...(setAv ? { avatar: av } : {}) }; break;
     }
+    case 'lifecycle-get': if ((g = adminOnly() || need('triggers'))) return g; r = await getLifecyclePolicy(pool, orgId); break;
+    case 'lifecycle-save': if ((g = adminOnly() || need('triggers'))) return g; r = await saveLifecyclePolicy(pool, orgId, b.policy || {}, actor.id); break;
     case 'rules-list': if ((g = adminOnly() || need('triggers'))) return g; r = await listRules(pool, orgId); break;
     case 'rule-save': if ((g = adminOnly() || need('triggers'))) return g; r = await saveRule(pool, orgId, b); break;
     case 'rule-delete': if ((g = adminOnly() || need('triggers'))) return g; if (!(await deleteRule(pool, orgId, b.id))) return json(404, { error: 'No such rule.' }); r = { ok: true }; break;
@@ -511,6 +514,7 @@ export async function inboundEmail(req, { pool, store, mailer, env = process.env
   if (res.ok && res.action === 'replied') await maybeTriggers(pool, mailer, env, res.orgId, 'customer_reply', res.number, res.summary || '');
   if (res.ok && res.action === 'replied') await emitHook(pool, res.orgId, 'message.customer', res.number, { message: { body: String(res.summary || '').slice(0, 2000) } });
   if (res.ok && (res.action === 'replied' || res.action === 'side-replied')) await notifyTicket(pool, mailer, res.orgId, res.number, { kind: res.action === 'side-replied' ? 'side' : 'reply', summary: res.summary });
+  if (res.ok && res.action === 'followup') await notifyTicket(pool, mailer, res.orgId, res.number, { kind: 'ticket_created', summary: 'Follow-up from a permanently closed ticket' });
   logInfo('inbound_email', { action: res.action, dropped: res.dropped, org: res.orgId, ticket: res.number });
   if (res.dropped) console.log('inbound email dropped:', res.dropped);
   return json(200, { ok: true, ...(res.dropped ? { dropped: res.dropped } : { action: res.action, number: res.number }) });
@@ -682,8 +686,9 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
       const body = String(f.get('body') || '').trim(); const data = await myTicket(pool, org.id, sess.email, n); if (!data) return notFound();
       if (!body) return html(400, pages.ticketPage({ org, lang, base, data, csrf: csrfFor(env, cookie), note: pages.T[lang].empty, bad: true }));
       const r = await myReply(pool, org.id, sess.email, n, body, '');
-      if (r.ok) { await notifyTicket(pool, mailer, org.id, n, { kind: 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, 'customer_reply', n, body); await emitHook(pool, org.id, 'message.customer', n, { message: { body: body.slice(0, 2000) } }); }
-      return r.ok ? redirect(`${base}/tickets/${n}?sent=1&lang=${lang}`) : notFound();
+      const targetNumber = r.followup ? r.number : n;
+      if (r.ok) { await notifyTicket(pool, mailer, org.id, targetNumber, { kind: r.followup ? 'ticket_created' : 'reply', summary: body }); await maybeTriggers(pool, mailer, env, org.id, r.followup ? 'created' : 'customer_reply', targetNumber, body); await emitHook(pool, org.id, r.followup ? 'ticket.created' : 'message.customer', targetNumber, { message: { body: body.slice(0, 2000), parentTicket: r.followup ? n : null } }); }
+      return r.ok ? redirect(`${base}/tickets/${targetNumber}?sent=1&lang=${lang}`) : notFound();
     }
   }
   return notFound();

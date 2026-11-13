@@ -180,6 +180,7 @@ export async function handleInbound(pool, env, email) {
   }
   if (number) {
     const r = await addRequesterMessage(pool, orgId, number, { body, htmlBody, authorName: from.name || from.email, messageId: email.messageId });
+    if (r.ok && r.followup) return { ok: true, action: 'followup', number: r.number, parentNumber: number, orgId, messageRowId: r.messageRowId, summary: body };
     if (r.ok) return { ok: true, action: 'replied', number, reopened: r.reopened, orgId, messageRowId: r.messageRowId, summary: body };
     if (!r.closed) return { dropped: 'no-ticket' };
     const f = await createTicket(pool, orgId, null, { subject: `Re: ${subject}`.slice(0, 200), body, htmlBody, requesterEmail: from.email, requesterName: from.name, channel: 'email', messageId: email.messageId });

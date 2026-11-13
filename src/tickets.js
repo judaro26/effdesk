@@ -13,7 +13,7 @@ const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNa
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
+const ticketCols = 'custom, id, number, subject, status, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id';
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -84,6 +84,8 @@ export async function getTicket(pool, orgId, actor, number) {
     if (!t) return fail('No such ticket.', 404);
     const messages = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
     const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
+    const lifecycleParent = t.lifecycle_parent_ticket_id ? (await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.lifecycle_parent_ticket_id])).rows[0] || null : null;
+    const lifecycleFollowUps = (await c.query('select number,subject,status from tickets where org_id=$1 and lifecycle_parent_ticket_id=$2 order by created_at',[orgId,t.id])).rows;
     for (const m of messages) {
       // Older automations or integrations may have stored HTML markup in body before html_body existed.
       if (!m.html_body && /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img)\b/i.test(String(m.body || ''))) {
@@ -92,7 +94,7 @@ export async function getTicket(pool, orgId, actor, number) {
       }
       m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
     }
-    return { ok: true, ticket: t, messages };
+    return { ok: true, ticket: t, messages, lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
   });
 }
 
@@ -102,12 +104,13 @@ export async function addMessage(pool, orgId, actor, number, { body, htmlBody, i
   const text = clean(body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''); if (!text) return fail('Write a message first.');
   if (status && !STATUSES.includes(status)) return fail('That status does not exist.');
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status, first_response_at from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, status, closed_at, first_response_at from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
+    if (t.status === 'closed' && status && status !== 'closed') { const cfg=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{}; if(cfg.permanentCloseEnabled===true && t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(cfg.permanentCloseDays)||30)*86400000)return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.',409); }
     const kind = internal ? 'note' : 'agent';
     const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id, kind, author_id, author_name, body, html_body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text, safeHtml])).rows[0];
     const next = status || (!internal && t.status === 'open' ? 'pending' : t.status);
-    await c.query(`update tickets set status = $3, first_response_at = coalesce(first_response_at, case when $4 then now() end), solved_at = case when $3 in ('solved','closed') then coalesce(solved_at, now()) else null end, updated_at = now() where org_id = $1 and id = $2`, [orgId, t.id, next, !internal]);
+    await c.query(`update tickets set status = $3, first_response_at = coalesce(first_response_at, case when $4 then now() end), solved_at = case when $3 in ('solved','closed') then coalesce(solved_at, now()) else null end, closed_at = case when $3 = 'closed' then coalesce(closed_at, now()) else null end, updated_at = now() where org_id = $1 and id = $2`, [orgId, t.id, next, !internal]);
     await logEvent(c, orgId, t.id, who(actor), internal ? 'note' : 'reply', internal ? 'Internal note added' : 'Public reply' + (next !== t.status ? ` · status ${t.status} → ${next}` : ''));
     return { ok: true, message: m, status: next };
   });
@@ -116,15 +119,19 @@ export async function addMessage(pool, orgId, actor, number, { body, htmlBody, i
 // status, priority, assignee (an organization member or null), tags, type, queue, client and CC; every change is written to the ticket's timeline
 export async function updateTicket(pool, orgId, actor, number, patch) {
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status, custom_status_id, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, status, closed_at, custom_status_id, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
-    const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = $${args.length}`); };
+    const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = ${args.length}`); };
     let label = null, cs = null;
     if (patch.customStatusId !== undefined && patch.customStatusId !== null && patch.customStatusId !== '') {
       cs = (await c.query('select id, name, category from ticket_statuses where org_id = $1 and id = $2', [orgId, Number(patch.customStatusId) || 0])).rows[0]; if (!cs) return fail('That status does not exist.');
       patch = { ...patch, status: cs.category }; label = cs.name; set('custom_status_id', cs.id);
     } else if (patch.status !== undefined && t.custom_status_id) set('custom_status_id', null);
-    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when $${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
+    if (patch.status && patch.status !== 'closed' && t.status === 'closed') {
+      const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
+      if (cfg.permanentCloseEnabled === true && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
+    }
+    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when ${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); sets.push(`closed_at = case when ${args.length} = 'closed' then coalesce(closed_at, now()) when ${args.length} <> 'closed' then null else closed_at end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
     if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) return fail('That priority does not exist.'); set('priority', patch.priority); if (patch.priority !== t.priority) notes.push(['priority', `Priority ${t.priority} → ${patch.priority}`]); }
     if (patch.assigneeId !== undefined) {
       if (patch.assigneeId === null || patch.assigneeId === '') { set('assignee_id', null); if (t.assignee_id) notes.push(['assignee', 'Unassigned']); }
@@ -167,12 +174,23 @@ export async function listAgents(pool, orgId) {
 export async function addRequesterMessage(pool, orgId, number, { body, htmlBody, authorName, messageId }) {
   const text = clean(body, 20000); if (!text) return fail('Empty message.');
   return withOrg(pool, orgId, async c => {
-    const t = (await c.query('select id, status, requester_email, requester_name, client_id from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    const t = (await c.query('select id, number, subject, status, closed_at, requester_email, requester_name, client_id, channel, priority, tags from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
     await ensureContact(c, orgId, { email: t.requester_email, name: t.requester_name || authorName, companyId: t.client_id });
-    if (t.status === 'closed') return { ok: false, status: 409, closed: true, error: 'The ticket is closed.' };
+    const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
+    const permanentlyClosed = t.status === 'closed' && cfg.permanentCloseEnabled !== false && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000;
+    if (permanentlyClosed) {
+      const next = (await c.query('insert into ticket_counters(org_id,last_number) values($1,1) on conflict(org_id) do update set last_number=ticket_counters.last_number+1 returning last_number',[orgId])).rows[0].last_number;
+      const follow = (await c.query(`insert into tickets(org_id,number,subject,priority,channel,requester_name,requester_email,tags,client_id,lifecycle_parent_ticket_id)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id,number`,[orgId,next,clean('Follow-up: '+t.subject,200),t.priority,t.channel,t.requester_name,t.requester_email,t.tags,t.client_id,t.id])).rows[0];
+      await logEvent(c,orgId,follow.id,clean(authorName,100)||t.requester_email,'created','Follow-up to permanently closed ticket #'+t.number);
+      const assigned = await autoAssign(c,orgId,follow.id); if (assigned) { await c.query('update tickets set assignee_id=$3 where org_id=$1 and id=$2',[orgId,follow.id,assigned.id]); await logEvent(c,orgId,follow.id,'Routing','assigned','Assigned to '+assigned.name+' automatically'); }
+      await logEvent(c,orgId,t.id,'Ticket lifecycle automation','follow_up_created','New follow-up ticket #'+next+' created after permanent closure');
+      const mid=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_name,body,message_id,html_body) values($1,$2,$3,$4,$5,$6,$7) returning id',[orgId,follow.id,'requester',clean(authorName,100),text,messageId?clean(messageId,300):null,String(htmlBody||'').slice(0,100000)||null])).rows[0].id;
+      return { ok:true, followup:true, number:next, messageRowId:mid };
+    }
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null, String(htmlBody || '').slice(0, 100000) || null])).rows[0].id;
-    await c.query("update tickets set status = 'open', solved_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
+    await c.query("update tickets set status = 'open', solved_at = null, closed_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
     return { ok: true, reopened: t.status !== 'open', messageRowId: mid };
   });
 }
