@@ -20,7 +20,7 @@
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
-    var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {};
+    var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rd = null, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { if (k === 'class') e.className = props[k]; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), props[k]); else if (k === 'value') e.value = props[k]; else e.setAttribute(k, props[k]); }); [].concat.apply([], [].slice.call(arguments, 2)).forEach(function (c) { if (c != null && c !== false) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
@@ -271,7 +271,7 @@
           el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (current && current.ticket.number === t.number) current = null; draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
-      if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; closePanes(); openTabs = []; ticketTasks = {}; approvalRows = null; loadInit().then(refresh); }));
+      if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; closePanes(); openTabs = []; ticketTasks = {}; ticketApprovals = {}; approvalRows = null; loadInit().then(refresh); }));
     }
 
     // ── Views: filters, queues, saved views and the ticket table ──
@@ -824,6 +824,27 @@
           else if(ui.provider==='linear'&&ui.projectId&&!ui.options)box.appendChild(el('p',{class:'m'},'Loading team fields…'));
         }
         return box;
+      }
+      cards.push(el('h3', {}, 'Service request approval'));
+      if (ticketApprovals[t.number] === undefined) {
+        ticketApprovals[t.number] = null;
+        api('approval-get', { number: t.number }).then(function (r) { ticketApprovals[t.number] = r.ok ? r.body.approval : null; if (current && current.ticket.number === t.number) draw(); });
+      }
+      var ticketApproval = ticketApprovals[t.number];
+      if (ticketApproval === null) cards.push(el('div', { class: 'pcard m' }, 'Checking approval status…'));
+      else if (!ticketApproval) cards.push(el('div', { class: 'pcard m' }, 'No approval is required for this ticket.'));
+      else {
+        var myApproval = (ticketApproval.approver_ids || []).indexOf(meId) >= 0;
+        var hasResponded = (ticketApproval.decisions || []).some(function (d) { return d.approverId === meId; });
+        var approvalComment = el('textarea', { rows: '2', maxlength: '2000', 'aria-label': 'Approval comment', placeholder: 'Add a decision comment (optional)…' });
+        cards.push(el('div', { class: 'pcard ticket-approval', 'data-ticket-approval': String(ticketApproval.id) },
+          el('div', { class: 'approval-status-row' }, el('strong', {}, ticketApproval.title || 'Request approval'), el('span', { class: 'approval-status ' + ticketApproval.status }, cap(ticketApproval.status))),
+          el('p', { class: 'm' }, (ticketApproval.mode === 'any' ? 'Any one approver' : 'All selected approvers') + ' · ' + (ticketApproval.approver_ids || []).length + ' approver(s)'),
+          (ticketApproval.decisions || []).map(function (d) { var ag = agents.filter(function (a) { return a.id === d.approverId; })[0]; return el('div', { class: 'approval-decision ' + d.decision }, (ag ? ag.name || ag.email : 'Approver') + ' · ' + cap(d.decision) + (d.comment ? ' — ' + d.comment : '')); }),
+          ticketApproval.status === 'pending' && myApproval && !hasResponded ? el('div', { class: 'approval-actions' }, approvalComment, el('div', { class: 'bar' },
+            el('button', { type: 'button', class: 'btn', onclick: function () { api('approval-decide', { id: ticketApproval.id, decision: 'approved', comment: approvalComment.value }).then(function (r) { if (!r.ok) return say(r.body.error || 'Could not approve this request.', true); ticketApprovals[t.number] = undefined; open(t.number); say(r.body.status === 'approved' ? 'Request approved.' : 'Approval recorded.'); }); } }, 'Approve'),
+            el('button', { type: 'button', class: 'btn danger', onclick: function () { if (!approvalComment.value.trim() && !root.confirm('Reject this request without a comment?')) return; api('approval-decide', { id: ticketApproval.id, decision: 'rejected', comment: approvalComment.value }).then(function (r) { if (!r.ok) return say(r.body.error || 'Could not reject this request.', true); ticketApprovals[t.number] = undefined; open(t.number); say('Request rejected.'); }); } }, 'Reject'))) :
+          ticketApproval.status === 'pending' && myApproval && hasResponded ? el('p', { class: 'm' }, 'Your decision has been recorded.') : null));
       }
       cards.push(el('h3', {}, 'Fulfillment tasks'));
       if (ticketTasks[t.number] === undefined) {
