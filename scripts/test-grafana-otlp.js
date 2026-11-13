@@ -14,7 +14,7 @@ const pool = { query: async sql => {
 } };
 const payload = await buildGrafanaPayload(pool, 1760000000000);
 const metrics = payload.resourceMetrics[0].scopeMetrics[0].metrics;
-check('payload exports API, SQL and browser-vital metric families', metrics.some(x => x.name === 'effdesk_api_requests_24h') && metrics.some(x => x.name === 'effdesk_sql_avg_latency_ms_24h') && metrics.some(x => x.name === 'effdesk_web_vital_avg_24h'));
+check('payload exports API, SQL and browser-vital metric families', metrics.some(x => x.name === 'effdesk_api_requests_24h') && metrics.some(x => x.name === 'effdesk_sql_avg_latency_ms_24h') && metrics.some(x => x.name === 'effdesk_web_vital_avg_ms_24h'));
 check('tenant IDs, raw SQL and query strings are not exported', !JSON.stringify(payload).includes('org9') && !JSON.stringify(payload).includes('secret=hidden') && !JSON.stringify(payload).includes('SELECT'));
 check('routes are normalized and SQL uses only its fingerprint', JSON.stringify(payload).includes('/api/tickets') && JSON.stringify(payload).includes('0123456789abcdef') && !JSON.stringify(payload).includes('/agent/123/'));
 const sent = await exportGrafanaSnapshot(pool, env, fakeFetch);
