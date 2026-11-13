@@ -10,7 +10,6 @@ assert.equal(payload.software[0].name,'Office');
 assert.equal(payload.softwareComplete,true);
 assert.equal(normalizeDiscoveryPayload({softwareComplete:false}).softwareComplete,false);
 assert.equal(normalizeDiscoveryPayload({software:Array.from({length:520},(_,i)=>({name:'App '+i}))}).software.length,500);
-console.log('Cross-platform discovery agent module exports and payload normalization passed.');
 
 const allowed=normalizeAllowedNetworks(['192.168.10.9/24','10.10.10.10']);
 assert.equal(allowed.ok,true);
@@ -18,3 +17,4 @@ assert.deepEqual(allowed.networks,['192.168.10.0/24','10.10.10.10/32']);
 assert.equal(normalizeAllowedNetworks(['8.8.8.8/32']).ok,false);
 assert.equal(normalizeAllowedNetworks(['10.0.0.0/16']).ok,false);
 assert.equal(normalizeAllowedNetworks([]).ok,false);
+console.log('Discovery agent normalization and approved network scope checks passed.');
