@@ -36,6 +36,7 @@ import { settings as platformSettings, publicBanner } from './platform-settings.
 import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
+import { listMonitoringAlertConnections, createMonitoringAlertConnection, revokeMonitoringAlertConnection } from './monitoring-alert-webhooks.js';
 import { listScimTokens, createScimToken, revokeScimToken } from './scim.js';
 import { listRules, saveRule, deleteRule, runTriggers } from './triggers.js';
 import { surveyIfSolved, rate, tokenOk, csatOn, setCsatOn, ratingOf } from './csat.js';
@@ -129,7 +130,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'monitoring-alert-create', 'monitoring-alert-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get', 'global-search', 'contact-list', 'contact-get', 'approval-get', 'tasks-list']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -265,6 +266,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'webhook-save': if ((g = adminOnly() || need('integrations'))) return g; r = await saveHook(pool, orgId, b); break;
     case 'webhook-delete': if ((g = adminOnly() || need('integrations'))) return g; if (!(await deleteHook(pool, orgId, b.id))) return json(404, { error: 'No such webhook.' }); r = { ok: true }; break;
     case 'integration-hub-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listIntegrationConnections(pool, orgId); break;
+    case 'monitoring-alert-list': if ((g = adminOnly() || need('integrations'))) return g; r = await listMonitoringAlertConnections(pool, orgId); break;
+    case 'monitoring-alert-create': if ((g = adminOnly() || need('integrations'))) return g; r = await createMonitoringAlertConnection(pool, orgId, actor.id, b); break;
+    case 'monitoring-alert-revoke': if ((g = adminOnly() || need('integrations'))) return g; r = await revokeMonitoringAlertConnection(pool, orgId, b.id); break;
     case 'integration-connect': if ((g = adminOnly() || need('integrations'))) return g; r = await connectIntegration(pool, env, orgId, actor.id, String(b.provider || ''), b); break;
     case 'integration-test': if ((g = adminOnly() || need('integrations'))) return g; r = await testIntegrationConnection(pool, env, orgId, String(b.provider || '')); break;
     case 'integration-disconnect': if ((g = adminOnly() || need('integrations'))) return g; r = await disconnectIntegration(pool, orgId, String(b.provider || '')); break;
