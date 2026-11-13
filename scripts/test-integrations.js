@@ -119,6 +119,7 @@ globalThis.fetch=async (url,init={}) => {
   if(path==='/repos/acme/desk/issues/43/comments'&&method==='POST') return new Response(JSON.stringify({id:904}),{status:201});
   if(path==='/projects/20/issues/8/notes'&&method==='POST') return new Response(JSON.stringify({id:905}),{status:201});
   if(path==='/repos/acme/desk/issues/42'&&method==='GET') return new Response(JSON.stringify({id:900,number:42,title:'Login issue',html_url:'https://github.com/acme/desk/issues/42',repository_url:'https://api.github.com/repos/acme/desk'}),{status:200});
+  if(path==='/repos/acme/desk/issues/44'&&method==='GET') return new Response(JSON.stringify({id:904,number:44,title:'A pull request',pull_request:{url:'https://api.github.com/repos/acme/desk/pulls/44'}}),{status:200});
   if(path==='/projects/20/issues/7'&&method==='GET') return new Response(JSON.stringify({id:901,iid:7,project_id:20,title:'GitLab issue',web_url:'https://gitlab.com/acme/effdesk/-/issues/7',references:{full:'acme/effdesk#7'}}),{status:200});
   return new Response(JSON.stringify({message:'unexpected test request'}),{status:404});
 };
@@ -140,6 +141,9 @@ try {
   const ghLink=await projectRequest(olivia,'link-existing','POST',{provider:'github',ticketNumber:t1.number,issueId:'acme/desk#42'});
   const glLink=await projectRequest(olivia,'link-existing','POST',{provider:'gitlab',ticketNumber:t1.number,issueId:'20#7'});
   check('Existing GitHub and GitLab issues can be linked to EffDesk tickets',ghLink.status===200&&glLink.status===200);
+  const pullRequestLink=await projectRequest(olivia,'link-existing','POST',{provider:'github',ticketNumber:t1.number,issueId:'acme/desk#44'});
+  const invalidRepo=await projectRequest(olivia,'create-issue','POST',{provider:'github',ticketNumber:t1.number,projectId:'https://evil.example/acme/desk',title:'No'});
+  check('GitHub pull requests and untrusted repository paths are rejected by the issue linker',pullRequestLink.status===400&&invalidRepo.status===400);
   const upd=await syncTicketUpdate(pool,ENV,acme.id,t1.number,{subject:'Updated from EffDesk',status:'solved'});
   const comments=await syncTicketComment(pool,ENV,acme.id,t1.number,'A reply from the EffDesk agent.');
   check('ticket subject/status updates and agent replies synchronize to linked GitHub and GitLab issues',upd.synced>=2&&comments.synced>=2&&providerCalls.some(x=>x.path.endsWith('/issues/43')&&x.method==='PATCH')&&providerCalls.some(x=>x.path.endsWith('/issues/8')&&x.method==='PUT')&&providerCalls.some(x=>x.path.endsWith('/issues/43/comments'))&&providerCalls.some(x=>x.path.endsWith('/issues/8/notes')));
