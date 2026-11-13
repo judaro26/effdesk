@@ -106,3 +106,14 @@
 @media(prefers-reduced-motion:reduce){
   .deskapp *, .deskapp *::before,.deskapp *::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+
+/* Incident response provider links */
+.deskapp .incident-provider-links{display:grid;gap:9px}
+.deskapp .incident-provider-link-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--d-line);border-radius:10px;background:var(--d-bg)}
+.deskapp .incident-provider-link-brand{min-width:92px;font-size:12px;font-weight:750;color:var(--d-ink)}
+.deskapp .incident-provider-link-row .m{flex:1;min-width:150px;font-size:11px}
+.deskapp .incident-provider-link-row a{font-size:11px;font-weight:700;color:var(--accent);text-decoration:none}
+.deskapp .incident-provider-link-row a:hover{text-decoration:underline}
+.deskapp .incident-provider-section .integration-provider-card{min-width:0}
+.deskapp .incident-provider-section .integration-provider-description{min-height:0}
