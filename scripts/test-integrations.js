@@ -74,4 +74,7 @@ const tm = await A(olivia, 'webhook-save', { kind: 'teams', url: 'https://contos
 const chatSent = []; await emit(pool, acme.id, 'ticket.created', t1.number, {}, { fetchFn: async (u, init) => { chatSent.push({ u, init }); return { status: 200 }; } });
 const slackMsg = chatSent.find(x => /slack/.test(x.u)), teamsMsg = chatSent.find(x => /office/.test(x.u));
 check('Slack gets a short text message without our signature; Teams gets a card', tm.status === 200 && /New ticket: #1 Boiler/.test(JSON.parse(slackMsg.init.body).text) && !slackMsg.init.headers['X-EffDesk-Signature'] && JSON.parse(teamsMsg.init.body).attachments[0].contentType === 'application/vnd.microsoft.card.adaptive' && /Boiler/.test(teamsMsg.init.body));
+const cliq = await A(olivia, 'webhook-save', { kind: 'cliq', url: 'https://cliq.zoho.com/api/v2/channelsbyname/support/message?zapikey=example-secret', events: ['ticket.created'] });
+const cliqSent = []; await emit(pool, acme.id, 'ticket.created', t1.number, {}, { fetchFn: async (u, init) => { cliqSent.push({ u, init }); return { status: 200 }; } });
+check('Zoho Cliq accepts only regional Cliq webhook hosts and receives ticket notifications', cliq.status === 200 && cliqSent.some(x => /cliq\.zoho\.com/.test(x.u) && /New ticket: #1 Boiler/.test(JSON.parse(x.init.body).text)) && (await A(olivia, 'webhook-save', { kind: 'cliq', url: 'https://evil.example.org/hook', events: ['ticket.created'] })).status === 400);
 done();
