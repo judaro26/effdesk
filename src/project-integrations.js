@@ -5,6 +5,7 @@ import { seal, unseal } from './sso.js';
 import { withOrg } from './db.js';
 import { updateTicket, addMessage, logEvent } from './tickets.js';
 import { effectiveHelpSettings } from './help.js';
+import { discoveryCallback } from './cmdb-discovery.js';
 
 const PROVIDERS = new Set(['linear','jira']);
 const clean = (v,n=500) => String(v ?? '').replace(/\u0000/g,'').trim().slice(0,n);
@@ -107,6 +108,7 @@ async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
 
 export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const url=new URL(req.url), path=url.pathname;
+  if(path.endsWith('/cmdb-discovery/oauth/callback')) return discoveryCallback(req,{pool,env});
   if(path.endsWith('/oauth/callback')) return oauthCallback(req,{pool,env});
   if(path.includes('/webhook/')) { const parts=path.split('/').filter(Boolean); return receiveWebhook(req,{pool,env,provider:parts[parts.length-2]}); }
   // Public, read-only theme data lets the integrations shell match its workspace even before sign-in. No private workspace data is exposed.
