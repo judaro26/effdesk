@@ -856,7 +856,8 @@
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
-      if (role !== 'light' && has('itsm')) { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }\n      if (role !== 'light') rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems));
+      if (role !== 'light' && has('itsm')) { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
+      if (role !== 'light') rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems));
       if (has('clients')) rail.appendChild(item('contacts', 'Contacts and companies', 'data-contacts', function () { closePanes();home=false;current=null;creating=false;manage='contacts';contactProfile=null;contactRows=null;mDetail=true;draw();loadContacts(); }));
       if (isAdmin || support) rail.appendChild(item('manage', 'Manage the workspace', 'data-manage', function () { closePanes(); manage = 'team'; mEdit = null; draw(); }));
       if (isAdmin) rail.appendChild(item('integrations', 'External integrations', 'data-integrations', loadIntegrations));
