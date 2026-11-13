@@ -501,12 +501,10 @@
         var initials=fallback[raw]||String(name||'').trim().split(/\s+/).slice(0,2).map(function(part){return part.charAt(0);}).join('').toUpperCase()||'IN';
         var mark=el('div',{class:'integration-provider-mark integration-provider-logo',role:'img','aria-label':name+' logo',title:name});
         if(src){
-          var img=el('img',{src:inlineLogos[src]?'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(inlineLogos[src]):'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
+          var img=el('img',{src:'/assets/integrations/'+src+'.svg',alt:name+' logo',loading:'eager',decoding:'async',onerror:function(){
             if(!img.parentNode)return;
-            if(!img.hasAttribute('data-inline-fallback')&&inlineLogos[src]){img.setAttribute('data-inline-fallback','true');img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(inlineLogos[src]);mark.setAttribute('data-logo-inline-fallback','true');return;}
             var textMark=el('span',{'aria-hidden':'true'},initials);img.parentNode.replaceChild(textMark,img);mark.setAttribute('data-logo-fallback','true');
           }});
-          if(inlineLogos[src])img.setAttribute('data-inline-fallback','true');
           mark.appendChild(img);
         }else{
           mark.appendChild(el('span',{'aria-hidden':'true'},initials));
