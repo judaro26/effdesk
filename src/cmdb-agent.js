@@ -29,7 +29,8 @@ export async function listWindowsAgents(pool,orgId){
  });
 }
 export async function revokeWindowsAgent(pool,orgId,id){
- const r=await withOrg(pool,orgId,c=>c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=encode(digest(random()::text||clock_timestamp()::text,'sha256'),'hex') where org_id=$1 and id=$2 returning id",[orgId,String(id)]));
+ const replacement=hash(crypto.randomBytes(32).toString('base64url'));
+ const r=await withOrg(pool,orgId,c=>c.query("update cmdb_discovery_agents set revoked_at=coalesce(revoked_at,now()),token_hash=$3 where org_id=$1 and id=$2 returning id",[orgId,String(id),replacement]));
  return r.rowCount?{ok:true}:{ok:false,status:404,error:'No such discovery agent.'};
 }
 function parseToken(token){
