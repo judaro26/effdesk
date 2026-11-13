@@ -492,8 +492,8 @@
           googleworkspace:'googleworkspace',microsoftentra:'entra',microsoftintune:'intune',
           microsoftazure:'azure',azuredevops:'azuredevops'
         };
-        var raw=String(key||'').toLowerCase().replace(/[^a-z]/g,'');
-        var named=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
+        var raw=String(key||'').toLowerCase().replace(/[^a-z]/g,'').replace(/planned$/,'');
+        var named=String(name||'').toLowerCase().replace(/[^a-z]/g,'').replace(/planned$/,'');
         var lookup=aliases[raw]||raw||named;
         var src=assets[lookup]||assets[named]||null;
         if(!src){var candidates=[raw,named].map(function(v){return v.replace(/^(microsoft|zoho)/,'');});for(var i=0;i<candidates.length&&!src;i++)src=assets[candidates[i]]||null;}
