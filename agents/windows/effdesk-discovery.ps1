@@ -2,11 +2,36 @@
 # Read-only inventory. It does not collect passwords, browser data, processes, files, or logged-on user details.
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true)][string]$EnrollmentToken,
+  [string]$EnrollmentToken,
+  [string]$TokenFile,
+  [switch]$InstallScheduledTask,
   [string]$ApiUrl = "https://app.effdesk.com/api/cmdb-agent"
 )
 $ErrorActionPreference = "Stop"
 if ($ApiUrl -notmatch '^https://') { throw "ApiUrl must use HTTPS." }
+if ($TokenFile) {
+  if (-not (Test-Path -LiteralPath $TokenFile)) { throw "The protected enrollment-token file was not found." }
+  $secureToken = ConvertTo-SecureString (Get-Content -LiteralPath $TokenFile -Raw)
+  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+  try { $EnrollmentToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
+if ($InstallScheduledTask) {
+  if (-not $EnrollmentToken) { throw "Provide -EnrollmentToken when installing the scheduled task." }
+  $installDir = Join-Path $env:LOCALAPPDATA "EffDesk"
+  New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+  $installedScript = Join-Path $installDir "effdesk-discovery.ps1"
+  $protectedToken = Join-Path $installDir "enrollment.dat"
+  Copy-Item -LiteralPath $PSCommandPath -Destination $installedScript -Force
+  (ConvertTo-SecureString $EnrollmentToken -AsPlainText -Force | ConvertFrom-SecureString) | Set-Content -LiteralPath $protectedToken -NoNewline
+  $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installedScript`" -TokenFile `"$protectedToken`""
+  $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $taskPrincipal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+  Register-ScheduledTask -TaskName "EffDesk Windows Discovery" -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Description "Read-only hardware and installed-software inventory for EffDesk." -Force | Out-Null
+  Write-Output "EffDesk discovery scheduled every 6 hours for the current Windows user. The token is protected with Windows DPAPI."
+  exit 0
+}
+if (-not $EnrollmentToken) { throw "Provide -EnrollmentToken or -TokenFile." }
 $ErrorActionPreference = "Continue"
 function Get-Value($scriptBlock) { try { & $scriptBlock } catch { $null } }
 $computer = Get-Value { Get-CimInstance -ClassName Win32_ComputerSystem }
@@ -15,7 +40,7 @@ $os = Get-Value { Get-CimInstance -ClassName Win32_OperatingSystem }
 if (-not $computer -or -not $bios -or -not $os) { throw "Could not read required Windows hardware details. Run PowerShell locally and retry." }
 $serial = ([string]$bios.SerialNumber).Trim()
 if (-not $serial -or $serial -match '^(0+|Default string|To be filled by O.E.M.)$') {
-  $serial = "NO-SERIAL-" + (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($computer.Name))) -Algorithm SHA256).Hash.Substring(0,16)
+  $serial = "NO-SERIAL-" + ([string]$computer.Name).ToUpperInvariant()
 }
 $software = @()
 $uninstallRoots = @(
