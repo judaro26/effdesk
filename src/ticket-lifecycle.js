@@ -8,7 +8,7 @@ export const DEFAULT_LIFECYCLE = Object.freeze({
   customerReminderEnabled: false, customerReminderHours: 48, customerReminderRepeatHours: 72,
   agentReminderEnabled: false, agentReminderHours: 24, agentReminderRepeatHours: 48,
   reopenEnabled: false, reopenAfterDays: 14,
-  permanentCloseEnabled: true, permanentCloseDays: 30
+  permanentCloseEnabled: false, permanentCloseDays: 30
 });
 const bounded = (v, fallback, min, max) => Number.isInteger(Number(v)) && Number(v) >= min && Number(v) <= max ? Number(v) : fallback;
 export function normalizeLifecycle(input = {}) {
@@ -18,7 +18,7 @@ export function normalizeLifecycle(input = {}) {
     customerReminderEnabled: c.customerReminderEnabled === true, customerReminderHours: bounded(c.customerReminderHours, DEFAULT_LIFECYCLE.customerReminderHours, 1, 8760), customerReminderRepeatHours: bounded(c.customerReminderRepeatHours, DEFAULT_LIFECYCLE.customerReminderRepeatHours, 1, 8760),
     agentReminderEnabled: c.agentReminderEnabled === true, agentReminderHours: bounded(c.agentReminderHours, DEFAULT_LIFECYCLE.agentReminderHours, 1, 8760), agentReminderRepeatHours: bounded(c.agentReminderRepeatHours, DEFAULT_LIFECYCLE.agentReminderRepeatHours, 1, 8760),
     reopenEnabled: c.reopenEnabled === true, reopenAfterDays: bounded(c.reopenAfterDays, DEFAULT_LIFECYCLE.reopenAfterDays, 1, 365),
-    permanentCloseEnabled: c.permanentCloseEnabled !== false, permanentCloseDays: bounded(c.permanentCloseDays, DEFAULT_LIFECYCLE.permanentCloseDays, 1, 3650)
+    permanentCloseEnabled: c.permanentCloseEnabled === true, permanentCloseDays: bounded(c.permanentCloseDays, DEFAULT_LIFECYCLE.permanentCloseDays, 1, 3650)
   };
   if (out.autoCloseEnabled && out.reopenEnabled && out.reopenAfterDays >= out.autoCloseDays) return { error: 'Automatic reopening must happen before automatic closure. Increase the closure delay or shorten the reopening delay.' };
   return out;
