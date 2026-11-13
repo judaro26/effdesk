@@ -6,6 +6,7 @@ import { withOrg } from './db.js';
 import { updateTicket, addMessage, logEvent } from './tickets.js';
 import { effectiveHelpSettings } from './help.js';
 import { discoveryCallback } from './cmdb-discovery.js';
+import { receiveMonitoringAlertWebhook } from './monitoring-alert-webhooks.js';
 
 const PROVIDERS = new Set(['linear','jira']);
 const ISSUE_PROVIDERS = new Set(['linear','jira','github','gitlab']);
@@ -123,6 +124,7 @@ async function jiraCreateMetadata(token,cloudId,projectKey,issueTypeId) {
 export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   const url=new URL(req.url), path=url.pathname;
   if(path.endsWith('/cmdb-discovery/oauth/callback')) return discoveryCallback(req,{pool,env});
+  if(path.includes('/alerts/')) { const parts=path.split('/').filter(Boolean), i=parts.indexOf('alerts'); return receiveMonitoringAlertWebhook(req,{pool,provider:parts[i+1],token:parts[i+2]}); }
   if(path.endsWith('/oauth/callback')) return oauthCallback(req,{pool,env});
   if(path.includes('/webhook/')) { const parts=path.split('/').filter(Boolean); return receiveWebhook(req,{pool,env,provider:parts[parts.length-2]}); }
   // Public, read-only theme data lets the integrations shell match its workspace even before sign-in. No private workspace data is exposed.
