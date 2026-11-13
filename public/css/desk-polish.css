@@ -864,4 +864,15 @@
 .deskapp .top{z-index:80}
 .deskapp .usermenu{z-index:81}
 .deskapp .usermenu>.menu{z-index:1000;max-height:min(70vh,560px);overflow-y:auto;overscroll-behavior:contain}
-@media(max-width:680px){.deskapp .top{z-index:80}.deskapp .usermenu>.menu{z-index:500;max-height:calc(70vh - env(safe-area-inset-bottom))}}
+@media(max-width:680px){
+  /* Keep the profile popover compact and anchored to its trigger. The old
+     full-width, bottom-fixed sheet covered the Manage workspace navigation. */
+  .deskapp .top{z-index:320}
+  .deskapp .usermenu{position:relative;z-index:321}
+  .deskapp .usermenu>.menu{
+    position:absolute;left:auto;right:0;top:calc(100% + 8px);bottom:auto;
+    width:min(320px,calc(100vw - 24px));max-width:calc(100vw - 24px);
+    max-height:calc(100dvh - 132px);overflow-y:auto;z-index:322;
+    overscroll-behavior:contain
+  }
+}
