@@ -1323,7 +1323,7 @@
         var connectedProviders=['linear','jira'].filter(connected);
         if(!connectedProviders.length){
           box.appendChild(el('p',{class:'m'},'No external project tools are connected to this workspace.'));
-          box.appendChild(el('a',{class:'btn l sm',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations},'Configure integrations'));
+          box.appendChild(el('a',{class:'btn l sm',href:'https://app.effdesk.com/desk.html?org='+encodeURIComponent(orgId)+'&section=integrations'},'Configure integrations'));
           return box;
         }
         var tabs=el('div',{class:'external-provider-tabs',role:'tablist','aria-label':'External issue provider'});
