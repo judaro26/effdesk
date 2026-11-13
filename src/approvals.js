@@ -1,6 +1,7 @@
 // Tenant-scoped approval workflow, sequential stages and fulfillment tasks.
 import { withOrg } from './db.js';
 import { notifyApproval } from './notify.js';
+import { normalizeReminderSettings } from './approval-reminders.js';
 const clean=(v,n)=>String(v==null?'':v).replace(/\u0000/g,'').trim().slice(0,n);
 const fail=(error,status=400)=>({ok:false,status,error});
 const states=['open','in_progress','done','cancelled'];
@@ -10,7 +11,8 @@ export function normalizeApprovalConfig(b){
  let stages=Array.isArray(b.stages)?b.stages.slice(0,10).map(cleanStage):[];
  if(!stages.length&&Array.isArray(b.approverIds)&&b.approverIds.length)stages=[cleanStage({name:'Approval',mode:b.mode,approverIds:b.approverIds},0)];
  const first=stages[0]||{name:'Approval',mode:b.mode==='any'?'any':'all',approverIds:[]};
- return {enabled:b.enabled===true,mode:stages.length>1||b.mode==='sequential'?'sequential':first.mode,approverIds:first.approverIds,stages,tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t&&t.title,160),description:clean(t&&t.description,3000),assigneeId:clean(t&&t.assigneeId,128),position:i})).filter(t=>t.title)};
+ const reminders=normalizeReminderSettings(b.reminderHours,b.maxReminders);
+ return {enabled:b.enabled===true,mode:stages.length>1||b.mode==='sequential'?'sequential':first.mode,approverIds:first.approverIds,stages,reminderHours:reminders.reminderHours,maxReminders:reminders.maxReminders,tasks:(Array.isArray(b.tasks)?b.tasks:[]).slice(0,20).map((t,i)=>({title:clean(t&&t.title,160),description:clean(t&&t.description,3000),assigneeId:clean(t&&t.assigneeId,128),position:i})).filter(t=>t.title)};
 }
 export function approvalStageOutcome(stage,approvedCount,rejectedCount=0){
  if(rejectedCount>0)return 'rejected';
@@ -32,7 +34,7 @@ export async function createForTicket(pool,orgId,ticket,formId,actorId=null,mail
   const f=(await c.query('select id,name,approval_config from request_forms where org_id=$1 and id=$2 and active',[orgId,formId])).rows[0];
   if(!f)return {ok:true,skipped:true}; const v=await validateApprovalConfig(c,orgId,f.approval_config); if(!v.ok)return v; if(!v.config.enabled)return {ok:true,skipped:true};
   const stages=v.config.stages,first=stages[0];
-  const a=(await c.query("insert into approval_requests(org_id,ticket_id,ticket_number,form_id,mode,approver_ids,stages,current_stage,created_by,title) values($1,$2,$3,$4,$5,$6,$7::jsonb,0,$8,$9) on conflict(org_id,ticket_id) do nothing returning id",[orgId,ticket.id,ticket.number,f.id,first.mode,first.approverIds,JSON.stringify(stages),actorId,'Approval: '+f.name])).rows[0];
+  const a=(await c.query("insert into approval_requests(org_id,ticket_id,ticket_number,form_id,mode,approver_ids,stages,current_stage,created_by,title,reminder_interval_hours,max_reminders) values($1,$2,$3,$4,$5,$6,$7::jsonb,0,$8,$9,$10,$11) on conflict(org_id,ticket_id) do nothing returning id",[orgId,ticket.id,ticket.number,f.id,first.mode,first.approverIds,JSON.stringify(stages),actorId,'Approval: '+f.name,v.config.reminderHours,v.config.maxReminders])).rows[0];
   if(!a)return {ok:true,skipped:true};
   for(const t of v.config.tasks)await c.query('insert into fulfillment_tasks(org_id,ticket_id,approval_id,title,description,assignee_id,position,created_by) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,ticket.id,a.id,t.title,t.description,t.assigneeId||null,t.position,actorId]);
   return {ok:true,approvalId:a.id,stageIndex:0};
@@ -70,7 +72,7 @@ export async function decideApproval(pool,orgId,actorId,id,decision,comment='',m
    await c.query('update approval_requests set status=$3,decided_at=now() where org_id=$1 and id=$2',[orgId,a.id,status]);
   }else if(stageDone&&stageIndex+1<stages.length){
    nextStage=stageIndex+1;const next=stages[nextStage];
-   await c.query('update approval_requests set current_stage=$3,mode=$4,approver_ids=$5 where org_id=$1 and id=$2',[orgId,a.id,nextStage,next.mode,next.approverIds]);
+   await c.query('update approval_requests set current_stage=$3,mode=$4,approver_ids=$5,reminder_count=0,last_reminded_at=now(),reminder_claimed_at=null where org_id=$1 and id=$2',[orgId,a.id,nextStage,next.mode,next.approverIds]);
   }else if(stageDone){
    status='approved';event='completed';
    await c.query('update approval_requests set status=$3,decided_at=now() where org_id=$1 and id=$2',[orgId,a.id,status]);
