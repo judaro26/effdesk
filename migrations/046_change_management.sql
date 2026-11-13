@@ -19,6 +19,7 @@ create table if not exists change_requests (
  requested_by text,
  approval_stages jsonb not null default '[]'::jsonb,
  current_stage integer not null default 0,
+ approval_round integer not null default 1 check(approval_round between 1 and 1000),
  approved_at timestamptz,
  completed_at timestamptz,
  created_at timestamptz not null default now(),
@@ -52,13 +53,14 @@ create table if not exists change_decisions (
  org_id text not null,
  change_id bigint not null,
  stage_index integer not null,
+ round_index integer not null default 1,
  approver_id text not null,
  decision text not null check(decision in ('approved','rejected')),
  comment text not null default '' check(char_length(comment)<=2000),
  created_at timestamptz not null default now(),
- unique(org_id,change_id,stage_index,approver_id),
  foreign key(org_id,change_id) references change_requests(org_id,id) on delete cascade
 );
+create unique index if not exists change_decisions_round_approver_uq on change_decisions(org_id,change_id,round_index,stage_index,approver_id);
 create index if not exists change_decisions_change on change_decisions(org_id,change_id,stage_index,created_at);
 create table if not exists change_events (
  id bigserial primary key,
@@ -77,6 +79,7 @@ create table if not exists change_approval_notifications (
  org_id text not null,
  change_id bigint not null,
  stage_index integer not null default 0,
+ approval_round integer not null default 1,
  user_id text not null,
  event text not null check(event in ('requested','decided','completed','rejected')),
  delivery_status text not null default 'sending' check(delivery_status in ('sending','sent','failed','skipped')),
@@ -84,7 +87,7 @@ create table if not exists change_approval_notifications (
  last_error text,
  updated_at timestamptz not null default now(),
  created_at timestamptz not null default now(),
- unique(org_id,change_id,stage_index,user_id,event),
+ unique(org_id,change_id,approval_round,stage_index,user_id,event),
  foreign key(org_id,change_id) references change_requests(org_id,id) on delete cascade
 );
 create index if not exists change_approval_notifications_retry on change_approval_notifications(org_id,delivery_status,updated_at);
