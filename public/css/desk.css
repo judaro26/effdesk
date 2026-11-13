@@ -789,6 +789,7 @@ html{-webkit-text-size-adjust:100%}
 
 
 /* Desk rail labels: keep the compact icon rail, reveal a readable label on hover/focus. */
+.rail{position:relative;z-index:20}
 .rail .ri[aria-label]::after{
   content:attr(aria-label);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%) translateX(-4px);
   z-index:100;white-space:nowrap;padding:8px 11px;border:1px solid var(--d-line);border-radius:8px;
