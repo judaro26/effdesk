@@ -60,7 +60,7 @@ import { listChanges, getChange, saveChange, decideChange, getChangeCabPolicy, s
 import { listConfigurationItems, getConfigurationItem, saveConfigurationItem, saveConfigurationRelationship, linkConfigurationRecord } from './configuration-items.js';
 import { listVendors, saveVendor, listContracts, saveContract, listLicenses, saveLicense, warrantyReport, exportAssetsCsv, importAssetsCsv } from './cmdb-lifecycle.js';
 import { discoveryStatus, startDiscovery, syncDiscovery, disconnectDiscovery } from './cmdb-discovery.js';
-import { createWindowsAgent, listWindowsAgents, revokeWindowsAgent } from './cmdb-agent.js';
+import { createDiscoveryAgent, listDiscoveryAgents, revokeDiscoveryAgent } from './cmdb-agent.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -219,9 +219,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'itsm-ci-discovery-start': if ((g = adminOnly() || need('itsm'))) return g; r = await startDiscovery(pool, env, orgId, actor, b.tenantId); break;
     case 'itsm-ci-discovery-sync': if ((g = adminOnly() || need('itsm'))) return g; r = await syncDiscovery(pool, env, orgId, actor); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_synced', 'Microsoft Intune', { discovered: r.discovered, created: r.created, updated: r.updated }); break;
     case 'itsm-ci-discovery-disconnect': if ((g = adminOnly() || need('itsm'))) return g; r = await disconnectDiscovery(pool, orgId); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_disconnected', 'Microsoft Intune', {}); break;
-    case 'itsm-ci-agent-list': if ((g = need('itsm'))) return g; r = await listWindowsAgents(pool, orgId); break;
-    case 'itsm-ci-agent-create': if ((g = adminOnly() || need('itsm'))) return g; r = await createWindowsAgent(pool, orgId, actor, b.name); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_created', r.agent.name, { agentId: r.agent.id }); break;
-    case 'itsm-ci-agent-revoke': if ((g = adminOnly() || need('itsm'))) return g; r = await revokeWindowsAgent(pool, orgId, b.id); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_revoked', String(b.id), {}); break;
+    case 'itsm-ci-agent-list': if ((g = need('itsm'))) return g; r = await listDiscoveryAgents(pool, orgId); break;
+    case 'itsm-ci-agent-create': if ((g = adminOnly() || need('itsm'))) return g; r = await createDiscoveryAgent(pool, orgId, actor, b.name, b.provider || 'windows_agent'); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_created', r.agent.name, { agentId: r.agent.id }); break;
+    case 'itsm-ci-agent-revoke': if ((g = adminOnly() || need('itsm'))) return g; r = await revokeDiscoveryAgent(pool, orgId, b.id); if (r.ok) await audit(pool, orgId, actor.id, 'cmdb.discovery_agent_revoked', String(b.id), {}); break;
     case 'itsm-service-save': if ((g = adminOnly() || need('itsm'))) return g; r = await saveService(pool, orgId, b); break;
     case 'itsm-incident-list': if ((g = need('itsm'))) return g; r = await listIncidents(pool, orgId, b); break;
     case 'itsm-incident-get': if ((g = need('itsm'))) return g; r = await getIncident(pool, orgId, b.number); break;
