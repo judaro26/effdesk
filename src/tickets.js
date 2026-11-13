@@ -13,7 +13,7 @@ const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNa
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number';
+const ticketCols = 'custom, id, number, subject, status, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id';
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -84,6 +84,8 @@ export async function getTicket(pool, orgId, actor, number) {
     if (!t) return fail('No such ticket.', 404);
     const messages = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
     const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
+    const lifecycleParent = t.lifecycle_parent_ticket_id ? (await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.lifecycle_parent_ticket_id])).rows[0] || null : null;
+    const lifecycleFollowUps = (await c.query('select number,subject,status from tickets where org_id=$1 and lifecycle_parent_ticket_id=$2 order by created_at',[orgId,t.id])).rows;
     for (const m of messages) {
       // Older automations or integrations may have stored HTML markup in body before html_body existed.
       if (!m.html_body && /<\s*(?:p|div|table|h[1-6]|ul|ol|li|strong|b|br|a|span|blockquote|img)\b/i.test(String(m.body || ''))) {
@@ -92,7 +94,7 @@ export async function getTicket(pool, orgId, actor, number) {
       }
       m.attachments = files.filter(f => f.message_id === m.id).map(f => ({ id: f.id, filename: f.filename, contentType: f.content_type, size: f.size }));
     }
-    return { ok: true, ticket: t, messages };
+    return { ok: true, ticket: t, messages, lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
   });
 }
 
