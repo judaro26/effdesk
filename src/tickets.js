@@ -120,7 +120,7 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
     if (!t) return fail('No such ticket.', 404);
     if (patch.status === 'open' && t.status === 'closed') {
       const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
-      if (cfg.permanentCloseEnabled !== false && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
+      if (cfg.permanentCloseEnabled === true && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
     }
     const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = ${args.length}`); };
     let label = null, cs = null;
