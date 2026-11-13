@@ -14,9 +14,13 @@ function parseToken(token){
  try{const orgId=Buffer.from(p[1],'base64url').toString('utf8');if(!orgId||orgId.length>128||!p[2]||! /^[0-9a-f-]{36}$/i.test(p[2])||p[3].length<40)return null;return {orgId,id:p[2],token};}catch{return null;}
 }
 function privateAddress(ip){
- if(isIP(ip)===4){const a=ip.split('.').map(Number);return a[0]===10||(a[0]===172&&a[1]>=16&&a[1]<=31)||(a[0]===192&&a[1]===168);}
- if(isIP(ip)===6){const s=ip.toLowerCase();return s.startsWith('fc')||s.startsWith('fd')||s.startsWith('fe80:');}
- return false;
+ if(isIP(ip)!==4)return false;
+ const a=ip.split('.').map(Number);return a[0]===10||(a[0]===172&&a[1]>=16&&a[1]<=31)||(a[0]===192&&a[1]===168);
+}
+function inAllowedNetwork(ip,networks){
+ const parts=ip.split('.').map(Number);if(parts.length!==4||!Array.isArray(networks))return false;
+ const value=parts.reduce((n,x)=>((n<<8)|x)>>>0,0);
+ return networks.some(raw=>{const p=String(raw).split('/'),base=p[0].split('.').map(Number),prefix=Math.max(0,Math.min(32,Number(p[1]||32)));if(base.length!==4||base.some(x=>!Number.isInteger(x)||x<0||x>255))return false;const target=base.reduce((n,x)=>((n<<8)|x)>>>0,0),mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;return (value&mask)===(target&mask);});
 }
 export function normalizeSnmpDevices(input){
  const devices=Array.isArray(input?.devices)?input.devices.slice(0,1024):[];
@@ -36,8 +40,9 @@ export async function ingestSnmpDiscoveryAgent(req,{pool}){
  if(!devices.length)return fail(400,'No valid private-network SNMP device results were supplied.');
  try{
   const result=await withOrg(pool,parsed.orgId,async c=>{
-   const agent=(await c.query("select id,name,provider from cmdb_discovery_agents where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null and expires_at>now() for update",[parsed.orgId,parsed.id,hash(parsed.token)])).rows[0];
+   const agent=(await c.query("select id,name,provider,allowed_networks from cmdb_discovery_agents where org_id=$1 and id=$2 and token_hash=$3 and revoked_at is null and expires_at>now() for update",[parsed.orgId,parsed.id,hash(parsed.token)])).rows[0];
    if(!agent||agent.provider!=='snmp_agent')return null;
+   if(!devices.every(d=>inAllowedNetwork(d.ip,agent.allowed_networks)))return {scopeError:true};
    await c.query('select pg_advisory_xact_lock(hashtext($1))',[parsed.orgId+':snmp-agent:'+agent.id]);
    const run=(await c.query("insert into cmdb_discovery_runs(org_id,provider,status) values($1,'snmp_agent','running') returning id",[parsed.orgId])).rows[0];
    let created=0,updated=0;
@@ -60,6 +65,7 @@ export async function ingestSnmpDiscoveryAgent(req,{pool}){
    return {discovered:devices.length,created,updated};
   });
   if(!result)return fail(401,'Discovery agent is invalid, expired, revoked or not an SNMP network poller.');
+  if(result.scopeError)return fail(403,'One or more reported device addresses are outside this poller’s approved CIDR ranges.');
   return ok(result);
  }catch(e){return fail(500,'Network inventory could not be saved.');}
 }
