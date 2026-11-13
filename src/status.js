@@ -140,7 +140,7 @@ export function renderIncident(i, base = '/status', brand = null) { return shell
 function shell(title, body, refresh = true, brand = null, base = '/status') {
   return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${refresh ? '<meta http-equiv="refresh" content="60">' : ''}<title>${esc(title)}</title><link rel="stylesheet" href="/css/site.css"><link rel="stylesheet" href="/css/status.css"><link rel="alternate" type="application/atom+xml" href="${esc(base)}/feed.xml" title="${esc(brand ? brand.name : PRODUCT.name)} status"><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body>
 ${brand ? `<header><div class="in"><a class="brand" href="${esc(brand.home)}">${esc(brand.name)}</a><nav><a href="${esc(base)}">Status</a><a href="${esc(brand.home)}">Help center</a></nav></div></header>` : `<header><div class="in"><a class="brand" href="/">Eff<span>Desk</span></a><nav><a href="/status">Status</a><a href="/app.html">Sign in</a></nav></div></header>`}
-<main class="doc status">${body}</main><footer><div class="in"><span class="m">${brand ? 'Powered by ' + esc(PRODUCT.name) : esc(PRODUCT.name)}</span></div></footer></body></html>`;
+<main class="doc status">${body}</main><footer><div class="in"><span class="m">${brand ? 'Powered by ' + esc(PRODUCT.name) : esc(PRODUCT.name)}</span></div></footer><script src="/js/i18n.js"></script></body></html>`;
 }
 export function renderJson(d, name = PRODUCT.name) {
   const ind = { operational: 'none', maintenance: 'maintenance', degraded: 'minor', partial_outage: 'major', major_outage: 'critical' }[d.overall];
