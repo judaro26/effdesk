@@ -26,12 +26,14 @@ const create=async(provider)=>createMonitoringAlertConnection(pool,org.id,owner.
 const call=async(provider,secret,payload)=>receiveMonitoringAlertWebhook(new Request('https://app.effdesk.test/api/integrations/alerts/'+provider+'/'+secret,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}),{pool,provider,token:secret});
 const dd=await create('datadog');
 check('Datadog endpoint secret is generated once and connection is listed',dd.ok&&dd.secret.startsWith('effalert_')&&(await listMonitoringAlertConnections(pool,org.id)).connections.length===1);
-const ddOpen=await call('datadog',dd.secret,{id:'dd-delivery-1',monitor_id:77,host:'api-01',title:'CPU saturation',text:'CPU > 90%',alert_type:'error',alert_transition:'Triggered',url:'https://app.datadoghq.com/monitors/77'});
+const ddOpen=await call('datadog',dd.secret,{timestamp:'2026-11-13T10:00:00Z',id:'dd-delivery-1',monitor_id:77,host:'api-01',title:'CPU saturation',text:'CPU > 90%',alert_type:'error',alert_transition:'Triggered',url:'https://app.datadoghq.com/monitors/77'});
 const ddBody=await ddOpen.json();
 const ddTicket=(await query('select id,number,type,status,priority,subject from tickets where org_id=$1 and number=$2',[org.id,ddBody.alerts[0]?.ticketNumber])).rows[0];
 check('Datadog trigger creates a P2 incident ticket',ddOpen.status===200&&ddBody.created===1&&ddTicket?.type==='incident'&&ddTicket.status==='open'&&ddTicket.priority==='high');
-const ddRecovered=await call('datadog',dd.secret,{id:'dd-delivery-2',monitor_id:77,host:'api-01',title:'CPU saturation',alert_type:'error',alert_transition:'Recovered'});
+const ddRecovered=await call('datadog',dd.secret,{timestamp:'2026-11-13T12:00:00Z',id:'dd-delivery-2',monitor_id:77,host:'api-01',title:'CPU saturation',alert_type:'error',alert_transition:'Recovered'});
 check('Datadog recovery resolves the existing alert ticket',(await ddRecovered.json()).alerts[0]?.ticketNumber===ddTicket.number&&(await query('select status from tickets where org_id=$1 and id=$2',[org.id,ddTicket.id])).rows[0].status==='solved');
+const ddStale=await call('datadog',dd.secret,{timestamp:'2026-11-13T11:00:00Z',id:'dd-delivery-stale',monitor_id:77,host:'api-01',title:'CPU saturation',alert_type:'error',alert_transition:'Triggered'});
+check('An older Datadog event cannot reopen a later-recovered alert',ddStale.status===200&&(await ddStale.json()).alerts[0]?.stale===true&&(await query('select status from tickets where org_id=$1 and id=$2',[org.id,ddTicket.id])).rows[0].status==='solved');
 const graf=await create('grafana');
 const grafEvent=await call('grafana',graf.secret,{event_id:'graf-delivery-1',status:'firing',alerts:[
  {status:'firing',fingerprint:'graf-fp-1',labels:{alertname:'API latency',severity:'critical',instance:'api-1'},annotations:{description:'p95 latency over 2 seconds'},generatorURL:'https://grafana.example/alerting/1'},

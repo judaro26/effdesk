@@ -23,7 +23,8 @@ export async function startPostgres() {
 // Create a separate empty database for each test, even when TEST_DATABASE_URL names a database other than "postgres".
 export async function freshDb(name) {
   const c = await startPostgres(), admin = new pg.Client({ connectionString: c.url }); await admin.connect();
-  const db = `t_${name}_${Date.now().toString(36)}`; await admin.query(`create database ${db}`); await admin.end();
+  const safeName = String(name).replace(/[^a-zA-Z0-9_]/g, "_");
+  const db = `t_${safeName}_${Date.now().toString(36)}`; await admin.query(`create database "${db}"`); await admin.end();
   const dbUrl = new URL(c.url); dbUrl.pathname = `/${db}`;
   return { url: dbUrl.toString() };
 }
