@@ -64,6 +64,17 @@ check('a new person is created, made a member and signed in, and lands in the de
 r = await signIn('newbie@acme.test');
 check('signing in again reuses the same person', (await pool.query("select count(*)::int n from \"user\" where email = 'newbie@acme.test'")).rows[0].n === 1 && /desk\.html/.test(r.to));
 
+ // Invitation IDs must not be enough to add an account whose email has not been verified.
+const pendingInvite = await auth.api.createInvitation({ body: { email: 'unverified-invitee@acme.test', role: 'member', organizationId: acme.id }, headers: olivia.headers });
+const unverified = await signUp('unverified-invitee@acme.test', 'Unverified Invitee');
+const verifiedFlag = (await pool.query('select "emailVerified" from "user" where email=$1', ['unverified-invitee@acme.test'])).rows[0]?.emailVerified;
+let invitationRejected = false;
+try {
+  await auth.api.acceptInvitation({ body: { invitationId: pendingInvite.id }, headers: unverified.headers });
+} catch { invitationRejected = true; }
+const invitationMembership = await pool.query('select 1 from member where "organizationId"=$1 and "userId"=$2', [acme.id, unverified.user.id]);
+check('an unverified account cannot accept an organization invitation', verifiedFlag === false && invitationRejected && invitationMembership.rowCount === 0);
+
  // Two simultaneous SSO callbacks must not both consume the workspace's final seat.
 const raceOwner = await signUp('race-owner@race.test', 'Race Owner');
 const raceOrg = await auth.api.createOrganization({ body: { name: 'Race Workspace', slug: 'race-workspace' }, headers: raceOwner.headers });
