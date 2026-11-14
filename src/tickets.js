@@ -22,7 +22,7 @@ const who = a => (a && (a.name || a.email)) || 'Customer';
 
 // a new ticket with its first message (from the requester, or from an agent who is logging a call)
 export async function createTicket(pool, orgId, actor, input) {
-  const subject = clean(input.subject, 200), safeHtml = input.htmlBody ? cleanHtml(String(input.htmlBody).slice(0, 100000)) : null, body = clean(input.body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''), email = clean(input.requesterEmail, 254).toLowerCase();
+  const subject = clean(input.subject, 200), safeHtml = input.htmlBody ? cleanHtml(String(input.htmlBody).slice(0, 100000), { allowCidImages: input.channel === 'email' }) : null, body = clean(input.body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''), email = clean(input.requesterEmail, 254).toLowerCase();
   if (!subject) return fail('Give the ticket a subject.');
   if (!body) return fail('Write the first message.');
   if (!isEmail(email)) return fail('Enter the requester\'s email address.');
