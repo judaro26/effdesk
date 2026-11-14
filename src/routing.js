@@ -28,10 +28,11 @@ export async function getChatAvailability(pool, orgId, userId) {
   });
 }
 export async function setChatAccess(pool, orgId, userId, enabled) {
-  const member = (await pool.query('select role from member where "organizationId" = $1 and "userId" = $2', [orgId, String(userId || '')])).rows[0];
-  if (!member) return fail('Choose a teammate in this workspace.', 404);
-  if (enabled && member.role === 'light') return fail('Light agents cannot handle live chats. Change their role first.');
   return withOrg(pool, orgId, async c => {
+    // Lock the membership row so a concurrent role change/removal cannot race an access grant.
+    const member = (await c.query('select role from member where "organizationId" = $1 and "userId" = $2 for update', [orgId, String(userId || '')])).rows[0];
+    if (!member) return fail('Choose a teammate in this workspace.', 404);
+    if (enabled && member.role === 'light') return fail('Light agents cannot handle live chats. Change their role first.');
     await c.query(`insert into agent_status (org_id, user_id, available, chat_access, chat_available)
       values ($1,$2,true,$3,false)
       on conflict (org_id, user_id) do update set chat_access = $3, chat_available = false`, [orgId, String(userId), enabled === true]);
@@ -40,9 +41,9 @@ export async function setChatAccess(pool, orgId, userId, enabled) {
   });
 }
 export async function setChatAvailable(pool, orgId, userId, available) {
-  const member = (await pool.query('select role from member where "organizationId" = $1 and "userId" = $2', [orgId, userId])).rows[0];
-  if (!member || member.role === 'light') return fail('You are not allowed to accept live chats.', 403);
   return withOrg(pool, orgId, async c => {
+    const member = (await c.query('select role from member where "organizationId" = $1 and "userId" = $2 for update', [orgId, userId])).rows[0];
+    if (!member || member.role === 'light') return fail('You are not allowed to accept live chats.', 403);
     const r = await c.query('update agent_status set chat_available = $3 where org_id = $1 and user_id = $2 and chat_access = true returning chat_available', [orgId, userId, available === true]);
     if (!r.rowCount) return fail('An admin must enable Live Chat access for you first.', 403);
     return { ok: true, available: r.rows[0].chat_available };
