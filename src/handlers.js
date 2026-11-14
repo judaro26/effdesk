@@ -71,9 +71,8 @@ import { ingestSnmpDiscoveryAgent } from './cmdb-snmp.js';
 import { licenseReconciliation, saveLicenseAlias, assetOwnershipReport, assignAssetOwner, listCompliancePolicies, saveCompliancePolicy, evaluateCompliance } from './cmdb-governance.js';
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
-const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
-// Read uploads incrementally so a missing or dishonest Content-Length cannot make
-// the function buffer an unbounded request body before the size check.
+// Read request bodies incrementally so a missing or dishonest Content-Length
+// cannot make the function buffer an unbounded body before the size check.
 const readBytes = async (req, max) => {
   if (!req.body) return Buffer.alloc(0);
   const reader = req.body.getReader(), chunks = [];
@@ -93,6 +92,14 @@ const readBytes = async (req, max) => {
   } catch {
     return null;
   }
+};
+const readJson = async (req, max = 10000) => {
+  try {
+    const bytes = await readBytes(req, max);
+    if (!bytes) return null;
+    const value = JSON.parse(bytes.toString('utf8') || '{}');
+    return value && typeof value === 'object' ? value : null;
+  } catch { return null; }
 };
 // a signed-in action must come from our own pages: a request that a browser marks as coming from another website or subdomain is refused (cookies alone are not proof)
 const session = async (auth, req) => { try { if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(req)) return null; return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
