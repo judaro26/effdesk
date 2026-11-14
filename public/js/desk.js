@@ -1332,7 +1332,7 @@
           if (e.button !== 0) return;
           e.preventDefault();
           var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height;
-          var move = function (ev) { resizeTo(startHeight + ev.clientY - startY); };
+          var move = function (ev) { resizeTo(startHeight - (ev.clientY - startY)); };
           var up = function () {
             doc.removeEventListener('pointermove', move);
             doc.removeEventListener('pointerup', up);
