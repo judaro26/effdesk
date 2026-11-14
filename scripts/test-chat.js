@@ -51,6 +51,11 @@ check('an agent with access can see the live chat inbox', (await A(ann, 'list', 
 check('an admin can revoke live chat access', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: false })).body.access === false);
 check('revoking access also forces the agent offline', (await A(ann, 'chat-availability-set', { available: true })).status === 403);
 check('a revoked agent cannot list live chats', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 403);
+const annMember = (await A(olivia, 'team-list')).body.people.find(p => p.userId === ann.user.id).memberId;
+await A(olivia, 'team-role', { memberId: annMember, role: 'light' });
+check('a light agent cannot be granted live chat access', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true })).status === 400);
+check('changing an agent to light revokes chat availability', (await A(ann, 'chat-availability-set', { available: true })).status === 403);
+await A(olivia, 'team-role', { memberId: annMember, role: 'member' });
 await A(olivia, 'chat-access-set', { userId: olivia.user.id, enabled: true });
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list only open live-chat tickets', inbox.status === 200 && inbox.body.tickets.length === 1 && inbox.body.tickets[0].number === n && inbox.body.tickets[0].channel === 'chat');
