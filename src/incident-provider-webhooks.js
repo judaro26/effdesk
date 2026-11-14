@@ -74,7 +74,7 @@ function normalize(provider,body,raw) {
   const service=clean(first(attrs.service?.summary,attrs.service?.name,attrs.service_name,attrs.services?.[0]?.name),'160');
   const escalation=clean(first(attrs.escalation_policy?.name,attrs.escalation_policy?.summary,attrs.escalation?.name,attrs.escalation_level,attrs.escalation?.level),'160');
   const eventId=clean(first(event!==body?event.id:undefined,body.event_id,body.webhook_id,body.delivery_id,body.id&&String(body.id)!==id?body.id:undefined),200)||digest(raw);
-  const providerEventAt=eventTime(event.created_at,event.createdAt,event.occurred_at,event.occurredAt,event.timestamp,event.time,body.created_at,body.createdAt,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.created_at,data.updated_at);
+  const providerEventAt=eventTime(event.created_at,event.createdAt,event.occurred_at,event.occurredAt,event.timestamp,event.time,body.created_at,body.createdAt,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.updated_at);
   return {id,title,eventId,providerEventAt,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary,owner,service,escalation};
 }
 
