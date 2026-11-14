@@ -39,7 +39,7 @@ const resolved=await call('pagerduty',pd.secret,{event:{id:'pd-event-3',created_
 check('PagerDuty resolution marks the linked EffDesk incident solved',(await resolved.json()).ticketNumber===ticket.number&&(await query('select status from tickets where org_id=$1 and id=$2',[org.id,ticket.id])).rows[0].status==='solved');
 const stale=await call('pagerduty',pd.secret,{event:{id:'pd-event-stale',created_at:'2026-11-13T10:30:00Z',event_type:'incident.triggered',data:{id:'pd-incident-1',title:'Primary database unavailable',status:'triggered',urgency:'high'}}});
 check('An older PagerDuty event cannot reopen a later-resolved incident',stale.status===200&&(await stale.json()).stale===true&&(await query('select status from tickets where org_id=$1 and id=$2',[org.id,ticket.id])).rows[0].status==='solved');
-const duplicate=await call('pagerduty',pd.secret,{event:{id:'pd-event-3',event_type:'incident.resolved',data:{id:'pd-incident-1',title:'Primary database unavailable',status:'resolved',urgency:'high'}}});
+const duplicate=await call('pagerduty',pd.secret,{event:{id:'pd-event-3',created_at:'2026-11-13T12:00:00Z',event_type:'incident.resolved',data:{id:'pd-incident-1',title:'Primary database unavailable',status:'resolved',urgency:'high'}}});
 check('Repeated provider event IDs are idempotently acknowledged',duplicate.status===200&&(await duplicate.json()).duplicate===true);
 const rootly=await create('rootly','Rootly');
 const rootEvent=await call('rootly',rootly.secret,{id:'rootly-event-1',event:'incident.created',data:{id:'rootly-incident-1',attributes:{name:'API latency elevated',status:'started',severity:'SEV-1'}}});
