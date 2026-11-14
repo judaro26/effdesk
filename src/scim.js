@@ -249,7 +249,7 @@ export async function scim(req, { pool }) {
   }
   if ((req.method === 'PUT' || req.method === 'PATCH') && id) {
     const row = await readUser(pool, orgId, id); if (!row) return scimError(404, 'User not found.');
-    const input = await req.json().catch(() => null); if (!input || typeof input !== 'object') return scimError(400, 'A SCIM user resource is required.', 'invalidSyntax');
+    const input = await readScimJson(req); if (!input) return scimError(400, 'A SCIM user resource is required or the request body is too large.', 'invalidSyntax');
     const r = req.method === 'PATCH' ? await patchUser(pool, orgId, row, input) : await upsertScimUser(pool, orgId, input, row);
     if (!r.ok) return scimError(r.status || 400, r.error, r.scimType);
     return response(200, userResource(r.row, base));
