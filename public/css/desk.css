@@ -925,3 +925,12 @@ html{-webkit-text-size-adjust:100%}
 
 /* Live Chat: a public customer reply is awaiting an agent response. */
 .chat-inbox-customer-replied{align-self:flex-start;margin-top:2px;padding:3px 7px;border-radius:6px;background:color-mix(in srgb,#d97706 12%,var(--d-panel));color:color-mix(in srgb,#b45309 88%,var(--d-ink));font-size:10px;font-weight:750;line-height:1.35}
+
+
+/* Live Chat reply notification shown across the agent desk. */
+.chat-reply-global-alert{position:fixed;z-index:1200;right:24px;top:24px;display:flex;align-items:center;gap:14px;max-width:min(560px,calc(100vw - 32px));padding:14px 16px;border:1px solid var(--border,#d9dee5);border-left:4px solid var(--accent,#1f73b7);border-radius:12px;background:var(--panel,#fff);color:var(--text,#202a33);box-shadow:0 12px 36px rgba(0,0,0,.2);font-size:14px}
+.chat-reply-global-alert-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.chat-reply-global-alert-copy span{color:var(--muted,#667085);overflow-wrap:anywhere}
+.chat-reply-global-alert-open{border:0;border-radius:7px;padding:8px 11px;background:var(--accent,#1f73b7);color:#fff;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+.chat-reply-global-alert-close{border:0;background:transparent;color:inherit;font-size:22px;line-height:1;cursor:pointer;padding:2px 4px}
+@media(max-width:600px){.chat-reply-global-alert{right:12px;top:12px;left:12px;max-width:none;flex-wrap:wrap}.chat-reply-global-alert-open{margin-left:auto}}
