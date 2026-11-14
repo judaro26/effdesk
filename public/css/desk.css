@@ -906,3 +906,17 @@ html{-webkit-text-size-adjust:100%}
 .chat-inbox-accept:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 15%,var(--d-panel));border-color:var(--accent);transform:translateY(-1px)}
 .chat-inbox-accept:disabled{opacity:.42;cursor:not-allowed}
 @media(max-width:560px){.chat-inbox-card{padding-right:8px;gap:4px}.chat-inbox-card-main{padding:13px 4px 13px 12px;gap:9px}.chat-inbox-accept{padding:7px 9px}.chat-inbox-refresh-note{display:none}}
+
+
+/* Live Chat settings preview mirrors the customer-facing widget. */
+.chat-settings-preview{max-width:420px;margin:22px 0;padding:16px;border:1px solid var(--d-line);border-radius:14px;background:var(--d-panel)}
+.chat-settings-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;color:var(--d-ink);font-size:12px}
+.chat-settings-preview-heading span{color:var(--d-muted);font-size:10px;font-weight:500}
+.chat-settings-preview-window{overflow:hidden;border:1px solid var(--d-line);border-radius:12px;background:#fff;box-shadow:0 8px 24px rgba(20,30,40,.10);color:#1f2933}
+.chat-settings-preview-header{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:13px 15px;background:#1f73b7;color:#fff}
+.chat-settings-preview-title{font-size:14px;font-weight:750}
+.chat-settings-preview-close{font-size:21px;line-height:1;opacity:.9}
+.chat-settings-preview-content{min-height:132px;padding:18px 14px;display:flex;align-items:flex-start;background:#fff}
+.chat-settings-preview-greeting{max-width:88%;padding:10px 12px;border-radius:12px;background:#f3f5f6;color:#1f2933;font-size:12px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap}
+.chat-settings-preview-compose{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-top:1px solid #dfe3e6;color:#89939a;font-size:11px}
+.chat-settings-preview-send{padding:7px 11px;border-radius:7px;background:#1f73b7;color:#fff;font-size:10px;font-weight:700}
