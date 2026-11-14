@@ -9,6 +9,7 @@ import { makeMailer } from '../src/email.js';
 import { tickets, helpCenter } from '../src/handlers.js';
 import { renderBody } from '../src/help.js';
 import { readSession, sessionCookie } from '../src/portal.js';
+import { newToken } from '../src/requests.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', ENV = { BETTER_AUTH_SECRET: SECRET };
 const { url } = await freshDb('help'); await migrate(url);
@@ -60,6 +61,12 @@ check('a vote is counted once per visitor (a cookie remembers it), and views are
 check('a vote from another website is refused', (await web('POST', '/help/acme/a/how-to-pay-rent/vote', { body: { v: 'no' }, headers: { origin: 'https://evil.example' } })).status === 403);
 r = await web('GET', '/help/acme');
 check('the pages carry no script at all', !/<script/i.test(r.text) && /Content-Type/i.test('Content-Type') && r.headers.get('x-content-type-options') === 'nosniff');
+
+// anonymous request form abuse protection
+const formNow = Date.now(), formTs = newToken(ENV, acme.id, formNow - 4000);
+const formBurst = [];
+for (let i = 0; i < 11; i++) formBurst.push(await web('POST', '/help/acme/requests/new', { body: { ts: formTs, email: `requester${i}@example.com`, name: 'Requester', subject: 'Need help', description: 'Please contact me.' }, headers: { 'x-nf-client-connection-ip': '203.0.113.88' } }));
+check('public request form submissions are limited per source IP', formBurst.slice(0, 10).every(x => x.status === 200) && formBurst[10].status === 429 && formBurst[10].headers.get('retry-after') === '600');
 
 // the customer portal
 await call(ann, { orgId: acme.id, action: 'create', subject: 'Leaky tap', body: 'Drip drip.', requesterEmail: 'tina@example.com', requesterName: 'Tina' });
