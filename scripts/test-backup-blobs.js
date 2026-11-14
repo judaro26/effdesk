@@ -24,7 +24,14 @@ try {
 
   const manifest = JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8'));
   await writeFile(resolve(directory, manifest.entries[0].filename), 'tampered');
-  await assert.rejects(() => restoreSnapshot(fakeStore(new Map()), directory), /integrity check failed/);
+  const untouched = new Map();
+  await assert.rejects(() => restoreSnapshot(fakeStore(untouched), directory), /integrity check failed/);
+  assert.equal(untouched.size, 0, 'restore must not write any object before all objects pass integrity checks');
+
+  await writeFile(resolve(directory, manifest.entries[0].filename), source.get(manifest.entries[0].key));
+  const invalidManifest = { ...manifest, count: manifest.count + 1 };
+  await writeFile(resolve(directory, 'manifest.json'), JSON.stringify(invalidManifest));
+  await assert.rejects(() => restoreSnapshot(fakeStore(new Map()), directory), /manifest totals are invalid/);
   console.log('EffDesk blob backup tests passed.');
 } finally {
   await rm(directory, { recursive: true, force: true });
