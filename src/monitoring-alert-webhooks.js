@@ -8,6 +8,7 @@ const clean=(v,n=500)=>String(v??'').replace(/[\u0000-\u001f\u007f]/g,' ').repla
 const digest=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const json=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const fail=(status,error)=>json(status,{error});
+const eventTime=(...values)=>{const v=first(...values);if(v===undefined)return null;const n=typeof v==='number'?v:/^\d{10,13}$/.test(String(v))?Number(v):NaN;const d=Number.isFinite(n)?new Date(n<1e12?n*1000:n):new Date(v);return Number.isFinite(d.getTime())?d.toISOString():null;};
 const first=(...v)=>v.find(x=>x!==undefined&&x!==null&&String(x).trim()!=='');
 const safeUrl=v=>{try{const u=new URL(String(v||''));return u.protocol==='https:'&&!u.username&&!u.password?u.toString():'';}catch{return '';}};
 
@@ -85,7 +86,8 @@ function normalize(provider,body,raw){
   const url=safeUrl(first(item.url,item.permalink,item.generatorURL,item.dashboardURL,item.link,issue.permalink,body.url,body.permalink,body.link));
   const deliveryId=clean(first(body.event_id,body.delivery_id,body.webhook_id),160);
   const eventId=deliveryId?deliveryId+':'+digest(key).slice(0,24):digest(raw+'|'+key+'|'+statusRaw+'|'+index);
-  return {key,title,statusRaw,ticketStatus,severity,priority,impact,message,url,eventId};
+  const providerEventAt=eventTime(item.updated_at,item.updatedAt,item.event_time,item.eventTime,item.occurred_at,item.occurredAt,item.timestamp,item.time,body.updated_at,body.updatedAt,body.event_time,body.eventTime,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.created_at,data.updated_at);
+  return {key,title,statusRaw,ticketStatus,severity,priority,impact,message,url,eventId,providerEventAt};
  }).filter(x=>x.key&&x.title);
 }
 
@@ -94,7 +96,7 @@ async function applyAlert(pool,orgId,provider,alert){
   await c.query('select pg_advisory_xact_lock(hashtext($1))',[orgId+':alert:'+provider+':'+alert.key]);
   const event=await c.query('insert into monitoring_alert_events(org_id,provider,event_id,external_alert_key) values($1,$2,$3,$4) on conflict do nothing returning event_id',[orgId,provider,alert.eventId,alert.key]);
   if(!event.rowCount)return {duplicate:true};
-  let link=(await c.query('select l.ticket_id,t.number,t.status,t.priority,t.subject from monitoring_alert_links l join tickets t on t.org_id=l.org_id and t.id=l.ticket_id where l.org_id=$1 and l.provider=$2 and l.external_alert_key=$3 for update of l,t',[orgId,provider,alert.key])).rows[0];
+  let link=(await c.query('select l.ticket_id,l.provider_event_at,t.number,t.status,t.priority,t.subject from monitoring_alert_links l join tickets t on t.org_id=l.org_id and t.id=l.ticket_id where l.org_id=$1 and l.provider=$2 and l.external_alert_key=$3 for update of l,t',[orgId,provider,alert.key])).rows[0];
   let created=false;
   if(!link){
    const email=provider+'@alerts.effdesk.com',requester=provider==='datadog'?'Datadog':provider==='grafana'?'Grafana':provider==='splunk'?'Splunk':'Sentry';
@@ -107,14 +109,15 @@ async function applyAlert(pool,orgId,provider,alert){
    await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,ticket.id,requester,alert.message||('Alert received from '+requester+'.')]);
    await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,ticket.id,requester,'Monitoring alert imported · '+alert.severity]);
    link={...ticket,ticket_id:ticket.id};created=true;
-   await c.query('insert into monitoring_alert_links(org_id,provider,external_alert_key,ticket_id,external_url,external_status,external_severity,last_event_at) values($1,$2,$3,$4,$5,$6,$7,now())',[orgId,provider,alert.key,ticket.id,alert.url||null,alert.statusRaw,alert.severity]);
+   await c.query('insert into monitoring_alert_links(org_id,provider,external_alert_key,ticket_id,external_url,external_status,external_severity,last_event_at,provider_event_at) values($1,$2,$3,$4,$5,$6,$7,now(),$8)',[orgId,provider,alert.key,ticket.id,alert.url||null,alert.statusRaw,alert.severity,alert.providerEventAt]);
   }else{
+   if((link.provider_event_at&&!alert.providerEventAt)||(link.provider_event_at&&alert.providerEventAt&&new Date(alert.providerEventAt)<new Date(link.provider_event_at)))return {duplicate:false,stale:true};
    const changed=link.status!==alert.ticketStatus||link.priority!==alert.priority||link.subject!==alert.title;
    await c.query(`update tickets set subject=$3,status=$4,priority=$5,solved_at=case when $4 in ('solved','closed') then coalesce(solved_at,now()) else null end,updated_at=now() where org_id=$1 and id=$2`,
     [orgId,link.ticket_id,alert.title,alert.ticketStatus,alert.priority]);
    if(changed)await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,provider,provider+' alert update · '+alert.statusRaw+' · '+alert.severity]);
    if(changed&&alert.message)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,link.ticket_id,provider,alert.message]);
-   await c.query('update monitoring_alert_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,last_event_at=now(),updated_at=now() where org_id=$1 and provider=$2 and external_alert_key=$3',[orgId,provider,alert.key,alert.url||null,alert.statusRaw,alert.severity]);
+   await c.query('update monitoring_alert_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,last_event_at=now(),provider_event_at=coalesce($7,provider_event_at),updated_at=now() where org_id=$1 and provider=$2 and external_alert_key=$3',[orgId,provider,alert.key,alert.url||null,alert.statusRaw,alert.severity,alert.providerEventAt]);
   }
   await c.query(`insert into incident_details(org_id,ticket_id,impact,urgency,severity,is_major)
    values($1,$2,$3,$3,$4,$5)
