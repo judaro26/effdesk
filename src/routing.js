@@ -18,6 +18,35 @@ export async function setAvailable(pool, orgId, userId, available) {
   return { ok: true, available: available !== false };
 }
 export async function myAvailability(pool, orgId, userId) { return withOrg(pool, orgId, async c => ((await c.query('select available from agent_status where org_id = $1 and user_id = $2', [orgId, userId])).rows[0] || { available: true }).available); }
+
+// Live Chat access is an administrator-controlled entitlement per teammate. Access and
+// the agent's own availability are separate: granting access never silently puts them online.
+export async function getChatAvailability(pool, orgId, userId) {
+  return withOrg(pool, orgId, async c => {
+    const row = (await c.query('select chat_access, chat_available from agent_status where org_id = $1 and user_id = $2', [orgId, userId])).rows[0] || {};
+    return { access: row.chat_access === true, available: row.chat_available === true };
+  });
+}
+export async function setChatAccess(pool, orgId, userId, enabled) {
+  const member = (await pool.query('select role from member where "organizationId" = $1 and "userId" = $2', [orgId, String(userId || '')])).rows[0];
+  if (!member) return fail('Choose a teammate in this workspace.', 404);
+  if (enabled && member.role === 'light') return fail('Light agents cannot handle live chats. Change their role first.');
+  return withOrg(pool, orgId, async c => {
+    await c.query(`insert into agent_status (org_id, user_id, available, chat_access, chat_available)
+      values ($1,$2,true,$3,false)
+      on conflict (org_id, user_id) do update set chat_access = $3, chat_available = false`, [orgId, String(userId), enabled === true]);
+    return { ok: true, access: enabled === true, available: false };
+  });
+}
+export async function setChatAvailable(pool, orgId, userId, available) {
+  const member = (await pool.query('select role from member where "organizationId" = $1 and "userId" = $2', [orgId, userId])).rows[0];
+  if (!member || member.role === 'light') return fail('You are not allowed to accept live chats.', 403);
+  return withOrg(pool, orgId, async c => {
+    const r = await c.query('update agent_status set chat_available = $3 where org_id = $1 and user_id = $2 and chat_access = true returning chat_available', [orgId, userId, available === true]);
+    if (!r.rowCount) return fail('An admin must enable Live Chat access for you first.', 403);
+    return { ok: true, available: r.rows[0].chat_available };
+  });
+}
 // inside the ticket's transaction: choose, record, return { id, name } or null
 export async function autoAssign(c, orgId, ticketId) {
   const s = (await c.query('select enabled, strategy, max_open from routing_settings where org_id = $1', [orgId])).rows[0]; if (!s || !s.enabled) return null;
