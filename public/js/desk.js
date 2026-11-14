@@ -43,6 +43,7 @@
     }
     function clearTicketDraft(number) { try { root.localStorage.removeItem(draftStorageKey(number)); } catch (e) { /* storage may be unavailable */ } draft = ''; draftHtml = ''; draftRequestId = ''; }
     var replyEditorHeight = 160;
+    var conversationSearch = '', conversationDateFrom = '', conversationDateTo = '';
     var threadScrollPositions = Object.create(null), threadScrollToBottom = 0;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { var v = props[k]; if (k === 'class') e.className = v; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else e.setAttribute(k, v); }); var appendChild = function (c) { if (c == null || typeof c === 'boolean') return; if (Array.isArray(c)) { c.forEach(appendChild); return; } if (typeof c === 'string' || typeof c === 'number') { e.appendChild(doc.createTextNode(String(c))); return; } if (c && typeof c.nodeType === 'number') e.appendChild(c); }; [].slice.call(arguments, 2).forEach(appendChild); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
@@ -1320,17 +1321,20 @@
       var resizeHandle = richEditor ? el('div', { class: 'editor-resize-handle', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': 'Resize reply editor', title: 'Drag to resize the reply editor' }) : null;
       if (richEditor) {
         richEditor.area.style.height = replyEditorHeight + 'px';
+        richEditor.area.style.minHeight = '0px';
         richEditor.area.style.maxHeight = 'none';
         var resizeTo = function (height) {
-          replyEditorHeight = Math.max(80, Math.min(Math.round(root.innerHeight * 0.65), height));
+          replyEditorHeight = Math.max(0, Math.min(Math.round(root.innerHeight * 0.8), height));
           richEditor.area.style.height = replyEditorHeight + 'px';
+          richEditor.area.style.minHeight = '0px';
+          richEditor.area.style.overflow = replyEditorHeight === 0 ? 'hidden' : 'auto';
           resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
         };
         resizeHandle.addEventListener('pointerdown', function (e) {
           if (e.button !== 0) return;
           e.preventDefault();
           var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height;
-          var move = function (ev) { resizeTo(startHeight + (ev.clientY - startY)); };
+          var move = function (ev) { resizeTo(startHeight - (ev.clientY - startY)); };
           var up = function () {
             doc.removeEventListener('pointermove', move);
             doc.removeEventListener('pointerup', up);
@@ -1347,8 +1351,8 @@
           e.preventDefault();
           resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? 24 : -24));
         });
-        resizeHandle.setAttribute('aria-valuemin', '80');
-        resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.65)));
+        resizeHandle.setAttribute('aria-valuemin', '0');
+        resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.8)));
         resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
       }
       var after = function () { return Promise.all([open(t.number), refresh()]); };
@@ -1405,18 +1409,33 @@
         prop('Follow', el('button', { type: 'button', class: 'btn l sm', 'data-follow': '1', onclick: function () { act('follow', { on: !x.following }); } }, x.following ? 'Following · stop' : 'Follow this ticket')),
         prop('Requested', el('div', {}, when(t.created_at))), prop('Last update', el('div', {}, ago(t.updated_at))),
         prop('Merge', mergeArmed ? el('div', {}, el('div', { class: 'm' }, 'Merge #' + t.number + ' into #' + mergeArmed + '? The messages move over and this ticket is closed. This cannot be undone.'), el('button', { type: 'button', class: 'btn sm', 'data-merge-confirm': '1', onclick: function () { var into = mergeArmed; act('merge', { into: into }, 'Merged into #' + into + '.'); } }, 'Yes, merge'), ' ', el('button', { type: 'button', class: 'btn l sm', onclick: function () { mergeArmed = false; draw(); } }, 'Cancel')) : el('div', {}, mergeBox, el('button', { type: 'button', class: 'btn l sm', 'data-merge': '1', onclick: function () { var v = Number(String(mergeBox.value).replace('#', '')); if (!v || v === t.number) return say('Enter the number of another ticket.', true); mergeArmed = v; draw(); } }, 'Merge into…'))));
+      // Local search/date filtering for the currently loaded conversation and timeline.
+      var conversationItemMatches = function (item) {
+        var q = conversationSearch.trim().toLowerCase(), hay = [item.body, item.detail, item.author_name, item.kind].join(' ').toLowerCase();
+        if (q && hay.indexOf(q) < 0) return false;
+        var at = new Date(item.created_at).getTime();
+        if (conversationDateFrom) { var from = new Date(conversationDateFrom + 'T00:00:00').getTime(); if (isFinite(from) && at < from) return false; }
+        if (conversationDateTo) { var to = new Date(conversationDateTo + 'T00:00:00').getTime() + 86400000; if (isFinite(to) && at >= to) return false; }
+        return true;
+      };
       // the toolbar above the conversation: refresh, timeline, AI summary, print and download
       var exportUrl = function (fmt, mid) { return '/api/ticket-export?org=' + encodeURIComponent(orgId) + '&number=' + t.number + '&format=' + fmt + (mid ? '&message=' + mid : '') + (exportNotes ? '&notes=1' : '') + (fmt === 'print' ? '&auto=1' : ''); };
       var timelineEl = function () {
-        var rows = (x.events || []).map(function (e) { return { at: e.created_at, node: el('li', { 'data-event': e.kind, class: 'tl-e' }, el('span', { class: 'dot' }), el('b', {}, e.actor_name || 'Someone'), ' ' + e.detail, el('span', { class: 'm' }, ' · ' + when(e.created_at))) }; })
-          .concat(current.messages.filter(function (m) { return m.kind !== 'system'; }).map(function (m) { return { at: m.created_at, node: el('li', { 'data-tl-message': String(m.id), class: 'tl-m ' + m.kind }, el('span', { class: 'dot' }), el('b', {}, m.author_name || (m.kind === 'requester' ? t.requester_email : 'Agent')), ' ' + ({ requester: 'wrote', agent: 'replied', note: 'added an internal note' })[m.kind], el('span', { class: 'm' }, ' · ' + when(m.created_at)), el('div', { class: 'tl-prev' }, String(m.body).replace(/\s+/g, ' ').slice(0, 160))) }; }));
+        var rows = (x.events || []).filter(conversationItemMatches).map(function (e) { return { at: e.created_at, node: el('li', { 'data-event': e.kind, class: 'tl-e' }, el('span', { class: 'dot' }), el('b', {}, e.actor_name || 'Someone'), ' ' + e.detail, el('span', { class: 'm' }, ' · ' + when(e.created_at))) }; })
+          .concat(current.messages.filter(function (m) { return m.kind !== 'system' && conversationItemMatches(m); }).map(function (m) { return { at: m.created_at, node: el('li', { 'data-tl-message': String(m.id), class: 'tl-m ' + m.kind }, el('span', { class: 'dot' }), el('b', {}, m.author_name || (m.kind === 'requester' ? t.requester_email : 'Agent')), ' ' + ({ requester: 'wrote', agent: 'replied', note: 'added an internal note' })[m.kind], el('span', { class: 'm' }, ' · ' + when(m.created_at)), el('div', { class: 'tl-prev' }, String(m.body).replace(/\s+/g, ' ').slice(0, 160))) }; }));
         rows.sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
         return el('ul', { class: 'timeline tl-full', 'data-timeline-view': '1' }, rows.map(function (r) { return r.node; }));
       };
       var aiBtn = function (label, key, run) { return el('button', Object.assign({ type: 'button', class: 'btn l sm', 'data-ai': key, onclick: run }, aiBusy ? { disabled: 'disabled' } : {}), aiBusy === key ? 'Working…' : label); };
       var aiRun = function (key, action, extra, done) { aiBusy = key; draw(); api(action, Object.assign({ number: t.number }, extra)).then(function (r) { aiBusy = ''; if (!r.ok) { draw(); return say(r.body.error || 'The AI could not answer.', true); } done(r.body); draw(); }); };
+      var conversationFilter = el('div', { class: 'conversation-filter', role: 'search', 'aria-label': 'Find messages in this conversation' },
+        el('input', { type: 'search', class: 'conversation-search', 'aria-label': 'Search this conversation', placeholder: 'Search conversation…', value: conversationSearch, oninput: function (e) { var pos = e.target.selectionStart; conversationSearch = e.target.value; draw(); var next = main.querySelector('.conversation-search'); if (next) { next.focus(); if (next.setSelectionRange) next.setSelectionRange(pos, pos); } } }),
+        el('input', { type: 'date', class: 'conversation-date', 'aria-label': 'Messages from date', title: 'From date', value: conversationDateFrom, onchange: function (e) { conversationDateFrom = e.target.value; draw(); } }),
+        el('input', { type: 'date', class: 'conversation-date', 'aria-label': 'Messages through date', title: 'Through date', value: conversationDateTo, onchange: function (e) { conversationDateTo = e.target.value; draw(); } }),
+        el('button', { type: 'button', class: 'ib conversation-filter-clear', title: 'Clear conversation search and date filters', 'aria-label': 'Clear conversation filters', onclick: function () { conversationSearch = ''; conversationDateFrom = ''; conversationDateTo = ''; draw(); } }, '×'));
       var hdrTools = el('div', { class: 'chtools', role: 'toolbar', 'aria-label': 'Conversation tools' },
-        el('button', { type: 'button', class: 'ib', 'data-refresh': '1', title: 'Refresh: load the latest messages and changes', 'aria-label': 'Refresh', onclick: function () { after().then(function () { say('Up to date.'); }); } }, '↻'),
+        conversationFilter,
+        el('button', { type: 'button', class: 'ib', 'data-refresh': '1', title: 'Refresh: load the latest messages and changes', 'aria-label': 'Refresh conversation', onclick: function () { after().then(function () { say('Up to date.'); }); } }, '↻'),
         el('button', { type: 'button', class: 'ib', 'data-timeline': '1', title: showTimeline ? 'Back to the conversation' : 'History: show the ticket timeline', 'aria-label': 'History', 'aria-pressed': String(showTimeline), onclick: function () { showTimeline = !showTimeline; draw(); } }, '🕘'),
         sel('Print or download this conversation', '', [['', '⤓ Print / download'], ['print', 'Print or save as PDF'], ['eml', 'Download as .eml']], function (v) { if (v) root.open(exportUrl(v), '_blank', 'noopener'); }));
       var tools = el('div', { class: 'ctools', role: 'toolbar', 'aria-label': 'More conversation tools' },
@@ -1424,7 +1443,8 @@
         el('label', { class: 'chk m' }, (function () { var cb = el('input', { type: 'checkbox', 'aria-label': 'Include internal notes in prints and downloads' }); cb.checked = exportNotes; cb.addEventListener('change', function () { exportNotes = cb.checked; }); return cb; })(), ' include internal notes when printing or downloading'));
       var dlv = {}; (current.delivery || []).forEach(function (d) { dlv[d.message_id] = d; });
       var DLV = { sent: 'Sent', delivered: 'Delivered', read: 'Read', delayed: 'Delayed, still trying', bounced: 'Bounced', complained: 'Marked as spam', failed: 'Not delivered' };
-      var msgs = current.messages.map(function (m) {
+      var filteredMessages = current.messages.filter(conversationItemMatches);
+      var msgs = filteredMessages.map(function (m) {
         if (m.kind === 'system') return el('div', { class: 'msg-row sys' }, el('span', { class: 'sysmsg', 'data-kind': 'system' }, m.body));
         var side = m.kind === 'requester' ? 'in' : 'out', mine = (m.kind === 'agent' || m.kind === 'note') && m.author_id === meId, editing1 = editMsg === m.id, ed = null, edBox = null;
         if (editing1) { ed = el('textarea', { 'aria-label': 'Edit message' }); ed.value = m.body; edBox = editor(ed, t); }
@@ -1462,7 +1482,7 @@
           return el('div', { class: 'conflict', role: 'alert', 'data-wa-window': '1' }, kids);
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), conflict.duplicate ? el('p', {}, 'Your draft has been kept. Review the conversation to confirm whether it already appears before trying again.') : [' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')]) : null,
-        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : msgs),
+        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : (msgs.length ? msgs : [el('div', { class: 'conversation-empty m', role: 'status' }, 'No messages match these search and date filters.') ])),
         el('div', { class: 'compose' }, resizeHandle, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
