@@ -47,6 +47,10 @@ const reactivated = await call('PATCH', '/Users/' + resource.id, { Operations: [
 check('SCIM reactivation restores a standard member', reactivated.status === 200 && (await reactivated.json()).active === true && (await pool.query('select role from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1 and id=$2)', [org.id, resource.id])).rows[0]?.role === 'member');
 const deleted = await call('DELETE', '/Users/' + resource.id);
 check('SCIM DELETE is a deprovisioning operation, not a global user deletion', deleted.status === 204 && (await pool.query('select 1 from "user" where email=$1', ['new-agent@example.test'])).rowCount === 1);
+await pool.query('insert into org_overrides (org_id, seat_limit) values ($1, 1) on conflict (org_id) do update set seat_limit=1', [org.id]);
+const overCapacity = await call('POST', '/Users', { userName: 'over-capacity@example.test', externalId: 'idp-over-capacity', active: true });
+check('SCIM seat-limit rejection leaves no globally verified orphan account', overCapacity.status === 409 && (await pool.query('select 1 from "user" where email=$1', ['over-capacity@example.test'])).rowCount === 0);
+
 const oversizedScim = await scim(new Request('https://app.effdesk.test/api/scim/v2/Users', {
   method: 'POST',
   headers: { authorization: 'Bearer ' + created.secret, 'content-type': 'application/scim+json' },

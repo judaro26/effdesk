@@ -109,38 +109,58 @@ function getNames(input) {
 async function upsertScimUser(pool, orgId, input, existing = null) {
   const email = getEmail(input);
   if (!validEmail(email)) return fail('A valid userName or work email is required.', 400, 'invalidValue');
-  const names = getNames(input);
-  let user = (await pool.query('select id,name,email from "user" where lower(email)=lower($1) limit 1', [email])).rows[0];
-  if (existing && existing.user_id !== user?.id) return fail('Changing a SCIM user email to an address belonging to another EffDesk account is not supported.', 409, 'uniqueness');
-  const externalId = clean(input.externalId, 250) || null;
-  // Validate tenant-scoped identity uniqueness before creating a global account or
-  // changing membership. A rejected SCIM request must not leave access side effects.
-  if (externalId) {
-    const clash = await withOrg(pool, orgId, c => c.query(
-      'select id from scim_users where org_id=$1 and external_id=$2 and ($3::text is null or user_id<>$3) limit 1',
-      [orgId, externalId, user?.id || existing?.user_id || null],
-    ));
-    if (clash.rowCount) return fail('That externalId is already assigned to another SCIM user.', 409, 'uniqueness');
-  }
-  let createdUser = false;
-  if (!user) {
-    const id = crypto.randomUUID(), display = names.display || email;
-    user = (await pool.query(
-      'insert into "user" (id,name,email,"emailVerified","createdAt","updatedAt") values ($1,$2,$3,true,now(),now()) on conflict (email) do update set email=excluded.email returning id,name,email',
-      [id, display, email],
-    )).rows[0];
-    createdUser = true;
-  }
-  if (input.active !== false) {
-    const membership = await addMembership(pool, orgId, user.id);
-    if (!membership.ok) return membership;
-  } else {
-    const removed = await deactivateMembership(pool, orgId, user.id);
-    if (!removed.ok) return removed;
-  }
-  const scimId = existing?.scim_id || crypto.randomUUID();
+  const names = getNames(input), externalId = clean(input.externalId, 250) || null;
   const active = input.active !== false;
-  const saved = await withOrg(pool, orgId, async c => {
+  // Keep account creation, seat reservation, membership, SCIM mapping and audit
+  // in one tenant-scoped transaction. A rejected provision must not leave a
+  // globally verified account behind, and concurrent requests must not race seats.
+  return withOrg(pool, orgId, async c => {
+    let user = (await c.query('select id,name,email from "user" where lower(email)=lower($1) limit 1', [email])).rows[0];
+    if (existing && existing.user_id !== user?.id) return fail('Changing a SCIM user email to an address belonging to another EffDesk account is not supported.', 409, 'uniqueness');
+    if (externalId) {
+      const clash = await c.query(
+        'select id from scim_users where org_id=$1 and external_id=$2 and ($3::text is null or user_id<>$3) limit 1',
+        [orgId, externalId, user?.id || existing?.user_id || null],
+      );
+      if (clash.rowCount) return fail('That externalId is already assigned to another SCIM user.', 409, 'uniqueness');
+    }
+
+    let member = null;
+    if (active) {
+      await c.query('select pg_advisory_xact_lock(hashtext($1))', [orgId]);
+      member = (await c.query('select role from member where "organizationId"=$1 and "userId"=$2', [orgId, user?.id || existing?.user_id || ''])).rows[0] || null;
+      if (!member) {
+        const seat = await checkSeat(c, orgId);
+        if (!seat.ok) return fail(seat.reason || 'The organization has no available seats.', 409);
+      }
+    } else {
+      member = user ? (await c.query('select role from member where "organizationId"=$1 and "userId"=$2', [orgId, user.id])).rows[0] || null : null;
+      if (member?.role === 'owner') {
+        const owners = Number((await c.query('select count(*)::int as n from member where "organizationId"=$1 and role=\'owner\'', [orgId])).rows[0]?.n || 0);
+        if (owners <= 1) return fail('This is the workspace’s only owner. Assign another owner before deprovisioning this account.', 409);
+      }
+    }
+
+    let createdUser = false;
+    if (!user) {
+      const id = crypto.randomUUID(), display = names.display || email;
+      user = (await c.query(
+        'insert into "user" (id,name,email,"emailVerified","createdAt","updatedAt") values ($1,$2,$3,true,now(),now()) on conflict (email) do update set email=excluded.email returning id,name,email',
+        [id, display, email],
+      )).rows[0];
+      createdUser = true;
+    }
+    if (active && !member) {
+      await c.query('insert into member (id,"organizationId","userId",role,"createdAt") values ($1,$2,$3,$4,now())', [crypto.randomUUID(), orgId, user.id, 'member']);
+    } else if (!active && member) {
+      await c.query('update tickets set assignee_id=null,updated_at=now() where org_id=$1 and assignee_id=$2', [orgId, user.id]);
+      await c.query('delete from ticket_followers where org_id=$1 and user_id=$2', [orgId, user.id]);
+      await c.query('delete from member_custom_role where org_id=$1 and user_id=$2', [orgId, user.id]);
+      await c.query('delete from agent_status where org_id=$1 and user_id=$2', [orgId, user.id]);
+      await c.query('delete from member where "organizationId"=$1 and "userId"=$2', [orgId, user.id]);
+    }
+
+    const scimId = existing?.scim_id || crypto.randomUUID();
     const q = await c.query(`insert into scim_users (id,org_id,user_id,external_id,active,display_name,given_name,family_name)
       values ($1,$2,$3,$4,$5,$6,$7,$8)
       on conflict (org_id,user_id) do update set external_id=excluded.external_id,active=excluded.active,display_name=excluded.display_name,given_name=excluded.given_name,family_name=excluded.family_name,updated_at=now()
@@ -148,11 +168,10 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
       [scimId, orgId, user.id, externalId, active, names.display || (createdUser ? user.name : null), names.given || null, names.family || null]);
     await c.query('insert into audit_log (org_id,actor_id,action,target,meta) values ($1,null,$2,$3,$4)', [
       orgId, active ? (existing ? 'scim.user.updated' : 'scim.user.provisioned') : 'scim.user.deprovisioned',
-      user.email, JSON.stringify({ scimId: q.rows[0].id, externalId, active }),
+      user.email, JSON.stringify({ scimId: q.rows[0].scim_id, externalId, active }),
     ]);
-    return q.rows[0];
+    return { ok: true, row: { ...q.rows[0], user_id: user.id, name: user.name, email: user.email } };
   });
-  return { ok: true, row: { ...saved, user_id: user.id, name: user.name, email: user.email } };
 }
 async function patchUser(pool, orgId, row, body) {
   const ops = Array.isArray(body?.Operations) ? body.Operations : Array.isArray(body?.operations) ? body.operations : [];
