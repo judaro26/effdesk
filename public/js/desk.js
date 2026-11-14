@@ -19,7 +19,7 @@
   var PLAN_OF = { sandbox: 'Pro', article_import: 'Team', sso: 'Pro', live_chat: 'Suite', whatsapp: 'Suite', custom_fields: 'Suite', light_agents: 'Team', bulk_actions: 'Team', queues: 'Team', clients: 'Team', linked_tickets: 'Team', saved_views: 'Team', themes: 'Team', side_conversations: 'Suite', translation: 'Suite', sla: 'Team', reports: 'Team', integrations: 'Team', triggers: 'Team', api: 'Suite' };
   function start(doc, fetchFn, nav) {
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
-    var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', mode = 'reply', me = '', meId = '', meName = '';
+    var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
@@ -30,6 +30,17 @@
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
+    function draftStorageKey(number) { return 'effdesk_draft:' + orgId + ':' + meId + ':' + Number(number); }
+    function saveTicketDraft(number) {
+      if (!number || !orgId || !meId) return;
+      var key = draftStorageKey(number), value = { body: draft || '', html: draftHtml || '', mode: mode || 'reply', attachments: pending.map(function (p) { return { id: p.id, filename: p.filename, size: p.size, contentType: p.contentType }; }) };
+      try { if (!value.body.trim() && !value.html.trim() && !value.attachments.length) root.localStorage.removeItem(key); else root.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage may be unavailable or full; keep the in-memory draft */ }
+    }
+    function restoreTicketDraft(number) {
+      draft = ''; draftHtml = ''; pending = []; mode = 'reply';
+      try { var raw = root.localStorage.getItem(draftStorageKey(number)); if (!raw) return; var value = JSON.parse(raw); if (!value || typeof value !== 'object') return; draft = typeof value.body === 'string' ? value.body : ''; draftHtml = typeof value.html === 'string' ? value.html : ''; mode = value.mode === 'note' ? 'note' : 'reply'; pending = Array.isArray(value.attachments) ? value.attachments.filter(function (p) { return p && typeof p.id === 'string'; }).slice(0,5) : []; } catch (e) { /* ignore malformed or unavailable local drafts */ }
+    }
+    function clearTicketDraft(number) { try { root.localStorage.removeItem(draftStorageKey(number)); } catch (e) { /* storage may be unavailable */ } draft = ''; draftHtml = ''; }
     var replyEditorHeight = 160;
     var threadScrollPositions = Object.create(null), threadScrollToBottom = 0;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { var v = props[k]; if (k === 'class') e.className = v; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else e.setAttribute(k, v); }); var appendChild = function (c) { if (c == null || typeof c === 'boolean') return; if (Array.isArray(c)) { c.forEach(appendChild); return; } if (typeof c === 'string' || typeof c === 'number') { e.appendChild(doc.createTextNode(String(c))); return; } if (c && typeof c.nodeType === 'number') e.appendChild(c); }; [].slice.call(arguments, 2).forEach(appendChild); return e; };
@@ -97,9 +108,10 @@
     // the address bar shows where you are, like /w/acme/agent/10042/tickets/57
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
+      if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
       return api('get', { number: n }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
-        if (!current || current.ticket.number !== n) { draft = ''; mode = 'reply'; pending = []; macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
+        if (!current || current.ticket.number !== n) { restoreTicketDraft(n); macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
         closePanes(); current = r.body; if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
         var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) hit.subject = r.body.ticket.subject; else openTabs.push({ number: n, subject: r.body.ticket.subject });
         draw(); presenceTick();
@@ -1242,9 +1254,9 @@
       var files = [].slice.call(list || []).slice(0, Math.max(0, 5 - pending.length)), next = Promise.resolve();
       files.forEach(function (f) { next = next.then(function () {
         if (f.size > 5 * 1024 * 1024) return say((f.name || 'That file') + ' is over 5 MB.', true);
-        return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + (t ? '&ticket=' + t.number : '') + '&name=' + encodeURIComponent(f.name || 'file') + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); }); });
+        return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + (t ? '&ticket=' + t.number : '') + '&name=' + encodeURIComponent(f.name || 'file') + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); if (t) saveTicketDraft(t.number); }); });
       }); });
-      return next.then(function () { draw(); });
+      return next.then(function () { if (t) saveTicketDraft(t.number); draw(); });
     }
     // pasting a picture (a screenshot, a copied image) into a message attaches it
     function pasteFiles(t) {
@@ -1281,10 +1293,10 @@
       if (!root.EffEditor) return ta;
       try { return root.EffEditor.enhance(doc, ta, { onImages: function (files) { uploadFiles(t, files); } }); } catch (e) { return ta; }
     }
-    function picker(t) {
-      var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' });
+    function picker(t, disabled) {
+      var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' }); if (disabled) input.disabled = true;
       input.addEventListener('change', function () { uploadFiles(t, input.files); });
-      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
+      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); if (t) saveTicketDraft(t.number); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
     }
     var BASE_STATUS = [['open', 'Open'], ['pending', 'Pending'], ['on_hold', 'On hold'], ['solved', 'Solved'], ['closed', 'Closed']];
     // built-in statuses plus the workspace's own (value 'c:<id>'); a ticket's current value is its custom status when it has one
@@ -1297,10 +1309,10 @@
 
     // ── a ticket in three columns ──
     function ticketPane() {
-      var t = current.ticket, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
-      body.value = draft; body.addEventListener('input', function () { draft = body.value; }); if (mode === 'reply') body.addEventListener('paste', pasteFiles(t));
-      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
-      if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
+      var t = current.ticket, permanentlyClosed = t.permanently_closed === true, x = current.extras || { followers: [], events: [], sides: [], incidents: [], merged: [] }, body = el('textarea', { 'aria-label': 'Message', placeholder: mode === 'note' ? 'Write an internal note. Only your team sees it.' : 'Write a public reply. The customer is emailed.' });
+      body.value = draft; body.disabled = permanentlyClosed && mode === 'reply'; body.addEventListener('input', function () { draft = body.value; saveTicketDraft(t.number); }); if (mode === 'reply' && !permanentlyClosed) body.addEventListener('paste', pasteFiles(t));
+      var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draftHtml || (draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : ''), canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
+      if (richEditor) { if (permanentlyClosed && mode === 'reply') { richEditor.area.setAttribute('contenteditable', 'false'); richEditor.area.setAttribute('aria-disabled', 'true'); richEditor.area.setAttribute('data-permanently-closed', '1'); } richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; draftHtml = richEditor.getHtml(); saveTicketDraft(t.number); }); }
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var resizeHandle = richEditor ? el('div', { class: 'editor-resize-handle', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': 'Resize reply editor', title: 'Drag to resize the reply editor' }) : null;
       if (richEditor) {
@@ -1349,23 +1361,23 @@
       var send = function (action, force) {
         if (sending) return;
         var richHtml = richEditor ? richEditor.getHtml() : undefined; if (richEditor) body.value = htmlPlain(richHtml);
-        draft = body.value; if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
+        draft = body.value; draftHtml = richHtml || ''; saveTicketDraft(t.number); if (action === 'reply' && permanentlyClosed) return say('This ticket is permanently closed. Create a linked follow-up ticket instead.', true); if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
         var status = action === 'reply' ? (sendStatus || (macroPatch && macroPatch.status) || undefined) : undefined, ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : [], mp = action === 'reply' ? macroPatch : null;
         var req = api(action, { number: t.number, body: body.value, html: richHtml, status: status, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
         sending = true; paintSending();
         var done = function () { sending = false; paintSending(); };
         req.then(function (r) {
-          if (!r.ok && r.body && r.body.duplicate) { done(); pending = []; draft = ''; return after().then(function () { say(r.body.error); }); }
+          if (!r.ok && r.body && r.body.duplicate) { done(); conflict = { text: r.body.error || 'This message may already have been sent. Check the conversation before retrying.' }; return draw(); }
           if (!r.ok && r.body && r.body.window) { done(); winClosed = true; tplSel = 0; tplVals = []; if (!waTpls) api('whatsapp-templates').then(function (x) { waTpls = x.ok ? x.body.templates : []; draw(); }); return draw(); }
           if (!r.ok && r.body && r.body.conflict) { done(); conflict = { text: r.body.error }; return draw(); }
           if (!r.ok) { done(); return say(r.body.error, true); }
           var n = ''; if (r.body.whatsapp === 'failed') n = 'Saved, but WhatsApp did not deliver it: ' + (r.body.whatsappWhy || 'try again later') + '.'; else if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : '';
           if (!n) n = 'Reply saved to the conversation.';
-          done(); pending = []; draft = ''; macroPatch = null; sendStatus = ''; conflict = null;
+          done(); pending = []; clearTicketDraft(t.number); macroPatch = null; sendStatus = ''; conflict = null;
           threadScrollToBottom = t.number;
           var patch = {}; if (mp && mp.priority) patch.priority = mp.priority; if (mp && mp.add_tags && mp.add_tags.length) patch.tags = (t.tags || []).concat(mp.add_tags);
           return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, n.indexOf('Saved, but') === 0); });
-        }).catch(function () { done(); say('Could not confirm that the message was sent. Check the conversation before sending it again.', true); });
+        }).catch(function () { done(); saveTicketDraft(t.number); say('Could not confirm that the message was sent. Your draft is saved in this browser. Check the conversation before retrying.', true); });
       };
       var sendShortcut = function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(mode === 'note' ? 'note' : 'reply'); } }; body.addEventListener('keydown', sendShortcut); if (richEditor) richEditor.area.addEventListener('keydown', sendShortcut);
       var who = t.requester_name || t.requester_email;
@@ -1419,7 +1431,7 @@
             m.kind === 'requester' && has('translation') && !translated[m.id] ? el('button', { type: 'button', class: 'edit', 'data-translate': String(m.id), onclick: function () { translate(m); } }, 'Translate') : null,
             (m.attachments || []).filter(function (a) { return !(m.html_body && m.html_body.indexOf('/api/attachments/' + a.id) >= 0); }).length ? el('div', { class: 'files' }, el('div', { class: 'files-title' }, 'Attachments'), el('div', { class: 'files-list' }, m.attachments.filter(function (a) { return !(m.html_body && m.html_body.indexOf('/api/attachments/' + a.id) >= 0); }).map(function (a) { var u = '/api/attachments/' + encodeURIComponent(a.id) + '?org=' + encodeURIComponent(orgId), pic = /^image\/(png|jpeg|gif|webp)$/.test(a.content_type || a.contentType || ''); return el('span', { class: 'file1' }, pic ? el('a', { href: u, target: '_blank', rel: 'noopener', 'data-thumb': a.id }, el('img', { src: u, alt: a.filename, class: 'thumb', loading: 'lazy' })) : null, el('a', { href: u, 'data-file': a.id, download: a.filename }, a.filename + ' (' + size(a.size) + ')')); }))) : null));
       });
-      var modeBtn = function (m, label) { return el('button', { type: 'button', role: 'tab', 'data-mode': m, 'aria-selected': String(mode === m), onclick: function () { var ta = main.querySelector('.compose textarea'); if (richEditor) { draft = htmlPlain(richEditor.getHtml()); body.value = draft; } else if (ta) draft = ta.value; mode = m; draw(); } }, label); };
+      var modeBtn = function (m, label) { return el('button', { type: 'button', role: 'tab', 'data-mode': m, 'aria-selected': String(mode === m), disabled: permanentlyClosed && m === 'reply', onclick: function () { var ta = main.querySelector('.compose textarea'); if (richEditor) { draft = htmlPlain(richEditor.getHtml()); draftHtml = richEditor.getHtml(); body.value = draft; } else if (ta) draft = ta.value; mode = m; saveTicketDraft(t.number); draw(); } }, label); };
       var macroSel = macros.length && mode === 'reply' ? sel('Insert a macro', '', [['', 'Insert a macro…']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; var first = String(t.requester_name || '').split(' ')[0] || 'there'; draft = (draft ? draft + '\n\n' : '') + m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); macroPatch = { status: m.status, priority: m.priority, add_tags: m.add_tags }; draw(); }) : null;
       var mentionSel = mode === 'note' && agents.length > 1 ? sel('Mention a teammate', '', [['', '@ Mention a teammate…']].concat(agents.filter(function (a) { return a.id !== meId; }).map(function (a) { return [String(a.email).split('@')[0], a.name || a.email]; })), function (v) { if (!v) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; draft = (draft ? draft + ' ' : '') + '@' + v + ' '; draw(); }) : null;
       var chosen = sendStatus || t.status, statusSel = sel('Choose the status to submit as', chosen, [['open', 'Submit as Open'], ['pending', 'Submit as Pending'], ['on_hold', 'Submit as On hold'], ['solved', 'Submit as Solved']], function (v) { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; sendStatus = v === t.status ? '' : v; draw(); });
@@ -1427,9 +1439,11 @@
         mode === 'reply' ? aiBtn('✦ Suggest a reply', 'suggest', function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; aiRun('suggest', 'ai-suggest', {}, function (b) { draft = (draft ? draft + '\n\n' : '') + b.text; }); }) : null,
         sel('Rewrite your draft with AI', '', [['', '✦ Rewrite…'], ['friendlier', 'Friendlier'], ['shorter', 'Shorter'], ['clearer', 'Clearer'], ['formal', 'More formal'], ['fix', 'Fix spelling and grammar']], function (v) { var ta = main.querySelector('.compose textarea'); var text = richEditor ? htmlPlain(richEditor.getHtml()) : ta ? ta.value : draft; if (richEditor) { body.value = text; draft = text; } if (!v) return; if (!String(text).trim()) return say('Write a draft first, then choose how to rewrite it.', true); aiRun('rewrite', 'ai-rewrite', { mode: v, text: text }, function (b) { draft = b.text; }); }),
         el('span', { class: 'm' }, 'Drafts only. You read and send.')) : null;
-      var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Submit as ' + cap(chosen)), statusSel);
+      var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : permanentlyClosed ? el('button', { class: 'btn', type: 'button', 'data-reply': '1', disabled: true }, 'Public replies disabled') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Submit as ' + cap(chosen)), statusSel);
+      var permanentNotice = permanentlyClosed ? el('div', { class: 'permanent-close-notice', role: 'status', 'data-permanent-closed': '1' }, el('strong', {}, 'This ticket is permanently closed. Public replies are disabled.'), el('p', {}, 'Create a linked follow-up ticket to continue the conversation. Your saved draft and attachments will be carried over.'), el('button', { type: 'button', class: 'btn sm', 'data-create-followup': '1', onclick: function () { var old = t; newf = blankNew(); newf.subject = 'Follow-up: ' + old.subject; newf.requesterName = old.requester_name || ''; newf.requesterEmail = old.requester_email || ''; newf.body = draft; newf.bodyHtml = draftHtml; newf.firstKind = 'agent'; newf.priority = old.priority || 'normal'; newf.tags = (old.tags || []).join(', '); newf.lifecycleParentTicketNumber = old.number; closePanes(); current = null; creating = true; draw(); } }, 'Create linked follow-up ticket')) : null;
       var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, hdrTools, el('h2', {}, '#' + t.number + ' ' + t.subject), (function () { var b = el('div', { class: 'collide' + (others.some(function (o) { return o.typing; }) ? ' typing' : ''), role: 'status', 'data-collide': '1' }, othersText()); b.hidden = !others.length; return b; })(), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
         tools,
+        permanentNotice,
         summaries[t.number] ? el('div', { class: 'aisum', 'data-ai-summary': '1' }, el('strong', {}, 'AI summary'), renderBody(summaries[t.number]), el('button', { type: 'button', class: 'btn l sm', onclick: function () { delete summaries[t.number]; draw(); } }, 'Hide')) : null,
         winClosed ? (function () {
           var tl = waTpls || [], tp = tl[tplSel], kids = [el('strong', {}, 'WhatsApp only lets you reply with free text within 24 hours of the customer\'s last message. Send an approved template to start the conversation again. Your text is kept.'), ' '];
@@ -1445,7 +1459,7 @@
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), ' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')) : null,
         el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : msgs),
-        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, resizeHandle, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
+        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, resizeHandle, el('div', { class: 'cbar' }, picker(t, permanentlyClosed && mode === 'reply'), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
       cards.push(el('h3', {}, 'About this company'));
@@ -1815,7 +1829,7 @@
         el('div', { class: 'rgrid' }, hlist('By status', r.byStatus), hlist('By priority', r.byPriority), hlist('By channel', r.byChannel), hlist('By type', r.byType), hlist('By queue', r.byQueue), hlist('Solved by', r.solvedBy), hlist('Busiest labels', r.labels)));
     }
     function field(k, ph) { return el('input', { 'aria-label': k, placeholder: ph, maxlength: '200' }); }
-    var blankNew = function () { return { subject: '', requesterName: '', requesterEmail: '', body: '', bodyHtml: '', firstKind: 'agent', status: 'open', assigneeId: '', queueId: '', clientId: '', type: 'question', priority: 'normal', tags: '', cc: '', follow: false, custom: {} }; };
+    var blankNew = function () { return { subject: '', requesterName: '', requesterEmail: '', body: '', bodyHtml: '', firstKind: 'agent', status: 'open', assigneeId: '', queueId: '', clientId: '', type: 'question', priority: 'normal', tags: '', cc: '', follow: false, custom: {}, lifecycleParentTicketNumber: null }; };
     var newf = blankNew();
     // the New ticket form: properties on the left, the subject and the first message on the right, and a choice of how it is sent
     function newPane() {
@@ -1858,8 +1872,8 @@
         if (newf.status === 'open') delete patch.status;
         var htmlBody = richNewEditor ? richNewEditor.getHtml() : undefined, bodyText = richNewEditor ? htmlPlain(htmlBody) : body.value;
         newf.body = bodyText;
-        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: bodyText, htmlBody: htmlBody, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }) }).then(function (r) {
-          if (!r.ok) return say(r.body.error, true); note = ''; var warn = r.body.warning; reset(); creating = false;
+        api('create', { subject: f.subject.value, requesterName: f.requesterName.value, requesterEmail: f.requesterEmail.value, body: bodyText, htmlBody: htmlBody, firstKind: newf.firstKind, tags: newf.tags, priority: newf.priority, patch: patch, follow: newf.follow, attachmentIds: pending.map(function (p) { return p.id; }), channel: newf.lifecycleParentTicketNumber ? 'email' : undefined, lifecycleParentTicketNumber: newf.lifecycleParentTicketNumber || undefined }).then(function (r) {
+          if (!r.ok) return say(r.body.error, true); note = ''; var warn = r.body.warning; if (newf.lifecycleParentTicketNumber) clearTicketDraft(newf.lifecycleParentTicketNumber); reset(); creating = false;
           return Promise.all([open(r.body.ticket.number), refresh(), loadInit()]).then(function () { if (warn) say('Created, but some properties were not saved: ' + warn, true); });
         });
       };
