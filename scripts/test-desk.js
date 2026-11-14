@@ -76,7 +76,7 @@ const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
 $('#userbtn').click(); await tick(); check('the agent profile menu includes an English/Spanish language selector', !!$('select[aria-label="Language"]')); $('select[aria-label="Language"]').value = 'es'; $('select[aria-label="Language"]').dispatchEvent(new w.Event('change')); await tick(420); check('the agent language choice updates the document and is saved with tenant-scoped preferences', w.document.documentElement.lang === 'es' && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].locale === 'es')); $('select[aria-label="Idioma"]').value = 'en'; $('select[aria-label="Idioma"]').dispatchEvent(new w.Event('change')); await tick(420);
-check('the desk lands on its dashboard with ticket metrics and setup guidance', !!$('[data-stat-open] .dash-metric-value') && /Set up your support email/.test($('[data-setup]').textContent) && !!$('.dash-content-grid'));
+check('the desk lands on its dashboard with ticket metrics and setup guidance', !!$('[data-stat-open] .dash-metric-value') && /Connect your support inbox/.test($('[data-setup]').textContent) && !!$('.dash-content-grid'));
 check('the dashboard shows the organization\'s own portal address', $('[data-portal] a').getAttribute('href') === 'https://acme.effdesk.com');
 check('the top-left logo goes to the dashboard, not the marketing site', $('a.logo').getAttribute('href').indexOf('/desk.html') === 0 && $('a.logo').dataset.home === '1');
 $('[data-stat-unassigned]').click(); await tick();
