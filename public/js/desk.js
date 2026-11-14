@@ -111,8 +111,10 @@
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
       return api('get', { number: n }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
-        if (!current || current.ticket.number !== n) { restoreTicketDraft(n); macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
-        closePanes(); current = r.body; if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
+        var switchingTicket = !current || current.ticket.number !== n;
+        closePanes();
+        if (switchingTicket) { restoreTicketDraft(n); macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; }
+        current = r.body; if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
         var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) hit.subject = r.body.ticket.subject; else openTabs.push({ number: n, subject: r.body.ticket.subject });
         draw(); presenceTick();
       });
