@@ -27,6 +27,12 @@ check('too short, badly formed and reserved addresses say why', /at least 3/.tes
 
 // registration
 check('registration needs a company name', (await reg({ ...OK, company: '' })).status === 400);
+const oversizedSignup = await signup(new Request(`${BASE}/api/signup`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...ip(4) },
+  body: JSON.stringify({ ...OK, email: 'oversized@acme.test', padding: 'x'.repeat(10001) })
+}), deps);
+check('oversized JSON registration bodies are rejected before database changes', oversizedSignup.status === 400 && (await pool.query('select 1 from "user" where email=$1', ['oversized@acme.test'])).rowCount === 0);
 check('registration refuses a reserved address, and does not create an account', (await reg({ ...OK, slug: 'admin' })).body.code === 'SLUG_TAKEN' && (await pool.query('select count(*)::int n from "user"')).rows[0].n === 0);
 sent.length = 0; let r = await reg(OK);
 check('registration creates the account (unconfirmed) and holds the address', r.status === 200 && r.body.slug === 'acme' && (await pool.query('select company, slug from pending_signups')).rows[0].company === 'Acme Rentals' && (await pool.query('select "emailVerified" v from "user"')).rows[0].v === false);
