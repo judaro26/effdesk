@@ -89,9 +89,9 @@ const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, 
 check('admins can configure a per-agent simultaneous-chat limit', capSave.status === 200 && capSave.body.settings.max_concurrent === 1);
 check('chat lifecycle defaults can be configured to 24-hour resolution and 7-day reuse', capSave.body.settings.auto_resolve_hours === 24 && capSave.body.settings.reuse_days === 7);
 check('chat lifecycle settings reject out-of-range values', (await A(olivia, 'chat-save', { autoResolveHours: 721 })).status === 400 && (await A(olivia, 'chat-save', { reuseDays: 31 })).status === 400);
-const disabledLifecycle = await A(olivia, 'chat-save', { enabled: true, autoResolveHours: 0, reuseDays: 0 });
+const disabledLifecycle = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, autoResolveHours: 0, reuseDays: 0 });
 check('admins can disable auto-resolution and conversation reuse independently', disabledLifecycle.status === 200 && disabledLifecycle.body.settings.auto_resolve_hours === 0 && disabledLifecycle.body.settings.reuse_days === 0);
-await A(olivia, 'chat-save', { enabled: true, autoResolveHours: 24, reuseDays: 7 });
+await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, autoResolveHours: 24, reuseDays: 7 });
 const firstClaim = await A(olivia, 'chat-claim', { number: secondChat.body.number });
 check('an available agent can atomically claim an unassigned chat', firstClaim.status === 200 && firstClaim.body.alreadyAssigned === false);
 const thirdChat = await C('POST', '/api/chat/start?org=acme', { name: 'Noah', email: 'noah@x.co', message: 'I need a hand.' }, '2.2.2.2');
