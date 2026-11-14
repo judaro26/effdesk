@@ -3,7 +3,7 @@
 //   Owners and admins are never limited by a custom role. Light agents keep their own rules.
 import { withOrg } from './db.js';
 export const PERMS = [
-  { id: 'reply', label: 'Reply to customers and create tickets', actions: ['reply', 'create'] },
+  { id: 'reply', label: 'Reply to customers and create tickets', actions: ['reply', 'create', 'whatsapp-template-send'] },
   { id: 'status', label: 'Change status, priority, assignee and fields', actions: ['update'] },
   { id: 'bulk', label: 'Bulk actions', actions: ['bulk'] },
   { id: 'merge', label: 'Merge, link and use side conversations', actions: ['merge', 'link', 'unlink', 'problem-resolve', 'side-send', 'side-close'] },
