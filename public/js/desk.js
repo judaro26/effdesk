@@ -1306,7 +1306,7 @@
         richEditor.area.style.height = replyEditorHeight + 'px';
         richEditor.area.style.maxHeight = 'none';
         var resizeTo = function (height) {
-          replyEditorHeight = Math.max(140, Math.min(Math.round(root.innerHeight * 0.65), height));
+          replyEditorHeight = Math.max(160, Math.min(Math.round(root.innerHeight * 0.65), height));
           richEditor.area.style.height = replyEditorHeight + 'px';
           resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
         };
@@ -1331,7 +1331,7 @@
           e.preventDefault();
           resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? 24 : -24));
         });
-        resizeHandle.setAttribute('aria-valuemin', '140');
+        resizeHandle.setAttribute('aria-valuemin', '160');
         resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.65)));
         resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
       }
