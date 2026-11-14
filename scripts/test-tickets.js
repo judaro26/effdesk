@@ -52,6 +52,13 @@ r = await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { s
 r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'Following up on the closed ticket.', status: 'pending' });
 t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
 check('a public reply can reopen a closed ticket as pending and the saved message appears in its thread', r.status === 200 && r.body.status === 'pending' && t.ticket.status === 'pending' && t.messages[t.messages.length - 1].body === 'Following up on the closed ticket.');
+
+const replyKey='1234567890abcdef1234567890abcdef';
+r=await call(ann,{orgId:acme.id,action:'reply',number:1,body:'Idempotent reply',idempotencyKey:replyKey});
+const beforeRetry=(await call(ann,{orgId:acme.id,action:'get',number:1})).body.messages.length;
+const retry=await call(ann,{orgId:acme.id,action:'reply',number:1,body:'Different retry payload',idempotencyKey:replyKey});
+const afterRetry=(await call(ann,{orgId:acme.id,action:'get',number:1})).body.messages.length;
+check('a repeated client idempotency key cannot create a second reply, even with a changed retry payload',r.status===200 && retry.status===409 && retry.body.duplicate===true && beforeRetry===afterRetry);
 check('an unknown status or priority is refused', (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'weird' } })).status === 400 && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { priority: 'x' } })).status === 400);
 const ids = async q => (await call(ann, { orgId: acme.id, action: 'list', ...q })).body.tickets.map(x => x.number).sort().join();
 r = await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'on_hold' } });
