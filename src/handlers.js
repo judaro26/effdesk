@@ -459,10 +459,14 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (r.duplicate) return json(409, { error: 'This reply was already saved. The existing message was not sent again.', duplicate: true });
       if (r.ok && wst) { const d = await wa.sendReply(pool, env, orgId, Number(b.number), r.message.id, b.body, env.__waFetch || fetch); r.whatsapp = d.delivery; r.whatsappWhy = d.why; }
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
-      if (r.ok && mailer && !wst && !(await chatOpen(pool, orgId, b.number))) {
-        const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
-        for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
-        const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files, { html: b.html }); r.email = d.delivery; r.emailWhy = d.why;
+      if (r.ok && !wst) {
+        const chatIsOpen = await chatOpen(pool, orgId, b.number);
+        if (chatIsOpen) { r.email = 'skipped'; r.emailWhy = 'chat-open'; }
+        else if (mailer) {
+          const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
+          for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
+          const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files, { html: b.html }); r.email = d.delivery; r.emailWhy = d.why;
+        } else { r.email = 'skipped'; r.emailWhy = 'mailer-unavailable'; }
       }
       if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       if (r.ok && b.body) await syncTicketComment(pool, env, orgId, b.number, b.body);
