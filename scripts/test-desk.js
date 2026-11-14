@@ -89,18 +89,21 @@ check('the first load asks for active tickets in the right organization', calls.
 { const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && $$('tr.row').length === 0 && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $$('tr.row').length === 1); }
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
-check('the reply editor can shrink to 80 pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '80' && $('.ed-area').style.height === '160px');
+check('conversation search and date-range controls appear beside refresh and history', !!$('.conversation-search') && $('input.conversation-date').length === 2 && $('[data-refresh][title]') && $('[data-timeline][title]'));
+{ const q = $('.conversation-search'); q.value = 'old boiler'; q.dispatchEvent(new w.Event('input', { bubbles: true })); check('conversation search filters loaded messages by their text', $('.msg-b').length === 1 && /old boiler/.test($('.msg-b').textContent)); q.value = ''; q.dispatchEvent(new w.Event('input', { bubbles: true })); }
+{ const from = $('input[aria-label="Messages from date"]'); from.value = '2026-11-02'; from.dispatchEvent(new w.Event('change', { bubbles: true })); check('conversation date filter hides messages before the selected start date', $('.msg-b').length === 0 && !!$('.conversation-empty')); from.value = ''; from.dispatchEvent(new w.Event('change', { bubbles: true })); }
+check('the reply editor can fully collapse to zero pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '0' && $('.ed-area').style.height === '160px');
 check('the resize handle sits at the top of the composer above the reply mode tabs', $('.editor-resize-handle').parentNode === $('.compose') && $('.editor-resize-handle').nextElementSibling === $('.modes'));
 {
   const handle = $('.editor-resize-handle'), down = new w.Event('pointerdown', { bubbles: true, cancelable: true });
   Object.defineProperties(down, { button: { value: 0 }, clientY: { value: 100 }, pointerId: { value: 1 } });
   handle.dispatchEvent(down);
   const move = new w.Event('pointermove'); Object.defineProperty(move, 'clientY', { value: 120 }); w.document.dispatchEvent(move);
-  check('dragging the resize handle down expands the editor writing area', $('.ed-area').style.height === '180px');
+  check('dragging the resize handle down shrinks the editor writing area', $('.ed-area').style.height === '140px');
   w.document.dispatchEvent(new w.Event('pointerup'));
 }
-for (let i = 0; i < 4; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-check('the editor resize limit is enforced at 80 pixels', $('.ed-area').style.height === '80px');
+for (let i = 0; i < 10; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+check('the editor resize limit is enforced at zero pixels', $('.ed-area').style.height === '0px');
 {
   const thread = $('.thread');
   thread.scrollTop = 800;
