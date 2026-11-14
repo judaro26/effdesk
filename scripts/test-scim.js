@@ -27,11 +27,17 @@ check('SCIM tokens are random and returned only at creation', created.ok && crea
 const call = async (method, path, body, token = created.secret) => scim(new Request('https://app.effdesk.test/api/scim/v2' + path, {
   method, headers: { authorization: 'Bearer ' + token, 'content-type': 'application/scim+json' }, body: body === undefined ? undefined : JSON.stringify(body),
 }), { pool });
-const post = await call('POST', '/Users', { schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], userName: 'new-agent@example.test', displayName: 'New Agent', name: { givenName: 'New', familyName: 'Agent' }, active: true });
+const post = await call('POST', '/Users', { schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], userName: 'new-agent@example.test', externalId: 'idp-1001', displayName: 'New Agent', name: { givenName: 'New', familyName: 'Agent' }, active: true });
 const resource = await post.json();
 check('SCIM creates a user resource and tenant membership', post.status === 201 && resource.active === true && resource.userName === 'new-agent@example.test' && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1)', [org.id])).rowCount === 1);
 const listed = await (await call('GET', '/Users')).json();
 check('SCIM list returns tenant-scoped resources', listed.totalResults === 1 && listed.Resources[0].id === resource.id);
+const duplicateExternal = await call('POST', '/Users', { userName: 'duplicate-agent@example.test', externalId: 'idp-1001', displayName: 'Duplicate Agent', active: true });
+check('A duplicate externalId is rejected before creating an account or membership', duplicateExternal.status === 409 && (await pool.query('select 1 from "user" where email=$1', ['duplicate-agent@example.test'])).rowCount === 0 && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select id from "user" where email=$2)', [org.id, 'duplicate-agent@example.test'])).rowCount === 0);
+const second = await call('POST', '/Users', { userName: 'second-agent@example.test', externalId: 'idp-1002', displayName: 'Second Agent', active: true });
+check('A distinct externalId provisions a second agent', second.status === 201);
+const conflictingDeactivate = await call('PATCH', '/Users/' + resource.id, { Operations: [{ op: 'replace', path: 'active', value: false }, { op: 'replace', path: 'externalId', value: 'idp-1002' }] });
+check('A rejected identity update cannot deprovision the existing member', conflictingDeactivate.status === 409 && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1 and id=$2)', [org.id, resource.id])).rowCount === 1);
 const patched = await call('PATCH', '/Users/' + resource.id, { schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'], Operations: [{ op: 'replace', path: 'active', value: false }] });
 check('SCIM deactivation removes only the workspace membership', patched.status === 200 && (await patched.json()).active === false && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1)', [org.id])).rowCount === 0);
 const reactivated = await call('PATCH', '/Users/' + resource.id, { Operations: [{ op: 'replace', path: 'active', value: true }] });
