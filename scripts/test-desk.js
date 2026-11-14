@@ -13,6 +13,7 @@ const fetchFn = async (url, opts) => {
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test' }, organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
+  if (b.action === 'reply' && /^reject/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'This ticket is permanently closed.' }) };
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
@@ -110,6 +111,16 @@ $('[data-escalate]').click(); await tick();
 check('"Escalate to high" sends the priority change', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.priority === 'high'));
 const att = $('input[data-attach]'); Object.defineProperty(att, 'files', { value: [new w.File(['abc'], 'pic.png', { type: 'image/png' })], configurable: true }); att.dispatchEvent(new w.Event('change')); await tick(40);
 check('choosing a file uploads it to this ticket and shows it waiting to be sent', calls.some(c => /^\/api\/attachments\?org=o1&ticket=7&name=pic\.png&type=image%2Fpng/.test(c[0])) && !!$('[data-pending=up1]'));
+$('textarea').value = 'reject and keep this draft'; $('textarea').dispatchEvent(new w.Event('input')); $('[data-reply]').click(); await tick();
+check('a rejected reply keeps its draft and pending attachment available', $('textarea').value === 'reject and keep this draft' && !!$('[data-pending=up1]') && /permanently closed/.test($('.msg').textContent));
+{
+  const saved = w.localStorage.getItem('effdesk:reply-draft:v1:o1:u1:7');
+  const rw = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }).window; rw.__EFFDESK_TEST__ = true;
+  rw.localStorage.setItem('effdesk:reply-draft:v1:o1:u1:7', saved);
+  rw.eval(pub('js/format.js')); rw.eval(pub('js/article-editor.js')); rw.eval(pub('js/i18n.js')); rw.eval(pub('js/desk.js'));
+  await rw.EffDeskDesk.start(rw.document, fetchFn, { search: '?org=o1&ticket=7', go() {} }); await tick(40);
+  check('a browser reload restores the saved reply draft and its uploaded attachment', rw.document.querySelector('textarea').value === 'reject and keep this draft' && !!rw.document.querySelector('[data-pending=up1]'));
+}
 $('textarea').value = 'On our way'; $('[data-reply]').click(); await tick();
 check('the reply sends the waiting files\' ids, and the list is cleared afterwards', calls.some(c => c[1] && c[1].action === 'reply' && c[1].attachmentIds && c[1].attachmentIds.join() === 'up1') && !$('[data-pending]'));
 check('Reply posts the text to the reply action', calls.some(c => c[1] && c[1].action === 'reply' && c[1].number === 7 && c[1].body === 'On our way' && !c[1].status));
