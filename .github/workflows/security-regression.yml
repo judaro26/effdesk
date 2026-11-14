@@ -74,6 +74,9 @@ jobs:
       - name: Test tenant isolation for attachments
         run: node scripts/test-attachments.js
 
+      - name: Test REST API token authorization and rate limits
+        run: node scripts/test-api.js
+
       - name: Test Help Center and customer portal protections
         run: node scripts/test-help.js
 

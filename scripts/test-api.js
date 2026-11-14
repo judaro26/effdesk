@@ -59,5 +59,9 @@ const p = await api(T, 'PATCH', '/tickets/1', { priority: 'high', tags: ['vip'],
 check('a ticket can be updated', p.status === 200 && p.body.ticket.priority === 'high' && p.body.ticket.tags[0] === 'vip' && (await api(T, 'PATCH', '/tickets/1', { priority: 'huge' })).status === 400);
 const d = (await A(olivia, 'get', { number: 1 })).body; check('the desk shows the API as the author', d.messages.some(m => /API: Zapier/.test(m.author_name)));
 check('another organization\'s ticket numbers are not reachable with this token', (await api(T, 'GET', '/tickets/2')).status === 404 && (await api(T, 'DELETE', '/tickets/1')).status === 405 && (await api(T, 'GET', '/users')).status === 404);
+const tk2 = await A(olivia, 'token-create', { name: 'Rate limit test' });
+const burst = []; for (let i = 0; i < 301; i++) burst.push(await api(tk2.body.token, 'GET', '/tickets/99'));
+check('REST API tokens are limited to 300 requests per minute', burst.slice(0, 300).every(x => x.status === 404) && burst[300].status === 429);
+check('rate-limit response tells integrations when to retry', (await api(tk2.body.token, 'GET', '/tickets/99')).status === 429);
 check('a revoked token stops working at once', (await A(olivia, 'token-delete', { id: tk.body.id })).status === 200 && (await api(T, 'GET', '/tickets')).status === 401);
 done();
