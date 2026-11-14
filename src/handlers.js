@@ -812,7 +812,11 @@ export const _json = json;
 export async function apiV1(req, { pool, mailer, env = process.env }) {
   const who = await authenticate(pool, req.headers.get('authorization')).catch(() => null);
   if (!who) return json(401, { error: 'Send a valid API token: Authorization: Bearer effk.…' });
-  const orgId = who.orgId; countApiCall(pool, orgId); const ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'api')) return json(402, { error: 'The API is part of the Suite plan.', upgrade: true });
+  const orgId = who.orgId;
+  // Fingerprint the bearer token so the shared limiter never stores the secret itself.
+  const tokenKey = crypto.createHash('sha256').update(String(req.headers.get('authorization') || '')).digest('hex').slice(0, 32);
+  if (await rateLimit(pool, 'api-v1:' + orgId + ':' + tokenKey, 300, 60)) return json(429, { error: 'API rate limit exceeded. Try again in a minute.' }, { 'Retry-After': '60' });
+  countApiCall(pool, orgId); const ent = await getEntitlements(pool, orgId); if (!planHas(ent, 'api')) return json(402, { error: 'The API is part of the Suite plan.', upgrade: true });
   const actor = { id: null, name: 'API: ' + who.name, email: '' }, u = new URL(req.url), parts = u.pathname.replace(/^\/api\/v1\/?/, '').split('/').filter(Boolean), m = req.method;
   let b = {}; if (m === 'POST' || m === 'PATCH') { const raw = await req.text(); if (raw.length > 100000) return json(413, { error: 'Too large.' }); try { b = raw ? JSON.parse(raw) : {}; } catch { return json(400, { error: 'The body must be JSON.' }); } }
   const out = r => r.ok ? json(r.status === 201 ? 201 : 200, r.body || r) : json(r.status || 400, { error: r.error });
