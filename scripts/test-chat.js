@@ -92,9 +92,11 @@ check('the visitor can reply', r.status === 200 && (await A(olivia, 'get', { num
 await pool.query("update tickets set chat_seen_at = now() - interval '5 minutes' where number = $1", [n]);
 outbox.length = 0; await A(olivia, 'reply', { number: n, body: 'Anything else?' });
 check('after the visitor left, the reply is emailed', outbox.some(m => [].concat(m.to).join().includes('vera@x.co')));
-await A(olivia, 'update', { number: n, patch: { status: 'closed' } });
+const closeUpdate = await A(olivia, 'update', { number: n, patch: { status: 'closed' } });
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
-check('a closed chat says it ended and cannot take messages', p.body.ended === true && (await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'hello?' })).status === 409);
+const closedSend = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'hello?' });
+console.log('closed-chat regression details', JSON.stringify({ updateStatus: closeUpdate.status, updateBody: closeUpdate.body, pollStatus: p.status, pollBody: p.body, sendStatus: closedSend.status, sendBody: closedSend.body }));
+check('a closed chat says it ended and cannot take messages', p.body.ended === true && closedSend.status === 409);
 let last; for (let i = 0; i < 8; i++) last = await C('POST', '/api/chat/start?org=acme', { email: 'spam@x.co', message: 'spam ' + i }, '9.9.9.9');
 check('starting chats too fast is slowed down', last.status === 429);
 check('a page on another site cannot post (origin check)', (await chatApi(new Request('http://x/api/chat/start?org=acme', { method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/json' }, body: '{}' }), { pool, mailer, env: ENV })).status === 403);
