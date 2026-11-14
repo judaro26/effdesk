@@ -158,6 +158,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   // a feature of a higher plan: refuse with the name of the plan that has it
   const need = f => planHas(ent, f) ? null : json(402, { error: `This is part of the ${PLANS[Object.keys(PLANS).find(k => PLANS[k].features.includes(f))].name} plan. Upgrade to use it.`, upgrade: true });
   const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
+  const canCustom = permission => !cr || cr.permissions.includes(permission);
   let r, g;
   switch (b.action) {
     case 'support-enter': if (!support) return json(403, { error: 'Only the platform owner can do that.' }); await audit(pool, orgId, actor.id, 'support.entered', actor.email, {}); r = { ok: true }; break;
@@ -389,6 +390,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'field-save': if ((g = adminOnly() || need('custom_fields'))) return g; r = await saveField(pool, orgId, b); break;
     case 'field-delete': if ((g = adminOnly() || need('custom_fields'))) return g; if (!(await deleteField(pool, orgId, b.id))) return json(404, { error: 'No such field.' }); r = { ok: true }; break;
     case 'create': {
+      const createPatch = b.patch && typeof b.patch === 'object' && !Array.isArray(b.patch) ? b.patch : null;
+      const hasExtraTicketFields = (b.priority !== undefined && b.priority !== 'normal') || (Array.isArray(b.tags) ? b.tags.length > 0 : String(b.tags || '').trim() !== '') || (b.custom && typeof b.custom === 'object' && Object.keys(b.custom).length > 0) || (createPatch && Object.keys(createPatch).length > 0);
+      if (hasExtraTicketFields && !canCustom('status')) return json(403, { error: `Your role (${cr.name}) does not allow changing ticket fields. Ask an admin.` });
       if (b.custom && (g = need('custom_fields'))) return g;
       r = await createTicket(pool, orgId, actor, b);
       if (!r.ok) break;
@@ -414,6 +418,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'reply': {
+      if (b.status !== undefined && !canCustom('status')) return json(403, { error: `Your role (${cr.name}) does not allow changing ticket status. Ask an admin.` });
       if (!b.force && b.seenMessageId) { const fresh = await newSince(pool, orgId, actor.id, b.number, b.seenMessageId); if (fresh.length) return json(409, { error: `${[...new Set(fresh.map(m => m.author_name || 'Someone'))].slice(0, 3).join(', ')} wrote on this ticket since you opened it.`, conflict: true, messages: fresh.length }); }
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
       const wst = await wa.windowState(pool, orgId, b.number);
