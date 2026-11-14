@@ -47,12 +47,14 @@ check('a teammate cannot list live chats until an admin grants access', (await A
 check('unauthorized agents do not see chat tickets in All Tickets', !(await A(ann, 'list', { status: 'active', limit: 100 })).body.tickets.some(t => t.number === n));
 check('unauthorized agents cannot open a chat ticket directly', (await A(ann, 'get', { number: n })).status === 403);
 check('unauthorized agents cannot reply to a chat ticket directly', (await A(ann, 'reply', { number: n, body: 'I should not be able to reply.' })).status === 403);
+check('admins without explicit Live Chat access cannot reply to chat tickets', (await A(olivia, 'reply', { number: n, body: 'Access should be required.' })).status === 403);
 check('a teammate cannot switch on live chat before access is granted', (await A(ann, 'chat-availability-set', { available: true })).status === 403);
 check('only an admin can grant live chat access', (await A(ann, 'chat-access-set', { userId: ann.user.id, enabled: true })).status === 403);
 check('an admin can grant access to a full agent', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true })).body.access === true);
 check('an enabled agent can choose to accept live chats', (await A(ann, 'chat-availability-set', { available: true })).body.available === true);
 check('an agent can switch off live chat availability', (await A(ann, 'chat-availability-set', { available: false })).body.available === false);
 check('an offline agent cannot claim a waiting chat', (await A(ann, 'chat-claim', { number: n })).status === 409);
+check('an offline agent cannot reply to an unclaimed live chat', (await A(ann, 'reply', { number: n, body: 'I am offline.' })).status === 409);
 check('an agent with access can see the live chat inbox', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 200);
 check('an admin can revoke live chat access', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: false })).body.access === false);
 check('revoking access also forces the agent offline', (await A(ann, 'chat-availability-set', { available: true })).status === 403);
@@ -109,6 +111,8 @@ const sameTicketRace = await Promise.all([
   A(ann, 'chat-claim', { number: sixthChat.body.number })
 ]);
 check('two agents racing to claim one chat produce exactly one winner', sameTicketRace.filter(x => x.status === 200).length === 1 && sameTicketRace.filter(x => x.status === 409).length === 1);
+await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 5 });
+check('an available agent can claim the original waiting chat before replying', (await A(olivia, 'chat-claim', { number: n })).status === 200);
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
