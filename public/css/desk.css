@@ -920,3 +920,6 @@ html{-webkit-text-size-adjust:100%}
 .chat-settings-preview-greeting{max-width:88%;padding:10px 12px;border-radius:12px;background:#f3f5f6;color:#1f2933;font-size:12px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap}
 .chat-settings-preview-compose{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-top:1px solid #dfe3e6;color:#89939a;font-size:11px}
 .chat-settings-preview-send{padding:7px 11px;border-radius:7px;background:#1f73b7;color:#fff;font-size:10px;font-weight:700}
+
+/* Live Chat: a public customer reply is awaiting an agent response. */
+.chat-inbox-customer-replied{align-self:flex-start;margin-top:2px;padding:3px 7px;border-radius:6px;background:color-mix(in srgb,#d97706 12%,var(--d-panel));color:color-mix(in srgb,#b45309 88%,var(--d-ink));font-size:10px;font-weight:750;line-height:1.35}

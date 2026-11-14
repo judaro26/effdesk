@@ -171,6 +171,7 @@
           el('span', { class: 'chat-inbox-card-copy' },
             el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), el('span', { class: 'chat-inbox-time' }, fmt(t.assignee_id ? t.updated_at : t.created_at))),
             el('span', { class: 'chat-inbox-subject' }, t.subject || 'Live chat'),
+            t.assignee_id && t.chat_last_public_message_kind === 'requester' ? el('span', { class: 'chat-inbox-customer-replied', role: 'status' }, 'Customer replied · needs attention') : null,
             el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, t.assignee_id ? agentName(t.assignee_id) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
           el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
         var accept = !t.assignee_id ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
