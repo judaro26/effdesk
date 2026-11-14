@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getStore } from '@netlify/blobs';
 
-export async function restoreSnapshot(store, directory) {
+export async function verifySnapshot(directory) {
   const root = resolve(directory);
   const manifest = JSON.parse(await readFile(resolve(root, 'manifest.json'), 'utf8'));
   if (manifest.format !== 'effdesk-netlify-blobs-backup-v1' || !Array.isArray(manifest.entries)) {
@@ -35,13 +35,17 @@ export async function restoreSnapshot(store, directory) {
   if (verifiedBytes !== manifest.totalBytes) {
     throw new Error('Backup manifest total byte count does not match its objects.');
   }
+  return { manifest, verified: manifest.entries.length, totalBytes: verifiedBytes };
+}
 
+export async function restoreSnapshot(store, directory) {
+  const { manifest, verified, totalBytes } = await verifySnapshot(directory);
   // Validate every object before writing any of them to the destination store.
   for (const entry of manifest.entries) {
-    const bytes = await readFile(resolve(root, entry.filename));
+    const bytes = await readFile(resolve(directory, entry.filename));
     await store.set(entry.key, bytes);
   }
-  return { restored: manifest.entries.length, expected: manifest.count, totalBytes: manifest.totalBytes };
+  return { restored: verified, expected: manifest.count, totalBytes };
 }
 
 async function main() {
