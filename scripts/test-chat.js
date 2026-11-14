@@ -83,20 +83,19 @@ const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1 }
 check('admins can configure a per-agent simultaneous-chat limit', capSave.status === 200 && capSave.body.settings.max_concurrent === 1);
 const firstClaim = await A(olivia, 'chat-claim', { number: secondChat.body.number });
 check('an available agent can atomically claim an unassigned chat', firstClaim.status === 200 && firstClaim.body.alreadyAssigned === false);
-const thirdChat = await C('POST', '/api/chat/start?org=acme', { name: 'Noah', email: 'noah@x.co', message: 'I need a hand.' });
+const thirdChat = await C('POST', '/api/chat/start?org=acme', { name: 'Noah', email: 'noah@x.co', message: 'I need a hand.' }, '2.2.2.2');
 const thirdTicket = await A(olivia, 'get', { number: thirdChat.body.number });
 check('auto-routing leaves new chats waiting when the eligible agent is at capacity', thirdTicket.status === 200 && thirdTicket.body.ticket.assignee_id === null);
 check('an agent cannot claim beyond their simultaneous-chat limit', (await A(olivia, 'chat-claim', { number: thirdChat.body.number })).status === 409);
 
 // Two separate claim requests cannot race past the same agent capacity.
-const fourthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Kai', email: 'kai@x.co', message: 'Question one.' });
-const fifthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Maya', email: 'maya@x.co', message: 'Question two.' });
+const fourthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Kai', email: 'kai@x.co', message: 'Question one.' }, '3.3.3.3');
+const fifthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Maya', email: 'maya@x.co', message: 'Question two.' }, '4.4.4.4');
 const raiseCap = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 2 });
 const parallelClaims = await Promise.all([
   A(olivia, 'chat-claim', { number: fourthChat.body.number }),
   A(olivia, 'chat-claim', { number: fifthChat.body.number })
 ]);
-console.log('parallel agent capacity claim results', JSON.stringify({ fourth: fourthChat, fifth: fifthChat, raiseCap, claims: parallelClaims }));
 check('concurrent claims cannot exceed the agent chat limit', raiseCap.status === 200 && parallelClaims.filter(x => x.status === 200).length === 1 && parallelClaims.filter(x => x.status === 409).length === 1);
 check('a chat already claimed by its agent can be claimed idempotently', (await A(olivia, 'chat-claim', { number: secondChat.body.number })).status === 200);
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
@@ -106,12 +105,11 @@ check('a different eligible agent cannot claim a chat already accepted by someon
 // Competing agents racing for the same waiting ticket must produce exactly one winner.
 await A(olivia, 'routing-save', { enabled: false, strategy: 'round_robin' });
 await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 3 });
-const sixthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Riley', email: 'riley@x.co', message: 'Can someone help?' });
+const sixthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Riley', email: 'riley@x.co', message: 'Can someone help?' }, '5.5.5.5');
 const sameTicketRace = await Promise.all([
   A(olivia, 'chat-claim', { number: sixthChat.body.number }),
   A(ann, 'chat-claim', { number: sixthChat.body.number })
 ]);
-console.log('parallel same-ticket claim results', JSON.stringify({ sixthChat, claims: sameTicketRace }));
 check('two agents racing to claim one chat produce exactly one winner', sameTicketRace.filter(x => x.status === 200).length === 1 && sameTicketRace.filter(x => x.status === 409).length === 1);
 await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 5 });
 check('an available agent can claim the original waiting chat before replying', (await A(olivia, 'chat-claim', { number: n })).status === 200);
