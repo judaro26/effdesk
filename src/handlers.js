@@ -716,6 +716,8 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
     const ent = await getEntitlements(pool, org.id), custom = planHas(ent, 'request_forms'), fields = planHas(ent, 'custom_fields'), forms = await publicForms(pool, org.id, { custom, fields });
     const pickForm = id => forms.find(f => String(f.id) === String(id)) || null;
     if (!post) return html(200, pages.requestPage({ org, lang, base, forms, form: pickForm(u.searchParams.get('form')), token: requestToken(env, org.id, now) }));
+    // Bound anonymous ticket creation per source IP as well as the existing per-email and per-workspace hourly caps.
+    if (await rateLimit(pool, 'request-form:' + org.id + ':' + ip, 10, 600, now)) return html(429, pages.requestPage({ org, lang, base, forms, form: pickForm(u.searchParams.get('form')), token: requestToken(env, org.id, now), error: 'Too many requests. Please wait a few minutes and try again.' }), { 'Retry-After': '600' });
     const f = await form(), vals = Object.fromEntries(f.entries()), r = await submitRequest(pool, env, org, vals, { mailer, custom, fields, now });
     if (r.silent) return html(200, pages.requestDonePage({ org, lang, base, number: 0 }));
     if (!r.ok) return html(r.status === 404 ? 404 : r.status || 400, pages.requestPage({ org, lang, base, forms, form: pickForm(vals.form), token: requestToken(env, org.id, now - 3500), values: vals, error: r.error, field: r.field }));
