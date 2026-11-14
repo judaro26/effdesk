@@ -30,7 +30,8 @@
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
-    var replyEditorHeight = 220;
+    var replyEditorHeight = 160;
+    var threadScrollPositions = Object.create(null), threadScrollToBottom = 0;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { var v = props[k]; if (k === 'class') e.className = v; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else e.setAttribute(k, v); }); var appendChild = function (c) { if (c == null || typeof c === 'boolean') return; if (Array.isArray(c)) { c.forEach(appendChild); return; } if (typeof c === 'string' || typeof c === 'number') { e.appendChild(doc.createTextNode(String(c))); return; } if (c && typeof c.nodeType === 'number') e.appendChild(c); }; [].slice.call(arguments, 2).forEach(appendChild); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -1306,7 +1307,7 @@
         richEditor.area.style.height = replyEditorHeight + 'px';
         richEditor.area.style.maxHeight = 'none';
         var resizeTo = function (height) {
-          replyEditorHeight = Math.max(160, Math.min(Math.round(root.innerHeight * 0.65), height));
+          replyEditorHeight = Math.max(80, Math.min(Math.round(root.innerHeight * 0.65), height));
           richEditor.area.style.height = replyEditorHeight + 'px';
           resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
         };
@@ -1331,7 +1332,7 @@
           e.preventDefault();
           resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? 24 : -24));
         });
-        resizeHandle.setAttribute('aria-valuemin', '160');
+        resizeHandle.setAttribute('aria-valuemin', '80');
         resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.65)));
         resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
       }
@@ -1359,7 +1360,9 @@
           if (!r.ok && r.body && r.body.conflict) { done(); conflict = { text: r.body.error }; return draw(); }
           if (!r.ok) { done(); return say(r.body.error, true); }
           var n = ''; if (r.body.whatsapp === 'failed') n = 'Saved, but WhatsApp did not deliver it: ' + (r.body.whatsappWhy || 'try again later') + '.'; else if (r.body.email === 'failed') n = 'Saved, but the email could not be sent. Try again later.'; else if (r.body.email === 'skipped') n = r.body.emailWhy === 'no-inbox' ? 'Saved, but no email was sent: set up your support address under Email settings.' : r.body.emailWhy === 'limit' ? 'Saved, but no email was sent: you reached today\'s email limit for your plan.' : '';
+          if (!n) n = 'Reply saved to the conversation.';
           done(); pending = []; draft = ''; macroPatch = null; sendStatus = ''; conflict = null;
+          threadScrollToBottom = t.number;
           var patch = {}; if (mp && mp.priority) patch.priority = mp.priority; if (mp && mp.add_tags && mp.add_tags.length) patch.tags = (t.tags || []).concat(mp.add_tags);
           return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, true); });
         }).catch(function () { done(); say('Could not confirm that the message was sent. Check the conversation before sending it again.', true); });
@@ -1428,7 +1431,7 @@
       var center = el('section', { class: 'col conv' }, el('div', { class: 'ch' }, hdrTools, el('h2', {}, '#' + t.number + ' ' + t.subject), (function () { var b = el('div', { class: 'collide' + (others.some(function (o) { return o.typing; }) ? ' typing' : ''), role: 'status', 'data-collide': '1' }, othersText()); b.hidden = !others.length; return b; })(), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
         tools,
         summaries[t.number] ? el('div', { class: 'aisum', 'data-ai-summary': '1' }, el('strong', {}, 'AI summary'), renderBody(summaries[t.number]), el('button', { type: 'button', class: 'btn l sm', onclick: function () { delete summaries[t.number]; draw(); } }, 'Hide')) : null,
-        el('div', { class: 'thread' }, showTimeline ? timelineEl() : msgs),
+        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : msgs),
         winClosed ? (function () {
           var tl = waTpls || [], tp = tl[tplSel], kids = [el('strong', {}, 'WhatsApp only lets you reply with free text within 24 hours of the customer\'s last message. Send an approved template to start the conversation again. Your text is kept.'), ' '];
           if (!waTpls) kids.push(el('span', { class: 'm' }, 'Loading templates…'));
@@ -2461,9 +2464,36 @@
       drawChrome(); drawMenu();
       if (root.EffI18n) { root.EffI18n.setLocale(locale, { persist: false }); }
 
+      var oldThread = main.querySelector('.thread');
+      if (oldThread) {
+        var oldNumber = oldThread.getAttribute('data-ticket-number');
+        if (oldNumber) threadScrollPositions[oldNumber] = {
+          top: oldThread.scrollTop,
+          atBottom: oldThread.scrollHeight - oldThread.scrollTop - oldThread.clientHeight < 80
+        };
+      }
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
       main.appendChild(el('div', { class: 'desk' }, integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      var nextThread = main.querySelector('.thread');
+      if (nextThread) {
+        var threadNumber = nextThread.getAttribute('data-ticket-number');
+        var savedPosition = threadScrollPositions[threadNumber];
+        var forceBottom = threadScrollToBottom === Number(threadNumber);
+        if (forceBottom || !savedPosition || savedPosition.atBottom) nextThread.scrollTop = nextThread.scrollHeight;
+        else nextThread.scrollTop = savedPosition.top;
+        threadScrollPositions[threadNumber] = {
+          top: nextThread.scrollTop,
+          atBottom: nextThread.scrollHeight - nextThread.scrollTop - nextThread.clientHeight < 80
+        };
+        nextThread.addEventListener('scroll', function () {
+          threadScrollPositions[threadNumber] = {
+            top: nextThread.scrollTop,
+            atBottom: nextThread.scrollHeight - nextThread.scrollTop - nextThread.clientHeight < 80
+          };
+        });
+        if (forceBottom) threadScrollToBottom = 0;
+      }
     }
     return boot();
   }
