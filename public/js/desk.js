@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false;
+    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -137,11 +137,17 @@
     }
     function playChatSound() {
       var Audio = root.AudioContext || root.webkitAudioContext; if (!Audio) return;
-      try { var ctx = new Audio(), oscillator = ctx.createOscillator(), gain = ctx.createGain(); oscillator.type = 'sine'; oscillator.frequency.value = 880; gain.gain.setValueAtTime(0.0001, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.025); gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22); oscillator.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(ctx.currentTime + 0.24); oscillator.onended = function () { if (ctx.close) ctx.close(); }; } catch (e) { /* Audio may be blocked by browser policy. */ }
+      try {
+        if (!chatAudioContext) chatAudioContext = new Audio(); var ctx = chatAudioContext;
+        var tone = function () { var oscillator = ctx.createOscillator(), gain = ctx.createGain(); oscillator.type = 'sine'; oscillator.frequency.value = 880; gain.gain.setValueAtTime(0.0001, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.025); gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22); oscillator.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(ctx.currentTime + 0.24); };
+        if (ctx.state === 'suspended' && ctx.resume) ctx.resume().then(tone).catch(function () {}); else tone();
+      } catch (e) { /* Audio may be blocked by browser policy. */ }
     }
     function toggleChatSound() {
       chatSoundEnabled = !chatSoundEnabled; try { root.localStorage.setItem('eff_chat_sound:' + orgId + ':' + meId, chatSoundEnabled ? '1' : '0'); } catch (e) { /* Keep the setting for this session if storage is unavailable. */ }
-      if (chatSoundEnabled) playChatSound(); draw();
+      if (chatSoundEnabled) { var Audio = root.AudioContext || root.webkitAudioContext; if (Audio && !chatAudioContext) { try { chatAudioContext = new Audio(); } catch (e) {} } if (chatAudioContext && chatAudioContext.resume) chatAudioContext.resume().catch(function () {}); playChatSound(); }
+      else if (chatAudioContext && chatAudioContext.close) { chatAudioContext.close(); chatAudioContext = null; }
+      draw();
     }
     function fetchChatInbox(showLoading) {
       if (!chatInboxOpen) return Promise.resolve();
