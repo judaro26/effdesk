@@ -733,6 +733,9 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
   if (rest[0] === 'tickets') {
     if (!rest[1] && !post) return sess ? html(200, pages.ticketsPage({ org, lang, base, email: sess.email, tickets: await myTickets(pool, org.id, sess.email) })) : html(200, pages.signinPage({ org, lang, base, sent: false, bad: u.searchParams.get('bad') === '1' }));
     if (rest[1] === 'login' && post) {
+      // Per-address limits prevent repeated email delivery to one person; this
+      // additional per-IP limit slows distributed address rotation and email bombing.
+      if (await rateLimit(pool, 'portal-login:' + org.id + ':' + ip, 10, 600, now)) return html(429, pages.signinPage({ org, lang, base, sent: true, bad: false }), { 'Retry-After': '600' });
       const f = await form(), link = await requestLink(pool, org.id, f.get('email'), now);
       if (link && mailer) { try { await mailer.portalLink(link.email, `${portal ? portal + '/tickets/verify?t=' : PRODUCT.appUrl + base + '/tickets/verify?t='}${encodeURIComponent(link.token)}&lang=${lang}`, org.name, lang); } catch (e) { console.warn('portal link not sent:', e.message); } }
       return html(200, pages.signinPage({ org, lang, base, sent: true, bad: false }));
