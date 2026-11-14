@@ -52,6 +52,7 @@ check('only an admin can grant live chat access', (await A(ann, 'chat-access-set
 check('an admin can grant access to a full agent', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true })).body.access === true);
 check('an enabled agent can choose to accept live chats', (await A(ann, 'chat-availability-set', { available: true })).body.available === true);
 check('an agent can switch off live chat availability', (await A(ann, 'chat-availability-set', { available: false })).body.available === false);
+check('an offline agent cannot claim a waiting chat', (await A(ann, 'chat-claim', { number: n })).status === 409);
 check('an agent with access can see the live chat inbox', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 200);
 check('an admin can revoke live chat access', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: false })).body.access === false);
 check('revoking access also forces the agent offline', (await A(ann, 'chat-availability-set', { available: true })).status === 403);
