@@ -42,6 +42,8 @@ check('the database rejects an attachment in one tenant that references another 
 const jpg = Buffer.from('fake-jpeg-bytes-1234567890');
 check('uploading needs a sign-in and membership', (await upload(null, acme.id, jpg)).status === 401 && (await upload(otto, acme.id, jpg)).status === 403);
 check('an empty file and a file over 5 MB are refused', (await upload(ann, acme.id, Buffer.alloc(0))).status === 400 && (await upload(ann, acme.id, Buffer.alloc(5 * 1024 * 1024 + 1))).status === 413);
+const chunkedOversize = new Request(`http://x/api/attachments?org=${acme.id}&name=large.bin&type=application/octet-stream`, { method: 'POST', headers: { cookie: ann.cookie }, body: Buffer.alloc(5 * 1024 * 1024 + 1) });
+check('an oversized upload is rejected while streaming even without Content-Length', !chunkedOversize.headers.get('content-length') && (await attachmentUpload(chunkedOversize, deps)).status === 413);
 check('a file for a ticket that does not exist is refused', (await upload(ann, acme.id, jpg, 'a.jpg', '&ticket=99')).status === 404);
 check('file names are cleaned of paths and control characters', cleanName('../../etc/pass\u0000wd') === '.._etc_passwd'.replace(/^\.+/, '') || cleanName('../../etc/passwd') === '.._.._etc_passwd'.replace(/^\.+/, '') && cleanName('a/b\\c:d.txt') === 'a_b_c_d.txt' && cleanName('') === 'file');
 let up = await upload(ann, acme.id, jpg, 'leak photo.jpg', '&ticket=1');
