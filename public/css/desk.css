@@ -830,3 +830,7 @@ html{-webkit-text-size-adjust:100%}
   padding: 0;
   flex: 0 0 16px;
 }
+
+.deskapp .permanent-close-notice{margin:10px 16px;padding:14px 16px;border:1px solid var(--d-line);border-left:4px solid var(--d-muted);border-radius:8px;background:var(--d-panel);color:var(--d-ink)}.deskapp .permanent-close-notice p{margin:6px 0 10px;color:var(--d-muted)}.deskapp .compose [contenteditable="false"][data-permanently-closed="1"]{opacity:.55;cursor:not-allowed;background:var(--d-hover)}.deskapp .compose textarea:disabled{opacity:.55;cursor:not-allowed;background:var(--d-hover)}
+
+.deskapp .permanent-close-notice .btn{margin-top:2px}.deskapp .attach label.disabled{opacity:.45;cursor:not-allowed;pointer-events:none}.deskapp .attach button:disabled{opacity:.4;cursor:not-allowed}
