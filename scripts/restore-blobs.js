@@ -10,20 +10,38 @@ export async function restoreSnapshot(store, directory) {
   if (manifest.format !== 'effdesk-netlify-blobs-backup-v1' || !Array.isArray(manifest.entries)) {
     throw new Error('Unrecognized Netlify Blobs backup manifest.');
   }
-  let restored = 0;
+  if (!Number.isSafeInteger(manifest.count) || manifest.count !== manifest.entries.length ||
+      !Number.isSafeInteger(manifest.totalBytes) || manifest.totalBytes < 0) {
+    throw new Error('Backup manifest totals are invalid.');
+  }
+
+  const keys = new Set();
+  let verifiedBytes = 0;
   for (const entry of manifest.entries) {
-    if (typeof entry.key !== 'string' || !entry.key || !/^objects\/\d{10}\.bin$/.test(entry.filename)) {
-      throw new Error('Backup manifest contains an unsafe object entry.');
+    if (typeof entry.key !== 'string' || !entry.key || keys.has(entry.key) ||
+        typeof entry.filename !== 'string' || !/^objects\\/\\d{10}\\.bin$/.test(entry.filename) ||
+        !Number.isSafeInteger(entry.size) || entry.size < 0 ||
+        typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) {
+      throw new Error('Backup manifest contains an invalid or duplicate object entry.');
     }
+    keys.add(entry.key);
     const bytes = await readFile(resolve(root, entry.filename));
     const digest = createHash('sha256').update(bytes).digest('hex');
     if (bytes.length !== entry.size || digest !== entry.sha256) {
       throw new Error(`Backup integrity check failed for ${entry.filename}.`);
     }
-    await store.set(entry.key, bytes);
-    restored++;
+    verifiedBytes += bytes.length;
   }
-  return { restored, expected: manifest.count, totalBytes: manifest.totalBytes };
+  if (verifiedBytes !== manifest.totalBytes) {
+    throw new Error('Backup manifest total byte count does not match its objects.');
+  }
+
+  // Validate every object before writing any of them to the destination store.
+  for (const entry of manifest.entries) {
+    const bytes = await readFile(resolve(root, entry.filename));
+    await store.set(entry.key, bytes);
+  }
+  return { restored: manifest.entries.length, expected: manifest.count, totalBytes: manifest.totalBytes };
 }
 
 async function main() {
@@ -37,7 +55,6 @@ async function main() {
   if (!siteID || !token) throw new Error('NETLIFY_SITE_ID and NETLIFY_AUTH_TOKEN are required.');
   const store = getStore({ name: 'attachments', siteID, token, consistency: 'strong' });
   const result = await restoreSnapshot(store, directory);
-  if (result.restored !== result.expected) throw new Error('Restored object count does not match the manifest.');
   console.log(`Netlify Blobs restore complete: ${result.restored} objects, ${result.totalBytes} bytes.`);
 }
 
