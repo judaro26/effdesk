@@ -96,6 +96,7 @@ const parallelClaims = await Promise.all([
   A(olivia, 'chat-claim', { number: fourthChat.body.number }),
   A(olivia, 'chat-claim', { number: fifthChat.body.number })
 ]);
+console.log('parallel agent capacity claim results', JSON.stringify({ fourth: fourthChat, fifth: fifthChat, raiseCap, claims: parallelClaims }));
 check('concurrent claims cannot exceed the agent chat limit', raiseCap.status === 200 && parallelClaims.filter(x => x.status === 200).length === 1 && parallelClaims.filter(x => x.status === 409).length === 1);
 check('a chat already claimed by its agent can be claimed idempotently', (await A(olivia, 'chat-claim', { number: secondChat.body.number })).status === 200);
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
@@ -110,6 +111,7 @@ const sameTicketRace = await Promise.all([
   A(olivia, 'chat-claim', { number: sixthChat.body.number }),
   A(ann, 'chat-claim', { number: sixthChat.body.number })
 ]);
+console.log('parallel same-ticket claim results', JSON.stringify({ sixthChat, claims: sameTicketRace }));
 check('two agents racing to claim one chat produce exactly one winner', sameTicketRace.filter(x => x.status === 200).length === 1 && sameTicketRace.filter(x => x.status === 409).length === 1);
 await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 5 });
 check('an available agent can claim the original waiting chat before replying', (await A(olivia, 'chat-claim', { number: n })).status === 200);
