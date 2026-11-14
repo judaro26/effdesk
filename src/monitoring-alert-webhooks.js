@@ -115,7 +115,7 @@ async function applyAlert(pool,orgId,provider,alert){
    const changed=link.status!==alert.ticketStatus||link.priority!==alert.priority||link.subject!==alert.title;
    await c.query(`update tickets set subject=$3,status=$4,priority=$5,solved_at=case when $4 in ('solved','closed') then coalesce(solved_at,now()) else null end,updated_at=now() where org_id=$1 and id=$2`,
     [orgId,link.ticket_id,alert.title,alert.ticketStatus,alert.priority]);
-   if(changed)await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,provider,provider+' alert update · '+alert.statusRaw+' · '+alert.severity]);
+   if(changed)await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,link.ticket_id,provider,provider+' alert update · '+alert.statusRaw+' · '+alert.severity]);
    if(changed&&alert.message)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,link.ticket_id,provider,alert.message]);
    await c.query('update monitoring_alert_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,last_event_at=now(),provider_event_at=coalesce($7,provider_event_at),updated_at=now() where org_id=$1 and provider=$2 and external_alert_key=$3',[orgId,provider,alert.key,alert.url||null,alert.statusRaw,alert.severity,alert.providerEventAt]);
   }
