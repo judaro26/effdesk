@@ -103,6 +103,13 @@ const projectRequest = async (who, route, method='GET', body=null, workspace=acm
   const res = await projectIntegrations(req,{pool,auth,env:ENV});
   return {status:res.status,body:await res.json()};
 };
+const staleWebhookToken='ciphertext-encrypted-with-a-different-recovery-secret';
+await pool.query(
+  'insert into project_integrations (org_id,provider,access_token_enc,external_workspace_name,webhook_url_token_enc) values ($1,$2,$3,$4,$5)',
+  [acme.id,'jira','unreadable-access-token','Acme Jira',staleWebhookToken]
+);
+const connectionList=await projectRequest(olivia,'connections');
+check('listing workspace connections remains available when a legacy Jira webhook token cannot be decrypted, and never returns its ciphertext',connectionList.status===200&&connectionList.body.connections.some(x=>x.provider==='jira'&&x.external_workspace_name==='Acme Jira'&&x.webhookUrl===null&&x.webhookUrlUnavailable===true&&!('webhook_url_token_enc' in x)));
 const providerCalls=[];
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async (url,init={}) => {
