@@ -1349,7 +1349,7 @@
         resizeHandle.addEventListener('keydown', function (e) {
           if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
           e.preventDefault();
-          resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? -24 : 24));
+          resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? 24 : -24));
         });
         resizeHandle.setAttribute('aria-valuemin', '0');
         resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.8)));
