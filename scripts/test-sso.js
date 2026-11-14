@@ -37,7 +37,7 @@ const idp = http.createServer(async (req, res) => {
   if (u.pathname === '/.well-known/openid-configuration') return send({ issuer, authorization_endpoint: issuer + '/authorize', token_endpoint: issuer + '/token', jwks_uri: issuer + '/jwks' });
   if (u.pathname === '/jwks') return send({ keys: [jwk] });
   if (u.pathname === '/token') { let b = ''; for await (const c of req) b += c; const f = new URLSearchParams(b), c = codes.get(f.get('code')); if (!c || f.get('client_secret') !== 'shh' || f.get('client_id') !== 'cid' || !f.get('code_verifier')) return send({ error: 'bad' }, 400);
-    const jwt = await new SignJWT({ email: c.email, email_verified: c.verified !== false, name: c.name, nonce: c.nonce }).setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(c.iss || issuer).setAudience(c.aud || 'cid').setSubject(c.sub).setIssuedAt().setExpirationTime('5m').sign(privateKey); return send({ id_token: jwt, access_token: 'x' }); }
+    const jwt = await new SignJWT({ email: c.email, ...(c.omitEmailVerified ? {} : { email_verified: c.verified !== false }), name: c.name, nonce: c.nonce }).setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(c.iss || issuer).setAudience(c.aud || 'cid').setSubject(c.sub).setIssuedAt().setExpirationTime('5m').sign(privateKey); return send({ id_token: jwt, access_token: 'x' }); }
   send({}, 404);
 });
 await new Promise(r => idp.listen(0, '127.0.0.1', r)); issuer = 'http://127.0.0.1:' + idp.address().port;
@@ -66,6 +66,7 @@ check('signing in again reuses the same person', (await pool.query("select count
 r = await signIn('stranger@other.test'); check('an address outside the domains has no SSO', /sso_error/.test(r.loc));
 r = await signIn('mallory@acme.test', { email: 'mallory@evil.test' }); check('an email outside the company domains is refused even if the provider vouches for it', /sso_error/.test(r.to) && !/desk/.test(r.to));
 r = await signIn('v@acme.test', { verified: false }); check('an unverified email is refused', /sso_error/.test(r.to));
+r = await signIn('missing-verified@acme.test', { omitEmailVerified: true }); check('an ID token without an explicit email_verified=true claim is refused', /sso_error/.test(r.to));
 r = await signIn('t@acme.test', { aud: 'someone-else' }); check('a token for another application is refused', /sso_error/.test(r.to));
 r = await signIn('t@acme.test', { iss: 'http://127.0.0.1:1' }); check('a token from another issuer is refused', /sso_error/.test(r.to));
 r = await signIn('t@acme.test', { nonce: 'wrong' }); check('a replayed token (wrong nonce) is refused', /sso_error/.test(r.to));
