@@ -153,7 +153,76 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
       const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
       if (cfg.permanentCloseEnabled === true && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000) return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.', 409);
     }
-    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); sets.push(`solved_at = case when ${args.length} in ('solved','closed') then coalesce(solved_at, now()) else null end`); sets.push(`closed_at = case when ${args.length} = 'closed' then coalesce(closed_at, now()) when ${args.length} <> 'closed' then null else closed_at end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
+    if (patch.status !== undefined) { if (!STATUSES.includes(patch.status)) return fail('That status does not exist.'); set('status', patch.status); const statusParam = '
+    if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) return fail('That priority does not exist.'); set('priority', patch.priority); if (patch.priority !== t.priority) notes.push(['priority', `Priority ${t.priority} → ${patch.priority}`]); }
+    if (patch.assigneeId !== undefined) {
+      if (patch.assigneeId === null || patch.assigneeId === '') { set('assignee_id', null); if (t.assignee_id) notes.push(['assignee', 'Unassigned']); }
+      else { const m = (await c.query('select u.name, u.email from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 and m."userId" = $2', [orgId, String(patch.assigneeId)])).rows[0]; if (!m) return fail('That person is not part of this organization.'); set('assignee_id', String(patch.assigneeId)); if (t.assignee_id !== String(patch.assigneeId)) notes.push(['assignee', 'Assigned to ' + (m.name || m.email)]); }
+    }
+    if (patch.tags !== undefined) { const tg = cleanTags(patch.tags); set('tags', tg); if (tg.join() !== t.tags.join()) notes.push(['tags', 'Tags: ' + (tg.join(', ') || 'none')]); }
+    if (patch.type !== undefined) { if (!TYPES.includes(patch.type)) return fail('That type does not exist.'); set('type', patch.type); if (patch.type !== t.type) notes.push(['type', `Type ${t.type} → ${patch.type}`]); }
+    if (patch.queueId !== undefined) {
+      if (patch.queueId === null || patch.queueId === '') { set('queue_id', null); if (t.queue_id) notes.push(['queue', 'Removed from its queue']); }
+      else { const q = (await c.query('select id, name from queues where org_id = $1 and id = $2', [orgId, Number(patch.queueId) || 0])).rows[0]; if (!q) return fail('That queue does not exist.'); set('queue_id', q.id); if (String(t.queue_id) !== String(q.id)) notes.push(['queue', 'Queue: ' + q.name]); }
+    }
+    if (patch.clientId !== undefined) {
+      if (patch.clientId === null || patch.clientId === '') { set('client_id', null); if (t.client_id) notes.push(['client', 'Client removed']); }
+      else { const k = (await c.query('select id, name from clients where org_id = $1 and id = $2', [orgId, Number(patch.clientId) || 0])).rows[0]; if (!k) return fail('That client does not exist.'); set('client_id', k.id); if (String(t.client_id) !== String(k.id)) notes.push(['client', 'Client: ' + k.name]); }
+    }
+    if (patch.cc !== undefined) {
+      const list = [...new Set((Array.isArray(patch.cc) ? patch.cc : String(patch.cc || '').split(/[,;\s]+/)).map(x => clean(x, 254).toLowerCase()).filter(Boolean))];
+      if (list.length > 10) return fail('A ticket can copy up to 10 people.'); if (list.some(x => !isEmail(x))) return fail('One of the CC addresses is not a valid email address.');
+      const cc = list.filter(x => x !== t.requester_email); set('cc', cc); if (cc.join() !== t.cc.join()) notes.push(['cc', 'CC: ' + (cc.join(', ') || 'none')]);
+    }
+    if (patch.custom !== undefined) {
+      const defs = await defsOf(c, orgId), cv = cleanValues(defs, patch.custom); if (cv.error) return fail(cv.error);
+      const merged = { ...(t.custom || {}), ...cv.set }; for (const k of cv.clear) delete merged[k];
+      for (const k of Object.keys({ ...cv.set, ...Object.fromEntries(cv.clear.map(x => [x, 1])) })) { const d = defs.find(x => x.key === k), before = (t.custom || {})[k], after = merged[k]; if (JSON.stringify(before) !== JSON.stringify(after)) notes.push(['field', `${d.label}: ${before === undefined ? 'empty' : before} → ${after === undefined ? 'empty' : after}`]); }
+      set('custom', JSON.stringify(merged));
+    }
+    if (!sets.length) return fail('Nothing to change.');
+    const row = (await c.query(`update tickets set ${sets.join(', ')}, updated_at = now() where org_id = $1 and id = $2 returning ${ticketCols}`, args)).rows[0];
+    for (const [k, d] of notes) await logEvent(c, orgId, t.id, who(actor), k, d);
+    return { ok: true, ticket: row };
+  });
+}
+
+export async function listAgents(pool, orgId) {
+  return (await pool.query('select u.id, u.name, u.email, u.agent_number, m.role, p.avatar from member m join "user" u on u.id = m."userId" left join desk_prefs p on p.user_id = u.id where m."organizationId" = $1 order by u.name', [orgId])).rows;
+}
+
+// ---- used by the inbound email webhook (no signed-in agent) ----
+// a message from the requester: a solved or pending ticket becomes open again; a closed ticket cannot be reopened (the caller then starts a follow-up ticket)
+export async function addRequesterMessage(pool, orgId, number, { body, htmlBody, authorName, messageId }) {
+  const text = clean(body, 20000); if (!text) return fail('Empty message.');
+  return withOrg(pool, orgId, async c => {
+    const t = (await c.query('select id, number, subject, status, closed_at, requester_email, requester_name, client_id, channel, priority, tags from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
+    if (!t) return fail('No such ticket.', 404);
+    await ensureContact(c, orgId, { email: t.requester_email, name: t.requester_name || authorName, companyId: t.client_id });
+    const cfg = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [orgId])).rows[0]?.config || {};
+    const permanentlyClosed = t.status === 'closed' && cfg.permanentCloseEnabled !== false && t.closed_at && Date.now() - new Date(t.closed_at).getTime() >= (Number(cfg.permanentCloseDays) || 30) * 86400000;
+    if (permanentlyClosed) {
+      const next = (await c.query('insert into ticket_counters(org_id,last_number) values($1,1) on conflict(org_id) do update set last_number=ticket_counters.last_number+1 returning last_number',[orgId])).rows[0].last_number;
+      const follow = (await c.query(`insert into tickets(org_id,number,subject,priority,channel,requester_name,requester_email,tags,client_id,lifecycle_parent_ticket_id)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id,number`,[orgId,next,clean('Follow-up: '+t.subject,200),t.priority,t.channel,t.requester_name,t.requester_email,t.tags,t.client_id,t.id])).rows[0];
+      await logEvent(c,orgId,follow.id,clean(authorName,100)||t.requester_email,'created','Follow-up to permanently closed ticket #'+t.number);
+      const assigned = await autoAssign(c,orgId,follow.id); if (assigned) { await c.query('update tickets set assignee_id=$3 where org_id=$1 and id=$2',[orgId,follow.id,assigned.id]); await logEvent(c,orgId,follow.id,'Routing','assigned','Assigned to '+assigned.name+' automatically'); }
+      await logEvent(c,orgId,t.id,'Ticket lifecycle automation','follow_up_created','New follow-up ticket #'+next+' created after permanent closure');
+      const mid=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_name,body,message_id,html_body) values($1,$2,$3,$4,$5,$6,$7) returning id',[orgId,follow.id,'requester',clean(authorName,100),text,messageId?clean(messageId,300):null,String(htmlBody||'').slice(0,100000)||null])).rows[0].id;
+      return { ok:true, followup:true, number:next, messageRowId:mid };
+    }
+    const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id', [orgId, t.id, 'requester', clean(authorName, 100), text, messageId ? clean(messageId, 300) : null, String(htmlBody || '').slice(0, 100000) || null])).rows[0].id;
+    await c.query("update tickets set status = 'open', solved_at = null, closed_at = null, updated_at = now() where org_id = $1 and id = $2", [orgId, t.id]);
+    return { ok: true, reopened: t.status !== 'open', messageRowId: mid };
+  });
+}
+export async function ticketByMessageId(pool, orgId, messageId) {
+  return withOrg(pool, orgId, async c => (await c.query('select t.number, t.requester_email from ticket_messages m join tickets t on t.id = m.ticket_id and t.org_id = m.org_id where m.org_id = $1 and m.message_id = $2', [orgId, String(messageId || '')])).rows[0] || null);
+}
+export async function messageSeen(pool, orgId, messageId) {
+  return withOrg(pool, orgId, async c => (await c.query('select 1 from ticket_messages where org_id = $1 and message_id = $2', [orgId, String(messageId || '')])).rowCount > 0);
+}
+ + args.length; sets.push(`solved_at = case when ${statusParam} in ('solved','closed') then coalesce(solved_at, now()) else null end`); sets.push(`closed_at = case when ${statusParam} = 'closed' then coalesce(closed_at, now()) when ${statusParam} <> 'closed' then null else closed_at end`); if (patch.status !== t.status || (cs && String(cs.id) !== String(t.custom_status_id))) notes.push(['status', `Status ${t.status} → ${label || patch.status}`]); }
     if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) return fail('That priority does not exist.'); set('priority', patch.priority); if (patch.priority !== t.priority) notes.push(['priority', `Priority ${t.priority} → ${patch.priority}`]); }
     if (patch.assigneeId !== undefined) {
       if (patch.assigneeId === null || patch.assigneeId === '') { set('assignee_id', null); if (t.assignee_id) notes.push(['assignee', 'Unassigned']); }
