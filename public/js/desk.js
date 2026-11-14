@@ -30,6 +30,7 @@
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en';
+    var replyEditorHeight = 220;
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { var v = props[k]; if (k === 'class') e.className = v; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else e.setAttribute(k, v); }); var appendChild = function (c) { if (c == null || typeof c === 'boolean') return; if (Array.isArray(c)) { c.forEach(appendChild); return; } if (typeof c === 'string' || typeof c === 'number') { e.appendChild(doc.createTextNode(String(c))); return; } if (c && typeof c.nodeType === 'number') e.appendChild(c); }; [].slice.call(arguments, 2).forEach(appendChild); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -1300,6 +1301,40 @@
       var richEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: draft ? '<p>' + htmlEsc(draft).replace(/\n/g, '<br>') + '</p>' : '', canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
       if (richEditor) richEditor.area.addEventListener('input', function () { body.value = htmlPlain(richEditor.getHtml()); draft = body.value; });
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
+      var resizeHandle = richEditor ? el('div', { class: 'editor-resize-handle', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': 'Resize reply editor', title: 'Drag to resize the reply editor' }) : null;
+      if (richEditor) {
+        richEditor.area.style.height = replyEditorHeight + 'px';
+        richEditor.area.style.maxHeight = 'none';
+        var resizeTo = function (height) {
+          replyEditorHeight = Math.max(160, Math.min(Math.round(root.innerHeight * 0.65), height));
+          richEditor.area.style.height = replyEditorHeight + 'px';
+          resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
+        };
+        resizeHandle.addEventListener('pointerdown', function (e) {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height;
+          var move = function (ev) { resizeTo(startHeight + startY - ev.clientY); };
+          var up = function () {
+            doc.removeEventListener('pointermove', move);
+            doc.removeEventListener('pointerup', up);
+            doc.removeEventListener('pointercancel', up);
+            if (resizeHandle.releasePointerCapture && resizeHandle.hasPointerCapture && resizeHandle.hasPointerCapture(e.pointerId)) resizeHandle.releasePointerCapture(e.pointerId);
+          };
+          if (resizeHandle.setPointerCapture) resizeHandle.setPointerCapture(e.pointerId);
+          doc.addEventListener('pointermove', move);
+          doc.addEventListener('pointerup', up);
+          doc.addEventListener('pointercancel', up);
+        });
+        resizeHandle.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+          e.preventDefault();
+          resizeTo(replyEditorHeight + (e.key === 'ArrowUp' ? 24 : -24));
+        });
+        resizeHandle.setAttribute('aria-valuemin', '160');
+        resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.65)));
+        resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
+      }
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -1407,7 +1442,7 @@
           return el('div', { class: 'conflict', role: 'alert', 'data-wa-window': '1' }, kids);
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), ' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')) : null,
-        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
+        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, resizeHandle, bodyBox, el('div', { class: 'cbar' }, picker(t), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
       cards.push(el('h3', {}, 'About this company'));
