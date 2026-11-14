@@ -12,9 +12,9 @@ export async function listTeam(pool, orgId, ent) {
   const open = Object.fromEntries((await withOrg(pool, orgId, c => c.query("select assignee_id, count(*)::int n from tickets where org_id = $1 and status in ('open','pending') and assignee_id is not null group by assignee_id", [orgId]))).rows.map(r => [r.assignee_id, r.n]));
   const solved = Object.fromEntries((await withOrg(pool, orgId, c => c.query("select assignee_id, count(*)::int n from tickets where org_id = $1 and solved_at > now() - interval '30 days' and assignee_id is not null group by assignee_id", [orgId]))).rows.map(r => [r.assignee_id, r.n]));
   const cust = Object.fromEntries((await withOrg(pool, orgId, c => c.query('select m.user_id, r.name from member_custom_role m join custom_roles r on r.id = m.role_id where m.org_id = $1', [orgId]))).rows.map(r => [r.user_id, r.name]));
-  const away = new Set((await withOrg(pool, orgId, c => c.query('select user_id from agent_status where org_id = $1 and not available', [orgId]))).rows.map(r => r.user_id));
+  const statuses = Object.fromEntries((await withOrg(pool, orgId, c => c.query('select user_id, available, chat_access, chat_available from agent_status where org_id = $1', [orgId]))).rows.map(r => [r.user_id, r]));
   const invites = (await pool.query(`select i.id, i.email, i.role, i."expiresAt" as expires_at from invitation i where i."organizationId" = $1 and i.status = 'pending' and i."expiresAt" > now() order by i."expiresAt" desc`, [orgId])).rows;
-  return { ok: true, roles: ROLES, people: people.map(p => ({ memberId: p.member_id, userId: p.user_id, name: p.name, email: p.email, role: p.role, joined: p.joined, lastActive: p.last_active, openTickets: open[p.user_id] || 0, solved30: solved[p.user_id] || 0, customRole: cust[p.user_id] || null, available: !away.has(p.user_id) })), invites, seats: { used: await seatsUsed(pool, orgId), allowed: ent.seats === Infinity ? null : ent.seats, plan: ent.plan } };
+  return { ok: true, roles: ROLES, people: people.map(p => ({ memberId: p.member_id, userId: p.user_id, name: p.name, email: p.email, role: p.role, joined: p.joined, lastActive: p.last_active, openTickets: open[p.user_id] || 0, solved30: solved[p.user_id] || 0, customRole: cust[p.user_id] || null, available: statuses[p.user_id] ? statuses[p.user_id].available !== false : true, chatAccess: !!(statuses[p.user_id] && statuses[p.user_id].chat_access), chatAvailable: !!(statuses[p.user_id] && statuses[p.user_id].chat_available) })), invites, seats: { used: await seatsUsed(pool, orgId), allowed: ent.seats === Infinity ? null : ent.seats, plan: ent.plan } };
 }
 const memberOf = async (pool, orgId, memberId) => (await pool.query('select m.id, m."userId" as user_id, m.role, u.email, u.name from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 and m.id = $2', [orgId, String(memberId || '')])).rows[0];
 const owners = async (pool, orgId) => (await pool.query("select count(*)::int n from member where \"organizationId\" = $1 and role = 'owner'", [orgId])).rows[0].n;
@@ -25,6 +25,10 @@ export async function changeRole(pool, orgId, actor, actorRole, memberId, role) 
   if ((m.role === 'owner' || role === 'owner') && actorRole !== 'owner') return fail('Only an owner can do that.', 403);
   if (m.role === 'owner' && role !== 'owner' && await owners(pool, orgId) <= 1) return fail('An organization needs at least one owner.');
   await pool.query('update member set role = $3 where "organizationId" = $1 and id = $2', [orgId, m.id, role]);
+  if (role === 'light') await withOrg(pool, orgId, async c => {
+    await c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]);
+    await c.query("update tickets set assignee_id = null, updated_at = now() where org_id = $1 and assignee_id = $2 and channel = 'chat' and status in ('open','pending','on_hold')", [orgId, m.user_id]);
+  });
   return { ok: true, email: m.email, from: m.role, role };
 }
 export async function removeMember(pool, orgId, actor, actorRole, memberId, reassignTo) {
@@ -37,9 +41,15 @@ export async function removeMember(pool, orgId, actor, actorRole, memberId, reas
     const n = (await c.query("update tickets set assignee_id = $3, updated_at = now() where org_id = $1 and assignee_id = $2 and status in ('open','pending') returning id", [orgId, m.user_id, to])).rowCount;
     await c.query("update tickets set assignee_id = null where org_id = $1 and assignee_id = $2", [orgId, m.user_id]);
     await c.query('delete from ticket_followers where org_id = $1 and user_id = $2', [orgId, m.user_id]);
+    await c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]);
     return n;
   });
   await pool.query('delete from member where "organizationId" = $1 and id = $2', [orgId, m.id]);
+  // A concurrent admin access grant may have completed just before the membership was deleted.
+  await withOrg(pool, orgId, async c => {
+    await c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]);
+    await c.query("update tickets set assignee_id = null, updated_at = now() where org_id = $1 and assignee_id = $2 and channel = 'chat' and status in ('open','pending','on_hold')", [orgId, m.user_id]);
+  });
   return { ok: true, email: m.email, userId: m.user_id, reassigned: moved, to };
 }
 export async function cancelInvite(pool, orgId, inviteId) {

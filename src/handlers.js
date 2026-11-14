@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -192,14 +192,24 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
   const canCustom = permission => !cr || cr.permissions.includes(permission);
   let r, g;
+  // Chat tickets remain ticket records, but agents without explicit Live Chat access
+  // must not discover or operate on them through the general ticket endpoints.
+  const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
+    .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
+  let chatAccessAllowed = support;
+  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (b.action === 'list' || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
+  if (!chatAccessAllowed && !support && targetNumbers.length) {
+    const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
+    if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+  }
   switch (b.action) {
     case 'support-enter': if (!support) return json(403, { error: 'Only the platform owner can do that.' }); await audit(pool, orgId, actor.id, 'support.entered', actor.email, {}); r = { ok: true }; break;
     case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, active: true, always: true, entries: await recentEntries(pool, orgId) }; break;
     case 'init': {
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
-      const [agents, labels, queues, clients, macros, views, statuses, ticketPrefs] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }, planHas(ent, 'queues') ? desk.listStatuses(pool, orgId) : { statuses: [] }, desk.getTicketPreferences(pool, orgId, actor.id)]);
+      const [agents, labels, queues, clients, macros, views, statuses, ticketPrefs, chatStatus] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }, planHas(ent, 'queues') ? desk.listStatuses(pool, orgId) : { statuses: [] }, desk.getTicketPreferences(pool, orgId, actor.id), planHas(ent, 'live_chat') && role !== 'light' ? getChatAvailability(pool, orgId, actor.id) : { access: false, available: false }]);
       const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, chatAccess: chatStatus.access, chatAvailable: chatStatus.available, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'sandbox-get': {
       if ((g = need('sandbox'))) return g;
@@ -290,6 +300,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'routing-save': if ((g = adminOnly() || need('routing'))) return g; r = await saveRouting(pool, orgId, b); break;
     case 'availability-get': r = { ok: true, available: await myAvailability(pool, orgId, actor.id) }; break;
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
+    case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
+    case 'chat-access-set': { if ((g = adminOnly() || need('live_chat'))) return g; r = await setChatAccess(pool, orgId, b.userId, b.enabled === true); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.access-changed', String(b.userId), { enabled: b.enabled === true }); break; }
     case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
     case 'approval-get': if ((g = need('request_forms'))) return g; r = await getApprovalForTicket(pool, orgId, b.number); break;
@@ -377,6 +389,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
     case 'report-csv': if ((g = need('reports'))) return g; r = await reportCsv(pool, orgId, b.days); break;
     case 'list': {
+      if (b.channel === 'chat') {
+        if ((g = need('live_chat'))) return g;
+        if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+      } else if (!chatAccessAllowed) b.excludeChat = true;
       if (!planHas(ent, 'sla')) b.sla = undefined;
       const cal = planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null;
       if (cal && cal.enabled && (b.sla === 'breached' || b.sla === 'risk')) { b.numbers = await slaNumbers(pool, orgId, b.sla, cal); }

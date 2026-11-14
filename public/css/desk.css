@@ -889,3 +889,6 @@ html{-webkit-text-size-adjust:100%}
 .chat-inbox-footnote{margin:16px 2px 0;color:var(--d-muted);font-size:11px;line-height:1.5}
 @media(max-width:900px){.chat-inbox{padding:20px 18px 34px}.chat-inbox-hero{align-items:flex-start;flex-direction:column;padding:25px}.chat-inbox-hero-actions{width:100%;justify-content:space-between}.chat-inbox-columns{grid-template-columns:1fr}}
 @media(max-width:560px){.chat-inbox{padding:14px 12px 28px}.chat-inbox-stats{gap:8px}.chat-inbox-stat{padding:13px 12px}.chat-inbox-stat strong{font-size:22px}.chat-inbox-stat>span{font-size:10px}.chat-inbox-stat small{font-size:9px}.chat-inbox-hero h1{font-size:27px}.chat-inbox-card{padding:13px 12px;gap:10px}}
+
+.chat-access-toggle{white-space:nowrap}
+.chat-access-toggle.is-enabled{border-color:color-mix(in srgb,#20a779 35%,var(--d-line));color:#16835f;background:color-mix(in srgb,#20a779 8%,var(--d-panel))}
