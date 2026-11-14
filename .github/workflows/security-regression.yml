@@ -65,6 +65,9 @@ jobs:
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 
+      - name: Test ticket desk draft recovery and reply safety
+        run: node scripts/test-desk.js
+
       - name: Test agent desk draft recovery and conversation behavior
         run: node scripts/test-desk.js
 
