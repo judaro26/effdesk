@@ -71,14 +71,21 @@ export async function submit(pool, env, org, input, { mailer, custom = false, fi
   if (!body) return fail('Describe what you need.', 400, { field: 'description' });
   let form = null;
   if (custom && /^\d{1,12}$/.test(String(input.form || ''))) { form = (await publicForms(pool, org.id, { custom, fields: true })).find(f => String(f.id) === String(input.form)) || null; if (!form) return fail('That form is not available.', 404); }
-  const recent = await withOrg(pool, org.id, async c => (await c.query(`select count(*) filter (where requester_email = $2)::int as mine, count(*)::int as everyone from tickets where org_id = $1 and via_portal and created_at > now() - interval '1 hour'`, [org.id, email])).rows[0]);
-  if (recent.mine >= PER_EMAIL_HOUR || recent.everyone >= PER_ORG_HOUR) return fail('We have received a lot of requests from you. Please wait a while, we will reply to the ones we have.', 429);
-  const cf = {}; if (form && fields) for (const f of form.fields || []) { const v = input['cf_' + f.key]; if (v !== undefined && v !== '') cf[f.key] = f.type === 'checkbox' ? v === 'on' || v === 'true' || v === true : v; }
-  const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal' });
-  if (!r.ok) return r;
-  await withOrg(pool, org.id, c => c.query('update tickets set via_portal = true, form_id = $3, queue_id = coalesce($4, queue_id), type = $5 where org_id = $1 and id = $2', [org.id, r.ticket.id, form ? form.id : null, form ? form.queue_id : null, form ? form.type : 'question']));
-  if (form) { try { await createForTicket(pool, org.id, r.ticket, form.id, null, mailer); } catch (e) { console.warn('request approval creation failed:', e.message); } }
-  await emit(pool, org.id, 'ticket.created', r.ticket.number);
-  if (mailer) { try { await notifyTicket(pool, mailer, org.id, r.ticket.number, { kind: 'reply', summary: body }); } catch { } }
-  return { ok: true, number: r.ticket.number };
+  // Count and create the portal ticket in the same transaction. The lock stays
+  // held until both the ticket and its via_portal marker are committed.
+  const outcome = await withOrg(pool, org.id, async c => {
+    await c.query("select pg_advisory_xact_lock(hashtext('public-request-form'), hashtext($1))", [org.id]);
+    const recent = (await c.query(`select count(*) filter (where requester_email = $2)::int as mine, count(*)::int as everyone from tickets where org_id = $1 and via_portal and created_at > now() - interval '1 hour'`, [org.id, email])).rows[0];
+    if (recent.mine >= PER_EMAIL_HOUR || recent.everyone >= PER_ORG_HOUR) return { response: fail('We have received a lot of requests from you. Please wait a while, we will reply to the ones we have.', 429) };
+    const cf = {}; if (form && fields) for (const f of form.fields || []) { const v = input['cf_' + f.key]; if (v !== undefined && v !== '') cf[f.key] = f.type === 'checkbox' ? v === 'on' || v === 'true' || v === true : v; }
+    const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal' }, c);
+    if (!r.ok) return { response: r };
+    await c.query('update tickets set via_portal = true, form_id = $3, queue_id = coalesce($4, queue_id), type = $5 where org_id = $1 and id = $2', [org.id, r.ticket.id, form ? form.id : null, form ? form.queue_id : null, form ? form.type : 'question']);
+    return { ticket: r.ticket, number: r.ticket.number };
+  });
+  if (outcome.response) return outcome.response;
+  if (form) { try { await createForTicket(pool, org.id, outcome.ticket, form.id, null, mailer); } catch (e) { console.warn('request approval creation failed:', e.message); } }
+  await emit(pool, org.id, 'ticket.created', outcome.number);
+  if (mailer) { try { await notifyTicket(pool, mailer, org.id, outcome.number, { kind: 'reply', summary: body }); } catch { } }
+  return { ok: true, number: outcome.number };
 }

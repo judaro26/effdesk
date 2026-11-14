@@ -21,14 +21,14 @@ export const logEvent = (c, orgId, ticketId, actorName, kind, detail = '') => c.
 const who = a => (a && (a.name || a.email)) || 'Customer';
 
 // a new ticket with its first message (from the requester, or from an agent who is logging a call)
-export async function createTicket(pool, orgId, actor, input) {
+export async function createTicket(pool, orgId, actor, input, existingClient = null) {
   const subject = clean(input.subject, 200), safeHtml = input.htmlBody ? cleanHtml(String(input.htmlBody).slice(0, 100000), { allowCidImages: input.channel === 'email' }) : null, body = clean(input.body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''), email = clean(input.requesterEmail, 254).toLowerCase();
   if (!subject) return fail('Give the ticket a subject.');
   if (!body) return fail('Write the first message.');
   if (!isEmail(email)) return fail('Enter the requester\'s email address.');
   const priority = PRIORITIES.includes(input.priority) ? input.priority : 'normal';
   const kind = actor && (input.firstKind === 'agent' || input.firstKind === 'note') ? input.firstKind : 'requester';   // an agent can open a ticket with a public reply or a note
-  return withOrg(pool, orgId, async c => {
+  const run = async c => {
     let lifecycleParentId = null;
     if (input.lifecycleParentTicketNumber !== undefined && input.lifecycleParentTicketNumber !== null) {
       const parent = (await c.query('select id,status,closed_at,subject from tickets where org_id=$1 and number=$2 for update',[orgId,Number(input.lifecycleParentTicketNumber)||0])).rows[0];
@@ -48,7 +48,8 @@ export async function createTicket(pool, orgId, actor, input) {
     if ((!actor || input.channel === 'api') && input.route !== false) { const a = await autoAssign(c, orgId, t.id); if (a) { t.assignee_id = a.id; await logEvent(c, orgId, t.id, 'Routing', 'assigned', 'Assigned to ' + a.name + ' automatically'); } }
     if (kind === 'agent') { await c.query('update tickets set first_response_at = now() where id = $1', [t.id]); t.first_response_at = new Date().toISOString(); }
     return { ok: true, ticket: t, messageRowId: mid };
-  });
+   };
+  return existingClient ? run(existingClient) : withOrg(pool, orgId, run);
 }
 
 // the list: filter by status, assignee ("me", "none" or a user id), a text search and one tag; newest activity first; paged

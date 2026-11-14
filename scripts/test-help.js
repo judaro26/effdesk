@@ -110,6 +110,13 @@ const formNow = Date.now(), formTs = newToken(ENV, acme.id, formNow - 4000);
 const formBurst = [];
 for (let i = 0; i < 11; i++) formBurst.push(await web('POST', '/help/acme/requests/new', { body: { ts: formTs, email: `requester${i}@example.com`, name: 'Requester', subject: 'Need help', description: 'Please contact me.' }, headers: { 'x-nf-client-connection-ip': '203.0.113.88' } }));
 check('public request form submissions are limited per source IP', formBurst.slice(0, 10).every(x => x.status === 200) && formBurst[10].status === 429 && formBurst[10].headers.get('retry-after') === '600');
+const parallelFormTs = newToken(ENV, acme.id, Date.now() - 4000);
+const parallelFormResults = await Promise.all(Array.from({ length: 12 }, (_, i) => web('POST', '/help/acme/requests/new', {
+  body: { ts: parallelFormTs, email: 'parallel-form@example.com', name: 'Parallel Requester', subject: 'Concurrent request', description: 'Please contact me.' },
+  headers: { 'x-nf-client-connection-ip': `203.0.113.${100 + i}` },
+})));
+const parallelFormCount = (await withOrg(pool, acme.id, c => c.query("select count(*)::int n from tickets where org_id = $1 and requester_email = 'parallel-form@example.com' and via_portal and created_at > now() - interval '1 hour'", [acme.id]))).rows[0].n;
+check('concurrent public request submissions cannot exceed five per email per hour', parallelFormResults.filter(x => x.status === 200).length === 5 && parallelFormResults.filter(x => x.status === 429).length === 7 && parallelFormCount === 5);
 check('a tampered or expired cookie is not a session', readSession(ENV, cookie.split('=').slice(1).join('=') + 'x', acme.id) === null && readSession(ENV, sessionCookie(ENV, acme.id, 'tina@example.com', Date.now() - 13 * 3600 * 1000), acme.id) === null && readSession(ENV, sessionCookie(ENV, acme.id, 'tina@example.com'), acme.id).email === 'tina@example.com');
 const burst = []; for (let i = 0; i < 11; i++) burst.push(await web('POST', '/help/acme/tickets/login', { body: { email: 'tina@example.com' }, headers: { 'x-nf-client-connection-ip': '203.0.113.77' } }));
 check('customer portal sign-in requests are rate-limited per source IP', burst.slice(0, 10).every(x => x.status === 200) && burst[10].status === 429 && burst[10].headers.get('retry-after') === '600');
