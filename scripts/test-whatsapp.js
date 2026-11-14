@@ -84,6 +84,14 @@ check('a template name must match Meta\'s rules', (await A(olivia, 'whatsapp-tem
 const ts = await A(olivia, 'whatsapp-template-save', { name: 'order_update', language: 'en_US', body: 'Hi {{1}}, your visit is {{2}}.' });
 check('a template is saved with its number of variables', ts.status === 200 && ts.body.templates.length === 1 && ts.body.templates[0].slots === 2);
 check('agents can list templates', (await A(ann, 'whatsapp-templates')).body.templates.length === 1);
+const restrictedRole = await A(olivia, 'role-save', { name: 'No customer replies', permissions: ['status'] });
+await A(olivia, 'role-assign', { userId: ann.user.id, roleId: restrictedRole.body.id });
+check('a custom role without reply permission cannot send WhatsApp templates', (await A(ann, 'whatsapp-template-send', { number: n, name: 'order_update', language: 'en_US', params: ['Carla', 'tomorrow'] })).status === 403);
+const replyRole = await A(olivia, 'role-save', { name: 'Customer replies', permissions: ['reply'] });
+await A(olivia, 'role-assign', { userId: ann.user.id, roleId: replyRole.body.id });
+const allowedAgentTemplate = await A(ann, 'whatsapp-template-send', { number: n, name: 'order_update', language: 'en_US', params: ['Carla', 'tomorrow'] });
+check('a custom role with reply permission can send WhatsApp templates', allowedAgentTemplate.status === 200 && allowedAgentTemplate.body.whatsapp === 'sent');
+await A(olivia, 'role-assign', { userId: ann.user.id, roleId: null });
 check('a reply is still refused after 24 hours, which is when templates are needed', (await A(olivia, 'reply', { number: n, body: 'free text' })).status === 409);
 check('every variable must be filled in', (await A(olivia, 'whatsapp-template-send', { number: n, name: 'order_update', language: 'en_US', params: ['Carla'] })).status === 400);
 check('an unknown template is refused', (await A(olivia, 'whatsapp-template-send', { number: n, name: 'nope', language: 'en_US', params: [] })).status === 404);
