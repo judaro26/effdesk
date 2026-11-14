@@ -72,6 +72,28 @@ import { licenseReconciliation, saveLicenseAlias, assetOwnershipReport, assignAs
 
 const json = (status, body, extra) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(extra || {}) } });
 const readJson = async (req, max = 10000) => { try { const t = await req.text(); if (t.length > max) return null; const v = JSON.parse(t || '{}'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+// Read uploads incrementally so a missing or dishonest Content-Length cannot make
+// the function buffer an unbounded request body before the size check.
+const readBytes = async (req, max) => {
+  if (!req.body) return Buffer.alloc(0);
+  const reader = req.body.getReader(), chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > max) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, size);
+  } catch {
+    return null;
+  }
+};
 // a signed-in action must come from our own pages: a request that a browser marks as coming from another website or subdomain is refused (cookies alone are not proof)
 const session = async (auth, req) => { try { if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(req)) return null; return await auth.api.getSession({ headers: req.headers }); } catch { return null; } };
 const roleIn = async (pool, userId, orgId) => (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [userId, orgId])).rows[0]?.role || '';
@@ -586,7 +608,8 @@ export async function attachmentUpload(req, { pool, auth, store }) {
   const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   if (Number(req.headers.get('content-length') || 0) > MAX_UPLOAD + 1024) return json(413, { error: 'Files can be up to 5 MB each.' });
-  const bytes = Buffer.from(await req.arrayBuffer());
+  const bytes = await readBytes(req, MAX_UPLOAD);
+  if (!bytes) return json(413, { error: 'Files can be up to 5 MB each.' });
   const r = await saveUpload(pool, store, orgId, { id: s.user.id }, { filename: u.searchParams.get('name'), contentType: u.searchParams.get('type') || req.headers.get('content-type'), bytes, ticketNumber: u.searchParams.get('ticket') });
   return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }
@@ -606,7 +629,9 @@ export async function helpAssets(req, { pool, auth, store }) {
   const kind = u.pathname.split('/').pop(), limit = kind === 'pdf' ? MAX_PDF : MAX_IMAGE;
   if (Number(req.headers.get('content-length') || 0) > limit + 1024) return json(413, { error: kind === 'pdf' ? 'PDF files can be up to 5 MB.' : 'Pictures can be up to 4 MB each.' });
   const slug = (await pool.query('select slug from "organization" where id = $1', [orgId])).rows[0]?.slug; if (!slug) return json(404, { error: 'No such organization.' });
-  const bytes = Buffer.from(await req.arrayBuffer()); annotate({ org: orgId, user: s.user.id, action: 'help-assets:' + kind });
+  const bytes = await readBytes(req, limit);
+  if (!bytes) return json(413, { error: kind === 'pdf' ? 'PDF files can be up to 5 MB.' : 'Pictures can be up to 4 MB each.' });
+  annotate({ org: orgId, user: s.user.id, action: 'help-assets:' + kind });
   const urlOf = id => `/help/${slug}/img/${id}`;
   if (kind === 'image') { const r = await saveHelpImage(pool, store, orgId, bytes); return r.ok ? json(200, { ok: true, id: r.id, url: urlOf(r.id) }) : json(r.status || 400, { error: r.error }); }
   if (kind === 'pdf') {
