@@ -166,7 +166,7 @@
             var hasNewReply = nextRows.some(function (t) { var prior = previous[String(t.number)]; return t.chat_last_public_message_kind === 'requester' && (!prior || prior !== (t.updated_at || t.created_at || '')); });
             if (hasNewReply) playChatSound();
           }
-          chatInboxRows = nextRows; chatInboxPrimed = true;
+          chatInboxRows = nextRows; chatInboxPrimed = true; if (chatReplySnapshot) { chatReplySnapshot = Object.create(null); nextRows.forEach(function (t) { chatReplySnapshot[String(t.number)] = t.updated_at || t.created_at || ''; }); }
         }
         draw();
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 15000);
