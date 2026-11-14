@@ -185,9 +185,24 @@ async function patchUser(pool, orgId, row, body) {
 async function readScimJson(req) {
   const declared = Number(req.headers.get('content-length') || 0);
   if (declared > 100000) return null;
-  const raw = await req.text();
-  if (raw.length > 100000) return null;
-  try { const value = JSON.parse(raw); return value && typeof value === 'object' ? value : null; } catch { return null; }
+  if (!req.body) return null;
+  const reader = req.body.getReader(), chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 100000) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+    const raw = Buffer.concat(chunks, size).toString('utf8');
+    const value = JSON.parse(raw);
+    return value && typeof value === 'object' ? value : null;
+  } catch { return null; }
 }
 export async function scim(req, { pool }) {
   const identity = await authenticate(pool, req);
