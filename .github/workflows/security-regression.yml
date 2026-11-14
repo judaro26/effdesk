@@ -56,6 +56,9 @@ jobs:
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 
+      - name: Test custom-role authorization
+        run: node scripts/test-roles.js
+
       - name: Test WhatsApp authorization and webhook protections
         run: node scripts/test-whatsapp.js
 
