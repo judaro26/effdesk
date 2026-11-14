@@ -42,6 +42,8 @@ export async function removeMember(pool, orgId, actor, actorRole, memberId, reas
     return n;
   });
   await pool.query('delete from member where "organizationId" = $1 and id = $2', [orgId, m.id]);
+  // A concurrent admin access grant may have completed just before the membership was deleted.
+  await withOrg(pool, orgId, c => c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]));
   return { ok: true, email: m.email, userId: m.user_id, reassigned: moved, to };
 }
 export async function cancelInvite(pool, orgId, inviteId) {
