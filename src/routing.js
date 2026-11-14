@@ -65,8 +65,40 @@ export async function autoAssign(c, orgId, ticketId) {
   const ok = rows.filter(r => (channel === 'chat' ? (r.chat_access && r.chat_available) : r.available) && (!s.max_open || r.open < s.max_open)); if (!ok.length) return null;
   const last = r => r.last_assigned_at ? new Date(r.last_assigned_at).getTime() : 0;
   ok.sort(s.strategy === 'least_busy' ? (a, b) => a.open - b.open || last(a) - last(b) || (a.id < b.id ? -1 : 1) : (a, b) => last(a) - last(b) || a.open - b.open || (a.id < b.id ? -1 : 1));
-  const pick = ok[0];
-  await c.query('update tickets set assignee_id = $3 where org_id = $1 and id = $2', [orgId, ticketId, pick.id]);
-  await c.query('insert into agent_status (org_id, user_id, last_assigned_at) values ($1,$2,now()) on conflict (org_id, user_id) do update set last_assigned_at = now()', [orgId, pick.id]);
-  return { id: pick.id, name: pick.name || pick.email };
+  const maxChats = channel === 'chat' ? Math.max(1, Math.min(10, Number((await c.query('select max_concurrent from chat_settings where org_id = $1', [orgId])).rows[0]?.max_concurrent) || 3)) : null;
+  for (const pick of ok) {
+    if (channel === 'chat') {
+      await c.query('select user_id from agent_status where org_id = $1 and user_id = $2 for update', [orgId, pick.id]);
+      const active = Number((await c.query("select count(*)::int as n from tickets where org_id = $1 and channel = 'chat' and assignee_id = $2 and status in ('open','pending','on_hold')", [orgId, pick.id])).rows[0]?.n || 0);
+      if (active >= maxChats) continue;
+    }
+    await c.query('update tickets set assignee_id = $3 where org_id = $1 and id = $2', [orgId, ticketId, pick.id]);
+    await c.query('insert into agent_status (org_id, user_id, last_assigned_at) values ($1,$2,now()) on conflict (org_id, user_id) do update set last_assigned_at = now()', [orgId, pick.id]);
+    return { id: pick.id, name: pick.name || pick.email };
+  }
+  return null;
+}
+
+// Atomically claim an unassigned chat. The membership and agent-status row locks serialize
+// concurrent claims by the same agent; the ticket row lock makes competing claims single-winner.
+export async function claimChat(pool, orgId, userId, number) {
+  return withOrg(pool, orgId, async c => {
+    const member = (await c.query('select m.role, u.name, u.email from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 and m."userId" = $2 for update of m', [orgId, userId])).rows[0];
+    if (!member || member.role === 'light') return fail('You are not allowed to accept live chats.', 403);
+    const agent = (await c.query('select chat_access, chat_available from agent_status where org_id = $1 and user_id = $2 for update', [orgId, userId])).rows[0];
+    if (!agent || agent.chat_access !== true) return fail('An admin must enable Live Chat access for you first.', 403);
+    if (agent.chat_available !== true) return fail('Switch on Accept live chats before claiming a conversation.', 409);
+    const ticket = (await c.query("select id, status, assignee_id from tickets where org_id = $1 and number = $2 and channel = 'chat' for update", [orgId, Number(number) || 0])).rows[0];
+    if (!ticket) return fail('No such live chat.', 404);
+    if (ticket.status === 'closed' || ticket.status === 'solved') return fail('This chat has ended.', 409);
+    if (ticket.assignee_id) return ticket.assignee_id === userId ? { ok: true, alreadyAssigned: true } : fail('Another agent has already accepted this chat.', 409);
+    const configured = (await c.query('select max_concurrent from chat_settings where org_id = $1', [orgId])).rows[0];
+    const maxConcurrent = Math.max(1, Math.min(10, Number(configured?.max_concurrent) || 3));
+    const active = Number((await c.query("select count(*)::int as n from tickets where org_id = $1 and channel = 'chat' and assignee_id = $2 and status in ('open','pending','on_hold')", [orgId, userId])).rows[0]?.n || 0);
+    if (active >= maxConcurrent) return fail('You have reached your maximum of ' + maxConcurrent + ' simultaneous chats.', 409);
+    await c.query('update tickets set assignee_id = $3, updated_at = now() where org_id = $1 and id = $2', [orgId, ticket.id, userId]);
+    await c.query("insert into ticket_events (org_id, ticket_id, actor_name, kind, detail) values ($1,$2,$3,'assigned','Accepted live chat')", [orgId, ticket.id, member.name || member.email]);
+    await c.query('update agent_status set last_assigned_at = now() where org_id = $1 and user_id = $2', [orgId, userId]);
+    return { ok: true, alreadyAssigned: false, activeChats: active + 1, maxConcurrent };
+  });
 }
