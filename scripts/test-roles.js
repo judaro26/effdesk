@@ -51,6 +51,7 @@ check('a custom role without article permission cannot upload Help Center images
 await A(olivia, 'role-save', { id: roleId, name: 'Tier 1', permissions: ['reply', 'labels', 'articles'] });
 const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]);
 check('an agent whose custom role grants article permission can upload a Help Center image', (await asset(bo, '/api/help-assets/image', png)).status === 200);
+check('an oversized Help Center image without Content-Length is rejected while streaming', (await asset(bo, '/api/help-assets/image', Buffer.alloc(4 * 1024 * 1024 + 1))).status === 413);
 await A(olivia, 'role-save', { id: roleId, name: 'Tier 1', permissions: ['reply', 'labels'] });
 check('a reply-only custom role cannot set ticket status while replying', (await A(bo, 'reply', { number: T, body: 'Trying to close this', status: 'solved' })).status === 403);
 check('a reply-only custom role cannot set ticket fields while creating a ticket', (await A(bo, 'create', { subject: 'Restricted create', body: 'Test', requesterEmail: 'restricted@example.com', patch: { status: 'solved' } })).status === 403 && !(await A(olivia, 'list')).body.tickets.some(x => x.subject === 'Restricted create'));
