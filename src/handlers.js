@@ -194,9 +194,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   let r, g;
   // Chat tickets remain ticket records, but agents without explicit Live Chat access
   // must not discover or operate on them through the general ticket endpoints.
-  const chatAccessAllowed = support || (role !== 'light' && planHas(ent, 'live_chat') && (await getChatAvailability(pool, orgId, actor.id)).access);
   const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
     .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
+  let chatAccessAllowed = support;
+  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (b.action === 'list' || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
   if (!chatAccessAllowed && !support && targetNumbers.length) {
     const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
