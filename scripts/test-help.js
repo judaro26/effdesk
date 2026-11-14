@@ -20,7 +20,7 @@ const ann = await signUp('ann@acme.test', 'Ann'), otto = await signUp('otto@beta
 const acme = await auth.api.createOrganization({ body: { name: 'Acme Rentals', slug: 'acme' }, headers: ann.headers });
 const beta = await auth.api.createOrganization({ body: { name: 'Beta', slug: 'beta' }, headers: otto.headers });
 const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
-const web = async (method, path, { body, cookie, headers = {} } = {}) => { const r = await helpCenter(new Request('https://app.effdesk.test' + path, { method, headers: { 'user-agent': 'Mozilla/5.0 (test browser)', ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...headers }, body: body ? new URLSearchParams(body).toString() : undefined, redirect: 'manual' }), { pool, mailer, env: ENV }); return { status: r.status, text: await r.text(), headers: r.headers }; };
+const web = async (method, path, { body, cookie, headers = {} } = {}) => { const r = await helpCenter(new Request('https://app.effdesk.test' + path, { method, headers: { 'user-agent': 'Mozilla/5.0 (test browser)', ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...headers }, body: body ? (typeof body === 'string' ? body : new URLSearchParams(body).toString()) : undefined, redirect: 'manual' }), { pool, mailer, env: ENV }); return { status: r.status, text: await r.text(), headers: r.headers }; };
 
 // writing
 check('an article needs a title and text', (await call(ann, { orgId: acme.id, action: 'article-save', title: '', body: 'x' })).status === 400 && (await call(ann, { orgId: acme.id, action: 'article-save', title: 'T', body: '' })).status === 400);
@@ -61,6 +61,11 @@ check('a vote is counted once per visitor (a cookie remembers it), and views are
 check('a vote from another website is refused', (await web('POST', '/help/acme/a/how-to-pay-rent/vote', { body: { v: 'no' }, headers: { origin: 'https://evil.example' } })).status === 403);
 r = await web('GET', '/help/acme');
 check('the pages carry no script at all', !/<script/i.test(r.text) && /Content-Type/i.test('Content-Type') && r.headers.get('x-content-type-options') === 'nosniff');
+
+// oversized anonymous forms must be stopped before the full request is buffered
+const oversizedForm = 'ts=1&padding=' + 'x'.repeat(41000);
+r = await web('POST', '/help/acme/requests/new', { body: oversizedForm, headers: { 'x-nf-client-connection-ip': '203.0.113.91' } });
+check('oversized public Help Center form bodies are rejected', r.status === 400 && !(await withOrg(pool, acme.id, c => c.query("select id from tickets where requester_email = 'oversize@example.com'"))).rowCount);
 
 // the customer portal
 await call(ann, { orgId: acme.id, action: 'create', subject: 'Leaky tap', body: 'Drip drip.', requesterEmail: 'tina@example.com', requesterName: 'Tina' });
