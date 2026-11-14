@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { withOrg } from './db.js';
 import { checkSeat } from './billing.js';
+import { rateLimit } from './guard.js';
 
 const USER_SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
 const LIST_SCHEMA = 'urn:ietf:params:scim:api:messages:2.0:ListResponse';
@@ -31,10 +32,12 @@ async function authenticate(pool, req) {
   const m = String(req.headers.get('authorization') || '').match(/^Bearer\s+(\S+)$/i);
   if (!m || m[1].length < 32) return null;
   const hash = digest(m[1]);
-  const r = await pool.query("select org_id, id from scim_tokens where token_hash=$1 and revoked_at is null", [hash]);
+  const r = await pool.query("select org_id, id, last_used_at from scim_tokens where token_hash=$1 and revoked_at is null", [hash]);
   if (!r.rows[0]) return null;
-  await pool.query('update scim_tokens set last_used_at=now() where id=$1', [r.rows[0].id]);
-  return r.rows[0].org_id;
+  if (!r.rows[0].last_used_at || Date.now() - new Date(r.rows[0].last_used_at).getTime() > 60000) {
+    await pool.query('update scim_tokens set last_used_at=now() where id=$1', [r.rows[0].id]);
+  }
+  return { orgId: r.rows[0].org_id, tokenId: r.rows[0].id };
 }
 export async function listScimTokens(pool, orgId) {
   return withOrg(pool, orgId, async c => ({
@@ -179,9 +182,18 @@ async function patchUser(pool, orgId, row, body) {
   }
   return upsertScimUser(pool, orgId, input, row);
 }
+async function readScimJson(req) {
+  const declared = Number(req.headers.get('content-length') || 0);
+  if (declared > 100000) return null;
+  const raw = await req.text();
+  if (raw.length > 100000) return null;
+  try { const value = JSON.parse(raw); return value && typeof value === 'object' ? value : null; } catch { return null; }
+}
 export async function scim(req, { pool }) {
-  const orgId = await authenticate(pool, req);
-  if (!orgId) return scimError(401, 'A valid SCIM bearer token is required.');
+  const identity = await authenticate(pool, req);
+  if (!identity) return scimError(401, 'A valid SCIM bearer token is required.');
+  const { orgId, tokenId } = identity;
+  if (await rateLimit(pool, 'scim:' + tokenId, 300, 60)) return scimError(429, 'Too many SCIM requests. Try again shortly.');
   const url = new URL(req.url), base = url.origin + url.pathname.replace(/\/Users(?:\/[^/]+)?\/?$/i, '/Users').replace(/\/+$/, '');
   if (req.method === 'GET' && /\/ServiceProviderConfig\/?$/i.test(url.pathname)) return response(200, {
     schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
@@ -209,19 +221,27 @@ export async function scim(req, { pool }) {
   if (!usersPath) return scimError(404, 'SCIM resource not found.');
   const id = usersPath[1] ? decodeURIComponent(usersPath[1]) : '';
   if (req.method === 'GET' && !id) {
-    const start = Math.max(1, Number(url.searchParams.get('startIndex')) || 1), count = Math.min(200, Math.max(1, Number(url.searchParams.get('count')) || 100));
+    const rawStart = Number.parseInt(url.searchParams.get('startIndex') || '1', 10);
+    const rawCount = Number.parseInt(url.searchParams.get('count') || '100', 10);
+    const start = Number.isSafeInteger(rawStart) ? Math.min(1000000000, Math.max(1, rawStart)) : 1;
+    const count = Number.isSafeInteger(rawCount) ? Math.min(200, Math.max(1, rawCount)) : 100;
     const filter = clean(url.searchParams.get('filter'), 500).match(/^(?:userName|externalId)\s+eq\s+"([^"]+)"$/i);
     const params = [orgId]; let where = ' where su.org_id=$1';
     if (filter) { params.push(filter[1]); where += filter[0].toLowerCase().startsWith('username') ? ' and lower(u.email)=lower($2)' : ' and su.external_id=$2'; }
-    const all = await withOrg(pool, orgId, async c => (await c.query(selectUsers + where + ' order by su.created_at desc', params)).rows);
-    const resources = all.slice(start - 1, start - 1 + count).map(r => userResource(r, base));
-    return response(200, { schemas: [LIST_SCHEMA], totalResults: all.length, startIndex: start, itemsPerPage: resources.length, Resources: resources });
+    const page = await withOrg(pool, orgId, async c => {
+      const total = Number((await c.query('select count(*)::int as n from scim_users su join "user" u on u.id=su.user_id' + where, params)).rows[0]?.n || 0);
+      const pageParams = [...params, count, start - 1];
+      const rows = (await c.query(selectUsers + where + ` order by su.created_at desc, su.id asc limit ${pageParams.length - 1} offset ${pageParams.length}`, pageParams)).rows;
+      return { total, rows };
+    });
+    const resources = page.rows.map(r => userResource(r, base));
+    return response(200, { schemas: [LIST_SCHEMA], totalResults: page.total, startIndex: start, itemsPerPage: resources.length, Resources: resources });
   }
   if (req.method === 'GET' && id) {
     const row = await readUser(pool, orgId, id); return row ? response(200, userResource(row, base)) : scimError(404, 'User not found.');
   }
   if (req.method === 'POST' && !id) {
-    const input = await req.json().catch(() => null); if (!input || typeof input !== 'object') return scimError(400, 'A SCIM user resource is required.', 'invalidSyntax');
+    const input = await readScimJson(req); if (!input) return scimError(400, 'A SCIM user resource is required.', 'invalidSyntax');
     const r = await upsertScimUser(pool, orgId, input);
     if (!r.ok) return scimError(r.status || 400, r.error, r.scimType);
     const resource = userResource(r.row, base);
