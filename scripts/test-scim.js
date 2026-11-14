@@ -36,6 +36,9 @@ const duplicateExternal = await call('POST', '/Users', { userName: 'duplicate-ag
 check('A duplicate externalId is rejected before creating an account or membership', duplicateExternal.status === 409 && (await pool.query('select 1 from "user" where email=$1', ['duplicate-agent@example.test'])).rowCount === 0 && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select id from "user" where email=$2)', [org.id, 'duplicate-agent@example.test'])).rowCount === 0);
 const second = await call('POST', '/Users', { userName: 'second-agent@example.test', externalId: 'idp-1002', displayName: 'Second Agent', active: true });
 check('A distinct externalId provisions a second agent', second.status === 201);
+const firstPage = await (await call('GET', '/Users?startIndex=1&count=1')).json();
+const secondPage = await (await call('GET', '/Users?startIndex=2&count=1')).json();
+check('SCIM pagination returns bounded pages with a stable total count', firstPage.totalResults === 2 && firstPage.itemsPerPage === 1 && secondPage.totalResults === 2 && secondPage.itemsPerPage === 1 && firstPage.Resources[0].id !== secondPage.Resources[0].id);
 const conflictingDeactivate = await call('PATCH', '/Users/' + resource.id, { Operations: [{ op: 'replace', path: 'active', value: false }, { op: 'replace', path: 'externalId', value: 'idp-1002' }] });
 check('A rejected identity update cannot deprovision the existing member', conflictingDeactivate.status === 409 && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1 and id=$2)', [org.id, resource.id])).rowCount === 1);
 const patched = await call('PATCH', '/Users/' + resource.id, { schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'], Operations: [{ op: 'replace', path: 'active', value: false }] });
