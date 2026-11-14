@@ -47,6 +47,12 @@ const reactivated = await call('PATCH', '/Users/' + resource.id, { Operations: [
 check('SCIM reactivation restores a standard member', reactivated.status === 200 && (await reactivated.json()).active === true && (await pool.query('select role from member where "organizationId"=$1 and "userId"=(select user_id from scim_users where org_id=$1 and id=$2)', [org.id, resource.id])).rows[0]?.role === 'member');
 const deleted = await call('DELETE', '/Users/' + resource.id);
 check('SCIM DELETE is a deprovisioning operation, not a global user deletion', deleted.status === 204 && (await pool.query('select 1 from "user" where email=$1', ['new-agent@example.test'])).rowCount === 1);
+const oversizedScim = await scim(new Request('https://app.effdesk.test/api/scim/v2/Users', {
+  method: 'POST',
+  headers: { authorization: 'Bearer ' + created.secret, 'content-type': 'application/scim+json' },
+  body: 'x'.repeat(100001),
+}), { pool });
+check('SCIM rejects oversized request bodies without Content-Length', oversizedScim.status === 400 && (await pool.query('select 1 from "user" where email=$1', ['oversized@example.test'])).rowCount === 0);
 const unauthorized = await call('GET', '/Users', undefined, 'not-a-real-token');
 check('invalid bearer tokens are rejected', unauthorized.status === 401);
 const revoked = await revokeScimToken(pool, org.id, created.token.id);
