@@ -14,3 +14,6 @@ button{font:inherit;border:0;border-radius:8px;padding:9px 14px;background:var(-
 button.link{background:none;color:var(--c);padding:4px}
 :focus-visible{outline:2px solid var(--c);outline-offset:2px}
 .err{color:#b3261e;font-size:13px;min-height:1em}
+
+/* A calm, distinct state for message capture when no agent can accept a live chat. */
+.note.offline{margin:12px 12px 0;padding:11px 13px;border:1px solid color-mix(in srgb,var(--c) 24%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--c) 7%,var(--bg));color:var(--ink);line-height:1.5}
