@@ -59,10 +59,12 @@ check('changing an agent to light revokes chat availability', (await A(ann, 'cha
 await A(olivia, 'team-role', { memberId: annMember, role: 'member' });
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
 await A(ann, 'chat-availability-set', { available: true });
+await A(ann, 'availability-set', { available: false });
 await A(olivia, 'routing-save', { enabled: true, strategy: 'round_robin' });
 const secondChat = await C('POST', '/api/chat/start?org=acme', { name: 'Mina', email: 'mina@x.co', message: 'Can I get help?' });
 const secondTicket = await A(olivia, 'get', { number: secondChat.body.number });
-check('automatic chat routing only assigns to an authorized agent who is accepting chats', secondChat.status === 200 && secondTicket.body.ticket.assignee_id === ann.user.id);
+check('chat availability is independent of general ticket availability', secondChat.status === 200 && secondTicket.body.ticket.assignee_id === ann.user.id);
+await A(ann, 'availability-set', { available: true });
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: false });
 const unassignedTicket = await A(olivia, 'get', { number: secondChat.body.number });
 check('revoking an agent returns their open chat tickets to the unassigned queue', unassignedTicket.body.ticket.assignee_id === null);
