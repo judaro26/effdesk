@@ -154,7 +154,7 @@ check('a duplicate-send warning keeps the draft and does not offer a blind resen
 $('textarea').value = 'network recovery draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
 $('[data-reply]').click(); await tick(); await tick();
 const recovery = JSON.parse(w.localStorage.getItem('effdesk_draft:o1:u1:7') || '{}');
-check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && /network recovery draft/.test($('.msg').textContent));
+check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && $('textarea').value === 'network recovery draft');
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
 check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
