@@ -8,7 +8,7 @@ import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { tickets, helpCenter } from '../src/handlers.js';
 import { renderBody } from '../src/help.js';
-import { readSession, sessionCookie } from '../src/portal.js';
+import { readSession, sessionCookie, requestLink } from '../src/portal.js';
 import { newToken } from '../src/requests.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', ENV = { BETTER_AUTH_SECRET: SECRET };
@@ -114,5 +114,9 @@ check('a tampered or expired cookie is not a session', readSession(ENV, cookie.s
 const burst = []; for (let i = 0; i < 11; i++) burst.push(await web('POST', '/help/acme/tickets/login', { body: { email: 'tina@example.com' }, headers: { 'x-nf-client-connection-ip': '203.0.113.77' } }));
 check('customer portal sign-in requests are rate-limited per source IP', burst.slice(0, 10).every(x => x.status === 200) && burst[10].status === 429 && burst[10].headers.get('retry-after') === '600');
 check('at most 5 links an hour go to one address', (await withOrg(pool, acme.id, c => c.query("select count(*)::int n from portal_links where email = 'tina@example.com'"))).rows[0].n <= 5);
+await call(ann, { orgId: acme.id, action: 'create', subject: 'Concurrent portal login', body: 'Please help.', requesterEmail: 'race-portal@example.com', requesterName: 'Portal Race' });
+const parallelPortalLinks = await Promise.all(Array.from({ length: 12 }, () => requestLink(pool, acme.id, 'race-portal@example.com')));
+const parallelPortalCount = (await withOrg(pool, acme.id, c => c.query("select count(*)::int n from portal_links where org_id = $1 and email = 'race-portal@example.com'", [acme.id]))).rows[0].n;
+check('concurrent portal login requests cannot exceed five links per address per hour', parallelPortalLinks.filter(Boolean).length === 5 && parallelPortalCount === 5);
 check('the other organization\'s help center is separate and empty', /No articles yet/.test((await web('GET', '/help/beta?lang=en')).text));
 await pool.end(); done();
