@@ -99,7 +99,7 @@ export function ssoPlugin({ pool, env = process.env, baseURL }) {
           if (claims.nonce !== st.n) throw new Error('nonce');
         } catch { throw back(ctx, 'We could not confirm your sign-in with the identity provider.'); }
         const email = clean(claims.email || (/@/.test(claims.preferred_username || '') ? claims.preferred_username : ''), 254).toLowerCase();
-        if (!email || claims.email_verified === false) throw back(ctx, 'Your identity provider did not give a verified email address.');
+        if (!email || claims.email_verified !== true || typeof claims.sub !== 'string' || !claims.sub.trim()) throw back(ctx, 'Your identity provider did not give a verified email address and subject.');
         if (!p.domains.includes(domainOf(email))) throw back(ctx, 'That email address is not in this workspace\'s company domains.');
         const ia = ctx.context.internalAdapter, found = await ia.findUserByEmail(email); let user = found && found.user;
         const providerId = 'sso:' + p.org_id;
