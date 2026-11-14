@@ -1254,12 +1254,12 @@
 
     // upload files for a ticket (t) or, while writing a new ticket, before it exists (t = null); they wait as chips until the message is sent
     function uploadFiles(t, list) {
-      var files = [].slice.call(list || []).slice(0, Math.max(0, 5 - pending.length)), next = Promise.resolve();
+      var draftOwnerNumber = t ? t.number : (newf && newf.lifecycleParentTicketNumber), files = [].slice.call(list || []).slice(0, Math.max(0, 5 - pending.length)), next = Promise.resolve();
       files.forEach(function (f) { next = next.then(function () {
         if (f.size > 5 * 1024 * 1024) return say((f.name || 'That file') + ' is over 5 MB.', true);
-        return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + (t ? '&ticket=' + t.number : '') + '&name=' + encodeURIComponent(f.name || 'file') + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); if (t) saveTicketDraft(t.number); }); });
+        return fetchFn('/api/attachments?org=' + encodeURIComponent(orgId) + (t ? '&ticket=' + t.number : '') + '&name=' + encodeURIComponent(f.name || 'file') + '&type=' + encodeURIComponent(f.type || 'application/octet-stream'), { method: 'POST', credentials: 'same-origin', body: f }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) return say(j.error || 'That file could not be uploaded.', true); pending.push(j.attachment); if (draftOwnerNumber) saveTicketDraft(draftOwnerNumber); }); });
       }); });
-      return next.then(function () { if (t) saveTicketDraft(t.number); draw(); });
+      return next.then(function () { if (draftOwnerNumber) saveTicketDraft(draftOwnerNumber); draw(); });
     }
     // pasting a picture (a screenshot, a copied image) into a message attaches it
     function pasteFiles(t) {
@@ -1299,7 +1299,7 @@
     function picker(t, disabled) {
       var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' }); if (disabled) input.disabled = true;
       input.addEventListener('change', function () { uploadFiles(t, input.files); });
-      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' + (disabled ? ' disabled' : ''), 'aria-disabled': disabled ? 'true' : 'false' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', disabled: disabled ? 'disabled' : undefined, 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); if (t) saveTicketDraft(t.number); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
+      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' + (disabled ? ' disabled' : ''), 'aria-disabled': disabled ? 'true' : 'false' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', disabled: disabled ? 'disabled' : undefined, 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); if (t || (newf && newf.lifecycleParentTicketNumber)) saveTicketDraft(t ? t.number : newf.lifecycleParentTicketNumber); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
     }
     var BASE_STATUS = [['open', 'Open'], ['pending', 'Pending'], ['on_hold', 'On hold'], ['solved', 'Solved'], ['closed', 'Closed']];
     // built-in statuses plus the workspace's own (value 'c:<id>'); a ticket's current value is its custom status when it has one
@@ -1843,9 +1843,9 @@
       var kk = { agent: ['Public reply', 'placeholder-agent'], note: ['Internal note', ''], requester: ['Customer message', ''] };
       var PH = { agent: 'Write the first reply. The requester is emailed.', note: 'Write an internal note. Only your team sees it.', requester: 'What is the request? Paste a picture here or attach files.' };
       var body = el('textarea', { 'aria-label': 'First message', placeholder: PH[newf.firstKind] }); body.value = newf.body;
-      body.addEventListener('input', function () { newf.body = body.value; }); body.addEventListener('paste', pasteFiles(null));
+      body.addEventListener('input', function () { newf.body = body.value; if (newf.lifecycleParentTicketNumber) { draft = newf.body; draftHtml = newf.bodyHtml || ''; saveTicketDraft(newf.lifecycleParentTicketNumber); } }); body.addEventListener('paste', pasteFiles(null));
       var richNewEditor = root.EffArticleEditor ? root.EffArticleEditor.create(doc, { html: newf.bodyHtml || (newf.body ? '<p>' + htmlEsc(newf.body).replace(/\n/g, '<br>') + '</p>' : ''), canSource: has('article_import'), canImport: has('article_import'), hideVideo: true, say: say, upload: uploadHelpImage, importPdf: uploadHelpPdf }) : null;
-      if (richNewEditor) richNewEditor.area.addEventListener('input', function () { newf.bodyHtml = richNewEditor.getHtml(); newf.body = htmlPlain(newf.bodyHtml); body.value = newf.body; });
+      if (richNewEditor) richNewEditor.area.addEventListener('input', function () { newf.bodyHtml = richNewEditor.getHtml(); newf.body = htmlPlain(newf.bodyHtml); body.value = newf.body; if (newf.lifecycleParentTicketNumber) { draft = newf.body; draftHtml = newf.bodyHtml; saveTicketDraft(newf.lifecycleParentTicketNumber); } });
       var bodyBox = richNewEditor ? richNewEditor.el : editor(body, null);
       var put = function (k) { return function (v) { newf[k] = v; }; };
       var reset = function () { newf = blankNew(); pending = []; };
