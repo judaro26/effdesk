@@ -132,7 +132,7 @@ export async function getTicket(pool, orgId, actor, number) {
 }
 
 // a public reply (kind agent) or an internal note; a public reply by an agent is the first response, and moves an open ticket to pending
-export async function addMessage(pool, orgId, actor, number, { body, htmlBody, internal, status }) {
+export async function addMessage(pool, orgId, actor, number, { body, htmlBody, internal, status, idempotencyKey }) {
   const safeHtml = !internal && htmlBody ? cleanHtml(String(htmlBody).slice(0, 100000)) : htmlBody ? cleanHtml(String(htmlBody).slice(0, 100000)) : null;
   const text = clean(body, 20000) || (safeHtml ? clean(plainOf(safeHtml), 20000) : ''); if (!text) return fail('Write a message first.');
   if (status && !STATUSES.includes(status)) return fail('That status does not exist.');
@@ -141,7 +141,9 @@ export async function addMessage(pool, orgId, actor, number, { body, htmlBody, i
     if (!t) return fail('No such ticket.', 404);
     if (!internal && t.status === 'closed') { const cfg=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{}; if(cfg.permanentCloseEnabled===true && t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(cfg.permanentCloseDays)||30)*86400000)return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.',409); }
     const kind = internal ? 'note' : 'agent';
-    const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id, kind, author_id, author_name, body, html_body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text, safeHtml])).rows[0];
+    const requestId = !internal && /^[a-f0-9-]{20,80}$/i.test(String(idempotencyKey || '')) ? 'effdesk-agent:' + String(idempotencyKey) : null;
+    if (requestId) { const prior = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at from ticket_messages where org_id=$1 and message_id=$2 limit 1',[orgId,requestId])).rows[0]; if (prior) return { ok:true, duplicate:true, message:prior, status:t.status }; }
+    const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, kind, author_id, author_name, body, html_body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text, requestId, safeHtml])).rows[0];
     const next = status || (!internal && t.status === 'open' ? 'pending' : t.status);
     await c.query(`update tickets set status = $3, first_response_at = coalesce(first_response_at, case when $4 then now() end), solved_at = case when $3 in ('solved','closed') then coalesce(solved_at, now()) else null end, closed_at = case when $3 = 'closed' then coalesce(closed_at, now()) else null end, updated_at = now() where org_id = $1 and id = $2`, [orgId, t.id, next, !internal]);
     await logEvent(c, orgId, t.id, who(actor), internal ? 'note' : 'reply', internal ? 'Internal note added' : 'Public reply' + (next !== t.status ? ` · status ${t.status} → ${next}` : ''));
