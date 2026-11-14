@@ -68,6 +68,9 @@ jobs:
       - name: Test Live Chat agent access and visitor messaging
         run: node scripts/test-chat.js
 
+      - name: Test Live Chat widget page and visitor identity
+        run: node scripts/test-chat-page.js
+
       - name: Test ticket desk draft recovery and reply safety
         run: node scripts/test-desk.js
 
