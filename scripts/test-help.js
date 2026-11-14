@@ -9,6 +9,7 @@ import { makeMailer } from '../src/email.js';
 import { tickets, helpCenter } from '../src/handlers.js';
 import { renderBody } from '../src/help.js';
 import { readSession, sessionCookie } from '../src/portal.js';
+import { newToken } from '../src/requests.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', ENV = { BETTER_AUTH_SECRET: SECRET };
 const { url } = await freshDb('help'); await migrate(url);
@@ -86,7 +87,9 @@ r = await web('GET', '/help/acme/tickets/1?lang=en', { cookie });
 check('a request shows the public conversation but never internal notes', /Drip drip/.test(r.text) && /We will send a plumber/.test(r.text) && !/INTERNAL/.test(r.text) && /Waiting for you|Open|Pending/.test(r.text));
 check('another person\'s request is a 404, and without a session the portal asks for sign-in', (await web('GET', '/help/acme/tickets/2?lang=en', { cookie })).status === 404 && /Sign in to see your requests/.test((await web('GET', '/help/acme/tickets')).text) && (await web('GET', '/help/acme/tickets/1')).status === 303);
 check('a session for one organization does not open another', (await web('GET', '/help/beta/tickets', { cookie })).text.includes('Sign in to see') && readSession(ENV, cookie.split('=').slice(1).join('='), beta.id) === null);
-const csrf = r.text.match(/name="csrf" value="([^"]+)"/)[1];
+const csrfMatch = r.text.match(/name="csrf" value="([^"]+)"/);
+check('the portal reply form includes its CSRF token', !!csrfMatch);
+const csrf = csrfMatch?.[1] || '';
 check('a reply without the right form token is refused (403)', (await web('POST', '/help/acme/tickets/1/reply', { cookie, body: { body: 'hi', csrf: 'wrong' } })).status === 403 && (await web('POST', '/help/acme/tickets/1/reply', { cookie, body: { body: 'hi' } })).status === 403);
 r = await web('POST', '/help/acme/tickets/1/reply?lang=en', { cookie, body: { body: 'Thank you, Thursday works.', csrf } });
 const t1 = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
@@ -96,6 +99,12 @@ await call(ann, { orgId: acme.id, action: 'update', number: 1, patch: { status: 
 r = await web('GET', '/help/acme/tickets/1?lang=en', { cookie });
 check('a closed request offers no reply form', /closed/i.test(r.text) && !/<textarea/.test(r.text));
 check('signing out clears the cookie', /Max-Age=0/.test((await web('POST', '/help/acme/tickets/logout', { cookie })).headers.get('set-cookie')));
+
+// anonymous request form abuse protection
+const formNow = Date.now(), formTs = newToken(ENV, acme.id, formNow - 4000);
+const formBurst = [];
+for (let i = 0; i < 11; i++) formBurst.push(await web('POST', '/help/acme/requests/new', { body: { ts: formTs, email: `requester${i}@example.com`, name: 'Requester', subject: 'Need help', description: 'Please contact me.' }, headers: { 'x-nf-client-connection-ip': '203.0.113.88' } }));
+check('public request form submissions are limited per source IP', formBurst.slice(0, 10).every(x => x.status === 200) && formBurst[10].status === 429 && formBurst[10].headers.get('retry-after') === '600');
 check('a tampered or expired cookie is not a session', readSession(ENV, cookie.split('=').slice(1).join('=') + 'x', acme.id) === null && readSession(ENV, sessionCookie(ENV, acme.id, 'tina@example.com', Date.now() - 13 * 3600 * 1000), acme.id) === null && readSession(ENV, sessionCookie(ENV, acme.id, 'tina@example.com'), acme.id).email === 'tina@example.com');
 const burst = []; for (let i = 0; i < 11; i++) burst.push(await web('POST', '/help/acme/tickets/login', { body: { email: 'tina@example.com' }, headers: { 'x-nf-client-connection-ip': '203.0.113.77' } }));
 check('customer portal sign-in requests are rate-limited per source IP', burst.slice(0, 10).every(x => x.status === 200) && burst[10].status === 429 && burst[10].headers.get('retry-after') === '600');
