@@ -30,6 +30,10 @@ check('a ticket is created as #1 with a lower-cased email, clean tags and its fi
 await call(olivia, { orgId: acme.id, action: 'create', subject: 'Parking question', body: 'Where do I park?', requesterEmail: 'sam@example.com' });
 r = await call(otto, { orgId: beta.id, action: 'create', subject: 'Beta first', body: 'hello', requesterEmail: 'b@x.co' });
 check('numbers count per organization (Beta also starts at #1)', r.body.ticket.number === 1 && (await call(olivia, { orgId: acme.id, action: 'list' })).body.tickets.length === 2);
+const betaTicketId = (await pool.query('select id from tickets where org_id = $1 and number = 1', [beta.id])).rows[0].id;
+let crossMessageRejected = false;
+try { await withOrg(pool, acme.id, c => c.query("insert into ticket_messages (org_id,ticket_id,kind,body) values ($1,$2,'note','cross-tenant')", [acme.id, betaTicketId])); } catch { crossMessageRejected = true; }
+check('the database rejects a message in one tenant that references another tenant ticket', crossMessageRejected);
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
 check('opening a ticket returns it with its messages', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant');
 check('rich HTML on a newly created ticket is sanitized server-side before storage', String(r.body.messages[0].html_body || '').indexOf('<strong>It is cold.</strong>') >= 0 && !/<script|onerror/i.test(r.body.messages[0].html_body || ''));
