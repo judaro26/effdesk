@@ -86,7 +86,7 @@ function normalize(provider,body,raw){
   const url=safeUrl(first(item.url,item.permalink,item.generatorURL,item.dashboardURL,item.link,issue.permalink,body.url,body.permalink,body.link));
   const deliveryId=clean(first(body.event_id,body.delivery_id,body.webhook_id),160);
   const eventId=deliveryId?deliveryId+':'+digest(key).slice(0,24):digest(raw+'|'+key+'|'+statusRaw+'|'+index);
-  const providerEventAt=eventTime(item.updated_at,item.updatedAt,item.event_time,item.eventTime,item.occurred_at,item.occurredAt,item.timestamp,item.time,body.updated_at,body.updatedAt,body.event_time,body.eventTime,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.created_at,data.updated_at);
+  const providerEventAt=eventTime(item.updated_at,item.updatedAt,item.event_time,item.eventTime,item.occurred_at,item.occurredAt,item.timestamp,item.time,body.updated_at,body.updatedAt,body.event_time,body.eventTime,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.updated_at);
   return {key,title,statusRaw,ticketStatus,severity,priority,impact,message,url,eventId,providerEventAt};
  }).filter(x=>x.key&&x.title);
 }
