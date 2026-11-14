@@ -13,7 +13,7 @@ const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNa
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id';
+const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, chat_seen_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id';
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -62,6 +62,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (q.tag) add('$# = any(tags)', clean(q.tag, 30).toLowerCase());
   if (q.queue === 'none') where.push('queue_id is null'); else if (/^\d{1,12}$/.test(String(q.queue || ''))) add('queue_id = $#', Number(q.queue));
   if (TYPES.includes(q.type)) add('type = $#', q.type);
+  if (q.channel === 'chat') add('channel = $#', 'chat');
   if (/^\d{1,12}$/.test(String(q.client || ''))) add('client_id = $#', Number(q.client));
   if (/^\d{1,9}$/.test(String(q.problem || ''))) add('problem_number = $#', Number(q.problem));
   if (Array.isArray(q.numbers)) add('number = any($#)', q.numbers.map(Number).filter(Number.isInteger)); else { const sw = slaWhere(q.sla); if (sw) where.push(sw); }
