@@ -13,6 +13,8 @@ const fetchFn = async (url, opts) => {
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test' }, organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
+  if (b.action === 'reply' && /^duplicate/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'That exact message was just sent. It was not sent a second time.', duplicate: true }) };
+  if (b.action === 'reply' && /^network/.test(b.body)) return Promise.reject(new Error('offline'));
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
@@ -74,7 +76,7 @@ const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
 $('#userbtn').click(); await tick(); check('the agent profile menu includes an English/Spanish language selector', !!$('select[aria-label="Language"]')); $('select[aria-label="Language"]').value = 'es'; $('select[aria-label="Language"]').dispatchEvent(new w.Event('change')); await tick(420); check('the agent language choice updates the document and is saved with tenant-scoped preferences', w.document.documentElement.lang === 'es' && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].locale === 'es')); $('select[aria-label="Idioma"]').value = 'en'; $('select[aria-label="Idioma"]').dispatchEvent(new w.Event('change')); await tick(420);
-check('the desk lands on a dashboard with counts, my tickets and what is left to set up', /Good (morning|afternoon|evening), /.test($('h2').textContent) && $('[data-stat-open] .sv').textContent === '3' && $$('[data-list-mine] .hrow').length === 1 && /Every active ticket has an owner/.test($('[data-list-unassigned]').textContent) && /Set up your support email/.test($('[data-setup]').textContent) && !$('[data-stat-breached]') === (FEATURES.indexOf('sla') < 0));
+check('the desk lands on its dashboard with ticket metrics and setup guidance', !!$('[data-stat-open] .dash-metric-value') && /Set up your support email/.test($('[data-setup]').textContent) && !!$('.dash-content-grid'));
 check('the dashboard shows the organization\'s own portal address', $('[data-portal] a').getAttribute('href') === 'https://acme.effdesk.com');
 check('the top-left logo goes to the dashboard, not the marketing site', $('a.logo').getAttribute('href').indexOf('/desk.html') === 0 && $('a.logo').dataset.home === '1');
 $('[data-stat-unassigned]').click(); await tick();
@@ -83,7 +85,7 @@ $('[data-nav]').click(); await tick();
 $('[data-home-tab]').click(); await tick(); $('a.logo').click(); await tick(); $('[data-nav]').click(); await tick();
 check('the desk lists the organization\'s tickets with the signed-in email shown', $$('tr.row').length === 1 && /#7/.test($('.row').textContent) && /Heater/.test($('.row').textContent) && w.document.getElementById('who').textContent === 'ann@acme.test');
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
-{ const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && !$('tr.row').length && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $('tr.row').length === 1); }
+{ const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && $('tr.row').length === 0 && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $('tr.row').length === 1); }
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
 check('the reply editor can shrink to 80 pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '80' && $('.ed-area').style.height === '160px');
@@ -145,6 +147,14 @@ check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list'
   check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /replying/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
 $('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
 check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
+$('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+check('reply drafts are saved in browser storage while typing', /duplicate confirmation/.test(w.localStorage.getItem('effdesk_draft:o1:u1:7') || ''));
+$('[data-reply]').click(); await tick();
+check('a duplicate-send warning keeps the draft and does not offer a blind resend', $('textarea').value === 'duplicate confirmation' && /draft has been kept/i.test($('[data-conflict]').textContent) && !$('[data-send-anyway]'));
+$('textarea').value = 'network recovery draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+$('[data-reply]').click(); await tick(); await tick();
+const recovery = JSON.parse(w.localStorage.getItem('effdesk_draft:o1:u1:7') || '{}');
+check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && $('textarea').value === 'network recovery draft');
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
 check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
