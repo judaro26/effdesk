@@ -13,7 +13,7 @@ In the repository, open **Settings → Secrets and variables → Actions → New
 - `BACKUP_AGE_IDENTITY`: the private age identity used to decrypt the backups. Store the complete private identity text (the `AGE-SECRET-KEY-...` value), never the public recipient.
 - The existing backup workflow secrets reused for read-only restore verification: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`.
 
-The R2 access key must permit listing objects in the backup bucket and reading objects under `effdesk/`. It does not need write or delete permission for this verification workflow. If the current backup key is write-only, create a separate R2 read-only key and update the workflow to use dedicated secret names before enabling the schedule.
+Create a dedicated Cloudflare R2 API token with **Object Read Only** permission for the backup bucket, then add its access key ID as `R2_READ_ACCESS_KEY_ID` and secret access key as `R2_READ_SECRET_ACCESS_KEY`. The restore test uses these read-only credentials only in the download step; it does not need write or delete permission. The decryption identity is exposed only to the decryption step, not to dependency installation.
 
 Never put the age identity or R2 credentials in the repository, workflow file, issue, pull request, or chat.
 
