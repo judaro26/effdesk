@@ -67,7 +67,9 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'create') return ok({ ticket: { ...T, number: 8, subject: b.subject } });
   return ok({ ok: true });
 };
-const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true; w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/i18n.js')); w.eval(pub('js/desk.js'));
+const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true;
+Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return this.classList && this.classList.contains('thread') ? 2000 : 0; } });
+Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.classList && this.classList.contains('thread') ? 500 : 0; } }); w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/i18n.js')); w.eval(pub('js/desk.js'));
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
@@ -83,7 +85,17 @@ check('the desk lists the organization\'s tickets with the signed-in email shown
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
 { const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && !$('tr.row').length && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $('tr.row').length === 1); }
 $('.row').click(); await tick();
-check('opening a ticket shows its messages in order, with the note marked', $$('.msg-b').length === 4 && $$('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($$('.msg-b')[1].textContent));
+check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
+check('the reply editor can shrink to 80 pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '80' && $('.ed-area').style.height === '160px');
+for (let i = 0; i < 4; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+check('the editor resize limit is enforced at 80 pixels', $('.ed-area').style.height === '80px');
+{
+  const thread = $('.thread');
+  thread.scrollTop = 800;
+  thread.dispatchEvent(new w.Event('scroll'));
+  $('[data-refresh]').click(); await tick(); await tick();
+  check('refresh preserves the current position in a long conversation', $('.thread').scrollTop === 800);
+}
 check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!$$('.msg-b')[3].querySelector('h2') && $$('.msg-b')[3].querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test($$('.msg-b')[3].textContent));
 { const rb = $$('.msg-b')[2]; check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
   check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb.querySelector('hr[data-rule]') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
