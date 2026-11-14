@@ -161,7 +161,7 @@
       });
     }
     function chatInboxPane() {
-      var rows = (chatInboxRows || []).slice().sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), waiting = rows.filter(function (t) { return !t.assignee_id; }), assigned = rows.filter(function (t) { return !!t.assignee_id; });
+      var rows = (chatInboxRows || []).slice(), waiting = rows.filter(function (t) { return !t.assignee_id; }).sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), assigned = rows.filter(function (t) { return !!t.assignee_id; }).sort(function (a, b) { return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); });
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
