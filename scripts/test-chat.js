@@ -99,6 +99,16 @@ check('a chat already claimed by its agent can be claimed idempotently', (await 
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
 await A(ann, 'chat-availability-set', { available: true });
 check('a different eligible agent cannot claim a chat already accepted by someone else', (await A(ann, 'chat-claim', { number: secondChat.body.number })).status === 409);
+
+// Competing agents racing for the same waiting ticket must produce exactly one winner.
+await A(olivia, 'routing-save', { enabled: false, strategy: 'round_robin' });
+await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 3 });
+const sixthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Riley', email: 'riley@x.co', message: 'Can someone help?' });
+const sameTicketRace = await Promise.all([
+  A(olivia, 'chat-claim', { number: sixthChat.body.number }),
+  A(ann, 'chat-claim', { number: sixthChat.body.number })
+]);
+check('two agents racing to claim one chat produce exactly one winner', sameTicketRace.filter(x => x.status === 200).length === 1 && sameTicketRace.filter(x => x.status === 409).length === 1);
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
