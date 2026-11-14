@@ -13,6 +13,7 @@ const fetchFn = async (url, opts) => {
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test' }, organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
+  if (b.action === 'reply' && /^duplicate/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'That exact message was just sent. It was not sent a second time.', duplicate: true }) };
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
@@ -145,6 +146,10 @@ check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list'
   check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /replying/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
 $('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
 check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
+$('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+check('reply drafts are saved in browser storage while typing', /duplicate confirmation/.test(w.localStorage.getItem('effdesk_draft:o1:u1:7') || ''));
+$('[data-reply]').click(); await tick();
+check('a duplicate-send warning keeps the draft and does not offer a blind resend', $('textarea').value === 'duplicate confirmation' && /draft has been kept/i.test($('[data-conflict]').textContent) && !$('[data-send-anyway]'));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
 check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
