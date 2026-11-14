@@ -27,5 +27,5 @@ Object.defineProperty(hw.document, 'currentScript', { value: s }); hw.eval(pub('
 const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('the widget adds the chat button on the host page', !!btn);
 btn.click(); check('clicking it opens the chat in a frame from EffDesk', /app\.effdesk\.com\/chat\.html\?org=acme/.test((hw.document.querySelector('iframe') || {}).src || ''));
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
-check('the frame page is allowed to be framed and the others are not', /for = "/\\*"[\\s\\S]*?frame-ancestors 'none'/.test(headers) && /for = "/chat\\.html"[\\s\\S]*?frame-ancestors https: http:/.test(headers));
+check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 done(); process.exit(0);
