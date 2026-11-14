@@ -24,11 +24,7 @@ let called = 0; const fx = async () => { called++; return new Response('x'); };
 let blocked = false; try { await guardedFetch('https://sneaky.example.org/hook', {}, { fetchFn: fx, lookup: fake({ 'sneaky.example.org': ['169.254.169.254'] }) }); } catch (e) { blocked = e.code === 'blocked'; }
 check('the outbound call is not even made to an internal destination', blocked && called === 0);
 await guardedFetch('https://ok.example.org/hook', { method: 'POST' }, { fetchFn: async (u, i) => { called++; check('and redirects are never followed', i.redirect === 'manual'); return new Response('x'); }, lookup: fake({ 'ok.example.org': ['8.8.8.8'] }) });
-// Add these imports to the existing imports in scripts/test-guard.js:
-import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
-
-// Add these regression checks immediately after the existing successful guardedFetch check:
+// Verify that production outbound requests use the already-validated IP address:
 let pinnedOptions;
 const pinned = await guardedFetch('https://hooks.example.org/notify', { method: 'POST', body: '{"ok":true}' }, {
   lookup: fake({ 'hooks.example.org': ['8.8.8.8', '1.1.1.1'] }),
