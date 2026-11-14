@@ -54,7 +54,7 @@ check('webhook addresses with a bare IP, a port or an internal name are refused'
 const { url } = await freshDb('guard'); await migrate(url); const pool = makePool(url);
 check('the shared limit lets the first calls through and stops the rest', await (async () => { const r = []; for (let i = 0; i < 5; i++) r.push(await rateLimit(pool, 'k1', 3, 60, 1000)); return r.join() === 'false,false,false,true,true'; })());
 check('another caller, and the next window, start fresh', !(await rateLimit(pool, 'k2', 3, 60, 1000)) && !(await rateLimit(pool, 'k1', 3, 60, 1000 + 61000)));
-const dead = { query: async () => { throw new Error('down'); } }; check('if the database cannot count, calls are let through rather than blocked', (await rateLimit(dead, 'k', 1, 60)) === false);
+const dead = { query: async () => { throw new Error('down'); } }; check('if the shared rate-limit database is unavailable, protected requests fail closed', (await rateLimit(dead, 'k', 1, 60)) === true);
 const hook = await saveHook(pool, (await (async () => { const id = crypto.randomUUID(); await pool.query('insert into "organization" (id, name, slug, "createdAt") values ($1,$2,$3, now())', [id, 'G', 'g' + id.slice(0, 6)]); return id; })()), { url: 'https://evil.example.org/h', events: ['ticket.created'] }, { lookup: fake({ 'evil.example.org': ['10.0.0.9'] }) });
 check('saving a webhook whose name resolves to an internal address is refused', hook.ok === false && /public/.test(hook.error));
 done();

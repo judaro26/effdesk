@@ -27,7 +27,11 @@ export async function rateLimit(pool, key, max, seconds, now = Date.now()) {
     const n = (await pool.query('insert into rate_hits (key, win, n) values ($1,$2,1) on conflict (key, win) do update set n = rate_hits.n + 1 returning n', [String(key).slice(0, 200), win])).rows[0].n;
     if (Math.random() < 0.01) pool.query("delete from rate_hits where created_at < now() - interval '2 days'").catch(() => {});
     return n > max;
-  } catch { return false; }
+  } catch {
+    // If the shared counter is unavailable, fail closed: do not silently disable
+    // brute-force and abuse protections during a database incident.
+    return true;
+  }
 }
 
 const v4 = ip => { const p = ip.split('.').map(Number); return p.length === 4 && p.every(x => x >= 0 && x <= 255) ? p : null; };
