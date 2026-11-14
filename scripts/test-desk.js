@@ -14,6 +14,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
   if (b.action === 'reply' && /^duplicate/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'That exact message was just sent. It was not sent a second time.', duplicate: true }) };
+  if (b.action === 'reply' && /^network/.test(b.body)) return Promise.reject(new Error('offline'));
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
   if (b.action === 'article-list') return ok({ articles: [{ id: 'a1', title: 'Pay rent', lang: 'en', status: 'published', views: 5, helpful_yes: 2, helpful_no: 1 }] });
@@ -150,6 +151,10 @@ $('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new 
 check('reply drafts are saved in browser storage while typing', /duplicate confirmation/.test(w.localStorage.getItem('effdesk_draft:o1:u1:7') || ''));
 $('[data-reply]').click(); await tick();
 check('a duplicate-send warning keeps the draft and does not offer a blind resend', $('textarea').value === 'duplicate confirmation' && /draft has been kept/i.test($('[data-conflict]').textContent) && !$('[data-send-anyway]'));
+$('textarea').value = 'network recovery draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+$('[data-reply]').click(); await tick(); await tick();
+const recovery = JSON.parse(w.localStorage.getItem('effdesk_draft:o1:u1:7') || '{}');
+check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && /network recovery draft/.test($('.msg').textContent));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
 check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
