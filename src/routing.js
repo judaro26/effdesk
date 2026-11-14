@@ -30,9 +30,13 @@ export async function getChatAvailability(pool, orgId, userId) {
 export async function setChatAccess(pool, orgId, userId, enabled) {
   return withOrg(pool, orgId, async c => {
     // Lock the membership row so a concurrent role change/removal cannot race an access grant.
-    const member = (await c.query('select role from member where "organizationId" = $1 and "userId" = $2 for update', [orgId, String(userId || '')])).rows[0];
+    const member = (await c.query(`select m.role, r.permissions from member m
+      left join member_custom_role mc on mc.org_id = $1 and mc.user_id = m."userId"
+      left join custom_roles r on r.org_id = $1 and r.id = mc.role_id
+      where m."organizationId" = $1 and m."userId" = $2 for update of m`, [orgId, String(userId || '')])).rows[0];
     if (!member) return fail('Choose a teammate in this workspace.', 404);
     if (enabled && member.role === 'light') return fail('Light agents cannot handle live chats. Change their role first.');
+    if (enabled && member.role === 'member' && Array.isArray(member.permissions) && !member.permissions.includes('reply')) return fail('This agent’s custom role does not allow customer replies. Add the reply permission first.');
     await c.query(`insert into agent_status (org_id, user_id, available, chat_access, chat_available)
       values ($1,$2,true,$3,false)
       on conflict (org_id, user_id) do update set chat_access = $3, chat_available = false`, [orgId, String(userId), enabled === true]);
