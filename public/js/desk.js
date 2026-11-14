@@ -161,7 +161,7 @@
       });
     }
     function chatInboxPane() {
-      var rows = (chatInboxRows || []).slice(), waiting = rows.filter(function (t) { return !t.assignee_id; }).sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), assigned = rows.filter(function (t) { return !!t.assignee_id; }).sort(function (a, b) { return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); });
+      var rows = (chatInboxRows || []).slice(), waiting = rows.filter(function (t) { return !t.assignee_id; }).sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), assigned = rows.filter(function (t) { return !!t.assignee_id; }).sort(function (a, b) { var aNeedsReply = a.chat_last_public_message_kind === 'requester' ? 1 : 0, bNeedsReply = b.chat_last_public_message_kind === 'requester' ? 1 : 0; return bNeedsReply - aNeedsReply || new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); }), needsReply = assigned.filter(function (t) { return t.chat_last_public_message_kind === 'requester'; });
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
@@ -189,6 +189,7 @@
         el('div', { class: 'chat-inbox-stats' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Unassigned'), el('strong', {}, String(waiting.length)), el('small', {}, 'Ready for an agent to pick up')),
+          el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(needsReply.length)), el('small', {}, 'Customer replied; agent response pending')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(assigned.length)), el('small', {}, 'Owned by a teammate'))),
         chatInboxError ? el('div', { class: 'chat-inbox-error', role: 'alert' }, chatInboxError, el('button', { type: 'button', onclick: loadChatInbox }, 'Try again')) : null,
         chatInboxLoading ? el('div', { class: 'chat-inbox-loading' }, el('span', { class: 'chat-inbox-spinner' }), 'Loading conversations…') : el('div', { class: 'chat-inbox-columns' },
