@@ -31,12 +31,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: auto
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
       TEST_DATABASE_URL: postgres://postgres:restore-test-only@localhost:5432/restore_test
 
     steps:
@@ -68,6 +62,12 @@ jobs:
           test -n "$BACKUP_AGE_IDENTITY"
 
       - name: Find and download the newest encrypted backup
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_READ_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_READ_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           set -euo pipefail
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
@@ -97,6 +97,8 @@ jobs:
           echo "Encrypted archive checksum passed."
 
       - name: Decrypt and inspect backup contents
+        env:
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
         run: |
           set -euo pipefail
           identity="$RUNNER_TEMP/age-identity.txt"
