@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '';
+    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -65,7 +65,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatInboxOpen = false; integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatInboxOpen = false; chatInboxSeq++; if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; } integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -133,11 +133,24 @@
     function goViews() { closePanes(); return refresh(); }
     function loadChatInbox() {
       closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; draw();
+      return fetchChatInbox(true);
+    }
+    function fetchChatInbox(showLoading) {
+      if (!chatInboxOpen) return Promise.resolve();
+      if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; }
+      var seq = chatInboxSeq;
+      if (showLoading) { chatInboxLoading = true; draw(); }
       return api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
+        if (seq !== chatInboxSeq || !chatInboxOpen) return;
         chatInboxLoading = false;
-        if (!r.ok) { chatInboxError = r.body.error || 'Could not load live chats.'; chatInboxRows = []; }
-        else chatInboxRows = r.body.tickets || [];
+        if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
+        else { chatInboxError = ''; chatInboxRows = r.body.tickets || []; }
         draw();
+        chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 15000);
+      }).catch(function () {
+        if (seq !== chatInboxSeq || !chatInboxOpen) return;
+        chatInboxLoading = false; chatInboxError = 'The inbox could not refresh. Check your connection and try again.'; draw();
+        chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 20000);
       });
     }
     function chatInboxPane() {
@@ -161,7 +174,7 @@
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
-          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' }, el('i', {}), 'Inbox connected'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: loadChatInbox }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' }, el('i', {}), 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: loadChatInbox }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Unassigned'), el('strong', {}, String(waiting.length)), el('small', {}, 'Ready for an agent to pick up')),
