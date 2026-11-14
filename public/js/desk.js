@@ -161,15 +161,15 @@
       });
     }
     function chatInboxPane() {
-      var rows = chatInboxRows || [], waiting = rows.filter(function (t) { return !t.assignee_id; }), assigned = rows.filter(function (t) { return !!t.assignee_id; });
+      var rows = (chatInboxRows || []).slice().sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), waiting = rows.filter(function (t) { return !t.assignee_id; }), assigned = rows.filter(function (t) { return !!t.assignee_id; });
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
       var openCard = function (t) {
-        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', onclick: function () { open(t.number); } },
+        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', onclick: function () { if (t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
           el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
           el('span', { class: 'chat-inbox-card-copy' },
-            el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), el('span', { class: 'chat-inbox-time' }, fmt(t.updated_at))),
+            el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), el('span', { class: 'chat-inbox-time' }, fmt(t.assignee_id ? t.updated_at : t.created_at))),
             el('span', { class: 'chat-inbox-subject' }, t.subject || 'Live chat'),
             el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, t.assignee_id ? agentName(t.assignee_id) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
           el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
