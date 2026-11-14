@@ -53,6 +53,9 @@ jobs:
       - name: Test SSO verification and authentication protections
         run: node scripts/test-sso.js
 
+      - name: Test SCIM provisioning and deprovisioning protections
+        run: node scripts/test-scim.js
+
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 

@@ -108,6 +108,17 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
   if (!validEmail(email)) return fail('A valid userName or work email is required.', 400, 'invalidValue');
   const names = getNames(input);
   let user = (await pool.query('select id,name,email from "user" where lower(email)=lower($1) limit 1', [email])).rows[0];
+  if (existing && existing.user_id !== user?.id) return fail('Changing a SCIM user email to an address belonging to another EffDesk account is not supported.', 409, 'uniqueness');
+  const externalId = clean(input.externalId, 250) || null;
+  // Validate tenant-scoped identity uniqueness before creating a global account or
+  // changing membership. A rejected SCIM request must not leave access side effects.
+  if (externalId) {
+    const clash = await withOrg(pool, orgId, c => c.query(
+      'select id from scim_users where org_id=$1 and external_id=$2 and ($3::text is null or user_id<>$3) limit 1',
+      [orgId, externalId, user?.id || existing?.user_id || null],
+    ));
+    if (clash.rowCount) return fail('That externalId is already assigned to another SCIM user.', 409, 'uniqueness');
+  }
   let createdUser = false;
   if (!user) {
     const id = crypto.randomUUID(), display = names.display || email;
@@ -117,18 +128,12 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
     )).rows[0];
     createdUser = true;
   }
-  if (existing && existing.user_id !== user.id) return fail('Changing a SCIM user email to an address belonging to another EffDesk account is not supported.', 409, 'uniqueness');
   if (input.active !== false) {
     const membership = await addMembership(pool, orgId, user.id);
     if (!membership.ok) return membership;
   } else {
     const removed = await deactivateMembership(pool, orgId, user.id);
     if (!removed.ok) return removed;
-  }
-  const externalId = clean(input.externalId, 250) || null;
-  if (externalId) {
-    const clash = await withOrg(pool, orgId, c => c.query('select id from scim_users where org_id=$1 and external_id=$2 and user_id<>$3 limit 1', [orgId, externalId, user.id]));
-    if (clash.rowCount) return fail('That externalId is already assigned to another SCIM user.', 409, 'uniqueness');
   }
   const scimId = existing?.scim_id || crypto.randomUUID();
   const active = input.active !== false;
