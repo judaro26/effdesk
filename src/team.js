@@ -25,6 +25,7 @@ export async function changeRole(pool, orgId, actor, actorRole, memberId, role) 
   if ((m.role === 'owner' || role === 'owner') && actorRole !== 'owner') return fail('Only an owner can do that.', 403);
   if (m.role === 'owner' && role !== 'owner' && await owners(pool, orgId) <= 1) return fail('An organization needs at least one owner.');
   await pool.query('update member set role = $3 where "organizationId" = $1 and id = $2', [orgId, m.id, role]);
+  if (role === 'light') await withOrg(pool, orgId, c => c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]));
   return { ok: true, email: m.email, from: m.role, role };
 }
 export async function removeMember(pool, orgId, actor, actorRole, memberId, reassignTo) {
@@ -37,6 +38,7 @@ export async function removeMember(pool, orgId, actor, actorRole, memberId, reas
     const n = (await c.query("update tickets set assignee_id = $3, updated_at = now() where org_id = $1 and assignee_id = $2 and status in ('open','pending') returning id", [orgId, m.user_id, to])).rowCount;
     await c.query("update tickets set assignee_id = null where org_id = $1 and assignee_id = $2", [orgId, m.user_id]);
     await c.query('delete from ticket_followers where org_id = $1 and user_id = $2', [orgId, m.user_id]);
+    await c.query('update agent_status set chat_access = false, chat_available = false where org_id = $1 and user_id = $2', [orgId, m.user_id]);
     return n;
   });
   await pool.query('delete from member where "organizationId" = $1 and id = $2', [orgId, m.id]);
