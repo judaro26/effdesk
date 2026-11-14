@@ -192,6 +192,15 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const adminOnly = () => isAdmin ? null : json(403, { error: 'Only an owner or an admin can change this.' });
   const canCustom = permission => !cr || cr.permissions.includes(permission);
   let r, g;
+  // Chat tickets remain ticket records, but agents without explicit Live Chat access
+  // must not discover or operate on them through the general ticket endpoints.
+  const chatAccessAllowed = support || (role !== 'light' && planHas(ent, 'live_chat') && (await getChatAvailability(pool, orgId, actor.id)).access);
+  const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
+    .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
+  if (!chatAccessAllowed && !support && targetNumbers.length) {
+    const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
+    if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+  }
   switch (b.action) {
     case 'support-enter': if (!support) return json(403, { error: 'Only the platform owner can do that.' }); await audit(pool, orgId, actor.id, 'support.entered', actor.email, {}); r = { ok: true }; break;
     case 'support-access-get': if ((g = adminOnly())) return g; r = { ok: true, active: true, always: true, entries: await recentEntries(pool, orgId) }; break;
@@ -381,8 +390,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'list': {
       if (b.channel === 'chat') {
         if ((g = need('live_chat'))) return g;
-        if (role === 'light' || !(await getChatAvailability(pool, orgId, actor.id)).access) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
-      }
+        if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+      } else if (!chatAccessAllowed) b.excludeChat = true;
       if (!planHas(ent, 'sla')) b.sla = undefined;
       const cal = planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null;
       if (cal && cal.enabled && (b.sla === 'breached' || b.sla === 'risk')) { b.numbers = await slaNumbers(pool, orgId, b.sla, cal); }
