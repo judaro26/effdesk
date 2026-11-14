@@ -1,0 +1,66 @@
+name: Security regression tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-regression:
+    name: Security regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: effdesk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d effdesk_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/effdesk_test
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Test security helpers and outbound request protections
+        run: node scripts/test-guard.js
+
+      - name: Test SSO verification and authentication protections
+        run: node scripts/test-sso.js
+
+      - name: Test tenant isolation for tickets
+        run: node scripts/test-tickets.js
+
+      - name: Test tenant isolation for attachments
+        run: node scripts/test-attachments.js
+
+      - name: Test HTML sanitization
+        run: node scripts/test-html-clean.js
+
+      - name: Test backup blob integrity verification
+        run: node scripts/test-verify-blobs.js
