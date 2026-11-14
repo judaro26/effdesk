@@ -20,6 +20,9 @@ export const csrfOk = (env, cookie, token) => !!cookie && !!token && eq(token, c
 export async function requestLink(pool, orgId, email, now = Date.now()) {
   const addr = String(email || '').trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr) || addr.length > 254) return null;
   return withOrg(pool, orgId, async c => {
+    // Serialize issuance per workspace so concurrent requests cannot all pass
+    // the per-address or per-workspace hourly count before inserting a link.
+    await c.query("select pg_advisory_xact_lock(hashtext('portal-link-issuance'), hashtext($1))", [orgId]);
     if (!(await c.query('select 1 from tickets where org_id = $1 and requester_email = $2 limit 1', [orgId, addr])).rowCount) return null;
     if ((await c.query("select count(*)::int n from portal_links where org_id = $1 and email = $2 and created_at > now() - interval '1 hour'", [orgId, addr])).rows[0].n >= 5) return null;
     if ((await c.query("select count(*)::int n from portal_links where org_id = $1 and created_at > now() - interval '1 hour'", [orgId])).rows[0].n >= 200) return null;
