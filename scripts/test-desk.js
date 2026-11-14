@@ -90,13 +90,13 @@ check('the first load asks for active tickets in the right organization', calls.
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
 check('the reply editor can shrink to 80 pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '80' && $('.ed-area').style.height === '160px');
-check('the resize handle sits inside the editor directly above the writing area', $('.editor-resize-handle').parentNode === $('.ed-area').parentNode && $('.editor-resize-handle').nextElementSibling === $('.ed-area'));
+check('the resize handle sits at the top of the composer above the reply mode tabs', $('.editor-resize-handle').parentNode === $('.compose') && $('.editor-resize-handle').nextElementSibling === $('.modes'));
 {
   const handle = $('.editor-resize-handle'), down = new w.Event('pointerdown', { bubbles: true, cancelable: true });
   Object.defineProperties(down, { button: { value: 0 }, clientY: { value: 100 }, pointerId: { value: 1 } });
   handle.dispatchEvent(down);
   const move = new w.Event('pointermove'); Object.defineProperty(move, 'clientY', { value: 120 }); w.document.dispatchEvent(move);
-  check('dragging the resize handle down moves the editor boundary down and reduces editor height', $('.ed-area').style.height === '140px');
+  check('dragging the resize handle down expands the editor writing area', $('.ed-area').style.height === '180px');
   w.document.dispatchEvent(new w.Event('pointerup'));
 }
 for (let i = 0; i < 4; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
