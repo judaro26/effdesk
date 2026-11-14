@@ -455,7 +455,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
       const wst = await wa.windowState(pool, orgId, b.number);
       if (wst && !wst.open) return json(409, { error: 'WhatsApp only lets you reply within 24 hours of the customer\'s last message. Nothing was sent. Your text is still here.', window: true });
-      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, htmlBody: b.html, internal: false, status: b.status });
+      r = await addMessage(pool, orgId, actor, b.number, { body: b.body, htmlBody: b.html, internal: false, status: b.status, idempotencyKey: b.idempotencyKey });
+      if (r.duplicate) return json(409, { error: 'This reply was already saved. The existing message was not sent again.', duplicate: true });
       if (r.ok && wst) { const d = await wa.sendReply(pool, env, orgId, Number(b.number), r.message.id, b.body, env.__waFetch || fetch); r.whatsapp = d.delivery; r.whatsappWhy = d.why; }
       if (r.ok && store && Array.isArray(b.attachmentIds) && b.attachmentIds.length) await claimUploads(pool, orgId, actor, b.number, r.message.id, b.attachmentIds);
       if (r.ok && mailer && !wst && !(await chatOpen(pool, orgId, b.number))) {
