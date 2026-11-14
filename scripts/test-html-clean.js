@@ -7,6 +7,7 @@ check('scripts, styles, event handlers, forms, svg and objects are gone', !/<scr
 check('h1 becomes h2 so the page keeps one title', /<h2>Title<\/h2>/.test(out) && !/<h1/.test(out));
 check('javascript: links lose the link but keep the text, https links open safely', !/javascript:/.test(out) && /bad/.test(out) && /<a href="https:\/\/e\.com" target="_blank" rel="noopener noreferrer">ok<\/a>/.test(out));
 check('pictures: https and our own uploads stay; broken, data: and relative-elsewhere are removed', /<img src="https:\/\/e\.com\/a\.png" width="100"/.test(out) && /img\/123e4567-e89b-12d3-a456-426614174000/.test(out) && !/data:image/.test(out) && !/src="x"/.test(out) && !/height="abc"/.test(out));
+check('CID images are rejected by default but can be preserved for sanitized inbound email pending attachment rewriting', !/src="cid:/.test(clean('<img src="cid:photo.cid@example">')) && /<img src="cid:photo.cid@example"/.test(clean('<img src="cid:photo.cid@example">', { allowCidImages: true })));
 check('videos: only YouTube, Vimeo and Loom embeds; others are removed', /youtube-nocookie\.com\/embed\/abc123def/.test(out) && !/evil\.com/.test(out) && /<video src="https:\/\/e\.com\/v\.mp4"/.test(out) && !/javascript:1/.test(out));
 check('only known classes survive', /<div class="callout info" style="color:red">c<\/div>/.test(out) && !/evil/.test(out));
 check('a link without an address is dropped and mailto works', !/<a>/.test(clean('<a>x</a>')) && /mailto:a@b\.co/.test(clean('<a href="mailto:a@b.co">m</a>')));
