@@ -7,7 +7,7 @@ import { guardedFetch, publicAddress } from './guard.js';
 import crypto from 'crypto';
 import { createAuthEndpoint, createAuthMiddleware, APIError } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify, createRemoteJWKSet, customFetch } from 'jose';
 import { checkSeat } from './billing.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
@@ -110,7 +110,7 @@ export function ssoPlugin({ pool, env = process.env, baseURL }) {
           const doc = await discover(p.issuer);
           const tr = await outbound(doc.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: String(q.code || ''), redirect_uri: baseURL + '/api/auth/sso/callback', client_id: p.client_id, client_secret: unseal(secret(), p.client_secret_enc), code_verifier: st.v }), signal: AbortSignal.timeout(10000) });
           const tj = await tr.json(); if (!tr.ok || !tj.id_token) throw new Error('no token');
-          claims = (await jwtVerify(tj.id_token, createRemoteJWKSet(new URL(doc.jwks_uri)), { issuer: doc.issuer || p.issuer, audience: p.client_id })).payload;
+          claims = (await jwtVerify(tj.id_token, createRemoteJWKSet(new URL(doc.jwks_uri), { [customFetch]: outbound }), { issuer: doc.issuer || p.issuer, audience: p.client_id })).payload;
           if (claims.nonce !== st.n) throw new Error('nonce');
         } catch { throw back(ctx, 'We could not confirm your sign-in with the identity provider.'); }
         const email = clean(claims.email || (/@/.test(claims.preferred_username || '') ? claims.preferred_username : ''), 254).toLowerCase();
