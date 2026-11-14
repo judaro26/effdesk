@@ -95,7 +95,9 @@ const parallelClaims = await Promise.all([
 ]);
 check('concurrent claims cannot exceed the agent chat limit', raiseCap.status === 200 && parallelClaims.filter(x => x.status === 200).length === 1 && parallelClaims.filter(x => x.status === 409).length === 1);
 check('a chat already claimed by its agent can be claimed idempotently', (await A(olivia, 'chat-claim', { number: secondChat.body.number })).status === 200);
-check('a different agent cannot claim a chat already accepted by someone else', (await A(ann, 'chat-claim', { number: secondChat.body.number })).status === 409);
+await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
+await A(ann, 'chat-availability-set', { available: true });
+check('a different eligible agent cannot claim a chat already accepted by someone else', (await A(ann, 'chat-claim', { number: secondChat.body.number })).status === 409);
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
