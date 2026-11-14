@@ -51,7 +51,7 @@ check('Sentry resolution updates the same incident ticket',(await sentryResolved
 const splunk=await create('splunk');
 const splunkEvent=await call('splunk',splunk.secret,{search_name:'Disk space monitor',result:{host:'db-01',severity:'warning',message:'Disk usage is 92%'},link:'https://splunk.example/app/search'});
 check('Splunk saved-search events create readable alert tickets',(await splunkEvent.json()).created===1&&(await query("select priority from tickets where org_id=$1 and subject='Disk space monitor'",[org.id])).rows[0]?.priority==='normal');
-const bad=await call('datadog','not-a-valid-secret',{id:'bad',title:'Should not import'});
+const bad=await call('datadog','not-a-valid-secret-that-is-long-enough',{id:'bad',title:'Should not import'});
 check('Unknown alert webhook secrets are rejected',bad.status===401);
 const revoked=await revokeMonitoringAlertConnection(pool,org.id,dd.connection.id);
 check('Revoking a monitoring alert endpoint immediately rejects future deliveries',revoked.ok&&(await call('datadog',dd.secret,{id:'dd-delivery-3',monitor_id:77,host:'api-01',title:'CPU saturation',alert_transition:'Triggered'})).status===401);
