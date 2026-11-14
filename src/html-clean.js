@@ -60,8 +60,17 @@ const OPTS = {
   },
 };
 // a bare <img width="..."> may only hold digits
-export function clean(html) {
-  const out = sanitizeHtml(String(html || ''), { ...OPTS, allowedSchemes: ['https', 'mailto', 'http'] });
+export function clean(html, { allowCidImages = false } = {}) {
+  const out = sanitizeHtml(String(html || ''), {
+    ...OPTS,
+    allowedSchemes: allowCidImages ? ['https', 'mailto', 'http', 'cid'] : ['https', 'mailto', 'http'],
+    exclusiveFilter: f => {
+      if (f.tag === 'iframe') { try { const u = new URL(f.attribs.src || ''); return !(u.protocol === 'https:' && VIDEO_HOSTS.includes(u.hostname) && (u.pathname.startsWith('/embed/') || u.hostname === 'player.vimeo.com')); } catch { return true; } }
+      if (f.tag === 'img') return !f.attribs.src || !(/^https:\/\//i.test(f.attribs.src) || /^\/(help\/[a-z0-9-]{1,60}\/)?img\/[a-f0-9-]{36}$/.test(f.attribs.src) || (allowCidImages && /^cid:[^\s"'<>]{1,200}$/i.test(f.attribs.src)));
+      if (f.tag === 'video') return !f.attribs.src || !/^https:\/\//i.test(f.attribs.src);
+      return false;
+    },
+  });
   return out.replace(/<(img|iframe|video)\b([^>]*)>/g, (m, tag, rest) => m.replace(/\s(width|height)="([^"]*)"/g, (x, k, v) => /^\d{1,4}$/.test(v) ? x : ''));
 }
 export const plainOf = html => sanitizeHtml(String(html || '').replace(/<\/(p|h[1-6]|li|div|tr|td|th|blockquote|figure|figcaption|summary)>|<br\s*\/?>/gi, ' '), { allowedTags: [], allowedAttributes: {} }).replace(/\s+/g, ' ').trim();
