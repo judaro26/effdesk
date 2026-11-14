@@ -78,5 +78,17 @@ check('a bad action is a 400', (await call(ann, { orgId: acme.id, action: 'drop-
 await pool.query('create role rls_tester'); await pool.query('grant select on tickets, ticket_messages to rls_tester');
 const asTenant = async (orgId, sql) => { const c = await pool.connect(); try { await c.query('begin'); await c.query('set local role rls_tester'); await c.query("select set_config('app.org_id', $1, true)", [orgId]); const x = await c.query(sql); await c.query('rollback'); return x.rows; } finally { c.release(); } };
 check('row level security alone hides other organizations\' tickets and messages', (await asTenant(beta.id, 'select subject from tickets')).map(x => x.subject).join() === 'Beta first' && (await asTenant(beta.id, 'select body from ticket_messages')).map(x => x.body).join() === 'hello' && (await asTenant('', 'select 1 from tickets')).length === 0);
+
+await pool.query("insert into ticket_lifecycle_policies(org_id,config) values($1,$2) on conflict(org_id) do update set config=excluded.config",[acme.id,JSON.stringify({permanentCloseEnabled:true,permanentCloseDays:30})]);
+await pool.query("update tickets set status='closed',closed_at=now()-interval '31 days' where org_id=$1 and number=1",[acme.id]);
+const beforeLocked=(await pool.query("select count(*)::int as n from ticket_messages m join tickets t on t.id=m.ticket_id where t.org_id=$1 and t.number=1",[acme.id])).rows[0].n;
+r=await call(ann,{orgId:acme.id,action:'get',number:1});
+check('the ticket API identifies a ticket that has crossed the permanent-closure threshold',r.body.ticket.permanently_closed===true);
+r=await call(ann,{orgId:acme.id,action:'reply',number:1,body:'This must not be sent.'});
+const afterLocked=(await pool.query("select count(*)::int as n from ticket_messages m join tickets t on t.id=m.ticket_id where t.org_id=$1 and t.number=1",[acme.id])).rows[0].n;
+check('a permanently closed ticket rejects public replies even when no new status is supplied',r.status===409 && /permanently closed/.test(r.body.error) && beforeLocked===afterLocked);
+r=await call(ann,{orgId:acme.id,action:'create',subject:'Follow-up: Heater is broken',body:'Continuing the conversation.',requesterName:'Tina Tenant',requesterEmail:'tenant@example.com',firstKind:'agent',channel:'email',lifecycleParentTicketNumber:1});
+const linked=(await call(ann,{orgId:acme.id,action:'get',number:r.body.ticket.number})).body;
+check('an agent can create a follow-up ticket linked to a permanently closed parent',r.status===200 && linked.ticket.lifecycle_parent_ticket_id===t.ticket.id && linked.lifecycleLinks.parent.number===1);
 await pool.query('revoke all on tickets, ticket_messages from rls_tester'); await pool.query('drop role rls_tester');
 await pool.end(); done();
