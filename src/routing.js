@@ -35,6 +35,7 @@ export async function setChatAccess(pool, orgId, userId, enabled) {
     await c.query(`insert into agent_status (org_id, user_id, available, chat_access, chat_available)
       values ($1,$2,true,$3,false)
       on conflict (org_id, user_id) do update set chat_access = $3, chat_available = false`, [orgId, String(userId), enabled === true]);
+    if (!enabled) await c.query("update tickets set assignee_id = null, updated_at = now() where org_id = $1 and assignee_id = $2 and channel = 'chat' and status in ('open','pending','on_hold')", [orgId, String(userId)]);
     return { ok: true, access: enabled === true, available: false };
   });
 }
@@ -50,11 +51,13 @@ export async function setChatAvailable(pool, orgId, userId, available) {
 // inside the ticket's transaction: choose, record, return { id, name } or null
 export async function autoAssign(c, orgId, ticketId) {
   const s = (await c.query('select enabled, strategy, max_open from routing_settings where org_id = $1', [orgId])).rows[0]; if (!s || !s.enabled) return null;
-  const rows = (await c.query(`select m."userId" as id, u.name, u.email, coalesce(a.available, true) as available, a.last_assigned_at,
+  const channel = (await c.query('select channel from tickets where org_id = $1 and id = $2', [orgId, ticketId])).rows[0]?.channel;
+  const rows = (await c.query(`select m."userId" as id, u.name, u.email, coalesce(a.available, true) as available,
+      coalesce(a.chat_access, false) as chat_access, coalesce(a.chat_available, false) as chat_available, a.last_assigned_at,
       (select count(*)::int from tickets t where t.org_id = $1 and t.assignee_id = m."userId" and t.status in ('open','pending','on_hold')) as open
     from member m join "user" u on u.id = m."userId" left join agent_status a on a.org_id = $1 and a.user_id = m."userId"
     where m."organizationId" = $1 and m.role in ('owner','admin','member')`, [orgId])).rows;
-  const ok = rows.filter(r => r.available && (!s.max_open || r.open < s.max_open)); if (!ok.length) return null;
+  const ok = rows.filter(r => r.available && (channel !== 'chat' || (r.chat_access && r.chat_available)) && (!s.max_open || r.open < s.max_open)); if (!ok.length) return null;
   const last = r => r.last_assigned_at ? new Date(r.last_assigned_at).getTime() : 0;
   ok.sort(s.strategy === 'least_busy' ? (a, b) => a.open - b.open || last(a) - last(b) || (a.id < b.id ? -1 : 1) : (a, b) => last(a) - last(b) || a.open - b.open || (a.id < b.id ? -1 : 1));
   const pick = ok[0];
