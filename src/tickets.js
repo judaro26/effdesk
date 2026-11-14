@@ -63,6 +63,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   if (q.queue === 'none') where.push('queue_id is null'); else if (/^\d{1,12}$/.test(String(q.queue || ''))) add('queue_id = $#', Number(q.queue));
   if (TYPES.includes(q.type)) add('type = $#', q.type);
   if (q.channel === 'chat') add('channel = $#', 'chat');
+  else if (q.excludeChat === true) where.push("channel <> 'chat'");
   if (/^\d{1,12}$/.test(String(q.client || ''))) add('client_id = $#', Number(q.client));
   if (/^\d{1,9}$/.test(String(q.problem || ''))) add('problem_number = $#', Number(q.problem));
   if (Array.isArray(q.numbers)) add('number = any($#)', q.numbers.map(Number).filter(Number.isInteger)); else { const sw = slaWhere(q.sla); if (sw) where.push(sw); }
