@@ -690,7 +690,9 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
   annotate({ org: org.id });
   const look = await effectiveHelpSettings(pool, org.id), statusLink = look.status; org.look = look;
   const base = `/help/${org.slug}`, rest = parts.slice(1), secure = u.protocol === 'https:', portal = portalOrigin(req, env, org.slug);
-  const form = async () => { const t = await req.text(); if (t.length > 40000) return new URLSearchParams(); return new URLSearchParams(t); };
+  // Public Help Center POSTs are anonymous; enforce the body cap while reading,
+  // not after req.text() has already buffered an arbitrarily large request.
+  const form = async () => { const bytes = await readBytes(req, 40000); return bytes ? new URLSearchParams(bytes.toString('utf8')) : new URLSearchParams(); };
   if (post) { const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' }); }
   const cookie = cookieOf(req, COOKIE), sess = readSession(env, cookie, org.id, now);
   const setCookie = v => `${COOKIE}=${v}; Path=/help; HttpOnly; SameSite=Lax; Max-Age=${v ? SESSION_SECONDS : 0}${secure ? '; Secure' : ''}`;
