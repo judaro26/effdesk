@@ -56,6 +56,9 @@ jobs:
       - name: Test SCIM provisioning and deprovisioning protections
         run: node scripts/test-scim.js
 
+      - name: Test bounded Paddle webhook request bodies
+        run: node scripts/test-paddle-webhook.js
+
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 
