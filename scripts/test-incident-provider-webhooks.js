@@ -47,7 +47,7 @@ check('Rootly payloads normalize into major P1 incidents',(await rootEvent.json(
 const fire=await create('firehydrant','FireHydrant');
 const fireEvent=await call('firehydrant',fire.secret,{event_type:'incident.updated',data:{id:'fh-incident-1',name:'Cache pressure',state:'open',severity:'low'}});
 check('FireHydrant payloads normalize into P4 low-priority incidents',(await fireEvent.json()).created===true&&(await query("select priority from tickets where org_id=$1 and subject='Cache pressure'",[org.id])).rows[0]?.priority==='low');
-const bad=await call('pagerduty','not-a-valid-secret',{event:{id:'bad',event_type:'incident.triggered',data:{id:'bad-incident',title:'Should not import'}}});
+const bad=await call('pagerduty','not-a-valid-secret-that-is-long-enough',{event:{id:'bad',event_type:'incident.triggered',data:{id:'bad-incident',title:'Should not import'}}});
 check('Unknown webhook secrets are rejected without creating tickets',bad.status===401&&(await query("select count(*)::int n from tickets where org_id=$1 and subject='Should not import'",[org.id])).rows[0].n===0);
 const revoked=await revokeIncidentProviderConnection(pool,org.id,pd.connection.id);
 check('Revoking an incident endpoint disables its token immediately',revoked.ok&&(await call('pagerduty',pd.secret,{event:{id:'pd-event-4',event_type:'incident.triggered',data:{id:'pd-incident-2',title:'No longer accepted'}}})).status===401);
