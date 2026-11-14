@@ -509,6 +509,7 @@ html{-webkit-text-size-adjust:100%}
 .external-provider-tabs{display:flex;gap:5px;padding:3px;margin-bottom:10px;border-radius:9px;background:var(--d-bg)}
 .external-provider-tab{flex:1;min-width:0;padding:7px 5px;border:0;border-radius:7px;background:transparent;color:var(--d-muted);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .external-provider-tab.active{background:var(--d-panel);color:var(--d-ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.external-provider-tab{display:inline-flex;align-items:center;justify-content:center;gap:7px}.external-provider-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none}.external-provider-icon svg{display:block;width:16px;height:16px}.external-provider-name{line-height:1.2}
 .external-linked-issue{display:grid;gap:6px;padding:10px;margin:8px 0;border:1px solid var(--d-line);border-radius:9px;background:var(--d-bg);font-size:12px}
 .external-linked-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .external-linked-issue>a{font-weight:750;text-decoration:none;overflow-wrap:anywhere}
