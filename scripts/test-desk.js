@@ -14,6 +14,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
   if (b.action === 'mail-save') return b.inbox === 'taken' ? { ok: false, status: 409, json: async () => ({ error: 'That address is already taken. Choose another.' }) } : ok({ domain: 'in.effdesk.test', inbox: b.inbox, suggestedInbox: b.inbox, replyMode: b.replyMode, replyTo: b.replyTo, fromName: b.fromName, signature: b.signature });
   if (b.action === 'reply' && /^duplicate/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'That exact message was just sent. It was not sent a second time.', duplicate: true }) };
+  if (b.action === 'reply' && /^reject/.test(b.body)) return { ok: false, status: 409, json: async () => ({ error: 'This ticket is permanently closed.' }) };
   if (b.action === 'reply' && /^network/.test(b.body)) return Promise.reject(new Error('offline'));
   if (b.action === 'reply' && /^fail/.test(b.body)) return ok({ ok: true, email: 'failed' });
   if (b.action === 'reply' && /^limit/.test(b.body)) return ok({ ok: true, email: 'skipped', emailWhy: 'limit' });
@@ -112,7 +113,9 @@ $('[data-escalate]').click(); await tick();
 check('"Escalate to high" sends the priority change', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.priority === 'high'));
 const att = $('input[data-attach]'); Object.defineProperty(att, 'files', { value: [new w.File(['abc'], 'pic.png', { type: 'image/png' })], configurable: true }); att.dispatchEvent(new w.Event('change')); await tick(40);
 check('choosing a file uploads it to this ticket and shows it waiting to be sent', calls.some(c => /^\/api\/attachments\?org=o1&ticket=7&name=pic\.png&type=image%2Fpng/.test(c[0])) && !!$('[data-pending=up1]'));
-$('textarea').value = 'On our way'; $('[data-reply]').click(); await tick();
+$('textarea').value = 'reject and keep this draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
+check('a rejected reply keeps its draft and pending attachment available', $('textarea').value === 'reject and keep this draft' && !!$('[data-pending=up1]') && /permanently closed/.test($('.msg').textContent));
+$('textarea').value = 'On our way'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
 check('the reply sends the waiting files\' ids, and the list is cleared afterwards', calls.some(c => c[1] && c[1].action === 'reply' && c[1].attachmentIds && c[1].attachmentIds.join() === 'up1') && !$('[data-pending]'));
 check('Reply posts the text to the reply action', calls.some(c => c[1] && c[1].action === 'reply' && c[1].number === 7 && c[1].body === 'On our way' && !c[1].status));
 $('[data-mode=reply]').click(); await tick(); { const ss = $('select[aria-label="Choose the status to submit as"]'); ss.value = 'solved'; ss.dispatchEvent(new w.Event('change')); } await tick(); $('textarea').value = 'Done'; check('the submit button says which status it will set', /Submit as Solved/.test($('[data-reply]').textContent)); $('[data-reply]').click(); await tick();
