@@ -62,6 +62,9 @@ jobs:
       - name: Test bounded Paddle webhook request bodies
         run: node scripts/test-paddle-webhook.js
 
+      - name: Test ticket desk reply drafts and conversation UI
+        run: node scripts/test-desk.js
+
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 
