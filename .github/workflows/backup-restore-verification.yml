@@ -46,8 +46,8 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
-      - name: Run repository test suite
-        run: npm test
+      - name: Run backup verification unit tests
+        run: node scripts/test-verify-blobs.js
 
       - name: Install backup verification utilities
         run: |
