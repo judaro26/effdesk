@@ -10,6 +10,7 @@ const digest = v => crypto.createHash('sha256').update(String(v)).digest('hex');
 const json = (status,body) => new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const first = (...values) => values.find(v => v !== undefined && v !== null && String(v).trim() !== '');
 const responseError = (status,error) => json(status,{error});
+const eventTime=(...values)=>{const v=first(...values);if(v===undefined)return null;const n=typeof v==='number'?v:/^\d{10,13}$/.test(String(v))?Number(v):NaN;const d=Number.isFinite(n)?new Date(n<1e12?n*1000:n):new Date(v);return Number.isFinite(d.getTime())?d.toISOString():null;};
 const safeExternalUrl = value => { try { const u=new URL(String(value||'')); return u.protocol==='https:'&&!u.username&&!u.password?u.toString():''; } catch { return ''; } };
 
 export async function listIncidentProviderConnections(pool,orgId) {
@@ -73,7 +74,8 @@ function normalize(provider,body,raw) {
   const service=clean(first(attrs.service?.summary,attrs.service?.name,attrs.service_name,attrs.services?.[0]?.name),'160');
   const escalation=clean(first(attrs.escalation_policy?.name,attrs.escalation_policy?.summary,attrs.escalation?.name,attrs.escalation_level,attrs.escalation?.level),'160');
   const eventId=clean(first(event!==body?event.id:undefined,body.event_id,body.webhook_id,body.delivery_id,body.id&&String(body.id)!==id?body.id:undefined),200)||digest(raw);
-  return {id,title,eventId,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary,owner,service,escalation};
+  const providerEventAt=eventTime(event.created_at,event.createdAt,event.occurred_at,event.occurredAt,event.timestamp,event.time,body.created_at,body.createdAt,body.occurred_at,body.occurredAt,body.timestamp,body.time,data.created_at,data.updated_at);
+  return {id,title,eventId,providerEventAt,eventType,statusRaw,ticketStatus,severity,priority,impact,url,summary,owner,service,escalation};
 }
 
 async function applyEvent(pool,orgId,provider,normalized) {
@@ -81,7 +83,7 @@ async function applyEvent(pool,orgId,provider,normalized) {
     await c.query('select pg_advisory_xact_lock(hashtext($1))',[orgId+':'+provider+':'+normalized.id]);
     const event=await c.query('insert into incident_provider_events(org_id,provider,event_id,external_incident_id) values($1,$2,$3,$4) on conflict do nothing returning event_id',[orgId,provider,normalized.eventId,normalized.id]);
     if(!event.rowCount) return {duplicate:true};
-    let link=(await c.query('select l.ticket_id,t.number,t.status,t.priority,t.subject from incident_provider_links l join tickets t on t.org_id=l.org_id and t.id=l.ticket_id where l.org_id=$1 and l.provider=$2 and l.external_incident_id=$3 for update of l,t',[orgId,provider,normalized.id])).rows[0];
+    let link=(await c.query('select l.ticket_id,l.provider_event_at,t.number,t.status,t.priority,t.subject from incident_provider_links l join tickets t on t.org_id=l.org_id and t.id=l.ticket_id where l.org_id=$1 and l.provider=$2 and l.external_incident_id=$3 for update of l,t',[orgId,provider,normalized.id])).rows[0];
     let created=false;
     if(!link) {
       const email=provider+'@integrations.effdesk.com', requester=provider==='pagerduty'?'PagerDuty':provider==='rootly'?'Rootly':'FireHydrant';
@@ -94,14 +96,15 @@ async function applyEvent(pool,orgId,provider,normalized) {
       await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,ticket.id,requester,normalized.summary||('Incident opened in '+requester+'.')]);
       await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,ticket.id,requester,requester+' incident imported · '+normalized.severity]);
       link=ticket; created=true;
-      await c.query('insert into incident_provider_links(org_id,provider,external_incident_id,ticket_id,external_url,external_status,external_severity,external_owner,external_service,external_escalation,last_event_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())',[orgId,provider,normalized.id,ticket.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null]);
+      await c.query('insert into incident_provider_links(org_id,provider,external_incident_id,ticket_id,external_url,external_status,external_severity,external_owner,external_service,external_escalation,last_event_at,provider_event_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),$11)',[orgId,provider,normalized.id,ticket.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null,normalized.providerEventAt]);
     } else {
+      if ((link.provider_event_at && !normalized.providerEventAt) || (link.provider_event_at && normalized.providerEventAt && new Date(normalized.providerEventAt) < new Date(link.provider_event_at))) return {duplicate:false,stale:true};
       const changed=link.status!==normalized.ticketStatus||link.priority!==normalized.priority||link.subject!==normalized.title;
       await c.query(`update tickets set subject=$3,status=$4,priority=$5,solved_at=case when $4 in ('solved','closed') then coalesce(solved_at,now()) else null end,updated_at=now() where org_id=$1 and id=$2`,
         [orgId,link.ticket_id,normalized.title,normalized.ticketStatus,normalized.priority]);
       if(changed) await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,link.ticket_id,provider,provider+' update · '+normalized.statusRaw+' · '+normalized.severity]);
       if(changed && normalized.summary) await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,link.ticket_id,provider,normalized.summary]);
-      await c.query('update incident_provider_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,external_owner=coalesce($7,external_owner),external_service=coalesce($8,external_service),external_escalation=coalesce($9,external_escalation),last_event_at=now(),updated_at=now() where org_id=$1 and provider=$2 and external_incident_id=$3',[orgId,provider,normalized.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null]);
+      await c.query('update incident_provider_links set external_url=coalesce($4,external_url),external_status=$5,external_severity=$6,external_owner=coalesce($7,external_owner),external_service=coalesce($8,external_service),external_escalation=coalesce($9,external_escalation),last_event_at=now(),provider_event_at=coalesce($10,provider_event_at),updated_at=now() where org_id=$1 and provider=$2 and external_incident_id=$3',[orgId,provider,normalized.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null,normalized.providerEventAt]);
     }
     await c.query(`insert into incident_details(org_id,ticket_id,impact,urgency,severity,is_major)
       values($1,$2,$3,$3,$4,$5)
