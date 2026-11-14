@@ -1364,7 +1364,7 @@
           done(); pending = []; draft = ''; macroPatch = null; sendStatus = ''; conflict = null;
           threadScrollToBottom = t.number;
           var patch = {}; if (mp && mp.priority) patch.priority = mp.priority; if (mp && mp.add_tags && mp.add_tags.length) patch.tags = (t.tags || []).concat(mp.add_tags);
-          return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, true); });
+          return (Object.keys(patch).length ? api('update', { number: t.number, patch: patch }) : Promise.resolve()).then(after).then(function () { if (n) say(n, n.indexOf('Saved, but') === 0); });
         }).catch(function () { done(); say('Could not confirm that the message was sent. Check the conversation before sending it again.', true); });
       };
       var sendShortcut = function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(mode === 'note' ? 'note' : 'reply'); } }; body.addEventListener('keydown', sendShortcut); if (richEditor) richEditor.area.addEventListener('keydown', sendShortcut);
