@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -301,6 +301,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-get': r = { ok: true, available: await myAvailability(pool, orgId, actor.id) }; break;
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
+    case 'chat-claim': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await claimChat(pool, orgId, actor.id, b.number); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.claimed', String(b.number), { alreadyAssigned: r.alreadyAssigned === true }); break; }
     case 'chat-access-set': { if ((g = adminOnly() || need('live_chat'))) return g; r = await setChatAccess(pool, orgId, b.userId, b.enabled === true); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.access-changed', String(b.userId), { enabled: b.enabled === true }); break; }
     case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
@@ -466,6 +467,14 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'reply': {
+      const chatReplyTarget = await withOrg(pool, orgId, async c => (await c.query("select assignee_id from tickets where org_id = $1 and number = $2 and channel = 'chat'", [orgId, Number(b.number) || 0])).rows[0]);
+      if (chatReplyTarget) {
+        if (chatReplyTarget.assignee_id && chatReplyTarget.assignee_id !== actor.id) return json(409, { error: 'This live chat is assigned to another agent.' });
+        if (!chatReplyTarget.assignee_id) {
+          const claim = await claimChat(pool, orgId, actor.id, b.number);
+          if (!claim.ok) return json(claim.status || 409, { error: claim.error || 'Accept this live chat before replying.' });
+        }
+      }
       if (b.status !== undefined && !canCustom('status')) return json(403, { error: `Your role (${cr.name}) does not allow changing ticket status. Ask an admin.` });
       if (!b.force && b.seenMessageId) { const fresh = await newSince(pool, orgId, actor.id, b.number, b.seenMessageId); if (fresh.length) return json(409, { error: `${[...new Set(fresh.map(m => m.author_name || 'Someone'))].slice(0, 3).join(', ')} wrote on this ticket since you opened it.`, conflict: true, messages: fresh.length }); }
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
