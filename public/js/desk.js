@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0;
+    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -138,17 +138,17 @@
     function fetchChatInbox(showLoading) {
       if (!chatInboxOpen) return Promise.resolve();
       if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; }
-      var seq = chatInboxSeq;
+      var seq = chatInboxSeq, request = ++chatInboxRequest;
       if (showLoading) { chatInboxLoading = true; draw(); }
       return api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
-        if (seq !== chatInboxSeq || !chatInboxOpen) return;
+        if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false;
         if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
         else { chatInboxError = ''; chatInboxRows = r.body.tickets || []; }
         draw();
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 15000);
       }).catch(function () {
-        if (seq !== chatInboxSeq || !chatInboxOpen) return;
+        if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false; chatInboxError = 'The inbox could not refresh. Check your connection and try again.'; draw();
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 20000);
       });
@@ -174,7 +174,7 @@
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
-          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' }, el('i', {}), 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: loadChatInbox }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' }, el('i', {}), 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Unassigned'), el('strong', {}, String(waiting.length)), el('small', {}, 'Ready for an agent to pick up')),
