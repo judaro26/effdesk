@@ -40,6 +40,8 @@ check('a chat needs a valid email and a message', (await C('POST', '/api/chat/st
 r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?' });
 const n = r.body.number, tok = r.body.token;
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && (await A(olivia, 'get', { number: n })).body.ticket.channel === 'chat');
+const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
+check('the agent inbox can list only open live-chat tickets', inbox.status === 200 && inbox.body.tickets.length === 1 && inbox.body.tickets[0].number === n && inbox.body.tickets[0].channel === 'chat');
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
