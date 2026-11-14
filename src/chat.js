@@ -78,12 +78,13 @@ export async function chatOpen(pool, orgId, number) {
 // ---- the public endpoints: /api/chat/config, /start, /send, /poll (same origin as the chat page, so no cross-site access is given) ----
 const hits = new Map();
 const tooMany = (pool, key, now, max) => rateLimit(pool, 'chat:' + key, max, 60, now);
-const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+const json = (status, body, extraHeaders = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...extraHeaders } });
 export async function chatApi(req, { pool, mailer, env = process.env, now = Date.now() }) {
   const u = new URL(req.url), act = u.pathname.replace(/^\/api\/chat\/?/, '').split('/')[0], ip = clientIp(req, env);
   const slug = u.searchParams.get('org') || '';
   try {
-    if (act === 'config' && req.method === 'GET') return json(200, await publicConfig(pool, slug));
+    // This endpoint exposes only public widget presentation/availability settings. The embed script calls it from the customer's site, so it must be readable cross-origin.
+    if (act === 'config' && req.method === 'GET') return json(200, await publicConfig(pool, slug), { 'Access-Control-Allow-Origin': '*' });
     if (act === 'poll' && req.method === 'GET') { if (await tooMany(pool, 'p' + ip, now, 90)) return json(429, { error: 'Slow down.' }); const r = await pollChat(pool, env, slug, u.searchParams.get('n'), u.searchParams.get('t'), u.searchParams.get('after')); return json(r.ok ? 200 : r.status, r); }
     if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
     const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' });

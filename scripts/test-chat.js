@@ -30,6 +30,8 @@ await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket', fromName: 'Ac
 
 const C = async (method, path, body, ip = '1.1.1.1') => { const r = await chatApi(new Request('http://x' + path, { method, headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: body ? JSON.stringify(body) : undefined }), { pool, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
 check('chat is off until an admin turns it on', (await C('GET', '/api/chat/config?org=acme')).body.enabled === false && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: 'hi' })).status === 404);
+const crossOriginConfig = await chatApi(new Request('http://x/api/chat/config?org=acme', { headers: { origin: 'null' } }), { pool, mailer, env: ENV });
+check('public widget config allows cross-origin embeds, including opaque test origins', crossOriginConfig.status === 200 && crossOriginConfig.headers.get('access-control-allow-origin') === '*');
 check('the free plan cannot configure chat', (await tk(otto, 'chat-get', beta.id)).status === 402);
 check('only an admin can save the settings', (await A(ann, 'chat-save', { enabled: true })).status === 403);
 let r = await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
@@ -139,4 +141,6 @@ check('a closed chat says it ended and cannot take messages', closeUpdate.status
 let last; for (let i = 0; i < 8; i++) last = await C('POST', '/api/chat/start?org=acme', { email: 'spam@x.co', message: 'spam ' + i }, '9.9.9.9');
 check('starting chats too fast is slowed down', last.status === 429);
 check('a page on another site cannot post (origin check)', (await chatApi(new Request('http://x/api/chat/start?org=acme', { method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/json' }, body: '{}' }), { pool, mailer, env: ENV })).status === 403);
+const deniedPost = await chatApi(new Request('http://x/api/chat/start?org=acme', { method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/json' }, body: '{}' }), { pool, mailer, env: ENV });
+check('cross-origin write endpoints do not receive permissive CORS headers', deniedPost.status === 403 && !deniedPost.headers.has('access-control-allow-origin'));
 await pool.end(); done();
