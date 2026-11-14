@@ -32,7 +32,7 @@ jobs:
       - name: Install backup utilities
         run: |
           sudo apt-get update
-          sudo apt-get install --yes postgresql-client age
+          sudo apt-get install --yes postgresql-client age awscli
 
       - name: Create database and file-store snapshots
         env:
