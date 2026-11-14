@@ -1,5 +1,7 @@
 // scripts/test-guard.js: THE SECURITY HELPERS: forge-proof client address, cross-site refusal, shared rate limit, internal-address refusal for outbound calls, and the places that use them
 import crypto from 'crypto';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { check, done } from './lib/check.js';
 import { freshDb } from './lib/pg-temp.js';
 import { migrate } from './migrate.js';
@@ -22,6 +24,35 @@ let called = 0; const fx = async () => { called++; return new Response('x'); };
 let blocked = false; try { await guardedFetch('https://sneaky.example.org/hook', {}, { fetchFn: fx, lookup: fake({ 'sneaky.example.org': ['169.254.169.254'] }) }); } catch (e) { blocked = e.code === 'blocked'; }
 check('the outbound call is not even made to an internal destination', blocked && called === 0);
 await guardedFetch('https://ok.example.org/hook', { method: 'POST' }, { fetchFn: async (u, i) => { called++; check('and redirects are never followed', i.redirect === 'manual'); return new Response('x'); }, lookup: fake({ 'ok.example.org': ['8.8.8.8'] }) });
+// Add these imports to the existing imports in scripts/test-guard.js:
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+
+// Add these regression checks immediately after the existing successful guardedFetch check:
+let pinnedOptions;
+const pinned = await guardedFetch('https://hooks.example.org/notify', { method: 'POST', body: '{"ok":true}' }, {
+  lookup: fake({ 'hooks.example.org': ['8.8.8.8', '1.1.1.1'] }),
+  requestFn: (options, onResponse) => {
+    pinnedOptions = options;
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.end = () => { const res = new PassThrough(); res.statusCode = 204; res.statusMessage = 'No Content'; res.headers = {}; onResponse(res); res.end(); };
+    req.destroy = error => { if (error) req.emit('error', error); };
+    return req;
+  },
+});
+let pinnedAddress = '';
+await new Promise((resolve, reject) => pinnedOptions.lookup('hooks.example.org', {}, (err, address) => { if (err) reject(err); else { pinnedAddress = address; resolve(); } }));
+check('the socket is pinned to a validated DNS address while TLS and Host use the original hostname', pinnedOptions.hostname === 'hooks.example.org' && pinnedOptions.servername === 'hooks.example.org' && pinnedAddress === '8.8.8.8' && pinned.status === 204);
+let mixedDnsBlocked = false, mixedDnsCalled = false;
+try {
+  await guardedFetch('https://mixed.example.org/notify', {}, {
+    lookup: fake({ 'mixed.example.org': ['8.8.8.8', '127.0.0.1'] }),
+    requestFn: () => { mixedDnsCalled = true; throw new Error('must not connect'); },
+  });
+} catch (e) { mixedDnsBlocked = e.code === 'blocked'; }
+check('a mixed public/private DNS answer is blocked before opening a socket', mixedDnsBlocked && !mixedDnsCalled);
+
 check('webhook addresses with a bare IP, a port or an internal name are refused', ['https://127.0.0.1/x', 'https://2130706433/x', 'https://[::1]/x', 'https://hooks.acme.io:8443/x', 'https://db.internal/x', 'http://hooks.acme.io/x'].every(u => safeUrl(u) === null));
 
 const { url } = await freshDb('guard'); await migrate(url); const pool = makePool(url);
