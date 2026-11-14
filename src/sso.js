@@ -46,6 +46,21 @@ export async function saveSso(pool, env, orgId, input) {
 }
 export async function deleteSso(pool, orgId) { await pool.query('delete from sso_providers where org_id = $1', [orgId]); return { ok: true }; }
 
+// Keep SSO seat reservations serialized with SCIM provisioning for the same workspace.
+async function withWorkspaceProvisioningLock(pool, orgId, fn) {
+  const c = await pool.connect();
+  try {
+    await c.query('begin');
+    await c.query('select pg_advisory_xact_lock(hashtext($1))', [orgId]);
+    const result = await fn(c);
+    await c.query('commit');
+    return result;
+  } catch (e) {
+    try { await c.query('rollback'); } catch { }
+    throw e;
+  } finally { c.release(); }
+}
+
 const docs = new Map();
 export async function discover(issuer) {
   const hit = docs.get(issuer); if (hit && Date.now() - hit.at < 600000) return hit.doc;
@@ -101,20 +116,33 @@ export function ssoPlugin({ pool, env = process.env, baseURL }) {
         const email = clean(claims.email || (/@/.test(claims.preferred_username || '') ? claims.preferred_username : ''), 254).toLowerCase();
         if (!email || claims.email_verified !== true || typeof claims.sub !== 'string' || !claims.sub.trim()) throw back(ctx, 'Your identity provider did not give a verified email address and subject.');
         if (!p.domains.includes(domainOf(email))) throw back(ctx, 'That email address is not in this workspace\'s company domains.');
-        const ia = ctx.context.internalAdapter, found = await ia.findUserByEmail(email); let user = found && found.user;
-        const providerId = 'sso:' + p.org_id;
-        if (user) {
-          const member = (await pool.query('select 1 from member where "organizationId" = $1 and "userId" = $2', [p.org_id, user.id])).rowCount, linked = (found.accounts || []).some(a => a.providerId === providerId);
-          if (!member && !linked) throw back(ctx, 'You already have an EffDesk account. Ask an owner of the workspace to invite you first.');
-        } else {
-          const seat = await checkSeat(pool, p.org_id); if (!seat.ok) throw back(ctx, 'This workspace has no free seats. Ask an owner.');
-          user = await ia.createUser({ email, name: clean(claims.name || email.split('@')[0], 100), emailVerified: true });
-          await ia.linkAccount({ userId: user.id, providerId, accountId: String(claims.sub), accessToken: null });
-        }
-        if (!(await pool.query('select 1 from member where "organizationId" = $1 and "userId" = $2', [p.org_id, user.id])).rowCount) {
-          const seat = await checkSeat(pool, p.org_id); if (!seat.ok) throw back(ctx, 'This workspace has no free seats. Ask an owner.');
-          await pool.query('insert into member (id, "organizationId", "userId", role, "createdAt") values ($1,$2,$3,$4, now())', [crypto.randomUUID(), p.org_id, user.id, p.default_role]);
-        }
+        const ia = ctx.context.internalAdapter, providerId = 'sso:' + p.org_id;
+        // The same workspace lock used by SCIM prevents simultaneous SSO callbacks
+        // from both observing the last available seat and provisioning past the limit.
+        const user = await withWorkspaceProvisioningLock(pool, p.org_id, async c => {
+          const found = await ia.findUserByEmail(email);
+          let user = found && found.user;
+          if (user) {
+            const member = await c.query('select 1 from member where "organizationId" = $1 and "userId" = $2', [p.org_id, user.id]);
+            const linked = (found.accounts || []).some(a => a.providerId === providerId);
+            if (!member.rowCount && !linked) throw back(ctx, 'You already have an EffDesk account. Ask an owner of the workspace to invite you first.');
+          }
+          const membership = user
+            ? await c.query('select 1 from member where "organizationId" = $1 and "userId" = $2', [p.org_id, user.id])
+            : { rowCount: 0 };
+          if (!membership.rowCount) {
+            const seat = await checkSeat(c, p.org_id);
+            if (!seat.ok) throw back(ctx, 'This workspace has no free seats. Ask an owner.');
+          }
+          if (!user) {
+            user = await ia.createUser({ email, name: clean(claims.name || email.split('@')[0], 100), emailVerified: true });
+            await ia.linkAccount({ userId: user.id, providerId, accountId: String(claims.sub), accessToken: null });
+          }
+          if (!membership.rowCount) {
+            await c.query('insert into member (id, "organizationId", "userId", role, "createdAt") values ($1,$2,$3,$4, now())', [crypto.randomUUID(), p.org_id, user.id, p.default_role]);
+          }
+          return user;
+        });
         const session = await ia.createSession(user.id); if (!session) throw back(ctx, 'Sign-in failed. Try again.');
         await setSessionCookie(ctx, { session, user });
         ctx.setCookie('effdesk_sso', '', { path: '/api/auth/sso', maxAge: 0 });

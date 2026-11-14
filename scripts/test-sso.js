@@ -63,6 +63,19 @@ const sess = await auth.api.getSession({ headers: new Headers({ cookie: cookieOf
 check('a new person is created, made a member and signed in, and lands in the desk', /desk\.html/.test(r.to) && sess && sess.user.email === 'newbie@acme.test' && (await pool.query('select role from member where "userId" = $1 and "organizationId" = $2', [sess.user.id, acme.id])).rows[0].role === 'member');
 r = await signIn('newbie@acme.test');
 check('signing in again reuses the same person', (await pool.query("select count(*)::int n from \"user\" where email = 'newbie@acme.test'")).rows[0].n === 1 && /desk\.html/.test(r.to));
+
+ // Two simultaneous SSO callbacks must not both consume the workspace's final seat.
+const raceOwner = await signUp('race-owner@race.test', 'Race Owner');
+const raceOrg = await auth.api.createOrganization({ body: { name: 'Race Workspace', slug: 'race-workspace' }, headers: raceOwner.headers });
+await grantLicense(pool, { orgId: raceOrg.id, actorEmail: 'owner@effdesk.test', note: 'SSO concurrency test' });
+await pool.query('insert into org_overrides (org_id, seat_limit) values ($1, 2) on conflict (org_id) do update set seat_limit = 2', [raceOrg.id]);
+const raceSetup = await tk(raceOwner, 'sso-save', raceOrg.id, { issuer, clientId: 'cid', clientSecret: 'shh', domains: 'race.test', enabled: true, defaultRole: 'member' });
+check('a second workspace can configure its own SSO domain for the concurrency test', raceSetup.status === 200);
+const raceResults = await Promise.all([signIn('parallel-a@race.test'), signIn('parallel-b@race.test')]);
+const raceSuccesses = raceResults.filter(x => /desk\.html/.test(x.to)).length;
+const raceUsers = (await pool.query('select count(*)::int n from "user" where email = any($1::text[])', [['parallel-a@race.test', 'parallel-b@race.test']])).rows[0].n;
+const raceMembers = (await pool.query('select count(*)::int n from member where "organizationId" = $1', [raceOrg.id])).rows[0].n;
+check('concurrent SSO callbacks cannot provision beyond the final seat', raceSuccesses === 1 && raceUsers === 1 && raceMembers === 2);
 r = await signIn('stranger@other.test'); check('an address outside the domains has no SSO', /sso_error/.test(r.loc));
 r = await signIn('mallory@acme.test', { email: 'mallory@evil.test' }); check('an email outside the company domains is refused even if the provider vouches for it', /sso_error/.test(r.to) && !/desk/.test(r.to));
 r = await signIn('v@acme.test', { verified: false }); check('an unverified email is refused', /sso_error/.test(r.to));
