@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -301,6 +301,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-get': r = { ok: true, available: await myAvailability(pool, orgId, actor.id) }; break;
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
+    case 'chat-claim': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await claimChat(pool, orgId, actor.id, b.number); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.claimed', String(b.number), { alreadyAssigned: r.alreadyAssigned === true }); break; }
     case 'chat-access-set': { if ((g = adminOnly() || need('live_chat'))) return g; r = await setChatAccess(pool, orgId, b.userId, b.enabled === true); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.access-changed', String(b.userId), { enabled: b.enabled === true }); break; }
     case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
