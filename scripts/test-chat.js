@@ -7,7 +7,7 @@ import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
-import { chatApi } from '../src/chat.js';
+import { chatApi, runChatLifecycle } from '../src/chat.js';
 import { grantLicense } from '../src/license.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
@@ -40,7 +40,8 @@ check('a bad color falls back to the default', (await A(olivia, 'chat-save', { e
 await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
 check('the public widget shows message mode when no agent is enabled for chat', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('a chat needs a valid email and a message', (await C('POST', '/api/chat/start?org=acme', { email: 'nope', message: 'hi' })).status === 400 && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: '' })).status === 400);
-r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?' });
+const veraVisitorId = crypto.randomBytes(32).toString('hex');
+r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?', visitorId: veraVisitorId });
 const n = r.body.number, tok = r.body.token;
 const initialChannel = (await pool.query('select channel from tickets where number = $1', [n])).rows[0]?.channel;
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
@@ -84,8 +85,10 @@ check('revoking an agent returns their open chat tickets to the unassigned queue
 
 // An agent can claim waiting chats, but the server enforces the simultaneous-chat cap.
 await A(olivia, 'chat-availability-set', { available: true });
-const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1 });
+const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, autoResolveHours: 24, reuseDays: 7 });
 check('admins can configure a per-agent simultaneous-chat limit', capSave.status === 200 && capSave.body.settings.max_concurrent === 1);
+check('chat lifecycle defaults can be configured to 24-hour resolution and 7-day reuse', capSave.body.settings.auto_resolve_hours === 24 && capSave.body.settings.reuse_days === 7);
+check('chat lifecycle settings reject out-of-range values', (await A(olivia, 'chat-save', { autoResolveHours: 721 })).status === 400 && (await A(olivia, 'chat-save', { reuseDays: 31 })).status === 400);
 const firstClaim = await A(olivia, 'chat-claim', { number: secondChat.body.number });
 check('an available agent can atomically claim an unassigned chat', firstClaim.status === 200 && firstClaim.body.alreadyAssigned === false);
 const thirdChat = await C('POST', '/api/chat/start?org=acme', { name: 'Noah', email: 'noah@x.co', message: 'I need a hand.' }, '2.2.2.2');
@@ -146,6 +149,18 @@ const closeUpdate = await A(olivia, 'update', { number: n, patch: { status: 'clo
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 const closedSend = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'hello?' });
 check('a closed chat says it ended and cannot take messages', closeUpdate.status === 200 && p.body.ended === true && closedSend.status === 409);
+const returned = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'I have another question.', visitorId: veraVisitorId });
+const returnedTicket = await A(olivia, 'get', { number: returned.body.number });
+check('the same browser returning within 7 days reuses and reopens its recent conversation', returned.status === 200 && returned.body.reused === true && returned.body.number === n && returnedTicket.body.ticket.status === 'open' && returnedTicket.body.messages.some(m => m.body === 'I have another question.'));
+await pool.query("update tickets set updated_at=now()-interval '25 hours', chat_seen_at=now()-interval '2 minutes' where org_id=$1 and number=$2", [acme.id, n]);
+const lifecycleRun = await runChatLifecycle(pool, Date.now());
+const resolvedTicket = await A(olivia, 'get', { number: n });
+check('the hourly lifecycle job resolves chats idle for at least 24 hours', lifecycleRun.actions >= 1 && resolvedTicket.body.ticket.status === 'solved');
+const resumed = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Thanks, I am back.', visitorId: veraVisitorId });
+const resumedTicket = await A(olivia, 'get', { number: n });
+check('a visitor returning within the reuse window reopens the same auto-resolved ticket', resumed.status === 200 && resumed.body.reused === true && resumed.body.number === n && resumedTicket.body.ticket.status === 'open');
+const separateBrowser = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Separate browser conversation.', visitorId: crypto.randomBytes(32).toString('hex') });
+check('a different browser identifier creates a separate conversation even for the same email', separateBrowser.status === 200 && separateBrowser.body.number !== n);
 let last; for (let i = 0; i < 8; i++) last = await C('POST', '/api/chat/start?org=acme', { email: 'spam@x.co', message: 'spam ' + i }, '9.9.9.9');
 check('starting chats too fast is slowed down', last.status === 429);
 check('a page on another site cannot post (origin check)', (await chatApi(new Request('http://x/api/chat/start?org=acme', { method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/json' }, body: '{}' }), { pool, mailer, env: ENV })).status === 403);
