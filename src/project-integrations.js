@@ -370,7 +370,15 @@ export async function projectIntegrations(req,{pool,auth,env=process.env}) {
   }
 
   if(req.method==='GET' && path.endsWith('/connections')) {
-    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>({...x,webhookUrl:x.provider==='jira'?appBase(env)+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,x.webhook_url_token_enc)):appBase(env)+'/api/integrations/webhook/linear/'+encodeURIComponent(org)}));
+    const rows=(await withOrg(pool,org,c=>c.query('select provider,external_workspace_id,external_workspace_name,external_workspace_url,webhook_url_token_enc,created_at,updated_at from project_integrations where org_id=$1 order by provider',[org]))).rows.map(x=>{
+      const {webhook_url_token_enc,...connection}=x;
+      let webhookUrl=appBase(env)+'/api/integrations/webhook/linear/'+encodeURIComponent(org),webhookUrlUnavailable=false;
+      if(x.provider==='jira') {
+        try { webhookUrl=appBase(env)+'/api/integrations/webhook/jira/'+encodeURIComponent(org)+'?key='+encodeURIComponent(dec(env,webhook_url_token_enc)); }
+        catch { webhookUrl=null;webhookUrlUnavailable=true; }
+      }
+      return {...connection,webhookUrl,webhookUrlUnavailable};
+    });
     const links=(await withOrg(pool,org,c=>c.query('select provider,count(*)::int as links from project_issue_links where org_id=$1 group by provider',[org]))).rows;
     return json(200,{connections:rows,links});
   }
