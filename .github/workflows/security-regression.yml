@@ -62,6 +62,12 @@ jobs:
       - name: Test WhatsApp authorization and webhook protections
         run: node scripts/test-whatsapp.js
 
+      - name: Test incident provider webhook event ordering
+        run: node scripts/test-incident-provider-webhooks.js
+
+      - name: Test monitoring alert webhook event ordering
+        run: node scripts/test-monitoring-alert-webhooks.js
+
       - name: Test tenant isolation for attachments
         run: node scripts/test-attachments.js
 
