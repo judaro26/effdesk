@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false;
+    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -132,8 +132,22 @@
     }
     function goViews() { closePanes(); return refresh(); }
     function loadChatInbox() {
-      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; draw();
+      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
       return fetchChatInbox(true);
+    }
+    function playChatSound() {
+      var Audio = root.AudioContext || root.webkitAudioContext; if (!Audio) return;
+      try {
+        if (!chatAudioContext) chatAudioContext = new Audio(); var ctx = chatAudioContext;
+        var tone = function () { var oscillator = ctx.createOscillator(), gain = ctx.createGain(); oscillator.type = 'sine'; oscillator.frequency.value = 880; gain.gain.setValueAtTime(0.0001, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.025); gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22); oscillator.connect(gain); gain.connect(ctx.destination); oscillator.start(); oscillator.stop(ctx.currentTime + 0.24); };
+        if (ctx.state === 'suspended' && ctx.resume) ctx.resume().then(tone).catch(function () {}); else tone();
+      } catch (e) { /* Audio may be blocked by browser policy. */ }
+    }
+    function toggleChatSound() {
+      chatSoundEnabled = !chatSoundEnabled; try { root.localStorage.setItem('eff_chat_sound:' + orgId + ':' + meId, chatSoundEnabled ? '1' : '0'); } catch (e) { /* Keep the setting for this session if storage is unavailable. */ }
+      if (chatSoundEnabled) { var Audio = root.AudioContext || root.webkitAudioContext; if (Audio && !chatAudioContext) { try { chatAudioContext = new Audio(); } catch (e) {} } if (chatAudioContext && chatAudioContext.resume) chatAudioContext.resume().catch(function () {}); playChatSound(); }
+      else if (chatAudioContext && chatAudioContext.close) { chatAudioContext.close(); chatAudioContext = null; }
+      draw();
     }
     function fetchChatInbox(showLoading) {
       if (!chatInboxOpen) return Promise.resolve();
@@ -144,7 +158,15 @@
         if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false;
         if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
-        else { chatInboxError = ''; chatInboxRows = r.body.tickets || []; }
+        else {
+          chatInboxError = ''; var nextRows = r.body.tickets || [];
+          if (chatInboxPrimed && chatSoundEnabled) {
+            var previous = {}; chatInboxRows.forEach(function (t) { previous[String(t.number)] = t.updated_at || t.created_at || ''; });
+            var hasNewReply = nextRows.some(function (t) { var prior = previous[String(t.number)]; return t.chat_last_public_message_kind === 'requester' && (!prior || prior !== (t.updated_at || t.created_at || '')); });
+            if (hasNewReply) playChatSound();
+          }
+          chatInboxRows = nextRows; chatInboxPrimed = true;
+        }
         draw();
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 15000);
       }).catch(function () {
@@ -185,7 +207,7 @@
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
-          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('span', { class: 'chat-inbox-refresh-note' }, 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Unassigned'), el('strong', {}, String(waiting.length)), el('small', {}, 'Ready for an agent to pick up')),
