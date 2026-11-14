@@ -153,18 +153,28 @@
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 20000);
       });
     }
+    function claimChatTicket(number) {
+      api('chat-claim', { number: number }).then(function (r) {
+        if (!r.ok) { say(r.body.error || 'Could not accept this conversation.', true); return fetchChatInbox(false); }
+        say(r.body.alreadyAssigned ? 'This conversation is already assigned to you.' : 'You accepted the conversation.');
+        return fetchChatInbox(false).then(function () { open(number); });
+      });
+    }
     function chatInboxPane() {
       var rows = chatInboxRows || [], waiting = rows.filter(function (t) { return !t.assignee_id; }), assigned = rows.filter(function (t) { return !!t.assignee_id; });
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
-      var openCard = function (t) { return el('button', { type: 'button', class: 'chat-inbox-card', onclick: function () { open(t.number); } },
-        el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
-        el('span', { class: 'chat-inbox-card-main' },
-          el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), el('span', { class: 'chat-inbox-time' }, fmt(t.updated_at))),
-          el('span', { class: 'chat-inbox-subject' }, t.subject || 'Live chat'),
-          el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, t.assignee_id ? agentName(t.assignee_id) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status))))
-        , el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
+      var openCard = function (t) {
+        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', onclick: function () { open(t.number); } },
+          el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
+          el('span', { class: 'chat-inbox-card-copy' },
+            el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), el('span', { class: 'chat-inbox-time' }, fmt(t.updated_at))),
+            el('span', { class: 'chat-inbox-subject' }, t.subject || 'Live chat'),
+            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, t.assignee_id ? agentName(t.assignee_id) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
+          el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
+        var accept = !t.assignee_id ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
+        return el('div', { class: 'chat-inbox-card' }, main, accept);
       };
       var panel = function (title, subtitle, items, empty) {
         return el('section', { class: 'chat-inbox-panel' },
@@ -174,7 +184,7 @@
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
-          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' }, el('i', {}), 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+          el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('span', { class: 'chat-inbox-refresh-note' }, 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Unassigned'), el('strong', {}, String(waiting.length)), el('small', {}, 'Ready for an agent to pick up')),
@@ -2417,14 +2427,14 @@
         }
       } else if (manage === 'chat') {
         if (!has('live_chat')) body = lock('live_chat');
-        else if (!chatCfg) { api('chat-get').then(function (r) { chatCfg = r.ok ? r.body.settings : { enabled: false, title: 'Chat with us', greeting: '', color: '#1f73b7' }; draw(); }); body = el('p', { class: 'm' }, 'Loading…'); }
+        else if (!chatCfg) { api('chat-get').then(function (r) { chatCfg = r.ok ? r.body.settings : { enabled: false, title: 'Chat with us', greeting: '', color: '#1f73b7', max_concurrent: 3 }; draw(); }); body = el('p', { class: 'm' }, 'Loading…'); }
         else {
           var cc = chatCfg, on = el('input', { type: 'checkbox', 'aria-label': 'Show the chat button on your website' }); on.checked = !!cc.enabled;
-          var ct = el('input', { 'aria-label': 'Chat title', value: cc.title, maxlength: '60' }), cg = el('textarea', { 'aria-label': 'Chat greeting', maxlength: '300' }), ck = el('input', { 'aria-label': 'Chat color', type: 'color', value: cc.color }); cg.value = cc.greeting;
+          var ct = el('input', { 'aria-label': 'Chat title', value: cc.title, maxlength: '60' }), cg = el('textarea', { 'aria-label': 'Chat greeting', maxlength: '300' }), ck = el('input', { 'aria-label': 'Chat color', type: 'color', value: cc.color }), cm = el('input', { 'aria-label': 'Maximum simultaneous chats per agent', type: 'number', min: '1', max: '10', step: '1', value: String(cc.max_concurrent || 3) }); cg.value = cc.greeting;
           var snippet = '<script src="' + (root.location && root.location.origin || '') + '/widget.js" data-org="' + (orgs.filter(function (o) { return o.id === orgId; })[0] || {}).slug + '" async></script>';
           body = el('div', { class: 'page', style: 'padding:12px 0' }, el('p', { class: 'm' }, 'Visitors chat from a button on your website. Each chat is a ticket in this desk. While their chat window is open your replies appear there; after they leave, replies are emailed.'),
-            el('label', { class: 'chk' }, on, ' Show the chat button on your website'), prop('Title', ct), prop('Greeting', cg), prop('Button color', ck),
-            guardAdmin || el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-chat-save': '1', onclick: function () { api('chat-save', { enabled: on.checked, title: ct.value, greeting: cg.value, color: ck.value }).then(function (r) { if (!r.ok) return noteFrom(r); chatCfg = r.body.settings; say('Chat settings saved.'); draw(); }); } }, 'Save')),
+            el('label', { class: 'chk' }, on, ' Show the chat button on your website'), prop('Title', ct), prop('Greeting', cg), prop('Button color', ck), prop('Maximum simultaneous chats per agent (1–10)', cm), el('p', { class: 'm' }, 'When an agent reaches this limit, new conversations stay in the waiting queue.'),
+            guardAdmin || el('div', { class: 'bar' }, el('button', { type: 'button', class: 'btn', 'data-chat-save': '1', onclick: function () { api('chat-save', { enabled: on.checked, title: ct.value, greeting: cg.value, color: ck.value, maxConcurrent: Number(cm.value) }).then(function (r) { if (!r.ok) return noteFrom(r); chatCfg = r.body.settings; say('Chat settings saved.'); draw(); }); } }, 'Save')),
             prop('Add this line to your website, just before </body>', el('pre', { class: 'snip', 'data-chat-snippet': '1' }, snippet)));
         }
       } else if (manage === 'whatsapp') {
