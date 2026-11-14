@@ -231,7 +231,7 @@ export async function scim(req, { pool }) {
     const page = await withOrg(pool, orgId, async c => {
       const total = Number((await c.query('select count(*)::int as n from scim_users su join "user" u on u.id=su.user_id' + where, params)).rows[0]?.n || 0);
       const pageParams = [...params, count, start - 1];
-      const rows = (await c.query(selectUsers + where + ` order by su.created_at desc, su.id asc limit ${pageParams.length - 1} offset ${pageParams.length}`, pageParams)).rows;
+      const rows = (await c.query(selectUsers + where + ` order by su.created_at desc, su.id asc limit ${params.length + 1} offset ${params.length + 2}`, pageParams)).rows;
       return { total, rows };
     });
     const resources = page.rows.map(r => userResource(r, base));
