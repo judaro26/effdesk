@@ -48,6 +48,10 @@ check('an internal note is stored as a note and changes neither status nor first
 r = await call(olivia, { orgId: acme.id, action: 'reply', number: 1, body: 'Fixed!', status: 'solved' });
 t = (await call(olivia, { orgId: acme.id, action: 'get', number: 1 })).body;
 check('replying with a status solves the ticket and stamps solved_at; reopening clears it', r.body.status === 'solved' && t.ticket.solved_at && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'open' } })).body.ticket.solved_at === null);
+r = await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'closed' } });
+r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'Following up on the closed ticket.', status: 'pending' });
+t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
+check('a public reply can reopen a closed ticket as pending and the saved message appears in its thread', r.status === 200 && r.body.status === 'pending' && t.ticket.status === 'pending' && t.messages[t.messages.length - 1].body === 'Following up on the closed ticket.');
 check('an unknown status or priority is refused', (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'weird' } })).status === 400 && (await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { priority: 'x' } })).status === 400);
 const ids = async q => (await call(ann, { orgId: acme.id, action: 'list', ...q })).body.tickets.map(x => x.number).sort().join();
 r = await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'on_hold' } });
