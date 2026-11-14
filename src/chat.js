@@ -37,7 +37,7 @@ async function liveOrg(pool, slug) {
 export async function publicConfig(pool, slug) {
   const x = await liveOrg(pool, slug);
   if (!x) return { ok: true, enabled: false };
-  // Report online only when at least one explicitly enabled agent has room for another chat.
+  // Report accepting only when at least one explicitly enabled agent has room for another chat.
   // The visitor can still leave a message when everyone is away or at capacity.
   const online = await withOrg(pool, x.org.id, async c => {
     const r = await c.query(`select exists (
@@ -47,10 +47,10 @@ export async function publicConfig(pool, slug) {
         and m.role in ('owner','admin','member')
         and (select count(*) from tickets t where t.org_id = a.org_id and t.channel = 'chat'
           and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < $2
-    ) as online`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
-    return r.rows[0]?.online === true;
+    ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
+    return r.rows[0]?.accepting === true;
   });
-  return { ok: true, enabled: true, online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color };
+  return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color };
 }
 
 export async function startChat(pool, env, slug, input, mailer) {
