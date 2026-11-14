@@ -115,6 +115,9 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
   // in one tenant-scoped transaction. A rejected provision must not leave a
   // globally verified account behind, and concurrent requests must not race seats.
   return withOrg(pool, orgId, async c => {
+    // Serialize identity uniqueness checks as well as seat reservations. Without
+    // this lock, two IdP requests can both observe a free externalId and claim it.
+    await c.query('select pg_advisory_xact_lock(hashtext($1))', [orgId]);
     let user = (await c.query('select id,name,email from "user" where lower(email)=lower($1) limit 1', [email])).rows[0];
     if (existing && existing.user_id !== user?.id) return fail('Changing a SCIM user email to an address belonging to another EffDesk account is not supported.', 409, 'uniqueness');
     if (externalId) {
@@ -127,7 +130,6 @@ async function upsertScimUser(pool, orgId, input, existing = null) {
 
     let member = null;
     if (active) {
-      await c.query('select pg_advisory_xact_lock(hashtext($1))', [orgId]);
       member = (await c.query('select role from member where "organizationId"=$1 and "userId"=$2', [orgId, user?.id || existing?.user_id || ''])).rows[0] || null;
       if (!member) {
         const seat = await checkSeat(c, orgId);
