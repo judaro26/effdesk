@@ -36,6 +36,12 @@ const duplicateExternal = await call('POST', '/Users', { userName: 'duplicate-ag
 check('A duplicate externalId is rejected before creating an account or membership', duplicateExternal.status === 409 && (await pool.query('select 1 from "user" where email=$1', ['duplicate-agent@example.test'])).rowCount === 0 && (await pool.query('select 1 from member where "organizationId"=$1 and "userId"=(select id from "user" where email=$2)', [org.id, 'duplicate-agent@example.test'])).rowCount === 0);
 const second = await call('POST', '/Users', { userName: 'second-agent@example.test', externalId: 'idp-1002', displayName: 'Second Agent', active: true });
 check('A distinct externalId provisions a second agent', second.status === 201);
+const concurrentIdentity = await Promise.all([
+  call('POST', '/Users', { userName: 'parallel-a@example.test', externalId: 'idp-parallel', active: true }),
+  call('POST', '/Users', { userName: 'parallel-b@example.test', externalId: 'idp-parallel', active: true }),
+]);
+const concurrentStatuses = concurrentIdentity.map(r => r.status).sort((a,b) => a-b);
+check('Concurrent SCIM requests cannot claim the same externalId', concurrentStatuses[0] === 201 && concurrentStatuses[1] === 409 && (await pool.query('select count(*)::int as n from scim_users where org_id=$1 and external_id=$2', [org.id, 'idp-parallel'])).rows[0].n === 1 && (await pool.query('select count(*)::int as n from "user" where email in ($1,$2)', ['parallel-a@example.test','parallel-b@example.test'])).rows[0].n === 1);
 const firstPage = await (await call('GET', '/Users?startIndex=1&count=1')).json();
 const secondPage = await (await call('GET', '/Users?startIndex=2&count=1')).json();
 check('SCIM pagination returns bounded pages with a stable total count', firstPage.totalResults === 2 && firstPage.itemsPerPage === 1 && secondPage.totalResults === 2 && secondPage.itemsPerPage === 1 && firstPage.Resources[0].id !== secondPage.Resources[0].id);
