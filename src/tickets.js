@@ -143,7 +143,7 @@ export async function updateTicket(pool, orgId, actor, number, patch) {
   return withOrg(pool, orgId, async c => {
     const t = (await c.query('select id, status, closed_at, custom_status_id, priority, assignee_id, type, queue_id, client_id, tags, cc, requester_email, custom from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
-    const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(`${col} = ${args.length}`); };
+    const sets = [], args = [orgId, t.id], notes = [], set = (col, v) => { args.push(v); sets.push(col + ' = $' + args.length); };
     let label = null, cs = null;
     if (patch.customStatusId !== undefined && patch.customStatusId !== null && patch.customStatusId !== '') {
       cs = (await c.query('select id, name, category from ticket_statuses where org_id = $1 and id = $2', [orgId, Number(patch.customStatusId) || 0])).rows[0]; if (!cs) return fail('That status does not exist.');
