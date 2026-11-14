@@ -38,6 +38,7 @@ let r = await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greetin
 check('an admin turns chat on and the public config shows the look', r.status === 200 && (await C('GET', '/api/chat/config?org=acme')).body.title === 'Ask Acme' && (await C('GET', '/api/chat/config?org=acme')).body.color === '#aa0000');
 check('a bad color falls back to the default', (await A(olivia, 'chat-save', { enabled: true, color: 'red; x' })).body.settings.color === '#1f73b7');
 await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
+check('the public widget shows message mode when no agent is enabled for chat', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('a chat needs a valid email and a message', (await C('POST', '/api/chat/start?org=acme', { email: 'nope', message: 'hi' })).status === 400 && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: '' })).status === 400);
 r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?' });
 const n = r.body.number, tok = r.body.token;
@@ -54,7 +55,9 @@ check('a teammate cannot switch on live chat before access is granted', (await A
 check('only an admin can grant live chat access', (await A(ann, 'chat-access-set', { userId: ann.user.id, enabled: true })).status === 403);
 check('an admin can grant access to a full agent', (await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true })).body.access === true);
 check('an enabled agent can choose to accept live chats', (await A(ann, 'chat-availability-set', { available: true })).body.available === true);
+check('the public widget shows chat mode when an eligible agent has capacity', (await C('GET', '/api/chat/config?org=acme')).body.accepting === true);
 check('an agent can switch off live chat availability', (await A(ann, 'chat-availability-set', { available: false })).body.available === false);
+check('the public widget returns to message mode when all agents stop accepting chats', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('an offline agent cannot claim a waiting chat', (await A(ann, 'chat-claim', { number: n })).status === 409);
 check('an offline agent cannot reply to an unclaimed live chat', (await A(ann, 'reply', { number: n, body: 'I am offline.' })).status === 409);
 check('an agent with access can see the live chat inbox', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 200);
