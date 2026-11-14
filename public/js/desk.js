@@ -1299,7 +1299,7 @@
     function picker(t, disabled) {
       var input = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', 'data-attach': '1' }); if (disabled) input.disabled = true;
       input.addEventListener('change', function () { uploadFiles(t, input.files); });
-      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); if (t) saveTicketDraft(t.number); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
+      return el('span', { class: 'attach' }, el('label', { class: 'btn l sm' }, 'Attach', input), pending.map(function (p) { return el('span', { class: 'chip', 'data-pending': p.id }, p.filename + ' (' + size(p.size) + ') ', el('button', { type: 'button', disabled: disabled ? 'disabled' : undefined, 'aria-label': 'Remove ' + p.filename, onclick: function () { pending = pending.filter(function (x) { return x.id !== p.id; }); if (t) saveTicketDraft(t.number); api('delete-file', { id: p.id }); draw(); } }, '×')); }));
     }
     var BASE_STATUS = [['open', 'Open'], ['pending', 'Pending'], ['on_hold', 'On hold'], ['solved', 'Solved'], ['closed', 'Closed']];
     // built-in statuses plus the workspace's own (value 'c:<id>'); a ticket's current value is its custom status when it has one
@@ -1463,7 +1463,7 @@
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), conflict.duplicate ? el('p', {}, 'Your draft has been kept. Review the conversation to confirm whether it already appears before trying again.') : [' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')]) : null,
         el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : msgs),
-        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, resizeHandle, el('div', { class: 'cbar' }, picker(t, permanentlyClosed && mode === 'reply'), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
+        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, resizeHandle, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
       cards.push(el('h3', {}, 'About this company'));
@@ -1883,7 +1883,7 @@
       };
       var main1 = el('div', { class: 'col newmain' }, f.subject,
         el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeTab('agent'), modeTab('note'), modeTab('requester'), macroSel), bodyBox, el('div', { class: 'bar' }, picker(null))),
-        el('div', { class: 'bar newsubmit' }, el('button', { class: 'btn l', type: 'button', onclick: function () { pending.forEach(function (p) { api('delete-file', { id: p.id }); }); reset(); creating = false; draw(); } }, 'Cancel'), statusSel, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: submit }, 'Submit as ' + cap(newf.status))));
+        el('div', { class: 'bar newsubmit' }, el('button', { class: 'btn l', type: 'button', onclick: function () { if (!newf.lifecycleParentTicketNumber) pending.forEach(function (p) { api('delete-file', { id: p.id }); }); reset(); creating = false; draw(); } }, 'Cancel'), statusSel, el('button', { class: 'btn', type: 'button', 'data-create': '1', onclick: submit }, 'Submit as ' + cap(newf.status))));
       return el('div', { class: 'page newt' }, el('h2', {}, 'New ticket'), el('div', { class: 'newgrid' }, side, main1));
     }
 
