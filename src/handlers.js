@@ -597,6 +597,12 @@ export async function helpAssets(req, { pool, auth, store }) {
   const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   if (role !== 'owner' && role !== 'admin' && role !== 'member') return json(403, { error: 'You cannot edit articles.' });
+  // Uploading article assets consumes workspace storage and PDF processing resources,
+  // so enforce the same custom-role permission as article creation and editing.
+  if (role === 'member') {
+    const customRole = await customRoleOf(pool, orgId, s.user.id);
+    if (customRole && !customRole.permissions.includes('articles')) return json(403, { error: `Your role (${customRole.name}) does not allow this. Ask an admin.` });
+  }
   const kind = u.pathname.split('/').pop(), limit = kind === 'pdf' ? MAX_PDF : MAX_IMAGE;
   if (Number(req.headers.get('content-length') || 0) > limit + 1024) return json(413, { error: kind === 'pdf' ? 'PDF files can be up to 5 MB.' : 'Pictures can be up to 4 MB each.' });
   const slug = (await pool.query('select slug from "organization" where id = $1', [orgId])).rows[0]?.slug; if (!slug) return json(404, { error: 'No such organization.' });
