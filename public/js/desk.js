@@ -1319,6 +1319,8 @@
       var bodyBox = richEditor ? richEditor.el : editor(body, t);
       var resizeHandle = richEditor ? el('div', { class: 'editor-resize-handle', role: 'separator', tabindex: '0', 'aria-orientation': 'horizontal', 'aria-label': 'Resize reply editor', title: 'Drag to resize the reply editor' }) : null;
       if (richEditor) {
+        // Place the resize grip inside the editor wrapper, immediately above the writing area.
+        richEditor.el.insertBefore(resizeHandle, richEditor.area);
         richEditor.area.style.height = replyEditorHeight + 'px';
         richEditor.area.style.maxHeight = 'none';
         var resizeTo = function (height) {
@@ -1330,7 +1332,7 @@
           if (e.button !== 0) return;
           e.preventDefault();
           var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height;
-          var move = function (ev) { resizeTo(startHeight + ev.clientY - startY); };
+          var move = function (ev) { resizeTo(startHeight - (ev.clientY - startY)); };
           var up = function () {
             doc.removeEventListener('pointermove', move);
             doc.removeEventListener('pointerup', up);
@@ -1463,7 +1465,7 @@
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), conflict.duplicate ? el('p', {}, 'Your draft has been kept. Review the conversation to confirm whether it already appears before trying again.') : [' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')]) : null,
         el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : msgs),
-        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, resizeHandle, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
+        el('div', { class: 'compose' }, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
       cards.push(el('h3', {}, 'About this company'));
