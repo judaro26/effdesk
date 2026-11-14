@@ -95,7 +95,7 @@ async function applyEvent(pool,orgId,provider,normalized) {
         [orgId,n,normalized.title,normalized.ticketStatus,normalized.priority,requester,email,['external-incident',provider]])).rows[0];
       await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,\'note\',null,$3,$4)',[orgId,ticket.id,requester,normalized.summary||('Incident opened in '+requester+'.')]);
       await c.query('insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,\'incident\',$4)',[orgId,ticket.id,requester,requester+' incident imported · '+normalized.severity]);
-      link=ticket; created=true;
+      link={...ticket,ticket_id:ticket.id}; created=true;
       await c.query('insert into incident_provider_links(org_id,provider,external_incident_id,ticket_id,external_url,external_status,external_severity,external_owner,external_service,external_escalation,last_event_at,provider_event_at) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),$11)',[orgId,provider,normalized.id,ticket.id,normalized.url||null,normalized.statusRaw,normalized.severity,normalized.owner||null,normalized.service||null,normalized.escalation||null,normalized.providerEventAt]);
     } else {
       if ((link.provider_event_at && !normalized.providerEventAt) || (link.provider_event_at && normalized.providerEventAt && new Date(normalized.providerEventAt) < new Date(link.provider_event_at))) return {duplicate:false,stale:true};
