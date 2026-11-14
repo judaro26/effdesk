@@ -139,7 +139,7 @@ export async function addMessage(pool, orgId, actor, number, { body, htmlBody, i
   return withOrg(pool, orgId, async c => {
     const t = (await c.query('select id, status, closed_at, first_response_at from tickets where org_id = $1 and number = $2 for update', [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
-    if (t.status === 'closed') { const cfg=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{}; if(cfg.permanentCloseEnabled===true && t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(cfg.permanentCloseDays)||30)*86400000)return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.',409); }
+    if (!internal && t.status === 'closed') { const cfg=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{}; if(cfg.permanentCloseEnabled===true && t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(cfg.permanentCloseDays)||30)*86400000)return fail('This ticket is permanently closed. Create a linked follow-up ticket instead.',409); }
     const kind = internal ? 'note' : 'agent';
     const m = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, html_body) values ($1,$2,$3,$4,$5,$6,$7) returning id, kind, author_id, author_name, body, html_body, created_at', [orgId, t.id, kind, actor.id, clean(actor.name, 100) || actor.email, text, safeHtml])).rows[0];
     const next = status || (!internal && t.status === 'open' ? 'pending' : t.status);
