@@ -39,6 +39,8 @@ export function authOptions({ pool, mailer, secret = process.env.BETTER_AUTH_SEC
       twoFactor({ issuer: PRODUCT.name }),
       organization({
         allowUserToCreateOrganization: true, organizationLimit: 5, membershipLimit: 500, invitationExpiresIn: 60 * 60 * 24 * 7,
+        // Invitation links alone must not let an unverified account claim a workspace seat.
+        requireEmailVerificationOnInvitation: true,
         sendInvitationEmail: async data => { await mailer.invite(data.email, `${baseURL}/accept-invitation?id=${encodeURIComponent(data.id)}`, data.inviter.user.name || data.inviter.user.email, data.organization.name); },
         organizationHooks: {
           beforeCreateInvitation: async ({ invitation }) => { await seatGuard(invitation.organizationId); },
