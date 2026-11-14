@@ -90,6 +90,7 @@ check('the first load asks for active tickets in the right organization', calls.
 $('.row').click(); await tick();
 check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
 check('the reply editor can shrink to 80 pixels using its accessible resize handle', $('.editor-resize-handle').getAttribute('aria-valuemin') === '80' && $('.ed-area').style.height === '160px');
+check('the resize handle is positioned above the reply editor', !!($('.editor-resize-handle').compareDocumentPosition($('.ed-area')) & 4));
 for (let i = 0; i < 4; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 check('the editor resize limit is enforced at 80 pixels', $('.ed-area').style.height === '80px');
 {
