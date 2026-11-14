@@ -230,8 +230,9 @@ export async function scim(req, { pool }) {
     if (filter) { params.push(filter[1]); where += filter[0].toLowerCase().startsWith('username') ? ' and lower(u.email)=lower($2)' : ' and su.external_id=$2'; }
     const page = await withOrg(pool, orgId, async c => {
       const total = Number((await c.query('select count(*)::int as n from scim_users su join "user" u on u.id=su.user_id' + where, params)).rows[0]?.n || 0);
-      const pageParams = [...params, count, start - 1];
-      const rows = (await c.query(selectUsers + where + ` order by su.created_at desc, su.id asc limit ${params.length + 1} offset ${params.length + 2}`, pageParams)).rows;
+      // count and start are parsed, clamped safe integers, so embedding these
+      // numeric pagination values avoids shifting filter placeholders.
+      const rows = (await c.query(selectUsers + where + ` order by su.created_at desc, su.id asc limit ${count} offset ${start - 1}`, params)).rows;
       return { total, rows };
     });
     const resources = page.rows.map(r => userResource(r, base));
