@@ -19,7 +19,7 @@ export async function restoreSnapshot(store, directory) {
   let verifiedBytes = 0;
   for (const entry of manifest.entries) {
     if (typeof entry.key !== 'string' || !entry.key || keys.has(entry.key) ||
-        typeof entry.filename !== 'string' || !/^objects\\/\\d{10}\\.bin$/.test(entry.filename) ||
+        typeof entry.filename !== 'string' || !/^objects\/\d{10}\.bin$/.test(entry.filename) ||
         !Number.isSafeInteger(entry.size) || entry.size < 0 ||
         typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) {
       throw new Error('Backup manifest contains an invalid or duplicate object entry.');
@@ -28,7 +28,7 @@ export async function restoreSnapshot(store, directory) {
     const bytes = await readFile(resolve(root, entry.filename));
     const digest = createHash('sha256').update(bytes).digest('hex');
     if (bytes.length !== entry.size || digest !== entry.sha256) {
-      throw new Error(`Backup integrity check failed for ${entry.filename}.`);
+      throw new Error(\`Backup integrity check failed for \${entry.filename}.\`);
     }
     verifiedBytes += bytes.length;
   }
@@ -55,7 +55,7 @@ async function main() {
   if (!siteID || !token) throw new Error('NETLIFY_SITE_ID and NETLIFY_AUTH_TOKEN are required.');
   const store = getStore({ name: 'attachments', siteID, token, consistency: 'strong' });
   const result = await restoreSnapshot(store, directory);
-  console.log(`Netlify Blobs restore complete: ${result.restored} objects, ${result.totalBytes} bytes.`);
+  console.log(\`Netlify Blobs restore complete: \${result.restored} objects, \${result.totalBytes} bytes.\`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
