@@ -19,7 +19,7 @@ export async function verifySnapshot(directory) {
   let verifiedBytes = 0;
   for (const entry of manifest.entries) {
     if (typeof entry.key !== 'string' || !entry.key || keys.has(entry.key) ||
-        typeof entry.filename !== 'string' || !/^objects\\/\\d{10}\\.bin$/.test(entry.filename) ||
+        typeof entry.filename !== 'string' || !/^objects\/\d{10}\.bin$/.test(entry.filename) ||
         !Number.isSafeInteger(entry.size) || entry.size < 0 ||
         typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)) {
       throw new Error('Backup manifest contains an invalid or duplicate object entry.');
