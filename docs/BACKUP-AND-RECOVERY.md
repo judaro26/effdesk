@@ -56,19 +56,75 @@ After adding all secrets, open **Actions → Encrypted off-site backups → Run 
 
 Check the GitHub Actions run and confirm both objects exist in the private R2 bucket. A green workflow is not a restore test.
 
-## Restore procedure
+## Isolated restore drill
 
-Perform recovery into a new, isolated Neon database and a separate Netlify site/store first. Do not test restoration against production.
+**Never perform a test restore against the production Neon database or production Netlify site.** Use a new, empty Neon project/database and a separate Netlify site so the drill cannot overwrite live data.
 
-1. Download the encrypted archive and checksum from R2.
-2. Verify the encrypted file with `sha256sum -c backup.tar.gz.age.sha256`.
-3. Decrypt it on a trusted computer with the offline private key: `age --decrypt --identity effdesk-backup.agekey --output backup.tar.gz backup.tar.gz.age`.
-4. Extract the archive: `tar -xzf backup.tar.gz`.
-5. Restore the database dump into the isolated recovery database using `pg_restore --clean --if-exists --no-owner --no-acl --dbname="$RECOVERY_DATABASE_URL" effdesk-backup/database.dump`. Review the target connection string carefully before running this command.
-6. Set `NETLIFY_SITE_ID` and `NETLIFY_AUTH_TOKEN` to the recovery site's credentials, then restore file objects from the extracted snapshot with `BACKUP_RESTORE_CONFIRM=RESTORE_BLOBS node scripts/restore-blobs.js effdesk-backup/blobs`.
-7. Validate login, tenant separation, ticket history, attachment downloads, and help-center images in the isolated recovery environment before planning a production cutover.
+### 1. Prepare isolated recovery targets
 
-The blob restore verifies every object's SHA-256 before writing it. It restores the original keys and can overwrite matching keys in the selected store; choose the recovery site deliberately.
+1. In Neon, create a separate project for recovery testing. Create or use its empty database and copy its **direct** connection string. Keep it private; do not add it to the production GitHub secrets.
+2. In Netlify, create a separate site for the recovery test. It can be a temporary site; note its Site ID. Do not reuse the production Site ID.
+3. Keep the recovery database URL, recovery Site ID, and recovery Netlify token in local environment variables only. Never paste them into chat or commit them.
+
+### 2. Download and decrypt a backup
+
+In Cloudflare R2, open the private backup bucket and navigate to the timestamped `effdesk/YYYY/MM/DD/HHMMSS/` folder. Download both `backup.tar.gz.age` and `backup.tar.gz.age.sha256` to a trusted computer, alongside the offline `effdesk-backup.agekey` file.
+
+Install the local tools if needed (macOS with Homebrew):
+
+```sh
+brew install age libpq
+```
+
+Verify and decrypt the exact downloaded archive:
+
+```sh
+shasum -a 256 -c backup.tar.gz.age.sha256
+age --decrypt --identity effdesk-backup.agekey --output backup.tar.gz backup.tar.gz.age
+mkdir -p effdesk-restore-test
+tar -xzf backup.tar.gz -C effdesk-restore-test
+```
+
+The checksum file contains the encrypted archive's digest. If verification or decryption fails, stop; do not attempt a restore.
+
+### 3. Restore PostgreSQL into the isolated Neon project
+
+Install PostgreSQL client tools if `pg_restore` is not available. Set the recovery connection string in your local terminal (do not use the production URL):
+
+```sh
+export RECOVERY_DATABASE_URL='YOUR_ISOLATED_NEON_DIRECT_CONNECTION_STRING'
+pg_restore --clean --if-exists --no-owner --no-acl --exit-on-error \
+  --dbname="$RECOVERY_DATABASE_URL" \
+  effdesk-restore-test/effdesk-backup/database.dump
+```
+
+**Destructive-target warning:** `--clean --if-exists` drops objects in the target database before recreating them. Run this only against the new, isolated recovery database. Review the connection string before pressing Enter.
+
+### 4. Restore attachments into the isolated Netlify site
+
+From a local checkout of the EffDesk repository at the commit you are restoring, install dependencies with `npm ci`. Then set only the recovery site's credentials:
+
+```sh
+export NETLIFY_SITE_ID='YOUR_RECOVERY_NETLIFY_SITE_ID'
+export NETLIFY_AUTH_TOKEN='YOUR_NETLIFY_TOKEN'
+BACKUP_RESTORE_CONFIRM=RESTORE_BLOBS \
+  node scripts/restore-blobs.js \
+  effdesk-restore-test/effdesk-backup/blobs
+```
+
+The restore utility verifies the manifest, every object's size and SHA-256, and the aggregate byte count before writing any objects. It restores original keys into the selected `attachments` store. Do not point it at the production site.
+
+### 5. Validate recovery
+
+- Confirm PostgreSQL restore completed without errors and that expected application tables and migrations exist.
+- Deploy the matching EffDesk code to the temporary Netlify site and configure it to use the isolated Neon database and the recovery site's Blobs store.
+- Sign in using a test account available in the restored database.
+- Confirm at least one known ticket, its conversation/history, and its attachment can be opened.
+- Confirm help-center images and other stored files load.
+- Verify two different organizations remain separated; use test accounts from each tenant if available.
+- Record the backup timestamp, restore duration, any missing data, and any manual steps needed.
+
+A successful drill demonstrates that this specific backup can be restored. It does not by itself prove every tenant's rows were included; separately verify that the backup database role can read all tenant data under the platform's RLS configuration.
 
 ## Retention and ransomware protection
 
