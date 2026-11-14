@@ -467,6 +467,14 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'reply': {
+      const chatReplyTarget = await withOrg(pool, orgId, async c => (await c.query("select assignee_id from tickets where org_id = $1 and number = $2 and channel = 'chat'", [orgId, Number(b.number) || 0])).rows[0]);
+      if (chatReplyTarget) {
+        if (chatReplyTarget.assignee_id && chatReplyTarget.assignee_id !== actor.id) return json(409, { error: 'This live chat is assigned to another agent.' });
+        if (!chatReplyTarget.assignee_id) {
+          const claim = await claimChat(pool, orgId, actor.id, b.number);
+          if (!claim.ok) return json(claim.status || 409, { error: claim.error || 'Accept this live chat before replying.' });
+        }
+      }
       if (b.status !== undefined && !canCustom('status')) return json(403, { error: `Your role (${cr.name}) does not allow changing ticket status. Ask an admin.` });
       if (!b.force && b.seenMessageId) { const fresh = await newSince(pool, orgId, actor.id, b.number, b.seenMessageId); if (fresh.length) return json(409, { error: `${[...new Set(fresh.map(m => m.author_name || 'Someone'))].slice(0, 3).join(', ')} wrote on this ticket since you opened it.`, conflict: true, messages: fresh.length }); }
       if (await recentDuplicate(pool, orgId, actor.id, b.number, b.body)) return json(409, { error: 'That exact message was just sent. It was not sent a second time.', duplicate: true });
