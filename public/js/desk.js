@@ -1002,7 +1002,7 @@
     }
     function kbRows() { return [].slice.call(main.querySelectorAll('tbody tr[tabindex], .tlist tr[tabindex], [data-ticket-row]')); }
     function kbMove(d) { var rows = kbRows(); if (!rows.length) return; kbIndex = Math.max(0, Math.min(rows.length - 1, (kbIndex < 0 ? (d > 0 ? 0 : 0) : kbIndex + d))); rows.forEach(function (r, i) { r.classList.toggle('kb-on', i === kbIndex); }); var r = rows[kbIndex]; if (r && r.scrollIntoView) r.scrollIntoView({ block: 'nearest' }); }
-    function focusCompose(m) { if (!current) return; if (mode !== m) { var ta0 = main.querySelector('.compose textarea'); if (ta0) draft = ta0.value; mode = m; draw(); } var a = main.querySelector('.compose .ed-area') || main.querySelector('.compose textarea'); if (a && a.focus) a.focus(); }
+    function focusCompose(m) { if (!current) return; if (mode !== m) { var ta0 = main.querySelector('.compose textarea'); if (ta0) draft = ta0.value; saveTicketDraft(current.ticket.number); mode = m; saveTicketDraft(current.ticket.number); draw(); } var a = main.querySelector('.compose .ed-area') || main.querySelector('.compose textarea'); if (a && a.focus) a.focus(); }
     doc.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && helpOpen) { closeHelp(); return; }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
