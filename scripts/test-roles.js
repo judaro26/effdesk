@@ -6,14 +6,14 @@ import { migrate } from './migrate.js';
 import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
-import { tickets } from '../src/handlers.js';
+import { tickets, helpAssets } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
 const ENV2 = { ...ENV };
 const { url } = await freshDb('ai'); await migrate(url);
-const pool = makePool(url), outbox = [];
+const pool = makePool(url), outbox = [], stored = new Map(), store = { set: async (k,v) => stored.set(k, Buffer.from(v)), get: async k => stored.get(k) || null, delete: async k => stored.delete(k) };
 const mailer = makeMailer({ transport: async m => { outbox.push(m); } });
 const auth = makeAuth({ pool, mailer, secret: SECRET, baseURL: 'http://localhost:8888', requireVerified: false });
 const signUp = async (email, name) => { await auth.api.signUpEmail({ body: { email, password: PW, name } }); const r = await auth.api.signInEmail({ body: { email, password: PW }, returnHeaders: true }); const cookie = r.headers.getSetCookie().map(c => c.split(';')[0]).join('; '); return { cookie, user: r.response.user, headers: new Headers({ cookie }) }; };
@@ -42,6 +42,16 @@ check('a role cannot be given to an owner', (await A(olivia, 'role-assign', { us
 check('a role is given to a full agent', (await A(olivia, 'role-assign', { userId: bu, roleId })).body.role === 'Tier 1' && (await people()).people.find(p => p.userId === bu).customRoleId === roleId);
 check('init tells the desk what the agent may do', (await A(bo, 'init')).body.perms.join() === 'reply,labels' && (await A(bo, 'init')).body.customRole === 'Tier 1' && (await A(olivia, 'init')).body.perms === null);
 check('the agent can do what the role allows', (await A(bo, 'reply', { number: T, body: 'On it' })).status === 200 && (await A(bo, 'labels', { number: T, add: ['x'] })).status !== 403);
+const asset = async (who, path, bytes = Buffer.from('not a real file')) => {
+  const req = new Request('http://x' + path + '?org=' + encodeURIComponent(acme.id), { method: 'POST', headers: { cookie: who.cookie, 'content-type': 'application/octet-stream' }, body: bytes });
+  const res = await helpAssets(req, { pool, auth, store, env: ENV2 });
+  return { status: res.status, body: await res.json() };
+};
+check('a custom role without article permission cannot upload Help Center images or invoke PDF import', (await asset(bo, '/api/help-assets/image')).status === 403 && (await asset(bo, '/api/help-assets/pdf')).status === 403);
+await A(olivia, 'role-save', { id: roleId, name: 'Tier 1', permissions: ['reply', 'labels', 'articles'] });
+const png = Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]);
+check('an agent whose custom role grants article permission can upload a Help Center image', (await asset(bo, '/api/help-assets/image', png)).status === 200);
+await A(olivia, 'role-save', { id: roleId, name: 'Tier 1', permissions: ['reply', 'labels'] });
 check('a reply-only custom role cannot set ticket status while replying', (await A(bo, 'reply', { number: T, body: 'Trying to close this', status: 'solved' })).status === 403);
 check('a reply-only custom role cannot set ticket fields while creating a ticket', (await A(bo, 'create', { subject: 'Restricted create', body: 'Test', requesterEmail: 'restricted@example.com', patch: { status: 'solved' } })).status === 403 && !(await A(olivia, 'list')).body.tickets.some(x => x.subject === 'Restricted create'));
 check('the ticket status remains pending after refused status changes', (await A(olivia, 'get', { number: T })).body.ticket.status === 'pending');
