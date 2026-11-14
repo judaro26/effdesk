@@ -94,6 +94,8 @@ check('the ticket API identifies a ticket that has crossed the permanent-closure
 r=await call(ann,{orgId:acme.id,action:'reply',number:1,body:'This must not be sent.'});
 const afterLocked=(await pool.query("select count(*)::int as n from ticket_messages m join tickets t on t.id=m.ticket_id where t.org_id=$1 and t.number=1",[acme.id])).rows[0].n;
 check('a permanently closed ticket rejects public replies even when no new status is supplied',r.status===409 && /permanently closed/.test(r.body.error) && beforeLocked===afterLocked);
+r=await call(ann,{orgId:acme.id,action:'note',number:1,body:'Internal review note after closure.'});
+check('internal team notes remain available on permanently closed tickets',r.status===200 && r.body.ok===true);
 r=await call(ann,{orgId:acme.id,action:'create',subject:'Follow-up: Heater is broken',body:'Continuing the conversation.',requesterName:'Tina Tenant',requesterEmail:'tenant@example.com',firstKind:'agent',channel:'email',lifecycleParentTicketNumber:1});
 const linked=(await call(ann,{orgId:acme.id,action:'get',number:r.body.ticket.number})).body;
 check('an agent can create a follow-up ticket linked to a permanently closed parent',r.status===200 && linked.ticket.lifecycle_parent_ticket_id===t.ticket.id && linked.lifecycleLinks.parent.number===1);
