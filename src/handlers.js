@@ -142,8 +142,11 @@ export async function license(req, { pool, auth }) {
 // Paddle's events. The body is read as text first (the signature covers the exact bytes), then checked, then applied.
 export async function paddleWebhook(req, { pool, env = process.env, now = Date.now() }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
-  const raw = await req.text();
-  if (raw.length > 200000) return json(413, { error: 'Too large.' });
+  // Preserve the exact UTF-8 payload for signature verification, but enforce the
+  // existing size limit while streaming so oversized webhooks are never buffered whole.
+  const bytes = await readBytes(req, 200000);
+  if (!bytes) return json(413, { error: 'Too large.' });
+  const raw = bytes.toString('utf8');
   if (!verifySignature(raw, req.headers.get('paddle-signature'), env.PADDLE_WEBHOOK_SECRET, now)) return json(401, { error: 'Bad signature.' });
   let ev; try { ev = JSON.parse(raw); } catch { return json(400, { error: 'Not JSON.' }); }
   const r = await applyPaddleEvent(pool, ev, env);
