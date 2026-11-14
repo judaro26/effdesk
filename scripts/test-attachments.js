@@ -28,6 +28,16 @@ const upload = async (who, org, bytes, name = 'photo.jpg', extra = '') => { cons
 const download = async (who, org, id) => attachmentDownload(new Request(`http://x/api/attachments/${id}?org=${org}`, { headers: who ? { cookie: who.cookie } : {} }), deps);
 await call(olivia, { orgId: acme.id, action: 'create', subject: 'Leak', body: 'Water!', requesterEmail: 'tina@example.com' });
 await call(otto, { orgId: beta.id, action: 'create', subject: 'B', body: 'b', requesterEmail: 'b@x.co' });
+const betaRefs = await withOrg(pool, beta.id, async c => ({
+  ticket: (await c.query('select id from tickets where org_id=$1 and number=1',[beta.id])).rows[0].id,
+  message: (await c.query('select id from ticket_messages where org_id=$1 order by id limit 1',[beta.id])).rows[0].id
+}));
+let crossTicketAttachmentRejected = false;
+try { await withOrg(pool, acme.id, c => c.query("insert into attachments (id,org_id,ticket_id,filename,size) values ('cross-ticket',$1,$2,'x',1)",[acme.id,betaRefs.ticket])); } catch { crossTicketAttachmentRejected = true; }
+check('the database rejects an attachment in one tenant that references another tenant ticket',crossTicketAttachmentRejected);
+let crossMessageAttachmentRejected = false;
+try { await withOrg(pool, acme.id, c => c.query("insert into attachments (id,org_id,message_id,filename,size) values ('cross-message',$1,$2,'x',1)",[acme.id,betaRefs.message])); } catch { crossMessageAttachmentRejected = true; }
+check('the database rejects an attachment in one tenant that references another tenant message',crossMessageAttachmentRejected);
 
 const jpg = Buffer.from('fake-jpeg-bytes-1234567890');
 check('uploading needs a sign-in and membership', (await upload(null, acme.id, jpg)).status === 401 && (await upload(otto, acme.id, jpg)).status === 403);
