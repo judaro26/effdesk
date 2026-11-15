@@ -80,7 +80,7 @@ export async function agentInbox(pool, orgId, input = {}) {
   return withOrg(pool, orgId, async db => {
     const sql = [
       'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, last.kind as chat_last_public_message_kind',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, last.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
       ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) last on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
       '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply from chat_rows)',
