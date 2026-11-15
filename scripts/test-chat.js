@@ -128,6 +128,18 @@ await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 5 });
 check('an available agent can claim the original waiting chat before replying', (await A(olivia, 'chat-claim', { number: n })).status === 200);
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
+const pageOne = await A(olivia, 'chat-inbox', { limit: 2, offset: 0, view: 'all' });
+const pageTwo = await A(olivia, 'chat-inbox', { limit: 2, offset: 2, view: 'all' });
+check('the Live Chat inbox returns a bounded page and full filtered totals', pageOne.status === 200 && pageOne.body.tickets.length === 2 && pageOne.body.page.limit === 2 && pageOne.body.page.hasMore && pageOne.body.counts.total >= 3);
+check('Live Chat inbox pages do not repeat the same conversations', pageTwo.status === 200 && pageTwo.body.tickets.length === 2 && pageOne.body.tickets.every(a => pageTwo.body.tickets.every(b => a.number !== b.number)));
+const waitingPage = await A(olivia, 'chat-inbox', { limit: 10, view: 'waiting' });
+check('the waiting filter returns only unassigned chats with matching totals', waitingPage.status === 200 && waitingPage.body.tickets.every(t => !t.assignee_id) && waitingPage.body.counts.total === waitingPage.body.counts.waiting);
+const minePage = await A(olivia, 'chat-inbox', { limit: 10, view: 'mine' });
+check('the assigned-to-me filter is scoped to the signed-in agent', minePage.status === 200 && minePage.body.tickets.every(t => t.assignee_id === olivia.user.id));
+const searchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'vera@x.co' });
+check('the Live Chat inbox searches customer email server-side', searchPage.status === 200 && searchPage.body.tickets.some(t => t.requester_email === 'vera@x.co'));
+check('agents without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
+
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
