@@ -65,6 +65,9 @@ jobs:
       - name: Test tenant isolation for tickets
         run: node scripts/test-tickets.js
 
+      - name: Test durable background jobs and webhook retries
+        run: node scripts/test-background-jobs.js
+
       - name: Test Live Chat agent access and visitor messaging
         run: node scripts/test-chat.js
 
