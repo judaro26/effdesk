@@ -15,10 +15,10 @@
       root.localStorage.setItem(VISITOR_KEY, id); return id;
     } catch (e) { return ''; }
   }
-  var reported = {}, reportFailure = function (name, message, stack, page) {
+  var reported = {}, safeDiagnostic = function (value, max) { return String(value || '').replace(/https?:\\/\\/[^\\s)]+/g, '[url]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '[email]').replace(/\\b[a-f0-9]{32,}\\b/gi, '[redacted]').slice(0, max); }, reportFailure = function (name, message, stack, page) {
     var key = String(name || 'Error') + '|' + String(message || '').slice(0, 180);
     if (reported[key] || !message) return; reported[key] = 1;
-    try { root.fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: String(name || 'ChatError').slice(0, 80), message: String(message).slice(0, 300), stack: String(stack || '').slice(0, 1200), page: String(page || root.location.pathname).split('?')[0].slice(0, 200) }), keepalive: true }).catch(function () {}); } catch (e) {}
+    try { root.fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: String(name || 'ChatError').slice(0, 80), message: safeDiagnostic(message, 300), stack: safeDiagnostic(stack, 1200), page: String(page || root.location.pathname).split('?')[0].slice(0, 200) }), keepalive: true }).catch(function () {}); } catch (e) {}
   };
   root.addEventListener('error', function (e) { reportFailure(e.error && e.error.name || 'BrowserError', e.message || 'Chat widget script error', e.error && e.error.stack, root.location.pathname); });
   root.addEventListener('unhandledrejection', function (e) { var reason = e.reason || {}; reportFailure(reason.name || 'UnhandledRejection', reason.message || String(reason), reason.stack, root.location.pathname); });
@@ -44,7 +44,7 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.textContent = ''; go.disabled = true;
       api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: PAGE_URL }).then(function (r) {
-        go.disabled = false; if (!r.ok) { err.textContent = r.body.error || 'The chat could not start.'; return; }
+        go.disabled = false; if (!r.ok) { err.textContent = (r.body.error || 'The chat could not start.') + (r.requestId ? ' Reference: ' + r.requestId : ''); return; }
         state = { number: r.body.number, token: r.body.token, last: 0, ended: false }; seen = {}; store.set({ number: state.number, token: state.token }); conversation();
       }).catch(function () { go.disabled = false; err.textContent = 'No connection. Your message was not sent. Please try again.'; });
     });
