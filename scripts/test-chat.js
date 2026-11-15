@@ -131,6 +131,11 @@ check('an authorized admin can list open live-chat tickets', inbox.status === 20
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
+check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
+await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Olivia',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, olivia.user.id]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+check('chat polling reports active agent typing without exposing presence details', p.status === 200 && p.body.agentTyping === true && !('agentName' in p.body));
+await pool.query("update ticket_presence set typing=false,seen_at=now() where org_id=$1 and user_id=$2 and ticket_id=(select id from tickets where org_id=$1 and number=$3)", [acme.id, olivia.user.id, n]);
 outbox.length = 0;
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 await A(olivia, 'reply', { number: n, body: 'Yes, **we do**.' });
