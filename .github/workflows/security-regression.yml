@@ -71,6 +71,9 @@ jobs:
       - name: Test Live Chat widget page and visitor identity
         run: node scripts/test-chat-page.js
 
+      - name: Test scalable Live Chat and contact queue interfaces
+        run: node scripts/test-chat-inbox-ui.js && node scripts/test-contact-pagination.js
+
       - name: Test ticket desk draft recovery and reply safety
         run: node scripts/test-desk.js
 

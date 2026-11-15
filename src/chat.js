@@ -59,6 +59,57 @@ export async function publicConfig(pool, slug) {
   return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null };
 }
 
+// Server-paged Live Chat inbox. Counts describe the full filtered set, not only the visible page.
+export async function agentInbox(pool, orgId, input = {}) {
+  const limit = Math.min(Math.max(parseInt(input.limit, 10) || 50, 1), 100);
+  const offset = Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000);
+  const query = clean(input.q, 100);
+  const view = ['all', 'waiting', 'needs-reply', 'mine'].includes(input.view) ? input.view : 'all';
+  const args = [orgId], where = ["t.org_id = $1", "t.channel = 'chat'", "t.status in ('open','pending','on_hold')"];
+  if (view === 'waiting') where.push('t.assignee_id is null');
+  if (view === 'needs-reply') where.push("t.assignee_id is not null and latest_public.kind = 'requester'");
+  if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
+  if (query) {
+    const like = query.toLowerCase().replace(/[\\%_]/g, m => '\\' + m) + '%';
+    args.push(like); const i = args.length;
+    const number = /^#?\d{1,9}$/.test(query) ? Number(query.replace('#', '')) : null;
+    args.push(number);
+    where.push('(lower(t.subject) like $' + i + ' or lower(t.requester_name) like $' + i + ' or lower(t.requester_email) like $' + i + ' or lower(assignee.name) like $' + i + ' or lower(assignee.email) like $' + i + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
+  }
+  args.push(limit, offset);
+  return withOrg(pool, orgId, async db => {
+    const sql = [
+      'with chat_rows as (',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
+      ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
+      ' where ' + where.join(' and '),
+      '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply from chat_rows),',
+      'page as (select * from chat_rows order by case when assignee_id is null then 0 else 1 end, case when assignee_id is null then created_at end asc, case when assignee_id is not null and chat_last_public_message_kind=\'requester\' then 0 else 1 end, updated_at desc, id desc limit $' + (args.length - 1) + ' offset $' + args.length + ')',
+      'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count from totals left join page on true'
+    ].join(' ');
+    const result = await db.query(sql, args), first = result.rows[0] || {};
+    return {
+      ok: true,
+      tickets: result.rows.filter(row => row.id != null).map(({ total_count, waiting_count, assigned_count, needs_reply_count, ...ticket }) => ticket),
+      counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0) },
+      page: { limit, offset, hasMore: offset + limit < Number(first.total_count || 0) }
+    };
+  });
+}
+
+// Lightweight cursor-based notification feed so each agent does not repeatedly download the full chat queue.
+export async function agentReplyAlerts(pool, orgId, input = {}) {
+  return withOrg(pool, orgId, async db => {
+    if (input.initialize === true) {
+      const row = (await db.query("select coalesce(max(tm.id),0)::text as cursor from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.kind='requester' and t.channel='chat'", [orgId])).rows[0];
+      return { ok: true, cursor: String(row?.cursor || '0'), replies: [], hasMore: false };
+    }
+    const after = /^\d{1,18}$/.test(String(input.after || '')) ? String(input.after) : '0';
+    const rows = (await db.query("select tm.id,t.number,t.requester_name,t.requester_email,t.updated_at,t.status from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.id>$2::bigint and tm.kind='requester' and t.channel='chat' order by tm.id asc limit 101", [orgId, after])).rows;
+    const hasMore = rows.length > 100, page = rows.slice(0, 100), cursor = page.length ? String(page[page.length - 1].id) : after;
+    return { ok: true, cursor, hasMore, replies: page.filter(t => ['open','pending','on_hold'].includes(t.status)).map(t => ({ number: Number(t.number), requester_name: t.requester_name, requester_email: t.requester_email, updated_at: t.updated_at })) };
+  });
+}
 export async function startChat(pool, env, slug, input, mailer) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   const name = clean(input.name, 100), email = clean(input.email, 254).toLowerCase(), body = clean(input.message, 2000);

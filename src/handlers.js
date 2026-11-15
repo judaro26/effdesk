@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -197,7 +197,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
     .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
   let chatAccessAllowed = support;
-  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (b.action === 'list' || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
+  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts'].includes(b.action) || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
   if (!chatAccessAllowed && !support && targetNumbers.length) {
     const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
@@ -266,7 +266,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     }
     case 'ticket-prefs-save': r = await desk.saveTicketPreferences(pool, orgId, actor.id, b); break;
     case 'global-search': r = await globalSearch(pool, orgId, b.q, planHas(ent, 'clients')); break;
-    case 'contact-list': if ((g = need('clients'))) return g; r = await listContacts(pool, orgId, b.q); break;
+    case 'contact-list': if ((g = need('clients'))) return g; r = await listContacts(pool, orgId, b.q, b.limit, b.offset); break;
     case 'contact-get': if ((g = need('clients'))) return g; r = await contactForEmail(pool, orgId, b.email); break;
     case 'contact-save': if ((g = need('clients'))) return g; r = await saveContact(pool, orgId, b); break;
     case 'prefs-save': {
@@ -389,6 +389,18 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
     case 'report-csv': if ((g = need('reports'))) return g; r = await reportCsv(pool, orgId, b.days); break;
+    case 'chat-reply-alerts': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+      r = await agentReplyAlerts(pool, orgId, b);
+      break;
+    }
+    case 'chat-inbox': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+      r = await agentInbox(pool, orgId, { ...b, agentId: actor.id });
+      break;
+    }
     case 'list': {
       if (b.channel === 'chat') {
         if ((g = need('live_chat'))) return g;

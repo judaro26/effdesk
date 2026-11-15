@@ -9,6 +9,7 @@ import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
 import { chatApi, runChatLifecycle } from '../src/chat.js';
 import { grantLicense } from '../src/license.js';
+import { listContacts } from '../src/contacts.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -49,6 +50,8 @@ const initialChannel = (await pool.query('select channel from tickets where numb
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
 const preAccessInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an admin must explicitly enable their own chat access too', preAccessInbox.status === 403);
+check('a teammate without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
+check('agents without Live Chat access cannot read reply notifications', (await A(ann, 'chat-reply-alerts', { initialize: true })).status === 403);
 check('a teammate cannot list live chats until an admin grants access', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 403);
 check('unauthorized agents do not see chat tickets in All Tickets', !(await A(ann, 'list', { status: 'active', limit: 100 })).body.tickets.some(t => t.number === n));
 check('unauthorized agents cannot open a chat ticket directly', (await A(ann, 'get', { number: n })).status === 403);
@@ -128,6 +131,25 @@ await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 5 });
 check('an available agent can claim the original waiting chat before replying', (await A(olivia, 'chat-claim', { number: n })).status === 200);
 const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
+const pageOne = await A(olivia, 'chat-inbox', { limit: 2, offset: 0, view: 'all' });
+const pageTwo = await A(olivia, 'chat-inbox', { limit: 2, offset: 2, view: 'all' });
+check('the Live Chat inbox returns a bounded page and full filtered totals', pageOne.status === 200 && pageOne.body.tickets.length === 2 && pageOne.body.page.limit === 2 && pageOne.body.page.hasMore && pageOne.body.counts.total >= 3);
+check('Live Chat inbox pages do not repeat the same conversations', pageTwo.status === 200 && pageTwo.body.tickets.length === 2 && pageOne.body.tickets.every(a => pageTwo.body.tickets.every(b => a.number !== b.number)));
+const waitingPage = await A(olivia, 'chat-inbox', { limit: 10, view: 'waiting' });
+check('the waiting filter returns only unassigned chats with matching totals', waitingPage.status === 200 && waitingPage.body.tickets.every(t => !t.assignee_id) && waitingPage.body.counts.total === waitingPage.body.counts.waiting);
+const minePage = await A(olivia, 'chat-inbox', { limit: 10, view: 'mine' });
+check('the assigned-to-me filter is scoped to the signed-in agent', minePage.status === 200 && minePage.body.tickets.every(t => t.assignee_id === olivia.user.id));
+const searchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'vera@x.co' });
+check('the Live Chat inbox searches customer email server-side', searchPage.status === 200 && searchPage.body.tickets.some(t => t.requester_email === 'vera@x.co'));
+const agentSearchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'olivia' });
+check('the Live Chat inbox can find conversations by assigned agent name', agentSearchPage.status === 200 && agentSearchPage.body.tickets.some(t => t.assignee_id === olivia.user.id));
+await pool.query("insert into contact_profiles (org_id,email,name,last_seen_at) select $1,'scale-'||g||'@example.test','Scale Contact '||g,now()-(g * interval '1 minute') from generate_series(1,6) g on conflict (org_id,email) do nothing", [acme.id]);
+const contactsPageOne = await listContacts(pool, acme.id, 'scale-', 2, 0);
+const contactsPageTwo = await listContacts(pool, acme.id, 'scale-', 2, 2);
+check('the contact directory returns bounded pages with the full search result count', contactsPageOne.total === 6 && contactsPageOne.contacts.length === 2 && contactsPageOne.page.hasMore);
+check('contact directory pagination returns subsequent contacts without duplicates', contactsPageTwo.contacts.length === 2 && contactsPageOne.contacts.every(a => contactsPageTwo.contacts.every(b => a.email !== b.email)));
+
+
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
@@ -139,6 +161,7 @@ await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typ
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('chat polling reports active agent typing without exposing presence details', p.status === 200 && p.body.agentTyping === true && !('agentName' in p.body));
 await pool.query("update ticket_presence set typing=false,seen_at=now() where org_id=$1 and user_id=$2 and ticket_id=(select id from tickets where org_id=$1 and number=$3)", [acme.id, olivia.user.id, n]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
 await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Olivia',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, olivia.user.id]);
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
@@ -153,7 +176,10 @@ check('the reply shows up in the chat, without internal notes', p.body.messages.
 await A(olivia, 'note', { number: n, body: 'secret note' });
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('internal notes never reach the visitor', !p.body.messages.some(m => /secret/.test(m.body)) && p.body.messages.length === 2);
+const replyCursor = await A(olivia, 'chat-reply-alerts', { initialize: true });
 r = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'Great, thanks' });
+const replyFeed = await A(olivia, 'chat-reply-alerts', { after: replyCursor.body.cursor });
+check('agent reply notifications return only new customer chat messages after the cursor', replyCursor.status === 200 && replyFeed.status === 200 && replyFeed.body.replies.some(x => x.number === n && x.requester_email === 'vera@x.co'));
 check('the visitor can reply', r.status === 200 && (await A(olivia, 'get', { number: n })).body.messages.some(m => m.kind === 'requester' && /thanks/.test(m.body)));
 const replyInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('the chat inbox flags a customer reply awaiting an agent response', replyInbox.status === 200 && replyInbox.body.tickets.some(t => t.number === n && t.chat_last_public_message_kind === 'requester'));

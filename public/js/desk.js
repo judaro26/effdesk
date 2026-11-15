@@ -21,8 +21,8 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null;
-    var chatReplySnapshot = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyAlertTimer = null;
+    var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
+    var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -30,7 +30,7 @@
     var ciOpen=false, ciRows=null, ciLoading=false, ciDetail=null, ciSelected=0, ciEditing=null, ciServices=[], ciVendors=[], ciContracts=[], ciLicenses=[], ciWarranty=[], ciLifecycleOpen=false, ciDiscoveryStatus=null, ciDiscoveryAgents=[], ciDiscoverySoftware=[], ciNewAgentToken='', ciNewAgentCommand='', ciNewAgentProvider='windows_agent', ciNewSnmpTargets='', ciLicenseReconciliation=[], ciOwnershipReport=null, ciCompliancePolicies=[], ciComplianceEvaluation=null;
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
-    var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
+    var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, contactOffset = 0, contactLimit = 50, contactTotal = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
     var locale = 'en', lastComposeInputAt = 0;
     function draftStorageKey(number) { return 'effdesk_draft:' + orgId + ':' + meId + ':' + Number(number); }
     function newReplyRequestId() { try { var bytes = new Uint8Array(16); root.crypto.getRandomValues(bytes); return Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); } catch (e) { return (Date.now().toString(16) + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)).slice(0, 32); } }
@@ -125,15 +125,15 @@
     }
     function loadContacts() {
       if(!has('clients'))return Promise.resolve();
-      return api('contact-list',{q:contactSearch}).then(function(r){if(!r.ok)return say(r.body.error||'Could not load contacts.',true);contactRows=r.body.contacts||[];if((manage==='contacts'&&!contactProfile)||manage==='clients')draw();});
+      return api('contact-list',{q:contactSearch,limit:contactLimit,offset:contactOffset}).then(function(r){if(!r.ok)return say(r.body.error||'Could not load contacts.',true);contactRows=r.body.contacts||[];contactTotal=Number(r.body.total||0);if((manage==='contacts'&&!contactProfile)||manage==='clients')draw();});
     }
     function openContact(email) {
-      contactProfile=null;contactRows=null;contactSearch='';contactView='contacts';home=false;current=null;creating=false;settings=null;articles=null;report=null;profile=false;manage='contacts';mDetail=true;draw();
+      contactProfile=null;contactRows=null;contactSearch='';contactOffset=0;contactView='contacts';home=false;current=null;creating=false;settings=null;articles=null;report=null;profile=false;manage='contacts';mDetail=true;draw();
       api('contact-get',{email:email}).then(function(r){if(!r.ok)return say(r.body.error||'Could not open contact.',true);contactProfile=r.body;draw();});
     }
     function goViews() { closePanes(); return refresh(); }
     function loadChatInbox() {
-      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
+      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
       return fetchChatInbox(true);
     }
     function playChatSound() {
@@ -150,23 +150,24 @@
       else if (chatAudioContext && chatAudioContext.close) { chatAudioContext.close(); chatAudioContext = null; }
       draw();
     }
-    function fetchChatInbox(showLoading) {
+    function fetchChatInbox(showLoading, resetPage) {
       if (!chatInboxOpen) return Promise.resolve();
       if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; }
+      if (resetPage) chatInboxOffset = 0;
       var seq = chatInboxSeq, request = ++chatInboxRequest;
       if (showLoading) { chatInboxLoading = true; draw(); }
-      return api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
+      return api('chat-inbox', { limit: chatInboxLimit, offset: chatInboxOffset, q: chatInboxQuery, view: chatInboxView }).then(function (r) {
         if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false;
         if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
         else {
-          chatInboxError = ''; var nextRows = r.body.tickets || [];
+          chatInboxError = ''; var nextRows = r.body.tickets || []; chatInboxTotal = Number(r.body.counts && r.body.counts.total || 0); chatInboxCounts = r.body.counts || chatInboxCounts;
           if (chatInboxPrimed && chatSoundEnabled) {
             var previous = {}; chatInboxRows.forEach(function (t) { previous[String(t.number)] = t.updated_at || t.created_at || ''; });
             var hasNewReply = nextRows.some(function (t) { var prior = previous[String(t.number)]; return t.chat_last_public_message_kind === 'requester' && (!prior || prior !== (t.updated_at || t.created_at || '')); });
             if (hasNewReply) playChatSound();
           }
-          chatInboxRows = nextRows; chatInboxPrimed = true; if (chatReplySnapshot) { chatReplySnapshot = Object.create(null); nextRows.forEach(function (t) { chatReplySnapshot[String(t.number)] = t.updated_at || t.created_at || ''; }); }
+          chatInboxRows = nextRows; chatInboxPrimed = true;
         }
         draw();
         chatInboxTimer = root.setTimeout(function () { fetchChatInbox(false); }, 15000);
@@ -187,37 +188,30 @@
       chatReplyAlertTimer = root.setTimeout(function () { if (alert.parentNode) alert.remove(); chatReplyAlertTimer = null; }, 10000);
     }
     function pollChatReplies() {
-      if (!chatAccess || chatInboxOpen || chatReplyMonitorBusy) return scheduleChatReplyMonitor();
+      if (!chatAccess || chatReplyMonitorBusy) return scheduleChatReplyMonitor();
       chatReplyMonitorBusy = true;
-      api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
+      api('chat-reply-alerts', { after: chatReplyCursor || '0' }).then(function (r) {
         if (!r.ok) return;
-        var rows = r.body.tickets || [], next = Object.create(null), newest = null;
-        rows.forEach(function (ticket) {
-          var key = String(ticket.number), stamp = ticket.updated_at || ticket.created_at || '';
-          next[key] = stamp;
-          if (chatReplySnapshot && ticket.chat_last_public_message_kind === 'requester' && chatReplySnapshot[key] !== stamp) {
-            if (!newest || new Date(stamp || 0) > new Date(newest.updated_at || newest.created_at || 0)) newest = ticket;
-          }
-        });
-        chatReplySnapshot = next;
-        if (newest && !chatInboxOpen) showChatReplyAlert(newest);
+        chatReplyCursor = String(r.body.cursor || chatReplyCursor || '0');
+        var replies = r.body.replies || [];
+        if (replies.length && !chatInboxOpen) showChatReplyAlert(replies[replies.length - 1]);
+        chatReplyMonitorDelay = r.body.hasMore ? 1000 : 30000;
       }).catch(function () {}).then(function () {
+        chatReplyMonitorBusy = false;
+        scheduleChatReplyMonitor(chatReplyMonitorDelay || 30000);
+      });
+    }
+    function scheduleChatReplyMonitor(delay) {
+      if (chatReplyMonitorTimer) root.clearTimeout(chatReplyMonitorTimer);
+      if (chatAccess) chatReplyMonitorTimer = root.setTimeout(pollChatReplies, delay || 30000);
+    }
+    function startChatReplyMonitor() {
+      if (!chatAccess || chatReplyMonitorTimer || chatReplyMonitorBusy || chatReplyCursor !== null) return;
+      chatReplyMonitorBusy = true;
+      api('chat-reply-alerts', { initialize: true }).then(function (r) { if (r.ok) chatReplyCursor = String(r.body.cursor || '0'); }).catch(function () {}).then(function () {
         chatReplyMonitorBusy = false;
         scheduleChatReplyMonitor();
       });
-    }
-    function scheduleChatReplyMonitor() {
-      if (chatReplyMonitorTimer) root.clearTimeout(chatReplyMonitorTimer);
-      if (chatAccess) chatReplyMonitorTimer = root.setTimeout(pollChatReplies, 30000);
-    }
-    function startChatReplyMonitor() {
-      if (!chatAccess || chatReplyMonitorTimer || chatReplySnapshot) return;
-      api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
-        if (r.ok) {
-          chatReplySnapshot = Object.create(null);
-          (r.body.tickets || []).forEach(function (ticket) { chatReplySnapshot[String(ticket.number)] = ticket.updated_at || ticket.created_at || ''; });
-        }
-      }).catch(function () {}).then(function () { scheduleChatReplyMonitor(); });
     }
     function claimChatTicket(number) {
       api('chat-claim', { number: number }).then(function (r) {
@@ -229,9 +223,9 @@
     function chatInboxPane() {
       var rows = (chatInboxRows || []).slice(), waiting = rows.filter(function (t) { return !t.assignee_id; }).sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), assigned = rows.filter(function (t) { return !!t.assignee_id; }).sort(function (a, b) { var aNeedsReply = a.chat_last_public_message_kind === 'requester' ? 1 : 0, bNeedsReply = b.chat_last_public_message_kind === 'requester' ? 1 : 0; return bNeedsReply - aNeedsReply || new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); }), needsReply = assigned.filter(function (t) { return t.chat_last_public_message_kind === 'requester'; });
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
-      var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
+      var agentName = function (id, ticket) { if (ticket && (ticket.assignee_name || ticket.assignee_email)) return ticket.assignee_name || ticket.assignee_email; var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
-      var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\\s*chat\\s*:\\s*/i, '').trim() || 'Live chat'; };
+      var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\s*chat\s*:\s*/i, '').trim() || 'Live chat'; };
       var openCard = function (t) {
         var isWaiting = !t.assignee_id, age = fmt(t.created_at || t.updated_at);
         var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
@@ -240,29 +234,41 @@
             el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), isWaiting ? el('span', { class: 'chat-inbox-new-label', title: 'New unassigned conversation' }, 'NEW') : null, isWaiting ? el('span', { class: 'chat-inbox-waiting-age', title: 'Waiting since ' + age }, 'Waiting ' + age) : null, !isWaiting ? el('span', { class: 'chat-inbox-time' }, fmt(t.updated_at)) : null),
             el('span', { class: 'chat-inbox-subject' }, chatSubject(t)),
             t.assignee_id && t.chat_last_public_message_kind === 'requester' ? el('span', { class: 'chat-inbox-customer-replied', role: 'status' }, 'Customer replied · needs attention') : null,
-            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, isWaiting ? 'Waiting for an agent' : agentName(t.assignee_id)), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
+            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, isWaiting ? 'Waiting for an agent' : agentName(t.assignee_id, t)), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
           el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
         var accept = isWaiting ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, 'aria-label': 'Accept chat ' + t.number, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
         return el('div', { class: 'chat-inbox-card' + (isWaiting ? ' is-new' : '') }, main, accept);
       };
       var panel = function (title, subtitle, items, empty, modifier, emptyHint) {
         return el('section', { class: 'chat-inbox-panel' + (modifier ? ' ' + modifier : '') }, 
-          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count', 'aria-label': items.length + ' conversations' }, String(items.length))),
-          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, empty), el('span', {}, emptyHint || 'New conversations will appear here.')));
+          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count', 'aria-label': (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) + ' conversations' }, String(modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned))),
+          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) ? 'More conversations on another page' : empty), el('span', {}, (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) ? 'Use the page controls below to continue through this queue.' : (emptyHint || 'New conversations will appear here.'))));
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
           el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, chatInboxLoading ? 'Refreshing…' : 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
-          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
-          el('div', { class: 'chat-inbox-stat chat-inbox-stat-new' }, el('span', {}, 'New chats'), el('strong', {}, String(waiting.length)), el('small', {}, 'Waiting for an agent to pick up')), 
-          el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(needsReply.length)), el('small', {}, 'Customer replied; agent response pending')),
-          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(assigned.length)), el('small', {}, 'Owned by a teammate'))),
+          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(chatInboxCounts.total)), el('small', {}, 'Active, pending or on hold')),
+          el('div', { class: 'chat-inbox-stat chat-inbox-stat-new' }, el('span', {}, 'New chats'), el('strong', {}, String(chatInboxCounts.waiting)), el('small', {}, 'Waiting for an agent to pick up')), 
+          el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(chatInboxCounts.needsReply)), el('small', {}, 'Customer replied; agent response pending')),
+          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(chatInboxCounts.assigned)), el('small', {}, 'Owned by a teammate'))),
+        el('div', { class: 'chat-inbox-toolbar' },
+          el('input', { type: 'search', class: 'chat-inbox-search', 'aria-label': 'Search live chats by customer, email, subject or ticket number', placeholder: 'Search customers, email or ticket #…', value: chatInboxQuery, oninput: function (event) { chatInboxQuery = event.target.value; chatInboxOffset = 0; if (chatInboxSearchTimer) root.clearTimeout(chatInboxSearchTimer); chatInboxSearchTimer = root.setTimeout(function () { chatInboxSearchTimer = null; fetchChatInbox(true, true); }, 300); } }),
+          el('select', { class: 'chat-inbox-filter', 'aria-label': 'Filter live chat queue', value: chatInboxView, onchange: function (event) { chatInboxView = event.target.value; fetchChatInbox(true, true); } },
+            el('option', { value: 'all' }, 'All open chats'),
+            el('option', { value: 'waiting' }, 'Waiting for an agent'),
+            el('option', { value: 'needs-reply' }, 'Needs a reply'),
+            el('option', { value: 'mine' }, 'Assigned to me'))),
         chatInboxError ? el('div', { class: 'chat-inbox-error', role: 'alert' }, chatInboxError, el('button', { type: 'button', onclick: loadChatInbox }, 'Try again')) : null,
         chatInboxLoading && !chatInboxPrimed ? el('div', { class: 'chat-inbox-loading' }, el('span', { class: 'chat-inbox-spinner' }), 'Loading conversations…') : el('div', { class: 'chat-inbox-columns' }, 
           panel('New chats', 'First come, first served · oldest waiting first', waiting, 'You’re all caught up', 'chat-inbox-panel-new', 'New customer conversations will appear here. Accept one to take ownership and start helping.'),
           panel('In progress', 'Recently active first · customer replies rise to the top', assigned, 'Nothing in progress', 'chat-inbox-panel-assigned', 'Chats you accept will stay here, with customer replies highlighted.' )),
+        el('div', { class: 'chat-inbox-pagination' },
+          el('span', { class: 'chat-inbox-page-summary' }, chatInboxTotal ? 'Showing ' + (chatInboxOffset + 1) + '–' + Math.min(chatInboxOffset + rows.length, chatInboxTotal) + ' of ' + chatInboxTotal + ' conversations' : 'No conversations found'),
+          el('div', { class: 'chat-inbox-page-actions' },
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset <= 0 || chatInboxLoading, onclick: function () { chatInboxOffset = Math.max(0, chatInboxOffset - chatInboxLimit); fetchChatInbox(true); } }, 'Previous'),
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset + chatInboxLimit >= chatInboxTotal || chatInboxLoading, onclick: function () { chatInboxOffset += chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
         el('p', { class: 'chat-inbox-footnote' }, 'This inbox shows open live-chat tickets. Closed conversations remain available in All Tickets and the customer history.'));
     }
     function loadApprovals() {
@@ -2160,11 +2166,12 @@
         }else{
           if(contactRows===null){loadContacts();body=el('p',{class:'m'},'Loading contacts…');}
           else{
-            var cs=el('input',{type:'search',value:contactSearch,placeholder:'Search contacts by name, email or company…','aria-label':'Search contacts'});cs.addEventListener('input',function(){contactSearch=cs.value;root.clearTimeout(contactTimer);contactTimer=root.setTimeout(loadContacts,180);});
-            body=el('div',{class:'contact-workspace'},el('div',{class:'contact-page-head contact-page-head-compact'},el('span',{class:'contact-record-type'},contactRows.length+' CONTACTS')),
+            var cs=el('input',{type:'search',value:contactSearch,placeholder:'Search contacts by name, email or company…','aria-label':'Search contacts'});cs.addEventListener('input',function(){contactSearch=cs.value;contactOffset=0;root.clearTimeout(contactTimer);contactTimer=root.setTimeout(loadContacts,250);});
+            body=el('div',{class:'contact-workspace'},el('div',{class:'contact-page-head contact-page-head-compact'},el('span',{class:'contact-record-type'},contactTotal+' CONTACTS')),
               el('div',{class:'contact-toolbar'},cs,el('button',{type:'button',class:'btn',onclick:function(){var address=root.prompt('Contact email address');if(!address)return;openContact(address.trim());}},'+ Add contact')),
               el('div',{class:'contact-list'},contactRows.map(function(p){return el('button',{type:'button',class:'contact-list-row',onclick:function(){openContact(p.email);}},el('span',{class:'contact-avatar sm'},initial(p.name||p.email)),el('span',{class:'contact-list-copy'},el('strong',{},p.name||p.email),el('span',{class:'m'},p.email),el('small',{},(p.company_name||'No company')+' · '+p.tickets+' tickets')),el('span',{class:'contact-list-arrow'},'›'));})),
-              !contactRows.length?el('p',{class:'m'},'No contacts yet. Requester profiles will appear here automatically as tickets arrive.'):null);
+              !contactRows.length?el('p',{class:'m'},'No contacts yet. Requester profiles will appear here automatically as tickets arrive.'):null,
+              el('div',{class:'contact-pagination'},el('span',{class:'m'},contactTotal?'Showing '+(contactOffset+1)+'–'+Math.min(contactOffset+contactRows.length,contactTotal)+' of '+contactTotal+' contacts':'No contacts found'),el('button',{type:'button',class:'btn l sm',disabled:contactOffset<=0,onclick:function(){contactOffset=Math.max(0,contactOffset-contactLimit);loadContacts();}},'Previous'),el('button',{type:'button',class:'btn l sm',disabled:contactOffset+contactLimit>=contactTotal,onclick:function(){contactOffset+=contactLimit;loadContacts();}},'Next')));
           }
         }
       } else if (manage === 'environments') {
