@@ -37,6 +37,7 @@
     var b = el('div', { class: 'b ' + m.from, 'data-id': String(m.id) });
     if (m.from === 'agent') b.appendChild(el('div', { class: 'who', text: m.name || 'Support team' }));
     if (root.EffFormat) root.EffFormat.toDom(doc, m.body, b); else b.appendChild(el('p', { text: m.body }));
+    if (m.at) { var d = new Date(m.at); if (!isNaN(d.getTime())) { var today = new Date(), sameDay = d.toDateString() === today.toDateString(), stamp = sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); b.appendChild(el('time', { class: 'b-time', datetime: d.toISOString(), title: d.toLocaleString() }, stamp)); } }
     return b;
   }
   function conversation() {
