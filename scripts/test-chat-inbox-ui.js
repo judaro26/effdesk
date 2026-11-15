@@ -19,4 +19,11 @@ check('accept actions have accessible labels and a distinct disabled state', js.
 check('new-chat empty state explains that accepted chats move into progress', js.includes('You’re all caught up') && js.includes('Chats you accept will stay here'));
 check('waiting-age and accept styling remain responsive', css.includes('.chat-inbox-waiting-age') && css.includes('@media(max-width:560px)'));
 
+
+check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, offset: chatInboxOffset"));
+check('the chat inbox exposes customer search and queue filters', js.includes('Search customers, email or ticket') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
+check('the chat inbox offers previous and next page navigation', js.includes('chatInboxOffset += chatInboxLimit') && js.includes('chatInboxOffset - chatInboxLimit'));
+check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
+check('queue controls remain usable on mobile', css.includes('.chat-inbox-pagination') && css.includes('.chat-inbox-search') && css.includes('@media(max-width:560px)'));
+
 done();
