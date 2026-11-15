@@ -9,6 +9,8 @@ import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
 import { chatApi, runChatLifecycle } from '../src/chat.js';
 import { grantLicense } from '../src/license.js';
+import { saveHelpImage } from '../src/help.js';
+import { memoryStore } from '../src/storage.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -39,6 +41,14 @@ check('an admin turns chat on and the public config shows the look', r.status ==
 check('a bad color falls back to the default', (await A(olivia, 'chat-save', { enabled: true, color: 'red; x' })).body.settings.color === '#1f73b7');
 check('chat branding accepts a secure custom logo URL and returns it publicly', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'https://cdn.example.com/acme-logo.png' })).body.settings.logo_url === 'https://cdn.example.com/acme-logo.png' && (await C('GET', '/api/chat/config?org=acme')).body.logo === 'https://cdn.example.com/acme-logo.png');
 check('chat branding rejects insecure or malformed logo URLs', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'http://example.com/logo.png' })).status === 400 && (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'javascript:alert(1)' })).status === 400);
+const logoStore = memoryStore();
+const uploadedLogo = await saveHelpImage(pool, logoStore, acme.id, Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0,0,0,0]));
+const uploadedLogoSave = await A(olivia, 'chat-save', { enabled: true, logoAssetId: uploadedLogo.id });
+const uploadedLogoConfig = await C('GET', '/api/chat/config?org=acme');
+check('an organization can save a logo uploaded into its own help image storage', uploadedLogoSave.status === 200 && uploadedLogoSave.body.settings.logo_url === '/help/acme/img/' + uploadedLogo.id);
+check('public chat config turns an uploaded logo path into an absolute same-origin image URL', uploadedLogoConfig.status === 200 && uploadedLogoConfig.body.logo === 'http://x/help/acme/img/' + uploadedLogo.id);
+check('chat settings reject a logo asset that does not belong to the workspace', (await A(olivia, 'chat-save', { enabled: true, logoAssetId: crypto.randomUUID() })).status === 404);
+
 await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
 check('the public widget shows message mode when no agent is enabled for chat', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('a chat needs a valid email and a message', (await C('POST', '/api/chat/start?org=acme', { email: 'nope', message: 'hi' })).status === 400 && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: '' })).status === 400);
