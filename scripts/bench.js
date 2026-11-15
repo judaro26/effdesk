@@ -35,12 +35,15 @@ const time = async (name, fn, runs = RUNS) => {
   const samples = [];
   for (let i = 0; i < runs; i++) { const started = performance.now(); await fn(); samples.push(performance.now() - started); }
   samples.sort((a, b) => a - b);
-  rows.push({ screen: name, runs, p50_ms: Number(percentile(samples, .50).toFixed(1)), p95_ms: Number(percentile(samples, .95).toFixed(1)), min_ms: Number(samples[0].toFixed(1)), max_ms: Number(samples[samples.length - 1].toFixed(1)) });
+  rows.push({ screen: name, runs, p50_ms: Number(percentile(samples, .50).toFixed(1)), p95_ms: Number(percentile(samples, .95).toFixed(1)), p99_ms: Number(percentile(samples, .99).toFixed(1)), min_ms: Number(samples[0].toFixed(1)), max_ms: Number(samples[samples.length - 1].toFixed(1)) });
 };
 await time('ticket list (default)', () => listTickets(pool, 'big', me, {}));
 await time('ticket list (active)', () => listTickets(pool, 'big', me, { status: 'active' }));
 await time('ticket list (mine, open)', () => listTickets(pool, 'big', me, { assignee: 'me', status: 'open' }));
 await time('ticket list (page 200)', () => listTickets(pool, 'big', me, { offset: 10000 }));
+const cursorPageOne = await listTickets(pool, 'big', me, { limit: 50, cursor: '' });
+await time('ticket list (cursor page 1)', () => listTickets(pool, 'big', me, { limit: 50, cursor: '' }));
+if (cursorPageOne.nextCursor) await time('ticket list (cursor page 2)', () => listTickets(pool, 'big', me, { limit: 50, cursor: cursorPageOne.nextCursor }));
 await time('ticket list (by tag)', () => listTickets(pool, 'big', me, { tag: 't3' }));
 await time('ticket list (by queue none)', () => listTickets(pool, 'big', me, { queue: 'none' }));
 await time('search "refund"', () => listTickets(pool, 'big', me, { q: 'refund' }));
@@ -72,7 +75,7 @@ const concurrent = async (name, fn, workers = CONCURRENCY, rounds = 3) => {
     rows.push({ screen: name + ' burst ' + (round + 1), runs: workers,
       batch_ms: Number((performance.now() - started).toFixed(1)),
       p50_ms: Number(percentile(sorted, .50).toFixed(1)),
-      p95_ms: Number(percentile(sorted, .95).toFixed(1)),
+      p95_ms: Number(percentile(sorted, .95).toFixed(1)), p99_ms: Number(percentile(sorted, .99).toFixed(1)),
       min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)),
       pool_waiting_sampled_max: poolPressure.waiting, pool_total_sampled_max: poolPressure.total });
   }
@@ -101,7 +104,7 @@ for (let round = 0; round < 3; round++) {
     if (!sorted.length) continue;
     rows.push({ screen: 'mixed-tenant ' + tenant + ' burst ' + (round + 1), runs: sorted.length,
       batch_ms: Number((performance.now() - started).toFixed(1)),
-      p50_ms: Number(percentile(sorted, .50).toFixed(1)), p95_ms: Number(percentile(sorted, .95).toFixed(1)),
+      p50_ms: Number(percentile(sorted, .50).toFixed(1)), p95_ms: Number(percentile(sorted, .95).toFixed(1)), p99_ms: Number(percentile(sorted, .99).toFixed(1)),
       min_ms: Number(sorted[0].toFixed(1)), max_ms: Number(sorted[sorted.length - 1].toFixed(1)),
       pool_waiting_sampled_max: poolPressure.waiting, pool_total_sampled_max: poolPressure.total });
   }
