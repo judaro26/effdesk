@@ -39,6 +39,7 @@ const host = new JSDOM('<body></body>', { runScripts: 'outside-only', url: 'http
 const s = hw.document.createElement('script'); s.setAttribute('src', 'https://app.effdesk.com/widget.js'); s.setAttribute('data-org', 'acme'); hw.document.body.appendChild(s);
 Object.defineProperty(hw.document, 'currentScript', { value: s }); hw.eval(pub('widget.js')); await tick(30);
 const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('the widget adds the chat button on the host page', !!btn);
+btn.click();
 check('the widget passes the exact host page path to the frame but strips query strings and fragments', (hw.document.querySelector('iframe') || {}).src === 'https://app.effdesk.com/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' && !/session=secret|private/.test((hw.document.querySelector('iframe') || {}).src || ''));
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
