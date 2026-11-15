@@ -15,6 +15,8 @@ const $ = s => w.document.querySelector(s);
 check('the window shows the title and color from the settings and a start form', $('#title').textContent === 'Ask Acme' && w.document.documentElement.style.getPropertyValue('--c') === '#aa0000' && !!$('input[aria-label="Your email"]'));
 $('input[aria-label="Your name"]').value = 'Vera'; $('input[aria-label="Your email"]').value = 'v@x.co'; $('textarea').value = 'hello'; $('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30);
 check('starting sends the details and opens the conversation', calls.some(c => /start/.test(c[0]) && c[1].email === 'v@x.co' && c[1].message === 'hello') && !!$('#log'));
+const visitorIdSent = calls.find(c => /start/.test(c[0]))[1].visitorId;
+check('the widget creates and persists a random browser conversation identifier', /^[a-f0-9]{64}$/i.test(visitorIdSent || '') && w.localStorage.getItem('effdesk_chat_acme_visitor') === visitorIdSent);
 check('messages show on the right sides, formatted, and html in them stays text', $('.b.you') && $('.b.agent strong') && !w.document.querySelector('.b img') && /<img/.test($('.b.agent').textContent));
 check('the chat is remembered so a reload comes back to it', /tok/.test(w.localStorage.getItem('effdesk_chat_acme') || ''));
 const dom2 = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme' }); dom2.window.fetch = fake; dom2.window.localStorage.setItem('effdesk_chat_acme', JSON.stringify({ number: 5, token: 'tok' })); dom2.window.eval(pub('js/format.js')); dom2.window.eval(pub('js/chat.js')); await tick(30);
@@ -24,5 +26,6 @@ const s = hw.document.createElement('script'); s.setAttribute('src', 'https://ap
 Object.defineProperty(hw.document, 'currentScript', { value: s }); hw.eval(pub('widget.js')); await tick(30);
 const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('the widget adds the chat button on the host page', !!btn);
 btn.click(); check('clicking it opens the chat in a frame from EffDesk', /app\.effdesk\.com\/chat\.html\?org=acme/.test((hw.document.querySelector('iframe') || {}).src || ''));
-check('the frame page is allowed to be framed and the others are not', /frame-ancestors \*/.test(readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8')) && /frame-ancestors 'none'/.test(readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8')));
+const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
+check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 done(); process.exit(0);

@@ -1,10 +1,20 @@
 // public/js/chat.js: THE CHAT WINDOW (inside the widget's frame): a short form to start, then the conversation. It asks for new messages every few seconds while it is open.
 (function (root) {
   'use strict';
-  var doc = root.document, q = new URLSearchParams(root.location.search), org = q.get('org') || '', KEY = 'effdesk_chat_' + org;
+  var doc = root.document, q = new URLSearchParams(root.location.search), org = q.get('org') || '', KEY = 'effdesk_chat_' + org, VISITOR_KEY = KEY + '_visitor';
   var main = doc.getElementById('main'), state = { number: 0, token: '', last: 0, ended: false }, timer = null, seen = {};
   var el = function (tag, attrs) { var e = doc.createElement(tag); Object.keys(attrs || {}).forEach(function (k) { if (k === 'text') e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); }); [].slice.call(arguments, 2).forEach(function (c) { if (c) e.appendChild(typeof c === 'string' ? doc.createTextNode(c) : c); }); return e; };
   var store = { get: function () { try { return JSON.parse(root.localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }, set: function (v) { try { if (v) root.localStorage.setItem(KEY, JSON.stringify(v)); else root.localStorage.removeItem(KEY); } catch (e) { } } };
+  function visitorId() {
+    try {
+      var saved = root.localStorage.getItem(VISITOR_KEY);
+      if (/^[a-f0-9]{64}$/i.test(saved || '')) return saved;
+      if (!root.crypto || !root.crypto.getRandomValues) return '';
+      var bytes = new Uint8Array(32); root.crypto.getRandomValues(bytes);
+      var id = Array.prototype.map.call(bytes, function (v) { return v.toString(16).padStart(2, '0'); }).join('');
+      root.localStorage.setItem(VISITOR_KEY, id); return id;
+    } catch (e) { return ''; }
+  }
   var api = function (path, body) { return root.fetch('/api/chat/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, body)) } : undefined).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
   var clear = function (n) { while (n.firstChild) n.removeChild(n.firstChild); };
   var cfg = null;
@@ -15,7 +25,7 @@
     var form = el('form', {}, el('div', { class: 'note' + (cfg.accepting ? '' : ' offline'), text: cfg.accepting ? cfg.greeting : 'We’re not accepting live chats right now. Leave a message and we’ll reply here, or by email if you leave.' }), name, email, msg, err, go);
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.textContent = ''; go.disabled = true;
-      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value }).then(function (r) {
+      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId() }).then(function (r) {
         go.disabled = false; if (!r.ok) { err.textContent = r.body.error || 'The chat could not start.'; return; }
         state = { number: r.body.number, token: r.body.token, last: 0, ended: false }; seen = {}; store.set({ number: state.number, token: state.token }); conversation();
       }).catch(function () { go.disabled = false; err.textContent = 'No connection. Try again.'; });
