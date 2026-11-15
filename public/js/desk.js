@@ -225,7 +225,7 @@
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id, ticket) { if (ticket && (ticket.assignee_name || ticket.assignee_email)) return ticket.assignee_name || ticket.assignee_email; var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
-      var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\\s*chat\\s*:\\s*/i, '').trim() || 'Live chat'; };
+      var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\s*chat\s*:\s*/i, '').trim() || 'Live chat'; };
       var openCard = function (t) {
         var isWaiting = !t.assignee_id, age = fmt(t.created_at || t.updated_at);
         var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
