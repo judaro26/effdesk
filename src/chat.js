@@ -22,8 +22,19 @@ export async function getSettings(pool, orgId) {
 }
 export async function saveSettings(pool, orgId, input) {
   const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : DEFAULTS.color, title = clean(input.title, 60) || DEFAULTS.title, greeting = clean(input.greeting, 300) || DEFAULTS.greeting, enabled = input.enabled === true;
-  const logoUrl = clean(input.logoUrl, 500);
-  if (logoUrl) { try { const u = new URL(logoUrl); if (u.protocol !== 'https:' || u.username || u.password) return fail('Logo URL must be a secure HTTPS image address.'); } catch { return fail('Enter a valid HTTPS logo URL, or leave it blank to use the EffDesk logo.'); } }
+  let logoUrl = clean(input.logoUrl, 500);
+  const logoAssetId = clean(input.logoAssetId, 64);
+  if (logoAssetId) {
+    if (!/^[a-f0-9-]{36}$/i.test(logoAssetId)) return fail('Choose a valid uploaded logo.');
+    const asset = await withOrg(pool, orgId, async c => (await c.query("select id from help_images where org_id=$1 and id=$2 and content_type in ('image/png','image/jpeg','image/gif','image/webp')", [orgId, logoAssetId])).rows[0]);
+    if (!asset) return fail('That uploaded logo is no longer available. Upload it again.', 404);
+    const slug = (await pool.query('select slug from "organization" where id=$1', [orgId])).rows[0]?.slug;
+    if (!slug) return fail('Workspace not found.', 404);
+    logoUrl = '/help/' + slug + '/img/' + logoAssetId;
+  } else if (logoUrl) {
+    try { const u = new URL(logoUrl); if (u.protocol !== 'https:' || u.username || u.password) return fail('Logo URL must be a secure HTTPS image address.'); }
+    catch { return fail('Enter a valid HTTPS logo address, or upload a logo image.'); }
+  }
   const maxConcurrent = input.maxConcurrent === undefined ? DEFAULTS.max_concurrent : Number(input.maxConcurrent);
   const autoResolveHours = input.autoResolveHours === undefined ? DEFAULTS.auto_resolve_hours : Number(input.autoResolveHours);
   const reuseDays = input.reuseDays === undefined ? DEFAULTS.reuse_days : Number(input.reuseDays);
@@ -165,7 +176,7 @@ export async function chatApi(req, { pool, mailer, env = process.env, now = Date
   const slug = u.searchParams.get('org') || '';
   try {
     // This endpoint exposes only public widget presentation/availability settings. The embed script calls it from the customer's site, so it must be readable cross-origin.
-    if (act === 'config' && req.method === 'GET') return json(200, await publicConfig(pool, slug), { 'Access-Control-Allow-Origin': '*' });
+    if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
     if (act === 'poll' && req.method === 'GET') { if (await tooMany(pool, 'p' + ip, now, 90)) return json(429, { error: 'Slow down.' }); const r = await pollChat(pool, env, slug, u.searchParams.get('n'), u.searchParams.get('t'), u.searchParams.get('after')); return json(r.ok ? 200 : r.status, r); }
     if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
     const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' });
