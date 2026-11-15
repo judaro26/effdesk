@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { check, done } from './lib/check.js';
 const pub = f => readFileSync(new URL('../public/' + f, import.meta.url), 'utf8'), tick = (ms = 10) => new Promise(r => setTimeout(r, ms));
-const calls = []; let polled = [{ id: 1, from: 'you', name: '', body: 'hello', at: '' }, { id: 2, from: 'agent', name: 'Olivia', body: 'Hi **there** <img src=x onerror=alert(1)>', at: '' }];
+const calls = []; let polled = [{ id: 1, from: 'you', name: '', body: 'hello', at: new Date().toISOString() }, { id: 2, from: 'agent', name: 'Olivia', body: 'Hi **there** <img src=x onerror=alert(1)>', at: new Date().toISOString() }];
 const fake = async (url, o) => { calls.push([url, o && o.body ? JSON.parse(o.body) : null]); const j = b => ({ ok: true, status: 200, json: async () => b });
   if (/config/.test(url)) return j({ ok: true, enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000', logo: 'https://cdn.example.com/acme.png' });
   if (/start/.test(url)) return j({ ok: true, number: 5, token: 'tok' });
