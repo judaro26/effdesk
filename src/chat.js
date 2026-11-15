@@ -74,7 +74,7 @@ export async function agentInbox(pool, orgId, input = {}) {
     args.push(like); const i = args.length;
     const number = /^#?\d{1,9}$/.test(query) ? Number(query.replace('#', '')) : null;
     args.push(number);
-    where.push('(lower(t.subject) like  + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
+    where.push('(lower(t.subject) like $' + i + ' or lower(t.requester_name) like $' + i + ' or lower(t.requester_email) like $' + i + ' or lower(assignee.name) like $' + i + ' or lower(assignee.email) like $' + i + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
   }
   args.push(limit, offset);
   return withOrg(pool, orgId, async db => {
