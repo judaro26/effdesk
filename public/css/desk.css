@@ -1018,6 +1018,11 @@ html{-webkit-text-size-adjust:100%}
 .chat-settings-preview-logo{width:28px;height:28px;object-fit:contain;flex:none;border-radius:7px;background:rgba(255,255,255,.16);padding:3px}
 .chat-settings-preview-title{margin-right:auto}
 
+.deskapp .chat-logo-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:8px 0 14px}
+.deskapp .chat-logo-upload{position:relative;overflow:hidden}
+.deskapp .chat-logo-upload input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.deskapp .chat-logo-controls .m{flex-basis:100%}
+
 /* Scalable Live Chat inbox controls and bounded queue navigation. */
 .deskapp .chat-inbox-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 12px}
 .deskapp .chat-inbox-search{flex:1 1 260px;min-width:180px;max-width:520px}
