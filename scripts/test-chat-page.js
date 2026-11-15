@@ -16,6 +16,7 @@ check('the widget installs browser error and unhandled-rejection reporting hooks
 check('the window shows the title and color from the settings and a start form', $('#title').textContent === 'Ask Acme' && w.document.documentElement.style.getPropertyValue('--c') === '#aa0000' && $('#head img.chat-brand').getAttribute('src') === 'https://cdn.example.com/acme.png' && !!$('input[aria-label="Your email"]'));
 $('input[aria-label="Your name"]').value = 'Vera'; $('input[aria-label="Your email"]').value = 'v@x.co'; $('textarea').value = 'hello'; $('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30);
 check('starting sends the details and opens the conversation', calls.some(c => /start/.test(c[0]) && c[1].email === 'v@x.co' && c[1].message === 'hello') && !!$('#log'));
+check('successful visitor polling updates chat controls without a browser ReferenceError', !$('#chat-connection-warning') && !calls.some(c => /client-log/.test(c[0])));
 check('the chat window submits the exact parent page URL supplied by the embed', calls.some(c => /start/.test(c[0]) && c[1].pageUrl === 'https://shop.test/products/abc'));
 const visitorIdSent = calls.find(c => /start/.test(c[0]))[1].visitorId;
 check('the widget creates and persists a random browser conversation identifier', /^[a-f0-9]{64}$/i.test(visitorIdSent || '') && w.localStorage.getItem('effdesk_chat_acme_visitor') === visitorIdSent);

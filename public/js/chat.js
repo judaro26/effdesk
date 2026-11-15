@@ -100,7 +100,7 @@
         var log = doc.getElementById('log'); if (!log) return;
         r.body.messages.forEach(function (m) { state.last = Math.max(state.last, m.id); var b = bubble(m); if (b) log.appendChild(b); });
         if (r.body.messages.length) log.scrollTop = log.scrollHeight;
-        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), typing = doc.getElementById('chat-typing'), assignment = doc.getElementById('chat-assignment');
+        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), controls = main.querySelector('.chat-actions'), typing = doc.getElementById('chat-typing'), assignment = doc.getElementById('chat-assignment');
         if (assignment) { assignment.textContent = r.body.assigned ? 'You’re chatting with ' + (r.body.agentName || 'a support agent') : 'Waiting for an agent to join…'; assignment.classList.toggle('is-assigned', r.body.assigned === true); }
         if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
         if (ended) { if (r.body.ended) ended.removeAttribute('hidden'); else ended.setAttribute('hidden', 'hidden'); }
