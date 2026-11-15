@@ -169,6 +169,13 @@ check('contact directory pagination returns subsequent contacts without duplicat
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
+await pool.query("update tickets set chat_seen_at=now()-interval '20 seconds' where org_id=$1 and number=$2",[acme.id,n]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+const heartbeatRefreshed = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,n])).rows[0].seen;
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+const heartbeatUnchanged = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,n])).rows[0].seen;
+check('visitor presence refreshes after the heartbeat interval', new Date(heartbeatRefreshed).getTime() > Date.now() - 5000);
+check('repeated idle polls within 15 seconds do not rewrite visitor presence', heartbeatRefreshed === heartbeatUnchanged);
 check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
 await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Ann',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, ann.user.id]);
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
@@ -250,7 +257,11 @@ check('a visitor can request a transcript by proving possession of their chat to
 check('emailed chat transcripts include public messages but exclude internal notes', !!transcriptMail && transcriptMail.text.includes('Please send me a transcript.') && !transcriptMail.text.includes('private transcript note') && !transcriptMail.html.includes('private transcript note'));
 check('a visitor cannot request another conversation transcript with an invalid token', (await C('POST', '/api/chat/transcript?org=acme', { number: finalChat.body.number, token: 'wrong' }, '7.7.7.8')).status === 403);
 const visitorEnd = await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7');
+await pool.query("update tickets set chat_seen_at=now()-interval '2 minutes' where org_id=$1 and number=$2",[acme.id,finalChat.body.number]);
+const endedPollBefore = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,finalChat.body.number])).rows[0].seen;
 const finalPoll = await C('GET', '/api/chat/poll?org=acme&n=' + finalChat.body.number + '&t=' + encodeURIComponent(finalChat.body.token) + '&after=0');
+const endedPollAfter = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,finalChat.body.number])).rows[0].seen;
 check('a visitor can end their own chat and polling reports it as ended', visitorEnd.status === 200 && finalPoll.status === 200 && finalPoll.body.ended === true);
+check('polling an ended chat does not keep its visitor-presence heartbeat alive', endedPollBefore === endedPollAfter);
 check('ending a chat is idempotent and the visitor cannot send another message afterward', (await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7')).status === 200 && (await C('POST', '/api/chat/send?org=acme', { number: finalChat.body.number, token: finalChat.body.token, message: 'After ending' }, '7.7.7.7')).status === 409);
 await pool.end(); done();
