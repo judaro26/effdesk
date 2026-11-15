@@ -75,8 +75,9 @@ export async function agentInbox(pool, orgId, input = {}) {
   const limit = Math.min(Math.max(parseInt(input.limit, 10) || 50, 1), 100);
   const offset = Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000);
   const query = clean(input.q, 100);
-  const view = ['all', 'waiting', 'needs-reply', 'mine'].includes(input.view) ? input.view : 'all';
-  const args = [orgId], where = ["t.org_id = $1", "t.channel = 'chat'", "t.status in ('open','pending','on_hold')"];
+  const view = ['all', 'waiting', 'needs-reply', 'mine', 'history'].includes(input.view) ? input.view : 'all';
+  const history = view === 'history';
+  const args = [orgId], where = ["t.org_id = $1", "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "t.status in ('open','pending','on_hold')"];
   if (view === 'waiting') where.push('t.assignee_id is null');
   if (view === 'needs-reply') where.push("t.assignee_id is not null and latest_public.kind = 'requester'");
   if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
@@ -91,18 +92,18 @@ export async function agentInbox(pool, orgId, input = {}) {
   return withOrg(pool, orgId, async db => {
     const sql = [
       'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
       ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
-      '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply from chat_rows),',
-      'page as (select * from chat_rows order by case when assignee_id is null then 0 else 1 end, case when assignee_id is null then created_at end asc, case when assignee_id is not null and chat_last_public_message_kind=\'requester\' then 0 else 1 end, updated_at desc, id desc limit $' + (args.length - 1) + ' offset $' + args.length + ')',
-      'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count from totals left join page on true'
+      '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply, count(*) filter(where status=\'solved\')::int solved, count(*) filter(where status=\'closed\')::int closed from chat_rows),',
+      'page as (select * from chat_rows order by ' + (history ? "coalesce(closed_at, solved_at, updated_at) desc, updated_at desc, id desc" : "case when assignee_id is null then 0 else 1 end, case when assignee_id is null then created_at end asc, case when assignee_id is not null and chat_last_public_message_kind='requester' then 0 else 1 end, updated_at desc, id desc") + ' limit $' + (args.length - 1) + ' offset $' + args.length + ')',
+      'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count, totals.solved as solved_count, totals.closed as closed_count from totals left join page on true'
     ].join(' ');
     const result = await db.query(sql, args), first = result.rows[0] || {};
     return {
       ok: true,
-      tickets: result.rows.filter(row => row.id != null).map(({ total_count, waiting_count, assigned_count, needs_reply_count, ...ticket }) => ticket),
-      counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0) },
+      tickets: result.rows.filter(row => row.id != null).map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, ...ticket }) => ticket),
+      counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0), solved: Number(first.solved_count || 0), closed: Number(first.closed_count || 0) },
       page: { limit, offset, hasMore: offset + limit < Number(first.total_count || 0) }
     };
   });

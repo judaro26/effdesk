@@ -35,3 +35,10 @@ check('the dedicated chat view identifies the visitor and offers a direct return
 check('the dedicated agent chat layout is responsive and uses workspace theme tokens', css.includes('.chat-agent-conversation') && css.includes('var(--d-panel)') && css.includes('@media(max-width:760px)'));
 
 check('dedicated Live Chat mode hides ticket tabs and resets cleanly when leaving a conversation', js.includes('tabsEl.hidden = chatConversationOpen') && js.includes('chatInboxOpen = false; chatConversationOpen = false;'));
+
+check('the Live Chat inbox offers a separate Chat History filter', js.includes("el('option', { value: 'history' }, 'Chat History')") && js.includes('view: chatInboxView'));
+check('Chat History renders a dedicated full-width archive instead of the active queues', js.includes("panel('Chat History', 'Most recently resolved or closed first'") && css.includes('.chat-inbox-columns.is-history{grid-template-columns:minmax(0,1fr)}'));
+check('historical conversations open for review without offering an Accept action', js.includes('if (history || t.assignee_id) open(t.number)') && js.includes("!history && isWaiting ? el('button'"));
+check('history cards show their final resolved or closed status and activity date', js.includes("statusLabel = t.status === 'solved' ? 'Resolved' : t.status === 'closed' ? 'Closed'") && js.includes('activityAt = history ? (t.closed_at || t.solved_at || t.updated_at)'));
+check('Chat History uses its own resolved and closed summary counts', js.includes("'Past conversations'") && js.includes('chatInboxCounts.solved') && js.includes('chatInboxCounts.closed'));
+check('Chat History refreshes less frequently than the active inbox', js.includes("chatInboxView === 'history' ? 60000 : 15000"));

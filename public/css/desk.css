@@ -1065,3 +1065,11 @@ html{-webkit-text-size-adjust:100%}
  .deskapp .chat-agent-conversation .ch{padding:10px 12px}
  .deskapp .chat-agent-conversation .compose{padding:10px 12px}
 }
+
+/* Dedicated, full-width archive for resolved and closed Live Chat conversations. */
+.chat-inbox-columns.is-history{grid-template-columns:minmax(0,1fr)}
+.chat-inbox-panel-history{grid-column:1/-1}
+.chat-inbox-card.is-history{cursor:pointer}
+.chat-inbox-card.is-history .chat-inbox-card-main{min-height:48px}
+.chat-inbox-stats-history{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:560px){.chat-inbox-stats-history{grid-template-columns:1fr}}
