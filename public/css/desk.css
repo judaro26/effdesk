@@ -1043,7 +1043,7 @@ html{-webkit-text-size-adjust:100%}
 .deskapp .chat-agent-conversation{display:block;min-height:calc(100vh - 108px);padding:clamp(12px,2vw,24px);background:var(--d-bg)}
 .deskapp .chat-agent-conversation>.props,.deskapp .chat-agent-conversation>.info{display:none!important}
 .deskapp .chat-agent-conversation>.conv{width:min(100%,1120px);height:calc(100vh - 150px);min-height:480px;margin:0 auto;border:1px solid var(--d-line);border-radius:18px;background:var(--d-panel);box-shadow:0 12px 38px rgba(22,34,48,.08);overflow:hidden}
-.deskapp .chat-agent-conversation .chat-agent-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid var(--d-line);background:linear-gradient(120deg,var(--d-panel),var(--d-hover))}
+.deskapp .chat-agent-conversation .chat-agent-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid var(--d-line);background:linear-gradient(120deg,var(--d-panel),var(--d-hover))}
 .deskapp .chat-agent-conversation .chat-agent-head-copy{display:grid;gap:3px;min-width:0}
 .deskapp .chat-agent-conversation .chat-agent-eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--accent);text-transform:uppercase}
 .deskapp .chat-agent-conversation .chat-agent-head-copy strong{font-size:16px;color:var(--d-ink);overflow-wrap:anywhere}
@@ -1093,3 +1093,12 @@ html{-webkit-text-size-adjust:100%}
 .chat-agent-head-actions .chat-agent-end{border-color:color-mix(in srgb,#c94b35 30%,var(--d-line));color:#b43b2c}
 @media(max-width:980px){.chat-agent-workspace{grid-template-columns:210px minmax(0,1fr);gap:9px}.chat-agent-workspace .chat-agent-conversation>.conv{height:calc(100vh - 132px)}}
 @media(max-width:760px){.chat-agent-workspace{display:flex;flex-direction:column;padding:8px;gap:8px}.chat-workspace-sidebar{max-height:210px}.chat-workspace-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,1fr);overflow-x:auto;overflow-y:hidden}.chat-workspace-item{border-right:1px solid var(--d-line);border-bottom:0}.chat-workspace-all{margin:8px}.chat-agent-workspace .chat-agent-conversation{padding:0}.chat-agent-workspace .chat-agent-conversation>.conv{height:calc(100vh - 340px);min-height:390px}}
+
+/* Live Chat workload and safe handoff controls. */
+.chat-workspace-sidebar-head span{font-variant-numeric:tabular-nums}
+.chat-transfer-panel{display:flex;flex-basis:100%;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--d-line);background:var(--d-hover)}
+.chat-transfer-label{display:flex;align-items:center;gap:8px;color:var(--d-muted);font-size:11px;font-weight:700}
+.chat-transfer-panel select{min-width:210px;max-width:320px;padding:8px 10px;border:1px solid var(--d-line);border-radius:8px;background:var(--d-panel);color:var(--d-ink);font:inherit;font-size:12px}
+.chat-transfer-none{color:var(--d-muted);font-size:11px}
+.chat-transfer-trigger{white-space:nowrap}
+@media(max-width:760px){.chat-transfer-panel{align-items:stretch}.chat-transfer-label{width:100%;align-items:stretch;flex-direction:column}.chat-transfer-panel select{max-width:none;width:100%}}
