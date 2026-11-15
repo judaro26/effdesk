@@ -9,6 +9,7 @@ import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
 import { chatApi, runChatLifecycle } from '../src/chat.js';
 import { grantLicense } from '../src/license.js';
+import { listContacts } from '../src/contacts.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -139,6 +140,12 @@ check('the assigned-to-me filter is scoped to the signed-in agent', minePage.sta
 const searchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'vera@x.co' });
 check('the Live Chat inbox searches customer email server-side', searchPage.status === 200 && searchPage.body.tickets.some(t => t.requester_email === 'vera@x.co'));
 check('agents without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
+await pool.query("insert into contact_profiles (org_id,email,name,last_seen_at) select $1,'scale-'||g||'@example.test','Scale Contact '||g,now()-((g||' minutes')::interval) from generate_series(1,6) g on conflict (org_id,email) do nothing", [acme.id]);
+const contactsPageOne = await listContacts(pool, acme.id, 'scale-', 2, 0);
+const contactsPageTwo = await listContacts(pool, acme.id, 'scale-', 2, 2);
+check('the contact directory returns bounded pages with the full search result count', contactsPageOne.total === 6 && contactsPageOne.contacts.length === 2 && contactsPageOne.page.hasMore);
+check('contact directory pagination returns subsequent contacts without duplicates', contactsPageTwo.contacts.length === 2 && contactsPageOne.contacts.every(a => contactsPageTwo.contacts.every(b => a.email !== b.email)));
+
 
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
