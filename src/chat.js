@@ -67,7 +67,7 @@ export async function agentInbox(pool, orgId, input = {}) {
   const view = ['all', 'waiting', 'needs-reply', 'mine'].includes(input.view) ? input.view : 'all';
   const args = [orgId], where = ["t.org_id = $1", "t.channel = 'chat'", "t.status in ('open','pending','on_hold')"];
   if (view === 'waiting') where.push('t.assignee_id is null');
-  if (view === 'needs-reply') where.push("t.assignee_id is not null and last.kind = 'requester'");
+  if (view === 'needs-reply') where.push("t.assignee_id is not null and latest_public.kind = 'requester'");
   if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
   if (query) {
     const like = query.toLowerCase().replace(/[\\%_]/g, m => '\\' + m) + '%';
@@ -80,8 +80,8 @@ export async function agentInbox(pool, orgId, input = {}) {
   return withOrg(pool, orgId, async db => {
     const sql = [
       'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, last.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
-      ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) last on true left join "user" assignee on assignee.id=t.assignee_id',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
+      ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
       '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply from chat_rows),',
       'page as (select * from chat_rows order by case when assignee_id is null then 0 else 1 end, case when assignee_id is null then created_at end asc, case when assignee_id is not null and chat_last_public_message_kind=\'requester\' then 0 else 1 end, updated_at desc, id desc limit $' + (args.length - 1) + ' offset $' + args.length + ')',
