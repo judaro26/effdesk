@@ -63,8 +63,28 @@
     var assignment = el('div', { class: 'chat-assignment', id: 'chat-assignment', role: 'status', 'aria-live': 'polite' }, 'Waiting for an agent to join…'), log = el('div', { class: 'log', id: 'log', role: 'log' }), typing = el('div', { class: 'chat-typing', id: 'chat-typing', role: 'status', 'aria-live': 'polite', hidden: 'hidden' }, el('span', { class: 'chat-typing-dots', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')), el('span', { class: 'chat-typing-label' }, 'An agent is typing…')), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
     var ta = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a message', rows: '1', maxlength: '2000' }), send = el('button', { type: 'submit', text: 'Send' }), form = el('form', { class: 'send' }, ta, send);
     var again = el('button', { type: 'button', class: 'link', text: 'Start a new chat' }); again.addEventListener('click', function () { store.set(null); state = { number: 0, token: '', last: 0, ended: false }; start(); });
+    var controls = el('div', { class: 'chat-actions' });
+    var transcript = el('button', { type: 'button', class: 'chat-action-link', text: 'Email me a transcript' });
+    transcript.addEventListener('click', function () {
+      transcript.disabled = true;
+      api('transcript?org=' + encodeURIComponent(org), { number: state.number, token: state.token }).then(function (r) {
+        var notice = doc.getElementById('chat-action-notice');
+        if (notice) notice.textContent = r.ok ? 'Transcript sent to the email address you provided.' : (r.body.error || 'The transcript could not be sent.');
+      }).catch(function () { var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = 'Connection interrupted. Please try again.'; }).then(function () { transcript.disabled = false; });
+    });
+    var end = el('button', { type: 'button', class: 'chat-action-link danger', text: 'End chat' });
+    end.addEventListener('click', function () {
+      if (typeof root.confirm === 'function' && !root.confirm('End this conversation? You will no longer be able to send messages in it.')) return;
+      end.disabled = true;
+      api('end?org=' + encodeURIComponent(org), { number: state.number, token: state.token }).then(function (r) {
+        if (!r.ok) { end.disabled = false; var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = r.body.error || 'The chat could not be ended.'; return; }
+        state.ended = true; poll();
+      }).catch(function () { end.disabled = false; var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = 'Connection interrupted. Please try again.'; });
+    });
+    controls.appendChild(transcript); controls.appendChild(end);
+    var actionNotice = el('div', { class: 'note chat-action-notice', id: 'chat-action-notice', role: 'status', 'aria-live': 'polite' });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
-    main.appendChild(assignment); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
+    main.appendChild(assignment); main.appendChild(controls); main.appendChild(actionNotice); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
     var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
     form.addEventListener('submit', function (e) { e.preventDefault(); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
@@ -84,7 +104,7 @@
         if (assignment) { assignment.textContent = r.body.assigned ? 'You’re chatting with ' + (r.body.agentName || 'a support agent') : 'Waiting for an agent to join…'; assignment.classList.toggle('is-assigned', r.body.assigned === true); }
         if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
         if (ended) { if (r.body.ended) ended.removeAttribute('hidden'); else ended.setAttribute('hidden', 'hidden'); }
-        if (form) form.style.display = r.body.ended ? 'none' : '';
+        if (form) form.style.display = r.body.ended ? 'none' : ''; if (controls) controls.style.display = r.body.ended ? 'none' : ''; if (r.body.ended && ended) ended.firstChild.textContent = 'This chat has ended. ';
       }
       timer = root.setTimeout(poll, doc.hidden ? 15000 : 3000);
     }).catch(function (e) { reportFailure('ChatPollNetworkError', e && e.message || 'Unable to refresh chat', e && e.stack, '/api/chat/poll'); var log = doc.getElementById('log'); if (log && !doc.getElementById('chat-connection-warning')) log.appendChild(el('div', { class: 'note', id: 'chat-connection-warning', role: 'status', text: 'Connection interrupted. Reconnecting…' })); timer = root.setTimeout(poll, 8000); });

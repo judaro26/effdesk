@@ -163,6 +163,40 @@ export async function startChat(pool, env, slug, input, mailer, provenance = {})
 // Convert a chat into a regular ticket while keeping the source conversation and preserving every transcript entry.
 export async function convertChatToTicket(pool,orgId,actor,number){return withOrg(pool,orgId,async c=>{const src=(await c.query("select id,number,subject,requester_name,requester_email,priority,tags,converted_ticket_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];if(!src)return fail('Live Chat conversation not found.',404);if(src.converted_ticket_id){const old=(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,src.converted_ticket_id])).rows[0];return old?{ok:true,number:old.number,subject:old.subject,alreadyConverted:true}:fail('The linked ticket could not be found.',409);}const msgs=(await c.query("select kind,author_id,author_name,body,html_body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;if(!msgs.length)return fail('This conversation has no transcript to copy.');const p=(await c.query('select ip_address,identity_type,page_url,page_title,referrer,user_agent from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,src.id])).rows[0]||{};const made=await createTicket(pool,orgId,actor,{subject:('Follow-up: '+String(src.subject||'Live Chat').replace(/^\\s*chat\\s*:\\s*/i,'')).slice(0,200),body:'Transcript imported from Live Chat conversation #'+src.number+'.',requesterName:src.requester_name,requesterEmail:src.requester_email,priority:src.priority,tags:src.tags,channel:'web',firstKind:'note',sourceChatTicketId:src.id,provenance:{ip:p.ip_address,identityType:p.identity_type,pageUrl:p.page_url,pageTitle:p.page_title,referrer:p.referrer,userAgent:p.user_agent}},c);if(!made.ok)return made;await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);for(const m of msgs)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at]);await c.query('update tickets set converted_ticket_id=$3 where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);await logEvent(c,orgId,src.id,actor?.name||actor?.email||'Agent','converted','Converted to support ticket #'+made.ticket.number);await logEvent(c,orgId,made.ticket.id,actor?.name||actor?.email||'Agent','created','Created from Live Chat conversation #'+src.number+'; transcript preserved');return{ok:true,number:made.ticket.number,subject:made.ticket.subject,alreadyConverted:false};});}
 
+export async function endChat(pool, env, slug, input) {
+  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
+  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
+  return withOrg(pool, x.org.id, async db => {
+    const t = (await db.query("select id,status,channel from tickets where org_id=$1 and number=$2 for update", [x.org.id, number])).rows[0];
+    if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
+    if (['closed','solved'].includes(t.status)) return { ok: true, ended: true, alreadyEnded: true };
+    await db.query("update tickets set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2", [x.org.id, t.id]);
+    await logEvent(db, x.org.id, t.id, 'Website visitor', 'status', 'Visitor ended the Live Chat conversation');
+    return { ok: true, ended: true };
+  });
+}
+const transcriptEscape = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+export async function requestChatTranscript(pool, env, slug, input, mailer) {
+  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
+  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
+  if (!mailer || typeof mailer.ticketMail !== 'function') return fail('Transcript email is temporarily unavailable. Please try again later.', 503);
+  const data = await withOrg(pool, x.org.id, async db => {
+    const t = (await db.query("select id,subject,requester_name,requester_email,status from tickets where org_id=$1 and number=$2 and channel='chat'", [x.org.id, number])).rows[0];
+    if (!t) return null;
+    const messages = (await db.query("select kind,author_name,body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent') order by created_at asc,id asc limit 501", [x.org.id, t.id])).rows;
+    return { ticket:t, messages };
+  });
+  if (!data) return fail('No such chat.', 404);
+  if (!isEmail(String(data.ticket.requester_email || ''))) return fail('There is no valid email address on this conversation. Please contact the support team.', 400);
+  const truncated = data.messages.length > 500, messages = data.messages.slice(0,500);
+  const lines = messages.map(m => '[' + (m.created_at ? new Date(m.created_at).toISOString() : '') + '] ' + (m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + ':\n' + String(m.body || ''));
+  if (truncated) lines.push('[Transcript shortened to the most recent 500 messages.]');
+  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202a33;line-height:1.5"><h1>Your support conversation</h1><p>' + transcriptEscape(x.org.name) + ' · Conversation #' + number + '</p>' + messages.map(m => '<section style="padding:12px 0;border-bottom:1px solid #e5e9ed"><strong>' + transcriptEscape(m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + '</strong><small style="display:block;color:#66737d">' + transcriptEscape(m.created_at ? new Date(m.created_at).toISOString() : '') + '</small><p style="white-space:pre-wrap">' + transcriptEscape(m.body) + '</p></section>').join('') + (truncated ? '<p>Transcript limited to the most recent 500 messages.</p>' : '') + '<p style="color:#66737d;font-size:12px">Internal notes and private agent-only content are excluded.</p></body></html>';
+  await mailer.ticketMail({ to:data.ticket.requester_email, subject:'Your support conversation transcript · #' + number, text:'Your support conversation with ' + x.org.name + ' · #' + number + '\n\n' + lines.join('\n\n') + '\n\nInternal notes are excluded.', html });
+  await withOrg(pool, x.org.id, db => logEvent(db, x.org.id, data.ticket.id, 'Website visitor', 'transcript_requested', 'Visitor requested an emailed transcript'));
+  return { ok:true, sent:true };
+}
+
 export async function sendChat(pool, env, slug, input, mailer) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
@@ -241,6 +275,8 @@ export async function chatApi(req, { pool, mailer, env = process.env, now = Date
     let b; try { b = JSON.parse(text || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
     if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
     if (act === 'send') { if (await tooMany(pool, 'm' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await sendChat(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
+    if (act === 'end') { if (await tooMany(pool, 'e' + ip, now, 5)) return json(429, { error: 'Please wait before ending another chat.' }); const r = await endChat(pool, env, slug, b); return json(r.ok ? 200 : r.status, r); }
+    if (act === 'transcript') { if (await tooMany(pool, 'tr' + ip, now, 3)) return json(429, { error: 'Please wait before requesting another transcript.' }); const r = await requestChatTranscript(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
     return json(404, { error: 'Not found.' });
   } catch (e) {
     // The request logger forwards this original exception (including stack) to the error registry.

@@ -9,7 +9,7 @@ const fake = async (url, o) => { calls.push([url, o && o.body ? JSON.parse(o.bod
   if (/start/.test(url)) return j({ ok: true, number: 5, token: 'tok' });
   if (/poll/.test(url)) return j({ ok: true, ended: false, assigned: pollAssigned, agentName: pollAssigned ? 'Olivia' : '', agentTyping: true, messages: polled });
   return j({ ok: true }); };
-const dom = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' }), w = dom.window; w.fetch = fake;
+const dom = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' }), w = dom.window; w.fetch = fake; w.confirm = () => true;
 w.eval(pub('js/format.js')); w.eval(pub('js/chat.js')); await tick();
 const $ = s => w.document.querySelector(s);
 check('the widget installs browser error and unhandled-rejection reporting hooks', jsIncludesReporting());
@@ -44,6 +44,11 @@ check('the widget passes the exact host page path to the frame but strips query 
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 check('the customer chat frame permits secure external brand logos while retaining its frame restrictions', headers.includes("img-src 'self' https: data:") && headers.includes('frame-ancestors https: http:'));
+check('the visitor sees separate transcript and End chat actions while a conversation is active', !!$('.chat-actions') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'Email me a transcript') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'End chat'));
+$('.chat-actions').querySelector('button').click();
+await tick(10);
+check('the visitor transcript action calls the token-protected transcript endpoint', calls.some(c => /transcript/.test(c[0]) && c[1] && c[1].number === 5 && c[1].token === 'tok'));
+
 
 const deskSource = pub('js/desk.js'), deskStyles = pub('css/desk.css');
 check('Manage Live Chat includes a direct image upload control for customer logos', deskSource.includes("'aria-label': 'Upload customer chat logo'") && deskSource.includes('uploadHelpImage(file)'));
