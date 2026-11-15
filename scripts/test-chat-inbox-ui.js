@@ -58,3 +58,5 @@ check('the agent workspace sends chat availability heartbeats while accepting ch
 check('the transfer panel is responsive on narrow screens', css.includes('.chat-transfer-panel') && css.includes('@media(max-width:760px){.chat-transfer-panel'));
 
 check('the transfer action is limited in the interface to the assigned agent or workspace administrators', js.includes("t.assignee_id === meId || role === 'owner' || role === 'admin'"));
+
+check('unavailable transfer targets are disabled through the native option property without disabling available targets', js.includes('option.disabled=!a.eligible') && !js.includes('disabled:!a.eligible'));
