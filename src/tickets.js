@@ -93,7 +93,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
       const decoded = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8'));
       const date = new Date(decoded?.u), id = Number(decoded?.id);
       if (!Number.isFinite(date.getTime()) || !Number.isSafeInteger(id) || id < 1) throw new Error('invalid');
-      args.push(date.toISOString(), id);
+      args.push(String(decoded.u), id);
       where.push('(updated_at, id) < ($' + (args.length - 1) + '::timestamptz, $' + args.length + '::bigint)');
     } catch { return fail('The ticket page cursor is invalid. Refresh the list and try again.'); }
   }
@@ -106,7 +106,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
         from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
       ), ticket_page as (
-        select ${ticketCols}, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
+        select ${ticketCols}, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
         limit ${cursorMode ? limit + 1 : limit} offset ${offset}
@@ -116,11 +116,11 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     `, args);
     const first = result.rows[0];
     const counts = first && first.__counts || {};
-    const rows = result.rows.filter(row => row.id !== null).map(({ __counts, ...ticket }) => ticket);
+    const rows = result.rows.filter(row => row.id !== null).map(({ __counts, cursor_updated_at, ...ticket }) => ticket);
     const hasMore = cursorMode && rows.length > limit;
     if (hasMore) rows.pop();
     const last = rows[rows.length - 1];
-    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.updated_at, id: Number(last.id) })).toString('base64url') : null;
+    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.cursor_updated_at, id: Number(last.id) })).toString('base64url') : null;
     return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
   });
 }
@@ -143,12 +143,13 @@ export async function getTicket(pool, orgId, actor, number, options = {}) {
         } catch { return fail('The conversation page cursor is invalid. Refresh the ticket and try again.'); }
       }
       messageArgs.push(pageSize + 1);
-      const result = await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where ' + messageWhere.join(' and ') + ' order by created_at desc, id desc limit $' + messageArgs.length, messageArgs);
+      const result = await c.query('select id, kind, author_id, author_name, body, html_body, created_at, created_at::text as cursor_created_at, edited_at from ticket_messages where ' + messageWhere.join(' and ') + ' order by created_at desc, id desc limit $' + messageArgs.length, messageArgs);
       const hasMore = result.rows.length > pageSize;
       messageRows = result.rows.slice(0, pageSize);
       const oldest = messageRows[messageRows.length - 1];
-      messagesPage = { limit: pageSize, hasMore, nextCursor: hasMore && oldest ? Buffer.from(JSON.stringify({ at: oldest.created_at, id: Number(oldest.id) })).toString('base64url') : null };
+      messagesPage = { limit: pageSize, hasMore, nextCursor: hasMore && oldest ? Buffer.from(JSON.stringify({ at: oldest.cursor_created_at, id: Number(oldest.id) })).toString('base64url') : null };
       messageRows.reverse();
+      for (const message of messageRows) delete message.cursor_created_at;
     } else {
       messageRows = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
     }
