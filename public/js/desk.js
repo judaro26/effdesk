@@ -123,7 +123,7 @@
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
-      return api('get', { number: n }).then(function (r) {
+      return api('get', { number: n, messageLimit: 50 }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
         var switchingTicket = !current || current.ticket.number !== n;
         closePanes();
@@ -1572,6 +1572,19 @@
         resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.8)));
         resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
       }
+      var loadingOlderMessages = false;
+      var loadOlderMessages = function () {
+        if (loadingOlderMessages || !current.messagesPage || !current.messagesPage.hasMore || !current.messagesPage.nextCursor) return;
+        loadingOlderMessages = true; draw();
+        api('get', { number: t.number, messageLimit: current.messagesPage.limit || 50, messageCursor: current.messagesPage.nextCursor }).then(function (r) {
+          loadingOlderMessages = false;
+          if (!r.ok) return say(r.body.error || 'Could not load older messages.', true);
+          var seen = {}; current.messages.forEach(function (m) { seen[String(m.id)] = true; });
+          current.messages = (r.body.messages || []).filter(function (m) { return !seen[String(m.id)]; }).concat(current.messages);
+          current.messagesPage = r.body.messagesPage || { hasMore: false, nextCursor: null };
+          draw();
+        }).catch(function () { loadingOlderMessages = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
+      };
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -1700,7 +1713,7 @@
           return el('div', { class: 'conflict', role: 'alert', 'data-wa-window': '1' }, kids);
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), conflict.duplicate ? el('p', {}, 'Your draft has been kept. Review the conversation to confirm whether it already appears before trying again.') : [' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')]) : null,
-        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : (msgs.length ? msgs : [el('div', { class: 'conversation-empty m', role: 'status' }, 'No messages match these search and date filters.') ])),
+        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, current.messagesPage && current.messagesPage.hasMore ? el('div', { class: 'thread-older' }, el('button', { type: 'button', class: 'btn l sm', 'data-load-older-messages': '1', disabled: loadingOlderMessages, onclick: loadOlderMessages }, loadingOlderMessages ? 'Loading older messages…' : '↑ Load older messages')) : null, showTimeline ? timelineEl() : (msgs.length ? msgs : [el('div', { class: 'conversation-empty m', role: 'status' }, 'No messages match these search and date filters.') ])),
         el('div', { class: 'compose' }, resizeHandle, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
