@@ -38,8 +38,8 @@ export async function claimJobs(pool, orgId, workerId = crypto.randomUUID(), { l
          where org_id=$1 and attempts < max_attempts
            and ((status='queued' and run_at <= $2) or (status='running' and locked_at <= $3))
          order by run_at,id
-         for update skip locked
          limit $4
+         for update skip locked
        )
        update background_jobs j
        set status='running', attempts=j.attempts+1, locked_at=$2, locked_by=$5, updated_at=$2
