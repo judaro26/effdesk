@@ -35,6 +35,8 @@ check('the dedicated chat view identifies the visitor and offers a direct return
 check('the dedicated agent chat layout is responsive and uses workspace theme tokens', css.includes('.chat-agent-conversation') && css.includes('var(--d-panel)') && css.includes('@media(max-width:760px)'));
 
 check('dedicated Live Chat mode hides ticket tabs and resets cleanly when leaving a conversation', js.includes('tabsEl.hidden = chatConversationOpen') && js.includes('chatInboxOpen = false; chatConversationOpen = false;'));
+check('agents can convert chats into linked regular tickets',js.includes("api('chat-convert-to-ticket'")&&js.includes('Create ticket from chat')&&js.includes('Open ticket #'));
+check('ticket requester panel displays submission provenance',js.includes('Submission context')&&js.includes('IP address:')&&js.includes('Page visited'));
 
 check('the Live Chat inbox offers a separate Chat History filter', js.includes("el('option', { value: 'history' }, 'Chat History')") && js.includes('view: chatInboxView'));
 check('Chat History renders a dedicated full-width archive instead of the active queues', js.includes("panel('Chat History', 'Most recently resolved or closed first'") && css.includes('.chat-inbox-columns.is-history{grid-template-columns:minmax(0,1fr)}'));

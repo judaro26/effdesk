@@ -54,10 +54,12 @@ await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hell
 check('the public widget shows message mode when no agent is enabled for chat', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('a chat needs a valid email and a message', (await C('POST', '/api/chat/start?org=acme', { email: 'nope', message: 'hi' })).status === 400 && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: '' })).status === 400);
 const veraVisitorId = crypto.randomBytes(32).toString('hex');
-r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?', visitorId: veraVisitorId });
+r = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Do you ship to Canada?', visitorId: veraVisitorId, pageUrl:'https://customer.example/support?session=private#section' });
 const n = r.body.number, tok = r.body.token;
 const initialChannel = (await pool.query('select channel from tickets where number = $1', [n])).rows[0]?.channel;
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
+const prov=(await pool.query('select ip_address,page_url,identity_type from ticket_provenance p join tickets t on t.id=p.ticket_id where t.org_id=$1 and t.number=$2',[acme.id,n])).rows[0];
+check('chat provenance captures server IP and strips sensitive page query strings',prov&&prov.ip_address==='1.1.1.1'&&prov.page_url==='https://customer.example/support'&&prov.identity_type==='visitor');
 const preAccessInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an admin must explicitly enable their own chat access too', preAccessInbox.status === 403);
 check('a teammate without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
@@ -90,6 +92,10 @@ await A(ann, 'chat-availability-set', { available: true });
 await A(ann, 'availability-set', { available: false });
 await A(olivia, 'routing-save', { enabled: true, strategy: 'round_robin' });
 await A(olivia, 'chat-access-set', { userId: olivia.user.id, enabled: true });
+const converted=await A(olivia,'chat-convert-to-ticket',{number:n}), copied=await A(olivia,'get',{number:converted.body.number}), repeated=await A(olivia,'chat-convert-to-ticket',{number:n});
+check('chat conversion creates a regular ticket with the complete transcript and original timestamps',converted.status===200&&copied.body.ticket.channel==='web'&&copied.body.ticket.source_chat_ticket_id&&copied.body.messages.some(m=>m.body==='Do you ship to Canada?'));
+check('chat conversion is idempotent and never creates duplicate tickets',repeated.status===200&&repeated.body.alreadyConverted&&repeated.body.number===converted.body.number);
+
 const secondChat = await C('POST', '/api/chat/start?org=acme', { name: 'Mina', email: 'mina@x.co', message: 'Can I get help?' });
 const secondTicket = await A(olivia, 'get', { number: secondChat.body.number });
 check('chat availability is independent of general ticket availability', secondChat.status === 200 && secondTicket.body.ticket.assignee_id === ann.user.id);

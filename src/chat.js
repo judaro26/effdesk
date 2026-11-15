@@ -3,7 +3,7 @@
 import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
 import { withOrg } from './db.js';
-import { createTicket, addRequesterMessage } from './tickets.js';
+import { createTicket, addRequesterMessage, writeTicketProvenance, logEvent } from './tickets.js';
 import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
@@ -122,7 +122,7 @@ export async function agentReplyAlerts(pool, orgId, input = {}) {
     return { ok: true, cursor, hasMore, replies: page.filter(t => ['open','pending','on_hold'].includes(t.status)).map(t => ({ number: Number(t.number), requester_name: t.requester_name, requester_email: t.requester_email, updated_at: t.updated_at })) };
   });
 }
-export async function startChat(pool, env, slug, input, mailer) {
+export async function startChat(pool, env, slug, input, mailer, provenance = {}) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   const name = clean(input.name, 100), email = clean(input.email, 254).toLowerCase(), body = clean(input.message, 2000);
   if (!isEmail(email)) return fail('Enter your email address so we can reach you if you leave.');
@@ -145,10 +145,11 @@ export async function startChat(pool, env, slug, input, mailer) {
     if (existing) {
       const mid = (await c.query("insert into ticket_messages (org_id,ticket_id,kind,author_name,body) values ($1,$2,'requester',$3,$4) returning id", [x.org.id, existing.id, name || email, body])).rows[0].id;
       await c.query("update tickets set status='open', solved_at=null, closed_at=null, updated_at=now() where org_id=$1 and id=$2", [x.org.id, existing.id]);
+      await writeTicketProvenance(c,x.org.id,existing.id,{...provenance,identityType:'visitor'});
       await c.query('insert into ticket_events (org_id,ticket_id,actor_name,kind,detail) values ($1,$2,$3,$4,$5)', [x.org.id, existing.id, name || email, 'reopened', 'Visitor returned and continued this Live Chat conversation']);
       return { ok: true, number: existing.number, reused: true };
     }
-    const created = await createTicket(pool, x.org.id, null, { subject: 'Chat: ' + body.replace(/\s+/g, ' ').slice(0, 60), body, requesterEmail: email, requesterName: name, channel: 'chat' }, c);
+    const created = await createTicket(pool, x.org.id, null, { subject: 'Chat: ' + body.replace(/\s+/g, ' ').slice(0, 60), body, requesterEmail: email, requesterName: name, channel: 'chat', provenance:{...provenance,identityType:'visitor'} }, c);
     if (!created.ok) return created;
     if (visitorKey) await c.query('update tickets set chat_visitor_key=$3 where org_id=$1 and id=$2', [x.org.id, created.ticket.id, visitorKey]);
     return { ok: true, number: created.ticket.number, reused: false };
@@ -158,6 +159,9 @@ export async function startChat(pool, env, slug, input, mailer) {
   if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, result.number, { kind: 'reply', summary: body }); } catch { } }
   return { ok: true, number: result.number, token: chatToken(env, x.org.id, result.number), reused: result.reused === true, orgId: x.org.id };
 }
+// Convert a chat into a regular ticket while keeping the source conversation and preserving every transcript entry.
+export async function convertChatToTicket(pool,orgId,actor,number){return withOrg(pool,orgId,async c=>{const src=(await c.query("select id,number,subject,requester_name,requester_email,priority,tags,converted_ticket_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];if(!src)return fail('Live Chat conversation not found.',404);if(src.converted_ticket_id){const old=(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,src.converted_ticket_id])).rows[0];return old?{ok:true,number:old.number,subject:old.subject,alreadyConverted:true}:fail('The linked ticket could not be found.',409);}const msgs=(await c.query("select kind,author_id,author_name,body,html_body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;if(!msgs.length)return fail('This conversation has no transcript to copy.');const p=(await c.query('select ip_address,identity_type,page_url,page_title,referrer,user_agent from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,src.id])).rows[0]||{};const made=await createTicket(pool,orgId,actor,{subject:('Follow-up: '+String(src.subject||'Live Chat').replace(/^\\s*chat\\s*:\\s*/i,'')).slice(0,200),body:'Transcript imported from Live Chat conversation #'+src.number+'.',requesterName:src.requester_name,requesterEmail:src.requester_email,priority:src.priority,tags:src.tags,channel:'web',firstKind:'note',sourceChatTicketId:src.id,provenance:{ip:p.ip_address,identityType:p.identity_type,pageUrl:p.page_url,pageTitle:p.page_title,referrer:p.referrer,userAgent:p.user_agent}},c);if(!made.ok)return made;await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);for(const m of msgs)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at]);await c.query('update tickets set converted_ticket_id=$3 where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);await logEvent(c,orgId,src.id,actor?.name||actor?.email||'Agent','converted','Converted to support ticket #'+made.ticket.number);await logEvent(c,orgId,made.ticket.id,actor?.name||actor?.email||'Agent','created','Created from Live Chat conversation #'+src.number+'; transcript preserved');return{ok:true,number:made.ticket.number,subject:made.ticket.subject,alreadyConverted:false};});}
+
 export async function sendChat(pool, env, slug, input, mailer) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
@@ -234,7 +238,7 @@ export async function chatApi(req, { pool, mailer, env = process.env, now = Date
     const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' });
     const text = await req.text(); if (text.length > 10000) return json(413, { error: 'Too long.' });
     let b; try { b = JSON.parse(text || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
-    if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
+    if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
     if (act === 'send') { if (await tooMany(pool, 'm' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await sendChat(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
     return json(404, { error: 'Not found.' });
   } catch { return json(500, { error: 'Something went wrong.' }); }

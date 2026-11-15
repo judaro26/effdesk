@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -302,6 +302,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
     case 'chat-claim': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await claimChat(pool, orgId, actor.id, b.number); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.claimed', String(b.number), { alreadyAssigned: r.alreadyAssigned === true }); break; }
+    case 'chat-convert-to-ticket': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403,{error:'You need Live Chat access to convert this conversation.'}); r=await convertChatToTicket(pool,orgId,actor,b.number); if(r.ok) await audit(pool,orgId,actor.id,'live-chat.converted-to-ticket',String(b.number),{ticketNumber:r.number}); break; }
     case 'chat-access-set': { if ((g = adminOnly() || need('live_chat'))) return g; r = await setChatAccess(pool, orgId, b.userId, b.enabled === true); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.access-changed', String(b.userId), { enabled: b.enabled === true }); break; }
     case 'presence': r = b.leave ? (await leavePresence(pool, orgId, actor, b.number), { ok: true, others: [] }) : await heartbeat(pool, orgId, actor, b.number, b.typing === true); break;
     case 'forms-list': if ((g = adminOnly() || need('request_forms'))) return g; r = await listForms(pool, orgId); break;
@@ -797,7 +798,7 @@ export async function helpCenter(req, { pool, mailer, store, env = process.env, 
     if (!post) return html(200, pages.requestPage({ org, lang, base, forms, form: pickForm(u.searchParams.get('form')), token: requestToken(env, org.id, now) }));
     // Bound anonymous ticket creation per source IP as well as the existing per-email and per-workspace hourly caps.
     if (await rateLimit(pool, 'request-form:' + org.id + ':' + ip, 10, 600, now)) return html(429, pages.requestPage({ org, lang, base, forms, form: pickForm(u.searchParams.get('form')), token: requestToken(env, org.id, now), error: 'Too many requests. Please wait a few minutes and try again.' }), { 'Retry-After': '600' });
-    const f = await form(), vals = Object.fromEntries(f.entries()), r = await submitRequest(pool, env, org, vals, { mailer, custom, fields, now });
+    const f = await form(), vals = Object.fromEntries(f.entries()), r = await submitRequest(pool, env, org, vals, { mailer, custom, fields, now, provenance:{ip,pageUrl:new URL((portal||u.origin)+base+'/requests/new').href,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'} });
     if (r.silent) return html(200, pages.requestDonePage({ org, lang, base, number: 0 }));
     if (!r.ok) return html(r.status === 404 ? 404 : r.status || 400, pages.requestPage({ org, lang, base, forms, form: pickForm(vals.form), token: requestToken(env, org.id, now - 3500), values: vals, error: r.error, field: r.field }));
     return html(200, pages.requestDonePage({ org, lang, base, number: r.number }));
@@ -905,7 +906,7 @@ export async function apiV1(req, { pool, mailer, env = process.env }) {
   const n = parts[1] ? Number(parts[1]) : 0; if (parts[1] && !/^\d{1,9}$/.test(parts[1])) return json(404, { error: 'Not found.' });
   if (!parts[1]) {
     if (m === 'GET') { const q = Object.fromEntries(u.searchParams); delete q.assignee; const r = await listTickets(pool, orgId, actor, { status: q.status, q: q.q, tag: q.tag, limit: q.limit, offset: q.offset }); return r.ok ? json(200, { tickets: r.tickets, counts: r.counts }) : out(r); }
-    if (m === 'POST') { if (b.custom && !planHas(ent, 'custom_fields')) return json(402, { error: 'Custom fields are part of the Suite plan.', upgrade: true }); const r = await createTicket(pool, orgId, actor, { ...b, channel: 'api' }); if (!r.ok) return out(r); await maybeTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); return json(201, { ticket: r.ticket }); }
+    if (m === 'POST') { if (b.custom && !planHas(ent, 'custom_fields')) return json(402, { error: 'Custom fields are part of the Suite plan.', upgrade: true }); const r = await createTicket(pool, orgId, actor, { ...b, channel:'api', provenance:{ip:clientIp(req,env),userAgent:req.headers.get('user-agent'),identityType:'api'} }); if (!r.ok) return out(r); await maybeTriggers(pool, mailer, env, orgId, 'created', r.ticket.number, String(b.body || '')); await emitHook(pool, orgId, 'ticket.created', r.ticket.number); return json(201, { ticket: r.ticket }); }
     return json(405, { error: 'Method not allowed.' });
   }
   if (!parts[2]) {

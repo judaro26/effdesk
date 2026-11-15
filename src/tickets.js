@@ -5,6 +5,7 @@ import { slaWhere } from './sla.js';
 import { defsOf, cleanValues } from './fields.js';
 import { clean as cleanHtml, plainOf } from './html-clean.js';
 import { ensureContact } from './contacts.js';
+import net from 'node:net';
 
 export const STATUSES = ['open', 'pending', 'on_hold', 'solved', 'closed'];
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -13,7 +14,9 @@ const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNa
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, chat_seen_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id';
+const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, chat_seen_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id, source_chat_ticket_id, converted_ticket_id';
+const safeUrl = v => { try { const u=new URL(String(v||'').slice(0,4096)); if(!['http:','https:'].includes(u.protocol)||u.username||u.password)return null;u.search='';u.hash='';return u.href.slice(0,2048); } catch{return null;} };
+export async function writeTicketProvenance(c,orgId,ticketId,v={}) { const raw=clean(v.ip,64).replace(/^\\[|\\]$/g,'').split('%')[0],ip=net.isIP(raw)?raw:null,page=safeUrl(v.pageUrl),ref=safeUrl(v.referrer),kind=['visitor','api','email','whatsapp','portal','agent','chat'].includes(v.identityType)?v.identityType:'unknown'; await c.query(`insert into ticket_provenance(org_id,ticket_id,ip_address,identity_type,page_url,page_title,referrer,user_agent,submitted_at) values($1,$2,$3,$4,$5,$6,$7,$8,now()) on conflict(ticket_id) do update set ip_address=coalesce(excluded.ip_address,ticket_provenance.ip_address),identity_type=excluded.identity_type,page_url=coalesce(excluded.page_url,ticket_provenance.page_url),page_title=coalesce(excluded.page_title,ticket_provenance.page_title),referrer=coalesce(excluded.referrer,ticket_provenance.referrer),user_agent=coalesce(excluded.user_agent,ticket_provenance.user_agent),submitted_at=excluded.submitted_at`,[orgId,ticketId,ip,kind,page,clean(v.pageTitle,200)||null,ref,clean(v.userAgent,500)||null]); }
 export const TYPES = ['question', 'incident', 'problem', 'task'];
 export const cleanText = clean, validEmail = isEmail;
 // a line in the ticket's timeline (who did what); callers are already inside withOrg
@@ -41,7 +44,8 @@ export async function createTicket(pool, orgId, actor, input, existingClient = n
     const n = (await c.query('insert into ticket_counters (org_id, last_number) values ($1, 1) on conflict (org_id) do update set last_number = ticket_counters.last_number + 1 returning last_number', [orgId])).rows[0].last_number;
     let custom = {}; if (input.custom && Object.keys(input.custom).length) { const cv = cleanValues(await defsOf(c, orgId), input.custom); if (cv.error) return fail(cv.error); custom = cv.set; }
     const domain = email.split('@')[1], client = (await c.query("select id from clients where org_id = $1 and domain <> '' and domain = $2 order by id limit 1", [orgId, domain])).rows[0];
-    const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom, lifecycle_parent_ticket_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' || input.channel === 'chat' || input.channel === 'whatsapp' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom), lifecycleParentId])).rows[0];
+    const t = (await c.query(`insert into tickets (org_id, number, subject, priority, channel, requester_name, requester_email, tags, client_id, custom, lifecycle_parent_ticket_id, source_chat_ticket_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning ${ticketCols}`, [orgId, n, subject, priority, input.channel === 'email' || input.channel === 'api' || input.channel === 'chat' || input.channel === 'whatsapp' ? input.channel : 'web', clean(input.requesterName, 100), email, cleanTags(input.tags), client ? client.id : null, JSON.stringify(custom), lifecycleParentId, Number(input.sourceChatTicketId)||null])).rows[0];
+    await writeTicketProvenance(c,orgId,t.id,input.provenance||{identityType:actor?'agent':(input.channel||'web')});
     await ensureContact(c, orgId, { email, name: clean(input.requesterName, 100), companyId: client ? client.id : null });
     await logEvent(c, orgId, t.id, actor ? who(actor) : clean(input.requesterName, 100) || email, 'created', 'Ticket created' + (input.channel === 'email' ? ' by email' : ''));
     const mid = (await c.query('insert into ticket_messages (org_id, ticket_id, kind, author_id, author_name, body, message_id, html_body) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id', [orgId, t.id, kind, kind === 'requester' ? null : actor.id, kind === 'requester' ? clean(input.requesterName, 100) || email : who(actor), body, input.messageId ? clean(input.messageId, 300) : null, safeHtml || null])).rows[0].id;
@@ -128,6 +132,7 @@ export async function getTicket(pool, orgId, actor, number) {
       }
       m.attachments = attachmentsByMessage.get(m.id) || [];
     }
+    const provenance=(await c.query('select ip_address,identity_type,page_url,page_title,referrer,user_agent,submitted_at from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,t.id])).rows[0]||null; t.provenance=provenance; t.converted_ticket=t.converted_ticket_id?(await c.query('select number,subject,status from tickets where org_id=$1 and id=$2',[orgId,t.converted_ticket_id])).rows[0]||null:null; t.source_chat=t.source_chat_ticket_id?(await c.query('select number,subject,status from tickets where org_id=$1 and id=$2',[orgId,t.source_chat_ticket_id])).rows[0]||null:null;
     const policy=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{};
     t.permanently_closed = t.status==='closed' && policy.permanentCloseEnabled===true && !!t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(policy.permanentCloseDays)||30)*86400000;
     return { ok: true, ticket: t, messages, lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
