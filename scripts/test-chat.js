@@ -151,6 +151,11 @@ const pageOne = await A(olivia, 'chat-inbox', { limit: 2, offset: 0, view: 'all'
 const pageTwo = await A(olivia, 'chat-inbox', { limit: 2, offset: 2, view: 'all' });
 check('the Live Chat inbox returns a bounded page and full filtered totals', pageOne.status === 200 && pageOne.body.tickets.length === 2 && pageOne.body.page.limit === 2 && pageOne.body.page.hasMore && pageOne.body.counts.total >= 3);
 check('Live Chat inbox pages do not repeat the same conversations', pageTwo.status === 200 && pageTwo.body.tickets.length === 2 && pageOne.body.tickets.every(a => pageTwo.body.tickets.every(b => a.number !== b.number)));
+const cursorPageOne = await A(olivia, 'chat-inbox', { limit: 2, cursorMode: true, cursor: '', view: 'all' });
+const cursorPageTwo = await A(olivia, 'chat-inbox', { limit: 2, cursorMode: true, cursor: cursorPageOne.body.page.nextCursor, view: 'all' });
+check('Live Chat inbox keyset pagination returns a continuation cursor and stable non-overlapping pages', cursorPageOne.status === 200 && cursorPageOne.body.tickets.length === 2 && cursorPageOne.body.page.hasMore === true && !!cursorPageOne.body.page.nextCursor && cursorPageTwo.status === 200 && cursorPageTwo.body.tickets.length > 0 && cursorPageOne.body.tickets.every(a => cursorPageTwo.body.tickets.every(b => a.number !== b.number)));
+const invalidInboxCursor = await A(olivia, 'chat-inbox', { limit: 2, cursorMode: true, cursor: 'invalid-cursor', view: 'all' });
+check('Live Chat inbox rejects malformed cursors', invalidInboxCursor.status === 400 && /inbox cursor is invalid/i.test(invalidInboxCursor.body.error));
 const waitingPage = await A(olivia, 'chat-inbox', { limit: 10, view: 'waiting' });
 check('the waiting filter returns only unassigned chats with matching totals', waitingPage.status === 200 && waitingPage.body.tickets.every(t => !t.assignee_id) && waitingPage.body.counts.total === waitingPage.body.counts.waiting);
 const minePage = await A(olivia, 'chat-inbox', { limit: 10, view: 'mine' });
