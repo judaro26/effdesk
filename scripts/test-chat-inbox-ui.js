@@ -44,3 +44,9 @@ check('historical conversations open for review without offering an Accept actio
 check('history cards show their final resolved or closed status and activity date', js.includes("statusLabel = t.status === 'solved' ? 'Resolved' : t.status === 'closed' ? 'Closed'") && js.includes('activityAt = history ? (t.closed_at || t.solved_at || t.updated_at)'));
 check('Chat History uses its own resolved and closed summary counts', js.includes("'Past conversations'") && js.includes('chatInboxCounts.solved') && js.includes('chatInboxCounts.closed'));
 check('Chat History refreshes less frequently than the active inbox', js.includes("chatInboxView === 'history' ? 60000 : 15000"));
+
+check('the dedicated chat workspace shows a persistent My chats sidebar beside the active conversation', js.includes('chatWorkspaceSidebar()') && js.includes('chat-workspace-sidebar') && css.includes('.chat-agent-workspace{display:grid;grid-template-columns:248px'));
+check('agents can switch between multiple assigned active conversations without leaving the chat workspace', js.includes("api('chat-inbox', { limit: 100, offset: 0, view: 'mine' })") && js.includes('open(t.number);'));
+check('the My chats list highlights customer replies and refreshes while the agent is in a chat', js.includes('chat-workspace-unread') && js.includes('chatWorkspaceTimer = root.setTimeout(loadMyChatWorkspace, 15000)'));
+check('agents have a confirmed End chat action in the dedicated conversation header', js.includes("'data-agent-end-chat':'1'") && js.includes("update({status:'closed'})"));
+check('the multi-chat sidebar collapses into a horizontal switcher on mobile', css.includes('@media(max-width:760px){.chat-agent-workspace{display:flex;flex-direction:column'));
