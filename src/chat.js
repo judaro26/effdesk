@@ -98,7 +98,7 @@ export async function agentInbox(pool, orgId, input = {}) {
         if (!Number.isFinite(new Date(cursor.s).getTime())) throw new Error('invalid');
         args.push(new Date(cursor.s).toISOString(), new Date(cursor.u).toISOString(), Number(cursor.id));
         const s = args.length - 2, u = args.length - 1, id = args.length;
-        where.push('(coalesce(t.closed_at,t.solved_at,t.updated_at) < $' + s + '::timestamptz or (coalesce(t.closed_at,t.solved_at,t.updated_at) = $' + s + '::timestamptz and (t.updated_at < $' + u + '::timestamptz or (t.updated_at = $' + u + '::timestamptz and t.id < $' + id + '::bigint)))');
+        where.push('(coalesce(t.closed_at,t.solved_at,t.updated_at) < $' + s + '::timestamptz or (coalesce(t.closed_at,t.solved_at,t.updated_at) = $' + s + '::timestamptz and (t.updated_at < $' + u + '::timestamptz or (t.updated_at = $' + u + '::timestamptz and t.id < $' + id + '::bigint))))');
       } else {
         if (![0,1].includes(Number(cursor.b)) || ![0,1].includes(Number(cursor.n)) || (cursor.w !== null && !Number.isFinite(new Date(cursor.w).getTime()))) throw new Error('invalid');
         args.push(Number(cursor.b), cursor.w === null ? null : new Date(cursor.w).toISOString(), Number(cursor.n), new Date(cursor.u).toISOString(), Number(cursor.id));
