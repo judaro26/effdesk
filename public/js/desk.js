@@ -22,7 +22,7 @@
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
-    var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyAlertTimer = null;
+    var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
