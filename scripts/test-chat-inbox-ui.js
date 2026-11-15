@@ -3,6 +3,8 @@ import { check, done } from './lib/check.js';
 
 const js = fs.readFileSync(new URL('../public/js/desk.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
+const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
+const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
 
 check('the waiting queue is presented as New chats', js.includes("panel('New chats', 'First come, first served · oldest waiting first'"));
 check('new unassigned conversations receive a visible NEW marker', js.includes("'chat-inbox-new-label'") && js.includes("' is-new'"));
@@ -60,3 +62,11 @@ check('the transfer panel is responsive on narrow screens', css.includes('.chat-
 check('the transfer action is limited in the interface to the assigned agent or workspace administrators', js.includes("t.assignee_id === meId || role === 'owner' || role === 'admin'"));
 
 check('unavailable transfer targets are disabled through the native option property without disabling available targets', js.includes('option.disabled=!a.eligible') && !js.includes('disabled:!a.eligible'));
+
+check('agents can choose a separate personal Live Chat theme without changing their overall desk theme', js.includes("var CHAT_THEMES = [") && js.includes("function applyChatTheme(id)") && js.includes("api('prefs-save', { chatTheme: t.id })"));
+check('the Live Chat theme picker offers black-and-emerald and navy-and-gold palettes', js.includes("id: 'obsidian'") && js.includes("id: 'royal'") && js.includes('Royal Gold'));
+check('Live Chat themes include a preview and apply only to chat surfaces', js.includes('chat-theme-preview') && css.includes('html[data-chat-theme="obsidian"] .chat-agent-workspace') && css.includes('html[data-chat-theme="royal"] .chat-inbox'));
+check('Live Chat theme preference is validated and persisted per signed-in agent', handlers.includes("b.chatTheme === undefined ? null : chatThemeById") && handlers.includes('chat_theme = coalesce($6, desk_prefs.chat_theme)') && handlers.includes('chatTheme, avatar:'));
+check('Live Chat theme preference is returned on initialization and defaults safely', handlers.includes('usableChatTheme(pref?.chat_theme)') && themeRegistry.includes("export const usableChatTheme"));
+
+check('the Classic Live Chat palette stays independent from whichever global desk theme the agent uses', css.includes('html[data-chat-theme="classic"] .chat-agent-workspace') && css.includes('--d-rail:#03363d'));
