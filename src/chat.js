@@ -52,8 +52,12 @@ export async function publicConfig(pool, slug) {
       where a.org_id = $1 and a.chat_access = true and a.chat_available = true
         and m.role in ('owner','admin','member')
         and (select count(*) from tickets t where t.org_id = a.org_id and t.channel = 'chat'
-          and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < $2
-    ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
+          and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < coalesce(
+            (select max_concurrent from chat_capacity_rules where org_id=a.org_id and scope_type='agent' and scope_id=a.user_id),
+            (select cr.max_concurrent from chat_team_members tm join chat_capacity_rules cr on cr.org_id=tm.org_id and cr.scope_type='team' and cr.scope_id=tm.team_id::text where tm.org_id=a.org_id and tm.user_id=a.user_id limit 1),
+            (select cr.max_concurrent from member mm left join member_custom_role mc on mc.org_id=a.org_id and mc.user_id=mm."userId" join chat_capacity_rules cr on cr.org_id=a.org_id and cr.scope_type='role' and cr.scope_id=case when mc.role_id is null then mm.role else 'custom:' || mc.role_id::text end where mm."organizationId"=a.org_id and mm."userId"=a.user_id limit 1),
+            (select max_concurrent from chat_settings where org_id=a.org_id), 3)
+    ) as accepting`, [x.org.id]);
     return r.rows[0]?.accepting === true;
   });
   return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null };
