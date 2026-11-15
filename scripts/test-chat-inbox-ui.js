@@ -68,3 +68,5 @@ check('the Live Chat theme picker offers black-and-emerald and navy-and-gold pal
 check('Live Chat themes include a preview and apply only to chat surfaces', js.includes('chat-theme-preview') && css.includes('html[data-chat-theme="obsidian"] .chat-agent-workspace') && css.includes('html[data-chat-theme="royal"] .chat-inbox'));
 check('Live Chat theme preference is validated and persisted per signed-in agent', handlers.includes("b.chatTheme === undefined ? null : chatThemeById") && handlers.includes('chat_theme = coalesce($6, desk_prefs.chat_theme)') && handlers.includes('chatTheme, avatar:'));
 check('Live Chat theme preference is returned on initialization and defaults safely', handlers.includes('usableChatTheme(pref?.chat_theme)') && themeRegistry.includes("export const usableChatTheme"));
+
+check('the Classic Live Chat palette stays independent from whichever global desk theme the agent uses', css.includes('html[data-chat-theme="classic"] .chat-agent-workspace') && css.includes('--d-rail:#03363d'));

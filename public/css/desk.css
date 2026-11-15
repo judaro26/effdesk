@@ -1129,3 +1129,5 @@ html[data-chat-theme="obsidian"] .chat-agent-workspace .chat-workspace-sidebar,h
 html[data-chat-theme="royal"] .chat-agent-workspace .chat-agent-head{background:linear-gradient(120deg,#fffdf7,#eee8d8)}
 html[data-chat-theme="forest"] .chat-agent-workspace .chat-agent-head{background:linear-gradient(120deg,#fbfdf9,#e3eee4)}
 html[data-chat-theme="champagne"] .chat-agent-workspace .chat-agent-head{background:linear-gradient(120deg,#fffdf9,#f3e9d3)}
+
+html[data-chat-theme="classic"] .chat-inbox,html[data-chat-theme="classic"] .chat-agent-workspace,html[data-chat-theme="classic"] .chat-theme-preview{--accent:#1f73b7;--accent-d:#185a92;--accent-ink:#fff;--d-bg:#f4f5f7;--d-panel:#fff;--d-line:#e3e6ea;--d-ink:#1d2428;--d-muted:#66737c;--d-rail:#03363d;--d-rail-ink:#b4cfd2;--d-hover:#eef0f2;--d-in:#f0f2f4;--d-out:#e3effa;--d-badge:#e6e9ec;--d-note:#fff4c2;--d-note-line:#e8c766;color-scheme:light}
