@@ -1028,3 +1028,7 @@ html{-webkit-text-size-adjust:100%}
 .deskapp .chat-inbox-page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent-d)}
 .deskapp .chat-inbox-page-btn:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:560px){.deskapp .chat-inbox-toolbar{align-items:stretch}.deskapp .chat-inbox-search,.deskapp .chat-inbox-filter{max-width:none;flex-basis:100%}.deskapp .chat-inbox-pagination{align-items:flex-start;flex-direction:column}.deskapp .chat-inbox-page-actions{width:100%}.deskapp .chat-inbox-page-btn{flex:1}}
+
+.deskapp .contact-pagination{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;padding:14px 2px;border-top:1px solid var(--d-line)}
+.deskapp .contact-pagination .m{margin-right:auto}
+@media(max-width:560px){.deskapp .contact-pagination{justify-content:stretch}.deskapp .contact-pagination .m{flex-basis:100%}.deskapp .contact-pagination .btn{flex:1}}
