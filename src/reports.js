@@ -8,6 +8,26 @@ const ROW_CAP = 5000;
 const mins = (a, b) => a && b ? Math.max(0, Math.round((new Date(b) - new Date(a)) / 60000)) : null;
 const med = a => { const x = a.filter(v => v !== null).sort((p, q) => p - q); return x.length ? (x.length % 2 ? x[(x.length - 1) / 2] : Math.round((x[x.length / 2 - 1] + x[x.length / 2]) / 2)) : null; };
 const avg = a => { const x = a.filter(v => v !== null); return x.length ? Math.round(x.reduce((s, v) => s + v, 0) / x.length) : null; };
+
+// Keep Live Chat measurements separate from email and web ticket metrics. Per-agent
+// active counts describe the current owner, not historical handling after a transfer.
+export function chatPerformanceFromRows(rows, active = 0, waiting = 0, activeByAgent = []) {
+  const first = rows.map(r => mins(r.created_at, r.first_response_at));
+  const resolvedRows = rows.filter(r => r.solved_at);
+  const resolution = resolvedRows.map(r => mins(r.created_at, r.solved_at));
+  return {
+    total: rows.length,
+    truncated: rows.length >= ROW_CAP,
+    active: Number(active) || 0,
+    waiting: Number(waiting) || 0,
+    answered: first.filter(v => v !== null).length,
+    resolved: resolvedRows.length,
+    firstReply: { avgMin: avg(first), medianMin: med(first) },
+    resolution: { avgMin: avg(resolution), medianMin: med(resolution) },
+    activeByAgent
+  };
+}
+
 async function windowRows(c, orgId, days) {
   return (await c.query(`select t.number, t.subject, t.status, t.priority, t.type, t.channel, t.requester_name, t.requester_email, t.tags, t.created_at, t.first_response_at, t.solved_at, u.name assignee_name, u.email assignee_email, q.name queue_name
     from tickets t left join "user" u on u.id = t.assignee_id left join queues q on q.id = t.queue_id and q.org_id = t.org_id
@@ -18,6 +38,19 @@ export async function report(pool, orgId, daysIn, now = Date.now()) {
   const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30, sla = (await getSla(pool, orgId)).policies, cal = await calendarOf(pool, orgId);
   return withOrg(pool, orgId, async c => {
     const rows = await windowRows(c, orgId, days);
+    const chatRows = (await c.query(`select t.created_at, t.first_response_at, t.solved_at
+      from tickets t where t.org_id = $1 and t.channel = 'chat'
+        and t.created_at >= now() - ($2::int * interval '1 day')
+      order by t.created_at desc limit ${ROW_CAP}`, [orgId, days])).rows;
+    const chatQueue = (await c.query(`select count(*) filter (where status in ('open','pending','on_hold'))::int as active,
+        count(*) filter (where status in ('open','pending','on_hold') and assignee_id is null)::int as waiting
+      from tickets where org_id = $1 and channel = 'chat'`, [orgId])).rows[0] || {};
+    const chatAgents = (await c.query(`select coalesce(u.name, u.email, 'Agent') as name, count(*)::int as n
+      from tickets t join "user" u on u.id = t.assignee_id
+      where t.org_id = $1 and t.channel = 'chat' and t.status in ('open','pending','on_hold')
+      group by t.assignee_id, u.name, u.email order by n desc, name asc limit 20`, [orgId])).rows;
+    const chatPerformance = chatPerformanceFromRows(chatRows, chatQueue.active, chatQueue.waiting, chatAgents);
+
     const perDay = (await c.query(`with d as (select generate_series(current_date - ($2::int - 1), current_date, interval '1 day')::date as day),
         c as (select created_at::date as day, count(*)::int n from tickets where org_id = $1 and created_at >= current_date - ($2::int - 1) group by 1),
         s as (select solved_at::date as day, count(*)::int n from tickets where org_id = $1 and solved_at >= current_date - ($2::int - 1) group by 1)
@@ -25,7 +58,7 @@ export async function report(pool, orgId, daysIn, now = Date.now()) {
     const first = rows.map(r => mins(r.created_at, r.first_response_at)), res = rows.filter(r => r.solved_at).map(r => mins(r.created_at, r.solved_at));
     const slas = rows.map(r => slaOf(r, sla, now, cal)).filter(Boolean), judged = slas.filter(s => s.worst !== 'ok'), good = judged.filter(s => s.worst === 'met').length;
     const cs = (await c.query("select count(*)::int sent, count(rating)::int rated, count(*) filter (where rating = 1)::int good from csat_ratings where org_id = $1 and sent_at >= now() - ($2::int * interval '1 day')", [orgId, days])).rows[0];
-    return { ok: true, days, csat: { sent: cs.sent, rated: cs.rated, good: cs.good, rate: cs.rated ? Math.round(100 * cs.good / cs.rated) : null }, total: rows.length, truncated: rows.length >= ROW_CAP, perDay,
+    return { ok: true, days, chatPerformance, csat: { sent: cs.sent, rated: cs.rated, good: cs.good, rate: cs.rated ? Math.round(100 * cs.good / cs.rated) : null }, total: rows.length, truncated: rows.length >= ROW_CAP, perDay,
       byStatus: tally(rows, r => r.status), byPriority: tally(rows, r => r.priority), byChannel: tally(rows, r => r.channel), byType: tally(rows, r => r.type), byQueue: tally(rows, r => r.queue_name),
       solvedBy: tally(rows.filter(r => r.solved_at), r => r.assignee_name || r.assignee_email), labels: tally(rows.flatMap(r => (r.tags || []).map(t => ({ t }))), r => r.t).slice(0, 10),
       firstReply: { avgMin: avg(first), medianMin: med(first), answered: first.filter(v => v !== null).length }, resolution: { avgMin: avg(res), medianMin: med(res), solved: res.length },

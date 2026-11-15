@@ -2068,6 +2068,18 @@
       return el('div', { class: 'page wide' }, el('div', { class: 'bar' }, el('h2', {}, 'Reports'), el('span', { class: 'grow' }), range, el('button', { type: 'button', class: 'btn l', 'data-report-csv': '1', onclick: function () { api('report-csv', { days: reportDays }).then(function (x) { if (!x.ok) return say(x.body.error, true); var u = root.URL.createObjectURL(new root.Blob([x.body.csv], { type: 'text/csv' })), a = doc.createElement('a'); a.href = u; a.download = x.body.filename; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); }); } }, 'Download CSV')),
         el('div', { class: 'stats' }, stat('Tickets created', String(r.total), r.truncated ? 'Showing the latest 5,000' : ''), stat('Customer satisfaction', r.csat && r.csat.rate !== null ? r.csat.rate + '%' : 'No ratings yet', r.csat ? r.csat.good + ' good of ' + r.csat.rated + ' rated · ' + r.csat.sent + ' asked' : ''), stat('First reply, average', minsText(r.firstReply.avgMin), 'median ' + minsText(r.firstReply.medianMin) + ' · ' + r.firstReply.answered + ' answered'), stat('Time to solve, average', minsText(r.resolution.avgMin), 'median ' + minsText(r.resolution.medianMin) + ' · ' + r.resolution.solved + ' solved'), r.sla ? stat('SLA met', r.sla.rate === null ? '—' : r.sla.rate + '%', r.sla.breached + ' breached or missed') : null),
         el('div', { class: 'rcard' }, el('h3', {}, 'Created and solved per day'), chart, el('div', { class: 'legend m' }, el('span', { class: 'k c' }), ' Created ', el('span', { class: 'k s' }), ' Solved')),
+        r.chatPerformance ? el('section', { class: 'chat-performance', 'aria-label': 'Live Chat performance' },
+          el('div', { class: 'bar' }, el('div', {}, el('h3', {}, 'Live Chat performance'), el('p', { class: 'm' }, 'Chat response and resolution metrics for the selected period, plus the current queue.')), el('span', { class: 'grow' })),
+          el('div', { class: 'stats' },
+            stat('Chats started', String(r.chatPerformance.total), r.chatPerformance.truncated ? 'Showing the latest 5,000' : 'In selected period'),
+            stat('Active now', String(r.chatPerformance.active), 'Across all open conversations'),
+            stat('Waiting for an agent', String(r.chatPerformance.waiting), 'Currently unassigned'),
+            stat('Answered', String(r.chatPerformance.answered), 'Chats with a first reply'),
+            stat('First reply, average', minsText(r.chatPerformance.firstReply.avgMin), 'Median ' + minsText(r.chatPerformance.firstReply.medianMin)),
+            stat('Resolved', String(r.chatPerformance.resolved), 'In selected period'),
+            stat('Time to resolve, average', minsText(r.chatPerformance.resolution.avgMin), 'Median ' + minsText(r.chatPerformance.resolution.medianMin))),
+          el('div', { class: 'rgrid' }, hlist('Current active chats by agent', r.chatPerformance.activeByAgent || []))
+        ) : null,
         el('div', { class: 'rgrid' }, hlist('By status', r.byStatus), hlist('By priority', r.byPriority), hlist('By channel', r.byChannel), hlist('By type', r.byType), hlist('By queue', r.byQueue), hlist('Solved by', r.solvedBy), hlist('Busiest labels', r.labels)));
     }
     function field(k, ph) { return el('input', { 'aria-label': k, placeholder: ph, maxlength: '200' }); }
