@@ -35,13 +35,13 @@ export const contactForEmail = (pool,orgId,email) => withOrg(pool,orgId,async c=
 });
 
 export const listContacts = (pool,orgId,q='',limitInput=50,offsetInput=0) => withOrg(pool,orgId,async c=>{
-  const term=clean(q,100),limit=Math.min(Math.max(parseInt(limitInput,10)||50,1),100),offset=Math.min(Math.max(parseInt(offsetInput,10)||0,0),1000000),pattern=like(term);
+  const term=clean(q,100),limit=Math.min(Math.max(parseInt(limitInput,10)||50,1),100),offset=Math.min(Math.max(parseInt(offsetInput,10)||0,0),1000000),pattern=term.toLowerCase().replace(/[\\%_]/g,m=>'\\'+m)+'%';
   const result=await c.query(`with filtered as (
     select p.id,p.name,p.email,p.phone,p.title,p.company_id,k.name company_name,
       (select count(*)::int from tickets t where t.org_id=p.org_id and lower(t.requester_email)=p.email) tickets,
       p.last_seen_at
     from contact_profiles p left join clients k on k.org_id=p.org_id and k.id=p.company_id
-    where p.org_id=$1 and ($2='' or p.name ilike $3 or p.email ilike $3 or k.name ilike $3)
+    where p.org_id=$1 and ($2='' or lower(p.name) like $3 or lower(p.email) like $3 or lower(k.name) like $3)
   ), totals as (select count(*)::int total from filtered),
   page as (select * from filtered order by last_seen_at desc nulls last,lower(name),email limit $4 offset $5)
   select page.*,totals.total as total_count from totals left join page on true`,[orgId,term,pattern,limit,offset]);
