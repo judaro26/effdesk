@@ -100,7 +100,10 @@ export async function listTickets(pool, orgId, actor, q = {}) {
       return fail('The ticket page cursor is invalid. Refresh the list and try again.');
     }
     args.push(cursor.updatedAt, cursor.id);
-    where.push('(updated_at, id) < (
+    where.push('(updated_at, id) < ($' + (args.length - 1) + '::timestamptz, $' + args.length + '::bigint)');
+  }
+  const offset = cursorMode ? 0 : Math.max(parseInt(q.offset, 10) || 0, 0);
+  return withOrg(pool, orgId, async c => {
     // Fetch the page and tenant-wide status totals in one database round trip.
     // The counts CTE always returns one row, including when the requested page is empty.
     const result = await c.query(`
