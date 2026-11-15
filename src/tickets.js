@@ -87,9 +87,9 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
   const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 100);
-  const cursorMode = typeof q.cursor === 'string' && q.cursor.length > 0;
+  const cursorMode = typeof q.cursor === 'string' || q.cursorMode === true;
   let cursor = null;
-  if (cursorMode) {
+  if (cursorMode && q.cursor) {
     try {
       const decoded = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8'));
       const date = new Date(decoded?.u);
