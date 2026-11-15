@@ -977,3 +977,40 @@ html{-webkit-text-size-adjust:100%}
 @media(prefers-reduced-motion:reduce){
   .deskapp .chat-inbox-card,.deskapp .chat-inbox-accept,.deskapp .chat-inbox-open{transition:none}
 }
+
+
+/* New-chat queue clarity: show waiting age and make the accept action unmistakable. */
+.deskapp .chat-inbox-panel-new .chat-inbox-panel-head p{max-width:38rem}
+.deskapp .chat-inbox-waiting-age{
+  display:inline-flex;align-items:center;gap:4px;flex:none;padding:3px 7px;
+  border-radius:999px;background:color-mix(in srgb,var(--accent) 9%,var(--d-panel));
+  color:var(--accent);font-size:10px;font-weight:750;line-height:1.2;
+  font-variant-numeric:tabular-nums
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-card-copy{min-width:0}
+.deskapp .chat-inbox-panel-new .chat-inbox-subject{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--d-ink);font-weight:600
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-accept{
+  flex:none;min-width:82px;min-height:36px;padding:8px 14px;border-radius:10px;
+  background:var(--accent);color:var(--accent-ink);font-size:12px;font-weight:800;
+  box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 18%,transparent);
+  transition:transform .15s ease,box-shadow .15s ease,opacity .15s ease
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-accept:not(:disabled):hover{
+  transform:translateY(-1px);box-shadow:0 6px 14px color-mix(in srgb,var(--accent) 24%,transparent)
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-accept:disabled{
+  background:var(--d-soft);color:var(--d-muted);box-shadow:none;cursor:not-allowed
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-empty{
+  min-height:190px;align-content:center;text-align:center;padding:28px
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-empty-icon{
+  width:42px;height:42px;font-size:17px
+}
+@media(max-width:560px){
+  .deskapp .chat-inbox-waiting-age{font-size:9px;padding:3px 6px}
+  .deskapp .chat-inbox-panel-new .chat-inbox-accept{min-width:68px;padding:8px 10px}
+}

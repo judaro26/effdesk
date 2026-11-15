@@ -231,22 +231,24 @@
       var fmt = function (value) { if (!value) return 'Just now'; var d = new Date(value); if (isNaN(d.getTime())) return ''; var mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000)); return mins < 1 ? 'Just now' : mins < 60 ? mins + 'm ago' : mins < 1440 ? Math.floor(mins / 60) + 'h ago' : d.toLocaleDateString(); };
       var agentName = function (id) { var a = agents.filter(function (x) { return x.id === id; })[0]; return a ? (a.name || a.email) : 'Assigned'; };
       var initials = function (name) { return String(name || 'C').trim().split(/\\s+/).slice(0,2).map(function(x){return x.charAt(0).toUpperCase();}).join('') || 'C'; };
+      var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\\s*chat\\s*:\\s*/i, '').trim() || 'Live chat'; };
       var openCard = function (t) {
-        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', onclick: function () { if (t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
+        var isWaiting = !t.assignee_id, age = fmt(t.created_at || t.updated_at);
+        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
           el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
           el('span', { class: 'chat-inbox-card-copy' },
-            el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), !t.assignee_id ? el('span', { class: 'chat-inbox-new-label', title: 'New unassigned conversation' }, 'NEW') : null, el('span', { class: 'chat-inbox-time' }, fmt(t.assignee_id ? t.updated_at : t.created_at))),
-            el('span', { class: 'chat-inbox-subject' }, t.subject || 'Live chat'),
+            el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), isWaiting ? el('span', { class: 'chat-inbox-new-label', title: 'New unassigned conversation' }, 'NEW') : null, isWaiting ? el('span', { class: 'chat-inbox-waiting-age', title: 'Waiting since ' + age }, 'Waiting ' + age) : null, !isWaiting ? el('span', { class: 'chat-inbox-time' }, fmt(t.updated_at)) : null),
+            el('span', { class: 'chat-inbox-subject' }, chatSubject(t)),
             t.assignee_id && t.chat_last_public_message_kind === 'requester' ? el('span', { class: 'chat-inbox-customer-replied', role: 'status' }, 'Customer replied · needs attention') : null,
-            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, t.assignee_id ? agentName(t.assignee_id) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
+            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, isWaiting ? 'Waiting for an agent' : agentName(t.assignee_id)), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, cap(t.status)))),
           el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
-        var accept = !t.assignee_id ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
-        return el('div', { class: 'chat-inbox-card' + (!t.assignee_id ? ' is-new' : '') }, main, accept);
+        var accept = isWaiting ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, 'aria-label': 'Accept chat ' + t.number, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
+        return el('div', { class: 'chat-inbox-card' + (isWaiting ? ' is-new' : '') }, main, accept);
       };
-      var panel = function (title, subtitle, items, empty, modifier) {
+      var panel = function (title, subtitle, items, empty, modifier, emptyHint) {
         return el('section', { class: 'chat-inbox-panel' + (modifier ? ' ' + modifier : '') }, 
-          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count' }, String(items.length))),
-          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, empty), el('span', {}, 'New conversations will appear here.')));
+          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count', 'aria-label': items.length + ' conversations' }, String(items.length))),
+          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, empty), el('span', {}, emptyHint || 'New conversations will appear here.')));
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
@@ -259,8 +261,8 @@
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(assigned.length)), el('small', {}, 'Owned by a teammate'))),
         chatInboxError ? el('div', { class: 'chat-inbox-error', role: 'alert' }, chatInboxError, el('button', { type: 'button', onclick: loadChatInbox }, 'Try again')) : null,
         chatInboxLoading && !chatInboxPrimed ? el('div', { class: 'chat-inbox-loading' }, el('span', { class: 'chat-inbox-spinner' }), 'Loading conversations…') : el('div', { class: 'chat-inbox-columns' }, 
-          panel('New chats', 'First come, first served · oldest waiting first', waiting, 'No new chats waiting', 'chat-inbox-panel-new'),
-          panel('In progress', 'Recently active first · customer replies rise to the top', assigned, 'No assigned chats', 'chat-inbox-panel-assigned')),
+          panel('New chats', 'First come, first served · oldest waiting first', waiting, 'You’re all caught up', 'chat-inbox-panel-new', 'New customer conversations will appear here. Accept one to take ownership and start helping.'),
+          panel('In progress', 'Recently active first · customer replies rise to the top', assigned, 'Nothing in progress', 'chat-inbox-panel-assigned', 'Chats you accept will stay here, with customer replies highlighted.' )),
         el('p', { class: 'chat-inbox-footnote' }, 'This inbox shows open live-chat tickets. Closed conversations remain available in All Tickets and the customer history.'));
     }
     function loadApprovals() {
