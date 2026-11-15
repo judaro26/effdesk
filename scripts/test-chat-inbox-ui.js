@@ -21,6 +21,7 @@ check('waiting-age and accept styling remain responsive', css.includes('.chat-in
 
 
 check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, offset: chatInboxOffset"));
+check('background Live Chat reply alerts use a cursor feed instead of repeatedly fetching the first 100 tickets', js.includes("api('chat-reply-alerts', { after: chatReplyCursor || '0' })") && js.includes("api('chat-reply-alerts', { initialize: true })"));
 check('the chat inbox exposes customer search and queue filters', js.includes('Search customers, email or ticket') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
 check('the chat inbox offers previous and next page navigation', js.includes('chatInboxOffset += chatInboxLimit') && js.includes('chatInboxOffset - chatInboxLimit'));
 check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
