@@ -112,10 +112,10 @@ export async function pollChat(pool, env, slug, number, token, after) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   number = Number(number) || 0; if (!tokenOk(env, x.org.id, number, token)) return fail('This chat is not yours.', 403);
   return withOrg(pool, x.org.id, async c => {
-    const t = (await c.query('select id, status, channel from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]; if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
+    const t = (await c.query('select id, status, channel, assignee_id from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]; if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
     await c.query('update tickets set chat_seen_at = now() where id = $1', [t.id]);
     const rows = (await c.query("select id, kind, author_name, body, created_at from ticket_messages where org_id = $1 and ticket_id = $2 and kind in ('requester','agent') and id > $3 order by id limit 100", [x.org.id, t.id, Number(after) || 0])).rows;
-    const agentTyping = !!(await c.query("select 1 from ticket_presence where org_id=$1 and ticket_id=$2 and typing=true and seen_at > now() - interval '12 seconds' limit 1", [x.org.id, t.id])).rowCount;
+    const agentTyping = !!(t.assignee_id && (await c.query("select 1 from ticket_presence where org_id=$1 and ticket_id=$2 and user_id=$3 and typing=true and seen_at > now() - interval '12 seconds' limit 1", [x.org.id, t.id, t.assignee_id])).rowCount);
     return { ok: true, ended: t.status === 'closed' || t.status === 'solved', agentTyping, messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
   });
 }
