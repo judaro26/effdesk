@@ -59,7 +59,7 @@ export async function publicForms(pool, orgId, { custom = false, fields = false 
     return forms.map(f => ({ ...f, fields: f.field_keys.map(k => defs.find(d => d.key === k)).filter(Boolean) }));
   });
 }
-export async function submit(pool, env, org, input, { mailer, custom = false, fields = false, now = Date.now() } = {}) {
+export async function submit(pool, env, org, input, { mailer, custom = false, fields = false, now = Date.now(), provenance = {} } = {}) {
   if (clean(input.website, 100)) return fail('Thank you.', 200, { silent: true });                   // the hidden field: a bot filled it in; pretend it worked
   const st = tokenState(env, org.id, input.ts, now);
   if (st === 'bad') return fail('This form expired. Reload the page and try again.', 400, { retry: true });
@@ -78,7 +78,7 @@ export async function submit(pool, env, org, input, { mailer, custom = false, fi
     const recent = (await c.query(`select count(*) filter (where requester_email = $2)::int as mine, count(*)::int as everyone from tickets where org_id = $1 and via_portal and created_at > now() - interval '1 hour'`, [org.id, email])).rows[0];
     if (recent.mine >= PER_EMAIL_HOUR || recent.everyone >= PER_ORG_HOUR) return { response: fail('We have received a lot of requests from you. Please wait a while, we will reply to the ones we have.', 429) };
     const cf = {}; if (form && fields) for (const f of form.fields || []) { const v = input['cf_' + f.key]; if (v !== undefined && v !== '') cf[f.key] = f.type === 'checkbox' ? v === 'on' || v === 'true' || v === true : v; }
-    const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal' }, c);
+    const r = await createTicket(pool, org.id, null, { subject, body, requesterEmail: email, requesterName: name, channel: 'web', tags: form ? form.tags : [], custom: cf, priority: form ? form.priority : 'normal', provenance:{...provenance,identityType:'visitor'} }, c);
     if (!r.ok) return { response: r };
     await c.query('update tickets set via_portal = true, form_id = $3, queue_id = coalesce($4, queue_id), type = $5 where org_id = $1 and id = $2', [org.id, r.ticket.id, form ? form.id : null, form ? form.queue_id : null, form ? form.type : 'question']);
     return { ticket: r.ticket, number: r.ticket.number };

@@ -25,7 +25,7 @@
     var form = el('form', {}, el('div', { class: 'note' + (cfg.accepting ? '' : ' offline'), text: cfg.accepting ? cfg.greeting : 'We’re not accepting live chats right now. Leave a message and we’ll reply here, or by email if you leave.' }), name, email, msg, err, go);
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.textContent = ''; go.disabled = true;
-      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId() }).then(function (r) {
+      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: doc.referrer || '' }).then(function (r) {
         go.disabled = false; if (!r.ok) { err.textContent = r.body.error || 'The chat could not start.'; return; }
         state = { number: r.body.number, token: r.body.token, last: 0, ended: false }; seen = {}; store.set({ number: state.number, token: state.token }); conversation();
       }).catch(function () { go.disabled = false; err.textContent = 'No connection. Try again.'; });
