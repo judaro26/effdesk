@@ -86,7 +86,18 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   const cSla = slaWhere(cf.sla); if (cSla) where.push(cSla);
   const text = clean(q.q, 100);
   if (text) { const like = '%' + text.replace(/[\\%_]/g, m => '\\' + m) + '%'; args.push(like); const i = args.length; where.push(`(subject ilike $${i} or requester_email ilike $${i} or requester_name ilike $${i} or (case when $${i + 1}::int is null then false else number = $${i + 1}::int end))`); args.push(/^#?\d{1,9}$/.test(text) ? Number(text.replace('#', '')) : null); }
-  const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 100), offset = Math.max(parseInt(q.offset, 10) || 0, 0);
+  const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 100);
+  const cursorMode = typeof q.cursor === 'string' || q.cursorMode === true;
+  if (cursorMode && q.cursor) {
+    try {
+      const decoded = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8'));
+      const date = new Date(decoded?.u), id = Number(decoded?.id);
+      if (!Number.isFinite(date.getTime()) || !Number.isSafeInteger(id) || id < 1) throw new Error('invalid');
+      args.push(date.toISOString(), id);
+      where.push('(updated_at, id) < ($' + (args.length - 1) + '::timestamptz, $' + args.length + '::bigint)');
+    } catch { return fail('The ticket page cursor is invalid. Refresh the list and try again.'); }
+  }
+  const offset = cursorMode ? 0 : Math.max(parseInt(q.offset, 10) || 0, 0);
   return withOrg(pool, orgId, async c => {
     // Fetch the page and tenant-wide status totals in one database round trip.
     // The counts CTE always returns one row, including when the requested page is empty.
@@ -98,7 +109,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select ${ticketCols}, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
-        limit ${limit} offset ${offset}
+        limit ${cursorMode ? limit + 1 : limit} offset ${offset}
       )
       select ticket_page.*, ticket_counts.by_status as "__counts"
       from ticket_counts left join ticket_page on true
@@ -106,7 +117,11 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     const first = result.rows[0];
     const counts = first && first.__counts || {};
     const rows = result.rows.filter(row => row.id !== null).map(({ __counts, ...ticket }) => ticket);
-    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts } };
+    const hasMore = cursorMode && rows.length > limit;
+    if (hasMore) rows.pop();
+    const last = rows[rows.length - 1];
+    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.updated_at, id: Number(last.id) })).toString('base64url') : null;
+    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
   });
 }
 

@@ -77,6 +77,12 @@ const legacyMessage = (await call(ann, { orgId: acme.id, action: 'get', number: 
 check('legacy messages with HTML in their body are returned as safe rich HTML, not literal code', /<strong>Legacy formatted reply<\/strong>/.test(legacyMessage.html_body || '') && legacyMessage.body === 'Legacy formatted reply');
 r = await call(ann, { orgId: acme.id, action: 'list' });
 check('the list returns counts per status, and the newest activity comes first', r.body.counts.open === 2 && r.body.counts.solved === 0 && r.body.tickets[0].number === 1);
+r = await call(ann, { orgId: acme.id, action: 'list', limit: 1, cursor: '' });
+const cursorFirst = r.body;
+const cursorSecond = await call(ann, { orgId: acme.id, action: 'list', limit: 1, cursor: cursorFirst.nextCursor });
+check('ticket keyset pagination returns a continuation cursor and then a final page without duplicates', r.status === 200 && cursorFirst.tickets.length === 1 && cursorFirst.hasMore === true && !!cursorFirst.nextCursor && cursorSecond.status === 200 && cursorSecond.body.tickets.length === 1 && cursorSecond.body.hasMore === false && cursorSecond.body.tickets[0].id !== cursorFirst.tickets[0].id);
+r = await call(ann, { orgId: acme.id, action: 'list', limit: 1, cursor: 'not-a-valid-cursor' });
+check('an invalid ticket cursor is rejected safely instead of silently restarting pagination', r.status === 400 && /cursor is invalid/i.test(r.body.error));
 r = await call(ann, { orgId: acme.id, action: 'list', status: 'solved' });
 check('status totals remain available when a filtered page has no tickets', r.body.tickets.length === 0 && r.body.counts.open === 2);
 check('the agents list holds the organization\'s members only', (await call(ann, { orgId: acme.id, action: 'agents' })).body.agents.map(a => a.email).sort().join() === 'ann@acme.test,olivia@acme.test');
