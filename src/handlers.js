@@ -419,7 +419,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'get': {
-      r = await getTicket(pool, orgId, actor, b.number);
+      r = await getTicket(pool, orgId, actor, b.number, { messageLimit: b.messageLimit, messageCursor: b.messageCursor });
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
       if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
       if (r.ok) r.delivery = r.ticket.channel === 'whatsapp' ? await wa.deliveryOf(pool, orgId, b.number) : await emailDeliveryOf(pool, orgId, b.number);
