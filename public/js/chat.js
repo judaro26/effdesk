@@ -42,11 +42,11 @@
   }
   function conversation() {
     clear(main);
-    var log = el('div', { class: 'log', id: 'log', role: 'log' }), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
+    var log = el('div', { class: 'log', id: 'log', role: 'log' }), typing = el('div', { class: 'chat-typing', id: 'chat-typing', role: 'status', 'aria-live': 'polite', hidden: 'hidden' }, el('span', { class: 'chat-typing-dots', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')), el('span', { class: 'chat-typing-label' }, 'An agent is typing…')), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
     var ta = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a message', rows: '1', maxlength: '2000' }), send = el('button', { type: 'submit', text: 'Send' }), form = el('form', { class: 'send' }, ta, send);
     var again = el('button', { type: 'button', class: 'link', text: 'Start a new chat' }); again.addEventListener('click', function () { store.set(null); state = { number: 0, token: '', last: 0, ended: false }; start(); });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
-    main.appendChild(log); main.appendChild(note); main.appendChild(form);
+    main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
     var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', text: r.body.error || 'Not sent.' })); if (r.status === 409) { store.set(null); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; }); };
     form.addEventListener('submit', function (e) { e.preventDefault(); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
@@ -61,7 +61,7 @@
         var log = doc.getElementById('log'); if (!log) return;
         r.body.messages.forEach(function (m) { state.last = Math.max(state.last, m.id); var b = bubble(m); if (b) log.appendChild(b); });
         if (r.body.messages.length) log.scrollTop = log.scrollHeight;
-        var ended = doc.getElementById('ended'), form = main.querySelector('form.send');
+        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), typing = doc.getElementById('chat-typing');\n        if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
         if (ended) { if (r.body.ended) ended.removeAttribute('hidden'); else ended.setAttribute('hidden', 'hidden'); }
         if (form) form.style.display = r.body.ended ? 'none' : '';
       }
