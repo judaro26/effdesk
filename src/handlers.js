@@ -389,7 +389,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'sla-save': if ((g = adminOnly() || need('sla'))) return g; r = await saveSla(pool, orgId, b.policies); break;
     case 'report': if ((g = need('reports'))) return g; r = await buildReport(pool, orgId, b.days); break;
     case 'report-csv': if ((g = need('reports'))) return g; r = await reportCsv(pool, orgId, b.days); break;
-    case 'chat-inbox': {\n      if ((g = need('live_chat'))) return g;\n      if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });\n      r = await agentInbox(pool, orgId, { ...b, agentId: actor.id });\n      break;\n    }\n    case 'list': {
+    case 'chat-inbox': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
+      r = await agentInbox(pool, orgId, { ...b, agentId: actor.id });
+      break;
+    }
+    case 'list': {
       if (b.channel === 'chat') {
         if ((g = need('live_chat'))) return g;
         if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
