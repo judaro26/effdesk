@@ -56,3 +56,5 @@ check('agents can open a teammate transfer panel from a Live Chat conversation',
 check('handoff options show availability and active chat capacity and disable ineligible teammates', js.includes('a.eligible') && js.includes("a.active_chats + '/' + a.max_concurrent"));
 check('the agent workspace sends chat availability heartbeats while accepting chats', js.includes("api('chat-heartbeat', {})") && js.includes('root.setInterval(chatHeartbeatTick, 30000)'));
 check('the transfer panel is responsive on narrow screens', css.includes('.chat-transfer-panel') && css.includes('@media(max-width:760px){.chat-transfer-panel'));
+
+check('the transfer action is limited in the interface to the assigned agent or workspace administrators', js.includes("t.assignee_id === meId || role === 'owner' || role === 'admin'"));

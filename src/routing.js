@@ -90,15 +90,18 @@ export async function heartbeatChat(pool, orgId, userId) {
 export async function getChatTeam(pool, orgId) {
   return withOrg(pool, orgId, async c => {
     const maxConcurrent = Math.max(1, Math.min(10, Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent) || 3));
-    const rows = (await c.query(`select m."userId" as user_id, u.name, u.email, a.chat_available,
+    const rows = (await c.query(`select m."userId" as user_id, u.name, u.email, m.role, r.permissions, a.chat_available,
       (a.chat_last_seen_at > now() - interval '3 minutes') as recently_seen,
       (select count(*)::int from tickets t where t.org_id=$1 and t.channel='chat' and t.assignee_id=m."userId" and t.status in ('open','pending','on_hold')) as active_chats
       from member m join "user" u on u.id=m."userId" join agent_status a on a.org_id=$1 and a.user_id=m."userId"
+      left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId"
+      left join custom_roles r on r.org_id=$1 and r.id=mc.role_id
       where m."organizationId"=$1 and m.role in ('owner','admin','member') and a.chat_access=true
       order by (a.chat_available and a.chat_last_seen_at > now() - interval '3 minutes') desc, active_chats asc, u.name asc`,[orgId])).rows;
     return { ok:true, maxConcurrent, agents: rows.map(a => {
       const activeChats=Number(a.active_chats||0), online=a.chat_available===true && a.recently_seen===true;
-      return { user_id:a.user_id, name:a.name||a.email, email:a.email, online, active_chats:activeChats, max_concurrent:maxConcurrent, remaining:Math.max(0,maxConcurrent-activeChats), eligible:online && activeChats<maxConcurrent };
+      const replyAllowed=a.role!=='member' || !Array.isArray(a.permissions) || a.permissions.includes('reply');
+      return { user_id:a.user_id, name:a.name||a.email, email:a.email, online, active_chats:activeChats, max_concurrent:maxConcurrent, remaining:Math.max(0,maxConcurrent-activeChats), eligible:online && activeChats<maxConcurrent && replyAllowed };
     }) };
   });
 }
