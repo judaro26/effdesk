@@ -934,3 +934,46 @@ html{-webkit-text-size-adjust:100%}
 .chat-reply-global-alert-open{border:0;border-radius:7px;padding:8px 11px;background:var(--accent,#1f73b7);color:#fff;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
 .chat-reply-global-alert-close{border:0;background:transparent;color:inherit;font-size:22px;line-height:1;cursor:pointer;padding:2px 4px}
 @media(max-width:600px){.chat-reply-global-alert{right:12px;top:12px;left:12px;max-width:none;flex-wrap:wrap}.chat-reply-global-alert-open{margin-left:auto}}
+
+
+/* Live Chat inbox: make the waiting queue the clearest next action. */
+.deskapp .chat-inbox-panel-new{
+  border-color:color-mix(in srgb,var(--accent) 38%,var(--d-line));
+  box-shadow:0 8px 28px color-mix(in srgb,var(--accent) 9%,transparent),0 1px 3px rgba(15,23,42,.04)
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-panel-head{
+  background:linear-gradient(110deg,color-mix(in srgb,var(--accent) 10%,var(--d-panel)),var(--d-panel) 76%);
+  border-bottom-color:color-mix(in srgb,var(--accent) 17%,var(--d-line))
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-panel-head h2{
+  display:flex;align-items:center;gap:9px;font-size:16px
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-panel-head h2:before{
+  content:"";width:9px;height:9px;flex:none;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 13%,transparent)
+}
+.deskapp .chat-inbox-panel-new .chat-inbox-count{
+  min-width:34px;height:34px;border-radius:11px;background:var(--accent);color:var(--accent-ink);
+  font-size:14px;box-shadow:0 3px 9px color-mix(in srgb,var(--accent) 22%,transparent)
+}
+.deskapp .chat-inbox-card.is-new{
+  background:color-mix(in srgb,var(--accent) 3.5%,var(--d-panel))
+}
+.deskapp .chat-inbox-card.is-new:hover{
+  background:color-mix(in srgb,var(--accent) 8%,var(--d-panel))
+}
+.deskapp .chat-inbox-new-label{
+  flex:none;display:inline-flex;align-items:center;justify-content:center;padding:3px 7px;
+  border:1px solid color-mix(in srgb,var(--accent) 24%,transparent);border-radius:6px;
+  background:color-mix(in srgb,var(--accent) 10%,var(--d-panel));color:var(--accent);
+  font-size:9px;font-weight:850;letter-spacing:.08em;line-height:1.2
+}
+.deskapp .chat-inbox-stat-new{
+  border-color:color-mix(in srgb,var(--accent) 28%,var(--d-line));
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 6%,var(--d-panel)),var(--d-panel) 75%)
+}
+.deskapp .chat-inbox-stat-new>span,.deskapp .chat-inbox-stat-new strong{color:var(--accent)}
+.deskapp .chat-inbox-refresh-note{font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){
+  .deskapp .chat-inbox-card,.deskapp .chat-inbox-accept,.deskapp .chat-inbox-open{transition:none}
+}
