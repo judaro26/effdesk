@@ -41,14 +41,14 @@ export async function saveHook(pool, orgId, b, { lookup } = {}) {
 }
 export async function deleteHook(pool, orgId, id) { return withOrg(pool, orgId, async c => (await c.query('delete from webhooks where org_id = $1 and id = $2', [orgId, Number(id) || 0])).rowCount > 0); }
 // Enqueue one durable delivery per subscribed endpoint. Ticket requests no longer wait on remote webhook servers.
-export async function emit(pool, orgId, event, number, extra = {}) {
+export async function emit(pool, orgId, event, number, extra = {}, { now = Date.now() } = {}) {
   try {
     const data = await withOrg(pool, orgId, async c => ({
       hooks: (await c.query('select id from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,
       t: (await c.query('select custom, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, created_at, updated_at from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0],
     }));
     if (!data.hooks.length || !data.t) return { queued: 0 };
-    const eventId = crypto.randomUUID(), occurredAt = new Date().toISOString();
+    const eventId = crypto.randomUUID(), occurredAt = new Date(now).toISOString();
     const body = JSON.stringify({ eventId, event, organization: orgId, occurredAt, ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, custom: data.t.custom, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
     const text = chatText(event, data.t, extra);
     const results = await Promise.allSettled(data.hooks.map(h => enqueueJob(pool, orgId, {
