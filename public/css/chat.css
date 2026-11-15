@@ -17,3 +17,21 @@ button.link{background:none;color:var(--c);padding:4px}
 
 /* A calm, distinct state for message capture when no agent can accept a live chat. */
 .note.offline{margin:12px 12px 0;padding:11px 13px;border:1px solid color-mix(in srgb,var(--c) 24%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--c) 7%,var(--bg));color:var(--ink);line-height:1.5}
+
+/* Customer-facing message identity, timestamps and brand polish. */
+header{display:flex;align-items:center;gap:11px;min-height:58px;box-shadow:0 2px 12px rgba(20,35,50,.12)}
+header #title{font-size:15px;font-weight:700;letter-spacing:.01em}
+.chat-brand{width:32px;height:32px;object-fit:contain;border-radius:9px;background:rgba(255,255,255,.14);padding:3px;flex:none}
+.log{padding:18px 16px;gap:12px;scroll-behavior:smooth}
+.b{position:relative;max-width:min(86%,520px);padding:11px 13px;border-radius:15px;box-shadow:0 1px 2px rgba(15,25,35,.06)}
+.b.agent{border-top-left-radius:5px}
+.b.you{border-top-right-radius:5px}
+.b .who{font-size:11px;font-weight:750;letter-spacing:.025em;opacity:.78;margin:0 0 5px}
+.b-time{display:block;margin-top:7px;font-size:10px;line-height:1.2;opacity:.66;font-variant-numeric:tabular-nums;text-align:right}
+.b.you .b-time{color:rgba(255,255,255,.82)}
+form.send{padding:12px 14px max(12px,env(safe-area-inset-bottom));background:var(--bg);gap:9px}
+form.send textarea{border-radius:12px;padding:10px 12px;min-height:42px}
+form.send button{border-radius:11px;min-width:68px;font-weight:700}
+input,textarea{transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 14%,transparent);outline:none}
+@media(max-width:480px){.log{padding:14px 11px}.b{max-width:91%}.chat-brand{width:29px;height:29px}}
