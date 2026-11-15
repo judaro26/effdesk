@@ -43,3 +43,16 @@ input:focus,textarea:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(
 .chat-typing-dots i:nth-child(2){animation-delay:.15s}.chat-typing-dots i:nth-child(3){animation-delay:.3s}
 @keyframes chat-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-3px);opacity:1}}
 @media(prefers-reduced-motion:reduce){.chat-typing-dots i{animation:none;opacity:.8}}
+
+
+/* Compact language control in the customer chat header. */
+#head{padding-right:142px}
+[data-effdesk-locale-switcher]{top:8px!important;right:8px!important;gap:4px!important;padding:3px 6px!important;border-radius:7px!important;box-shadow:0 1px 4px rgba(20,30,40,.08)!important;font-size:10px!important;line-height:1.2!important}
+[data-effdesk-locale-switcher] select{max-width:86px;padding:2px 4px!important;border-radius:5px!important;font-size:10px!important}
+
+/* Clear assignment state and a restrained product-credit footer. */
+.chat-assignment{flex:none;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--soft);color:var(--ink);font-size:12px;font-weight:650}
+.chat-assignment.is-assigned{background:color-mix(in srgb,var(--c) 8%,var(--bg));border-bottom-color:color-mix(in srgb,var(--c) 18%,var(--line))}
+.chat-powered{flex:none;padding:8px 12px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--bg);color:#78838a;text-align:center;font-size:10px;letter-spacing:.025em}
+.chat-powered strong{color:var(--ink);font-weight:750}
+@media(max-width:360px){#head{padding-right:126px}[data-effdesk-locale-switcher] span{display:none}[data-effdesk-locale-switcher] select{max-width:82px}}
