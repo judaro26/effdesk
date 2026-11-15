@@ -50,6 +50,7 @@ const initialChannel = (await pool.query('select channel from tickets where numb
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
 const preAccessInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an admin must explicitly enable their own chat access too', preAccessInbox.status === 403);
+check('a teammate without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
 check('agents without Live Chat access cannot read reply notifications', (await A(ann, 'chat-reply-alerts', { initialize: true })).status === 403);
 check('a teammate cannot list live chats until an admin grants access', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 403);
 check('unauthorized agents do not see chat tickets in All Tickets', !(await A(ann, 'list', { status: 'active', limit: 100 })).body.tickets.some(t => t.number === n));
@@ -142,7 +143,6 @@ const searchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'vera@x.co' });
 check('the Live Chat inbox searches customer email server-side', searchPage.status === 200 && searchPage.body.tickets.some(t => t.requester_email === 'vera@x.co'));
 const agentSearchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'olivia' });
 check('the Live Chat inbox can find conversations by assigned agent name', agentSearchPage.status === 200 && agentSearchPage.body.tickets.some(t => t.assignee_id === olivia.user.id));
-check('agents without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
 await pool.query("insert into contact_profiles (org_id,email,name,last_seen_at) select $1,'scale-'||g||'@example.test','Scale Contact '||g,now()-(g * interval '1 minute') from generate_series(1,6) g on conflict (org_id,email) do nothing", [acme.id]);
 const contactsPageOne = await listContacts(pool, acme.id, 'scale-', 2, 0);
 const contactsPageTwo = await listContacts(pool, acme.id, 'scale-', 2, 2);
