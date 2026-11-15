@@ -149,6 +149,7 @@ await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typ
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('chat polling reports active agent typing without exposing presence details', p.status === 200 && p.body.agentTyping === true && !('agentName' in p.body));
 await pool.query("update ticket_presence set typing=false,seen_at=now() where org_id=$1 and user_id=$2 and ticket_id=(select id from tickets where org_id=$1 and number=$3)", [acme.id, olivia.user.id, n]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
 await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Olivia',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, olivia.user.id]);
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
