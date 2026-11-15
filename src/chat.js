@@ -89,7 +89,7 @@ export async function agentInbox(pool, orgId, input = {}) {
     args.push(number);
     where.push('(lower(t.subject) like $' + i + ' or lower(t.requester_name) like $' + i + ' or lower(t.requester_email) like $' + i + ' or lower(assignee.name) like $' + i + ' or lower(assignee.email) like $' + i + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
   }
-  let cursor = null;
+  let cursor = null, cursorWhere = '';
   if (cursorMode && input.cursor) {
     try {
       cursor = JSON.parse(Buffer.from(String(input.cursor), 'base64url').toString('utf8'));
@@ -98,13 +98,13 @@ export async function agentInbox(pool, orgId, input = {}) {
         if (!Number.isFinite(new Date(cursor.s).getTime())) throw new Error('invalid');
         args.push(new Date(cursor.s).toISOString(), new Date(cursor.u).toISOString(), Number(cursor.id));
         const s = args.length - 2, u = args.length - 1, id = args.length;
-        where.push('(coalesce(t.closed_at,t.solved_at,t.updated_at) < $' + s + '::timestamptz or (coalesce(t.closed_at,t.solved_at,t.updated_at) = $' + s + '::timestamptz and (t.updated_at < $' + u + '::timestamptz or (t.updated_at = $' + u + '::timestamptz and t.id < $' + id + '::bigint))))');
+        cursorWhere = 'where (cursor_history_at < $' + s + '::timestamptz or (cursor_history_at = $' + s + '::timestamptz and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
       } else {
         if (![0,1].includes(Number(cursor.b)) || ![0,1].includes(Number(cursor.n)) || (cursor.w !== null && !Number.isFinite(new Date(cursor.w).getTime()))) throw new Error('invalid');
         args.push(Number(cursor.b), cursor.w === null ? null : new Date(cursor.w).toISOString(), Number(cursor.n), new Date(cursor.u).toISOString(), Number(cursor.id));
         const b=args.length-4,w=args.length-3,n=args.length-2,u=args.length-1,id=args.length;
         const bucket='(case when t.assignee_id is null then 0 else 1 end)', waiting="coalesce(case when t.assignee_id is null then t.created_at end, 'infinity'::timestamptz)", cursorWaiting="coalesce($"+w+"::timestamptz, 'infinity'::timestamptz)", needs="(case when t.assignee_id is not null and latest_public.kind = 'requester' then 0 else 1 end)";
-        where.push('(' + bucket + ' > $' + b + ' or (' + bucket + ' = $' + b + ' and ' + waiting + ' > ' + cursorWaiting + ') or (' + bucket + ' = $' + b + ' and ' + waiting + ' = ' + cursorWaiting + ' and ' + needs + ' > $' + n + ') or (' + bucket + ' = $' + b + ' and ' + waiting + ' = ' + cursorWaiting + ' and ' + needs + ' = $' + n + ' and (t.updated_at < $' + u + '::timestamptz or (t.updated_at = $' + u + '::timestamptz and t.id < $' + id + '::bigint))))');
+        cursorWhere = 'where (cursor_bucket > $' + b + ' or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) > coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz)) or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply > $' + n + ') or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply = $' + n + ' and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
       }
     } catch { return fail('The Live Chat inbox cursor is invalid. Refresh the inbox and try again.'); }
   }
@@ -119,7 +119,7 @@ export async function agentInbox(pool, orgId, input = {}) {
       ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
       '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply, count(*) filter(where status=\'solved\')::int solved, count(*) filter(where status=\'closed\')::int closed from chat_rows),',
-      'page as (select * from chat_rows order by ' + order + ' limit $' + limitArg + offsetSql + ')',
+      'page as (select * from chat_rows ' + cursorWhere + ' order by ' + order + ' limit $' + limitArg + offsetSql + ')',
       'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count, totals.solved as solved_count, totals.closed as closed_count from totals left join page on true'
     ].join(' ');
     const result = await db.query(sql, args), first = result.rows[0] || {};
