@@ -8,6 +8,7 @@ import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
 import { notifyTicket } from './notify.js';
+import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
 const fail = (error, status = 400) => ({ ok: false, status, error });
@@ -156,7 +157,7 @@ export async function startChat(pool, env, slug, input, mailer, provenance = {})
   });
   if (!result.ok) return result;
   await emit(pool, x.org.id, result.reused ? 'message.customer' : 'ticket.created', result.number, result.reused ? { message: { body } } : {});
-  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, result.number, { kind: 'reply', summary: body }); } catch { } }
+  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, result.number, { kind: 'reply', summary: body }); } catch (e) { logWarn('live_chat.notification_failed', { error: e, org: x.org.id, ticket: result.number, operation: 'start' }); } }
   return { ok: true, number: result.number, token: chatToken(env, x.org.id, result.number), reused: result.reused === true, orgId: x.org.id };
 }
 // Convert a chat into a regular ticket while keeping the source conversation and preserving every transcript entry.
@@ -171,7 +172,7 @@ export async function sendChat(pool, env, slug, input, mailer) {
   const r = await addRequesterMessage(pool, x.org.id, number, { body: clean(input.message, 2000), authorName: t.requester_name || t.requester_email });
   if (!r.ok) return r.closed ? { ok: false, status: 409, error: 'This chat has ended. Start a new one.' } : r;
   await emit(pool, x.org.id, 'message.customer', number, { message: { body: clean(input.message, 2000).slice(0, 2000) } });
-  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, number, { kind: 'reply', summary: clean(input.message, 300) }); } catch { } }
+  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, number, { kind: 'reply', summary: clean(input.message, 300) }); } catch (e) { logWarn('live_chat.notification_failed', { error: e, org: x.org.id, ticket: number, operation: 'visitor_reply' }); } }
   return { ok: true, id: r.messageRowId };
 }
 // the messages after `after` (a message id), both sides; opening the poll marks the visitor as present, which stops reply emails
@@ -241,5 +242,9 @@ export async function chatApi(req, { pool, mailer, env = process.env, now = Date
     if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
     if (act === 'send') { if (await tooMany(pool, 'm' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await sendChat(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
     return json(404, { error: 'Not found.' });
-  } catch { return json(500, { error: 'Something went wrong.' }); }
+  } catch (e) {
+    // The request logger forwards this original exception (including stack) to the error registry.
+    logError('live_chat.api_exception', { error: e, operation: act, org: slug });
+    return json(500, { error: 'Something went wrong.' });
+  }
 }
