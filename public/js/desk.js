@@ -22,7 +22,7 @@
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var chatInboxOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
-    var chatReplySnapshot = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyAlertTimer = null;
+    var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
     var problemsOpen = false, problemRows = null, problemLoading = false, problemDetail = null, problemSelected = 0, problemCreating = false, problemStatus = '';
@@ -188,37 +188,30 @@
       chatReplyAlertTimer = root.setTimeout(function () { if (alert.parentNode) alert.remove(); chatReplyAlertTimer = null; }, 10000);
     }
     function pollChatReplies() {
-      if (!chatAccess || chatInboxOpen || chatReplyMonitorBusy) return scheduleChatReplyMonitor();
+      if (!chatAccess || chatReplyMonitorBusy) return scheduleChatReplyMonitor();
       chatReplyMonitorBusy = true;
-      api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
+      api('chat-reply-alerts', { after: chatReplyCursor || '0' }).then(function (r) {
         if (!r.ok) return;
-        var rows = r.body.tickets || [], next = Object.create(null), newest = null;
-        rows.forEach(function (ticket) {
-          var key = String(ticket.number), stamp = ticket.updated_at || ticket.created_at || '';
-          next[key] = stamp;
-          if (chatReplySnapshot && ticket.chat_last_public_message_kind === 'requester' && chatReplySnapshot[key] !== stamp) {
-            if (!newest || new Date(stamp || 0) > new Date(newest.updated_at || newest.created_at || 0)) newest = ticket;
-          }
-        });
-        chatReplySnapshot = next;
-        if (newest && !chatInboxOpen) showChatReplyAlert(newest);
+        chatReplyCursor = String(r.body.cursor || chatReplyCursor || '0');
+        var replies = r.body.replies || [];
+        if (replies.length && !chatInboxOpen) showChatReplyAlert(replies[replies.length - 1]);
+        chatReplyMonitorDelay = r.body.hasMore ? 1000 : 30000;
       }).catch(function () {}).then(function () {
+        chatReplyMonitorBusy = false;
+        scheduleChatReplyMonitor(chatReplyMonitorDelay || 30000);
+      });
+    }
+    function scheduleChatReplyMonitor(delay) {
+      if (chatReplyMonitorTimer) root.clearTimeout(chatReplyMonitorTimer);
+      if (chatAccess) chatReplyMonitorTimer = root.setTimeout(pollChatReplies, delay || 30000);
+    }
+    function startChatReplyMonitor() {
+      if (!chatAccess || chatReplyMonitorTimer || chatReplyMonitorBusy || chatReplyCursor !== null) return;
+      chatReplyMonitorBusy = true;
+      api('chat-reply-alerts', { initialize: true }).then(function (r) { if (r.ok) chatReplyCursor = String(r.body.cursor || '0'); }).catch(function () {}).then(function () {
         chatReplyMonitorBusy = false;
         scheduleChatReplyMonitor();
       });
-    }
-    function scheduleChatReplyMonitor() {
-      if (chatReplyMonitorTimer) root.clearTimeout(chatReplyMonitorTimer);
-      if (chatAccess) chatReplyMonitorTimer = root.setTimeout(pollChatReplies, 30000);
-    }
-    function startChatReplyMonitor() {
-      if (!chatAccess || chatReplyMonitorTimer || chatReplySnapshot) return;
-      api('list', { status: 'active', channel: 'chat', limit: 100 }).then(function (r) {
-        if (r.ok) {
-          chatReplySnapshot = Object.create(null);
-          (r.body.tickets || []).forEach(function (ticket) { chatReplySnapshot[String(ticket.number)] = ticket.updated_at || ticket.created_at || ''; });
-        }
-      }).catch(function () {}).then(function () { scheduleChatReplyMonitor(); });
     }
     function claimChatTicket(number) {
       api('chat-claim', { number: number }).then(function (r) {
