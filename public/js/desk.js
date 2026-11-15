@@ -248,22 +248,34 @@
       };
       var panel = function (title, subtitle, items, empty, modifier, emptyHint) {
         return el('section', { class: 'chat-inbox-panel' + (modifier ? ' ' + modifier : '') }, 
-          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count', 'aria-label': items.length + ' conversations' }, String(items.length))),
-          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, empty), el('span', {}, emptyHint || 'New conversations will appear here.')));
+          el('div', { class: 'chat-inbox-panel-head' }, el('div', {}, el('h2', {}, title), el('p', {}, subtitle)), el('span', { class: 'chat-inbox-count', 'aria-label': (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) + ' conversations' }, String(modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned))),
+          items.length ? el('div', { class: 'chat-inbox-list' }, items.map(openCard)) : el('div', { class: 'chat-inbox-empty' }, el('span', { class: 'chat-inbox-empty-icon' }, '✓'), el('strong', {}, (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) ? 'More conversations on another page' : empty), el('span', {}, (modifier === 'chat-inbox-panel-new' ? chatInboxCounts.waiting : chatInboxCounts.assigned) ? 'Use the page controls below to continue through this queue.' : (emptyHint || 'New conversations will appear here.'))));
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
           el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
           el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, chatInboxLoading ? 'Refreshing…' : 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         el('div', { class: 'chat-inbox-stats' },
-          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(rows.length)), el('small', {}, 'Active, pending or on hold')),
-          el('div', { class: 'chat-inbox-stat chat-inbox-stat-new' }, el('span', {}, 'New chats'), el('strong', {}, String(waiting.length)), el('small', {}, 'Waiting for an agent to pick up')), 
-          el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(needsReply.length)), el('small', {}, 'Customer replied; agent response pending')),
-          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(assigned.length)), el('small', {}, 'Owned by a teammate'))),
+          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Open conversations'), el('strong', {}, String(chatInboxCounts.total)), el('small', {}, 'Active, pending or on hold')),
+          el('div', { class: 'chat-inbox-stat chat-inbox-stat-new' }, el('span', {}, 'New chats'), el('strong', {}, String(chatInboxCounts.waiting)), el('small', {}, 'Waiting for an agent to pick up')), 
+          el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(chatInboxCounts.needsReply)), el('small', {}, 'Customer replied; agent response pending')),
+          el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(chatInboxCounts.assigned)), el('small', {}, 'Owned by a teammate'))),
+        el('div', { class: 'chat-inbox-toolbar' },
+          el('input', { type: 'search', class: 'chat-inbox-search', 'aria-label': 'Search live chats by customer, email, subject or ticket number', placeholder: 'Search customers, email or ticket #…', value: chatInboxQuery, oninput: function (event) { chatInboxQuery = event.target.value; chatInboxOffset = 0; if (chatInboxSearchTimer) root.clearTimeout(chatInboxSearchTimer); chatInboxSearchTimer = root.setTimeout(function () { chatInboxSearchTimer = null; fetchChatInbox(true, true); }, 300); } }),
+          el('select', { class: 'chat-inbox-filter', 'aria-label': 'Filter live chat queue', value: chatInboxView, onchange: function (event) { chatInboxView = event.target.value; fetchChatInbox(true, true); } },
+            el('option', { value: 'all' }, 'All open chats'),
+            el('option', { value: 'waiting' }, 'Waiting for an agent'),
+            el('option', { value: 'needs-reply' }, 'Needs a reply'),
+            el('option', { value: 'mine' }, 'Assigned to me'))),
         chatInboxError ? el('div', { class: 'chat-inbox-error', role: 'alert' }, chatInboxError, el('button', { type: 'button', onclick: loadChatInbox }, 'Try again')) : null,
         chatInboxLoading && !chatInboxPrimed ? el('div', { class: 'chat-inbox-loading' }, el('span', { class: 'chat-inbox-spinner' }), 'Loading conversations…') : el('div', { class: 'chat-inbox-columns' }, 
           panel('New chats', 'First come, first served · oldest waiting first', waiting, 'You’re all caught up', 'chat-inbox-panel-new', 'New customer conversations will appear here. Accept one to take ownership and start helping.'),
           panel('In progress', 'Recently active first · customer replies rise to the top', assigned, 'Nothing in progress', 'chat-inbox-panel-assigned', 'Chats you accept will stay here, with customer replies highlighted.' )),
+        el('div', { class: 'chat-inbox-pagination' },
+          el('span', { class: 'chat-inbox-page-summary' }, chatInboxTotal ? 'Showing ' + (chatInboxOffset + 1) + '–' + Math.min(chatInboxOffset + rows.length, chatInboxTotal) + ' of ' + chatInboxTotal + ' conversations' : 'No conversations found'),
+          el('div', { class: 'chat-inbox-page-actions' },
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset <= 0 || chatInboxLoading, onclick: function () { chatInboxOffset = Math.max(0, chatInboxOffset - chatInboxLimit); fetchChatInbox(true); } }, 'Previous'),
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset + chatInboxLimit >= chatInboxTotal || chatInboxLoading, onclick: function () { chatInboxOffset += chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
         el('p', { class: 'chat-inbox-footnote' }, 'This inbox shows open live-chat tickets. Closed conversations remain available in All Tickets and the customer history.'));
     }
     function loadApprovals() {
