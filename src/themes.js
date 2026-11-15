@@ -12,6 +12,18 @@ export const THEMES = [
   { id: 'champagne', name: 'Champagne', premium: true },
 ];
 export const themeById = id => THEMES.find(t => t.id === id) || null;
+
+// Live Chat palettes are personal agent preferences and are available on every plan.
+export const CHAT_THEMES = [
+  { id: 'classic', name: 'Classic' },
+  { id: 'obsidian', name: 'Obsidian' },
+  { id: 'royal', name: 'Royal Gold' },
+  { id: 'ocean', name: 'Ocean' },
+  { id: 'forest', name: 'Forest' },
+  { id: 'champagne', name: 'Champagne' },
+];
+export const chatThemeById = id => CHAT_THEMES.find(t => t.id === id) || null;
+export const usableChatTheme = id => chatThemeById(id) ? id : 'classic';
 // the theme a person gets to see: their saved choice if their plan allows it, otherwise the default
 export const usableTheme = (id, hasThemes) => { const t = themeById(id); return t && (!t.premium || hasThemes) ? t.id : 'classic'; };
 // the help center: Classic is free, every other look needs the Team plan

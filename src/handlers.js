@@ -57,7 +57,7 @@ import { SUPPORT_READ, recentEntries, customerDetail, countApiCall } from './sup
 import { listFields, saveField, deleteField } from './fields.js';
 import { mentionedIds } from './mentions.js';
 import { notifyTicket } from './notify.js';
-import { themeById, usableTheme } from './themes.js';
+import { themeById, usableTheme, chatThemeById, usableChatTheme } from './themes.js';
 import { PLANS, has as planHas } from './plans.js';
 import { listApprovals, getApprovalForTicket, decideApproval, listTasks, updateTask } from './approvals.js';
 import { listServices, saveService, listIncidents, getIncident, saveIncident } from './itsm.js';
@@ -208,8 +208,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'init': {
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views, statuses, ticketPrefs, chatStatus] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }, planHas(ent, 'queues') ? desk.listStatuses(pool, orgId) : { statuses: [] }, desk.getTicketPreferences(pool, orgId, actor.id), planHas(ent, 'live_chat') && role !== 'light' ? getChatAvailability(pool, orgId, actor.id) : { access: false, available: false }]);
-      const pref = (await pool.query('select theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes'));
-      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, chatAccess: chatStatus.access, chatAvailable: chatStatus.available, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      const pref = (await pool.query('select theme, chat_theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes')), chatTheme = usableChatTheme(pref?.chat_theme);
+      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, chatTheme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, chatAccess: chatStatus.access, chatAvailable: chatStatus.available, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
     }
     case 'sandbox-get': {
       if ((g = need('sandbox'))) return g;
@@ -272,11 +272,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'prefs-save': {
       const th = b.theme === undefined ? null : themeById(String(b.theme || '')); if (b.theme !== undefined && !th) return json(400, { error: 'That theme does not exist.' });
       if (th && th.premium && (g = need('themes'))) return g;
+      const cth = b.chatTheme === undefined ? null : chatThemeById(String(b.chatTheme || '')); if (b.chatTheme !== undefined && !cth) return json(400, { error: 'That Live Chat theme does not exist.' });
       const setAv = b.avatar !== undefined, av = setAv && b.avatar ? String(b.avatar) : null;
       if (setAv && av && !validAvatar(av)) return json(400, { error: 'Use a PNG, JPEG or WebP picture under 60 KB.' });
-      if (b.theme === undefined && typeof b.notify !== 'boolean' && !setAv) return json(400, { error: 'Nothing to save.' });
-      await pool.query('insert into desk_prefs (user_id, theme, notify, avatar) values ($1, coalesce($2, \'classic\'), coalesce($3, true), $5) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), avatar = case when $4 then $5 else desk_prefs.avatar end, updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null, setAv, av]);
-      r = { ok: true, ...(th ? { theme: th.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}), ...(setAv ? { avatar: av } : {}) }; break;
+      if (b.theme === undefined && b.chatTheme === undefined && typeof b.notify !== 'boolean' && !setAv) return json(400, { error: 'Nothing to save.' });
+      await pool.query('insert into desk_prefs (user_id, theme, notify, avatar, chat_theme) values ($1, coalesce($2, \'classic\'), coalesce($3, true), $5, coalesce($6, \'classic\')) on conflict (user_id) do update set theme = coalesce($2, desk_prefs.theme), notify = coalesce($3, desk_prefs.notify), avatar = case when $4 then $5 else desk_prefs.avatar end, chat_theme = coalesce($6, desk_prefs.chat_theme), updated_at = now()', [actor.id, th ? th.id : null, typeof b.notify === 'boolean' ? b.notify : null, setAv, av, cth ? cth.id : null]);
+      r = { ok: true, ...(th ? { theme: th.id } : {}), ...(cth ? { chatTheme: cth.id } : {}), ...(typeof b.notify === 'boolean' ? { notify: b.notify } : {}), ...(setAv ? { avatar: av } : {}) }; break;
     }
     case 'lifecycle-get': if ((g = adminOnly() || need('triggers'))) return g; r = await getLifecyclePolicy(pool, orgId); break;
     case 'lifecycle-save': if ((g = adminOnly() || need('triggers'))) return g; r = await saveLifecyclePolicy(pool, orgId, b.policy || {}, actor.id); break;
