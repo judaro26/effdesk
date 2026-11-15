@@ -44,9 +44,8 @@ check('the widget passes the exact host page path to the frame but strips query 
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 check('the customer chat frame permits secure external brand logos while retaining its frame restrictions', headers.includes("img-src 'self' https: data:") && headers.includes('frame-ancestors https: http:'));
-check('the visitor sees separate transcript and End chat actions while a conversation is active', !!$('.chat-actions button') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'Email me a transcript') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'End chat'));
-$('.chat-actions button').filter;
-$('.chat-actions button').click();
+check('the visitor sees separate transcript and End chat actions while a conversation is active', !!$('.chat-actions') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'Email me a transcript') && Array.from($('.chat-actions').querySelectorAll('button')).some(b => b.textContent === 'End chat'));
+$('.chat-actions').querySelector('button').click();
 await tick(10);
 check('the visitor transcript action calls the token-protected transcript endpoint', calls.some(c => /transcript/.test(c[0]) && c[1] && c[1].number === 5 && c[1].token === 'tok'));
 

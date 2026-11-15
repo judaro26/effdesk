@@ -242,11 +242,12 @@ const deniedPost = await chatApi(new Request('http://x/api/chat/start?org=acme',
 check('cross-origin write endpoints do not receive permissive CORS headers', deniedPost.status === 403 && !deniedPost.headers.has('access-control-allow-origin'));
 // Visitor-controlled end and transcript requests are token-authenticated and public-message-only.
 const finalChat = await C('POST', '/api/chat/start?org=acme', { name: 'Vera', email: 'vera@x.co', message: 'Please send me a transcript.' }, '7.7.7.7');
+await A(olivia, 'note', { number: finalChat.body.number, body: 'private transcript note' });
 const transcriptMailStart = outbox.length;
 const transcriptRequest = await C('POST', '/api/chat/transcript?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7');
 const transcriptMail = outbox.slice(transcriptMailStart).find(m => m.to === 'vera@x.co');
 check('a visitor can request a transcript by proving possession of their chat token', transcriptRequest.status === 200 && transcriptRequest.body.sent === true && !!transcriptMail);
-check('emailed chat transcripts include public messages but exclude internal notes', !!transcriptMail && transcriptMail.text.includes('Please send me a transcript.') && !transcriptMail.text.includes('secret note') && !transcriptMail.html.includes('secret note'));
+check('emailed chat transcripts include public messages but exclude internal notes', !!transcriptMail && transcriptMail.text.includes('Please send me a transcript.') && !transcriptMail.text.includes('private transcript note') && !transcriptMail.html.includes('private transcript note'));
 check('a visitor cannot request another conversation transcript with an invalid token', (await C('POST', '/api/chat/transcript?org=acme', { number: finalChat.body.number, token: 'wrong' }, '7.7.7.8')).status === 403);
 const visitorEnd = await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7');
 const finalPoll = await C('GET', '/api/chat/poll?org=acme&n=' + finalChat.body.number + '&t=' + encodeURIComponent(finalChat.body.token) + '&after=0');
