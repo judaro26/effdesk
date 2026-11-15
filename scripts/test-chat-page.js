@@ -31,4 +31,12 @@ btn.click(); check('clicking it opens the chat in a frame from EffDesk', /app\.e
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 check('the customer chat frame permits secure external brand logos while retaining its frame restrictions', headers.includes("img-src 'self' https: data:") && headers.includes('frame-ancestors https: http:'));
+
+const deskSource = pub('js/desk.js'), deskStyles = pub('css/desk.css');
+check('Manage Live Chat includes a direct image upload control for customer logos', deskSource.includes("'aria-label': 'Upload customer chat logo'") && deskSource.includes('uploadHelpImage(file)'));
+check('logo uploads use the existing validated workspace image endpoint and enforce the 4 MB UI limit', deskSource.includes("fetchFn('/api/help-assets/image?org='") && deskSource.includes('file.size > 4 * 1024 * 1024'));
+check('uploaded logo assets are saved by their workspace-owned ID', deskSource.includes('logoAssetId: logoAssetId || undefined'));
+check('the settings preview updates after upload and can revert to the EffDesk logo', deskSource.includes('logoAssetUrl = widgetOrigin + url') && deskSource.includes('Use EffDesk logo'));
+check('the logo upload control is responsive and accessible', deskStyles.includes('.chat-logo-upload input[type=file]') && deskStyles.includes('.chat-logo-controls'));
+
 done(); process.exit(0);
