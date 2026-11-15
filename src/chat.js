@@ -115,7 +115,8 @@ export async function pollChat(pool, env, slug, number, token, after) {
     const t = (await c.query('select id, status, channel from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]; if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
     await c.query('update tickets set chat_seen_at = now() where id = $1', [t.id]);
     const rows = (await c.query("select id, kind, author_name, body, created_at from ticket_messages where org_id = $1 and ticket_id = $2 and kind in ('requester','agent') and id > $3 order by id limit 100", [x.org.id, t.id, Number(after) || 0])).rows;
-    return { ok: true, ended: t.status === 'closed' || t.status === 'solved', messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
+    const agentTyping = !!(await c.query("select 1 from ticket_presence where org_id=$1 and ticket_id=$2 and typing=true and seen_at > now() - interval '12 seconds' limit 1", [x.org.id, t.id])).rowCount;
+    return { ok: true, ended: t.status === 'closed' || t.status === 'solved', agentTyping, messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
   });
 }
 // is the visitor's chat window open right now? (then an agent's reply is not emailed as well)
