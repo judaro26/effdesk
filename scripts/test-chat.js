@@ -140,6 +140,8 @@ const minePage = await A(olivia, 'chat-inbox', { limit: 10, view: 'mine' });
 check('the assigned-to-me filter is scoped to the signed-in agent', minePage.status === 200 && minePage.body.tickets.every(t => t.assignee_id === olivia.user.id));
 const searchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'vera@x.co' });
 check('the Live Chat inbox searches customer email server-side', searchPage.status === 200 && searchPage.body.tickets.some(t => t.requester_email === 'vera@x.co'));
+const agentSearchPage = await A(olivia, 'chat-inbox', { limit: 10, q: 'olivia' });
+check('the Live Chat inbox can find conversations by assigned agent name', agentSearchPage.status === 200 && agentSearchPage.body.tickets.some(t => t.assignee_id === olivia.user.id));
 check('agents without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
 await pool.query("insert into contact_profiles (org_id,email,name,last_seen_at) select $1,'scale-'||g||'@example.test','Scale Contact '||g,now()-(g * interval '1 minute') from generate_series(1,6) g on conflict (org_id,email) do nothing", [acme.id]);
 const contactsPageOne = await listContacts(pool, acme.id, 'scale-', 2, 0);
