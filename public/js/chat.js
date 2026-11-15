@@ -35,7 +35,7 @@
   function bubble(m) {
     if (seen[m.id]) return null; seen[m.id] = 1;
     var b = el('div', { class: 'b ' + m.from, 'data-id': String(m.id) });
-    if (m.from === 'agent' && m.name) b.appendChild(el('div', { class: 'who', text: m.name }));
+    if (m.from === 'agent') b.appendChild(el('div', { class: 'who', text: m.name || 'Support team' }));
     if (root.EffFormat) root.EffFormat.toDom(doc, m.body, b); else b.appendChild(el('p', { text: m.body }));
     return b;
   }
@@ -69,7 +69,7 @@
   }
   api('config?org=' + encodeURIComponent(org)).then(function (r) {
     if (!r.ok || !r.body.enabled) { main.appendChild(el('div', { class: 'note', text: 'Chat is not available right now.' })); return; }
-    cfg = r.body; doc.documentElement.style.setProperty('--c', cfg.color); doc.getElementById('title').textContent = cfg.title; doc.title = cfg.title;
+    cfg = r.body; doc.documentElement.style.setProperty('--c', cfg.color); var head = doc.getElementById('head'), brand = el('img', { class: 'chat-brand', src: cfg.logo || '/brand/mark.svg', alt: '' }); brand.addEventListener('error', function () { if (brand.getAttribute('src') !== '/brand/mark.svg') brand.setAttribute('src', '/brand/mark.svg'); else brand.hidden = true; }); head.insertBefore(brand, doc.getElementById('title')); doc.getElementById('title').textContent = cfg.title; doc.title = cfg.title;
     var saved = store.get(); if (saved && saved.number && saved.token) { state = { number: saved.number, token: saved.token, last: 0, ended: false }; conversation(); } else start();
   }).catch(function () { main.appendChild(el('div', { class: 'note', text: 'Chat is not available right now.' })); });
 })(typeof window !== 'undefined' ? window : globalThis);
