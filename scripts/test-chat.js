@@ -90,8 +90,18 @@ check('revoking an agent returns their open chat tickets to the unassigned queue
 
 // An agent can claim waiting chats, but the server enforces the simultaneous-chat cap.
 await A(olivia, 'chat-availability-set', { available: true });
-const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, autoResolveHours: 24, reuseDays: 7 });
-check('admins can configure a per-agent simultaneous-chat limit', capSave.status === 200 && capSave.body.settings.max_concurrent === 1);
+const capacityConfig = await A(olivia, 'chat-capacity-get');
+const oliviaCapacityAgent = capacityConfig.body.agents.find(x => x.user_id === olivia.user.id);
+const oliviaRoleKey = oliviaCapacityAgent.role_id ? 'custom:' + oliviaCapacityAgent.role_id : oliviaCapacityAgent.role;
+const chatTeam = await A(olivia, 'chat-team-save', { name: 'Tier 1 Support', memberIds: [olivia.user.id] });
+const teamRule = await A(olivia, 'chat-capacity-save', { scopeType: 'team', scopeId: String(chatTeam.body.team.id), maxConcurrent: 2 });
+const roleRule = await A(olivia, 'chat-capacity-save', { scopeType: 'role', scopeId: oliviaRoleKey, maxConcurrent: 3 });
+const agentRule = await A(olivia, 'chat-capacity-save', { scopeType: 'agent', scopeId: olivia.user.id, maxConcurrent: 1 });
+check('admins can configure chat capacity by team, role and individual agent', capacityConfig.status === 200 && chatTeam.status === 200 && teamRule.status === 200 && roleRule.status === 200 && agentRule.status === 200);
+check('chat capacity follows agent, then team, then role, then workspace precedence', (await A(olivia, 'chat-capacity-get')).body.rules.length >= 3 && oliviaCapacityAgent.user_id === olivia.user.id);
+check('invalid chat capacity rules and non-admin changes are rejected', (await A(olivia, 'chat-capacity-save', { scopeType: 'agent', scopeId: olivia.user.id, maxConcurrent: 0 })).status === 400 && (await A(ann, 'chat-capacity-save', { scopeType: 'agent', scopeId: ann.user.id, maxConcurrent: 2 })).status === 403);
+const capSave = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 4, autoResolveHours: 24, reuseDays: 7 });
+check('admins can configure a workspace-wide fallback simultaneous-chat limit', capSave.status === 200 && capSave.body.settings.max_concurrent === 4);
 check('chat lifecycle defaults can be configured to 24-hour resolution and 7-day reuse', capSave.body.settings.auto_resolve_hours === 24 && capSave.body.settings.reuse_days === 7);
 check('chat lifecycle settings reject out-of-range values', (await A(olivia, 'chat-save', { autoResolveHours: 721 })).status === 400 && (await A(olivia, 'chat-save', { reuseDays: 31 })).status === 400);
 const disabledLifecycle = await A(olivia, 'chat-save', { enabled: true, maxConcurrent: 1, autoResolveHours: 0, reuseDays: 0 });
@@ -103,6 +113,7 @@ const thirdChat = await C('POST', '/api/chat/start?org=acme', { name: 'Noah', em
 const thirdTicket = await A(olivia, 'get', { number: thirdChat.body.number });
 check('auto-routing leaves new chats waiting when the eligible agent is at capacity', thirdTicket.status === 200 && thirdTicket.body.ticket.assignee_id === null);
 check('an agent cannot claim beyond their simultaneous-chat limit', (await A(olivia, 'chat-claim', { number: thirdChat.body.number })).status === 409);
+check('the individual-agent limit overrides the higher team, role and workspace limits', (await A(olivia, 'chat-capacity-save', { scopeType: 'agent', scopeId: olivia.user.id, maxConcurrent: null })).status === 200);
 
 // Two separate claim requests cannot race past the same agent capacity.
 const fourthChat = await C('POST', '/api/chat/start?org=acme', { name: 'Kai', email: 'kai@x.co', message: 'Question one.' }, '3.3.3.3');
