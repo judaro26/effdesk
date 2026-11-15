@@ -200,6 +200,13 @@ await pool.query("update tickets set chat_seen_at = now() - interval '5 minutes'
 outbox.length = 0; await A(olivia, 'reply', { number: n, body: 'Anything else?' });
 check('after the visitor left, the reply is emailed', outbox.some(m => [].concat(m.to).join().includes('vera@x.co')));
 const closeUpdate = await A(olivia, 'update', { number: n, patch: { status: 'closed' } });
+const historyPage = await A(olivia, 'chat-inbox', { limit: 10, offset: 0, view: 'history' });
+const activeAfterClose = await A(olivia, 'chat-inbox', { limit: 100, offset: 0, view: 'all' });
+const historySearch = await A(olivia, 'chat-inbox', { limit: 10, offset: 0, view: 'history', q: 'vera@x.co' });
+check('Chat History includes closed conversations with their final status', historyPage.status === 200 && historyPage.body.tickets.some(t => t.number === n && t.status === 'closed'));
+check('Chat History excludes active conversations and the active inbox excludes closed chats', historyPage.body.tickets.every(t => ['solved','closed'].includes(t.status)) && !activeAfterClose.body.tickets.some(t => t.number === n));
+check('Chat History search and totals are scoped to archived conversations', historySearch.status === 200 && historySearch.body.tickets.some(t => t.number === n) && historySearch.body.counts.total === historySearch.body.tickets.length);
+check('Chat History returns resolution timestamps for archived conversations', historyPage.body.tickets.some(t => t.number === n && (t.closed_at || t.solved_at || t.updated_at)));
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 const closedSend = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'hello?' });
 check('a closed chat says it ended and cannot take messages', closeUpdate.status === 200 && p.body.ended === true && closedSend.status === 409);
