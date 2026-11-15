@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { check, done } from './lib/check.js';
-const pub = f => readFileSync(new URL('../public/' + f, import.meta.url), 'utf8'), tick = (ms = 10) => new Promise(r => setTimeout(r, ms));
+const pub = f => readFileSync(new URL('../public/' + f, import.meta.url), 'utf8'), jsIncludesReporting = () => pub('js/chat.js').includes("addEventListener('unhandledrejection'") && pub('js/chat.js').includes("addEventListener('error'"), tick = (ms = 10) => new Promise(r => setTimeout(r, ms));
 const calls = []; let pollAssigned = false; let polled = [{ id: 1, from: 'you', name: '', body: 'hello', at: new Date().toISOString() }, { id: 2, from: 'agent', name: 'Olivia', body: 'Hi **there** <img src=x onerror=alert(1)>', at: new Date().toISOString() }];
 const fake = async (url, o) => { calls.push([url, o && o.body ? JSON.parse(o.body) : null]); const j = b => ({ ok: true, status: 200, json: async () => b });
   if (/config/.test(url)) return j({ ok: true, enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000', logo: 'https://cdn.example.com/acme.png' });
@@ -12,6 +12,7 @@ const fake = async (url, o) => { calls.push([url, o && o.body ? JSON.parse(o.bod
 const dom = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' }), w = dom.window; w.fetch = fake;
 w.eval(pub('js/format.js')); w.eval(pub('js/chat.js')); await tick();
 const $ = s => w.document.querySelector(s);
+check('the widget installs browser error and unhandled-rejection reporting hooks', jsIncludesReporting());
 check('the window shows the title and color from the settings and a start form', $('#title').textContent === 'Ask Acme' && w.document.documentElement.style.getPropertyValue('--c') === '#aa0000' && $('#head img.chat-brand').getAttribute('src') === 'https://cdn.example.com/acme.png' && !!$('input[aria-label="Your email"]'));
 $('input[aria-label="Your name"]').value = 'Vera'; $('input[aria-label="Your email"]').value = 'v@x.co'; $('textarea').value = 'hello'; $('form').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(30);
 check('starting sends the details and opens the conversation', calls.some(c => /start/.test(c[0]) && c[1].email === 'v@x.co' && c[1].message === 'hello') && !!$('#log'));
@@ -31,6 +32,8 @@ check('the chat is remembered so a reload comes back to it', /tok/.test(w.localS
 pollAssigned = true;
 const dom2 = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme' }); dom2.window.fetch = fake; dom2.window.localStorage.setItem('effdesk_chat_acme', JSON.stringify({ number: 5, token: 'tok' })); dom2.window.eval(pub('js/format.js')); dom2.window.eval(pub('js/chat.js')); await tick(30);
 check('a reload goes straight to the conversation', !!dom2.window.document.querySelector('#log') && !dom2.window.document.querySelector('input[aria-label="Your email"]'));
+check('failed chat sends preserve the draft and offer a safe retry path', pub('js/chat.js').includes('Your message is still here') && pub('js/chat.js').includes('ta.value = text; ta.focus()'));
+check('chat HTTP 5xx and browser runtime failures are reported without sending transcript content', pub('js/chat.js').includes("'/api/client-log'") && pub('js/chat.js').includes('r.status >= 500') && !pub('js/chat.js').includes("JSON.stringify({ message: text"));
 check('the customer sees the assigned agent name after the agent accepts', dom2.window.document.querySelector('#chat-assignment').textContent === 'You’re chatting with Olivia');
 const host = new JSDOM('<body></body>', { runScripts: 'outside-only', url: 'https://shop.test/products/abc?session=secret#private' }), hw = host.window; hw.fetch = fake; hw.document.currentScript; 
 const s = hw.document.createElement('script'); s.setAttribute('src', 'https://app.effdesk.com/widget.js'); s.setAttribute('data-org', 'acme'); hw.document.body.appendChild(s);

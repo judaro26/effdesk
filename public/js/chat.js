@@ -15,7 +15,25 @@
       root.localStorage.setItem(VISITOR_KEY, id); return id;
     } catch (e) { return ''; }
   }
-  var api = function (path, body) { return root.fetch('/api/chat/' + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, body)) } : undefined).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
+  var reported = {}, reportFailure = function (name, message, stack, page) {
+    var key = String(name || 'Error') + '|' + String(message || '').slice(0, 180);
+    if (reported[key] || !message) return; reported[key] = 1;
+    try { root.fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: String(name || 'ChatError').slice(0, 80), message: String(message).slice(0, 300), stack: String(stack || '').slice(0, 1200), page: String(page || root.location.pathname).split('?')[0].slice(0, 200) }), keepalive: true }).catch(function () {}); } catch (e) {}
+  };
+  root.addEventListener('error', function (e) { reportFailure(e.error && e.error.name || 'BrowserError', e.message || 'Chat widget script error', e.error && e.error.stack, root.location.pathname); });
+  root.addEventListener('unhandledrejection', function (e) { var reason = e.reason || {}; reportFailure(reason.name || 'UnhandledRejection', reason.message || String(reason), reason.stack, root.location.pathname); });
+  var api = function (path, body) {
+    var endpoint = '/api/chat/' + path, operation = String(path).split('?')[0];
+    return root.fetch(endpoint, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, body)) } : undefined).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status >= 500) reportFailure('ChatHttp' + r.status, 'Live Chat ' + operation + ' returned HTTP ' + r.status, '', endpoint);
+        return { ok: r.ok, status: r.status, requestId: r.headers && r.headers.get('x-request-id'), body: j };
+      });
+    }).catch(function (e) {
+      reportFailure(e && e.name || 'NetworkError', 'Live Chat ' + operation + ' request failed: ' + String(e && e.message || e), e && e.stack, endpoint);
+      throw e;
+    });
+  };
   var clear = function (n) { while (n.firstChild) n.removeChild(n.firstChild); };
   var cfg = null;
   function start() {
@@ -28,7 +46,7 @@
       api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: PAGE_URL }).then(function (r) {
         go.disabled = false; if (!r.ok) { err.textContent = r.body.error || 'The chat could not start.'; return; }
         state = { number: r.body.number, token: r.body.token, last: 0, ended: false }; seen = {}; store.set({ number: state.number, token: state.token }); conversation();
-      }).catch(function () { go.disabled = false; err.textContent = 'No connection. Try again.'; });
+      }).catch(function () { go.disabled = false; err.textContent = 'No connection. Your message was not sent. Please try again.'; });
     });
     main.appendChild(form); name.focus();
   }
@@ -47,7 +65,7 @@
     var again = el('button', { type: 'button', class: 'link', text: 'Start a new chat' }); again.addEventListener('click', function () { store.set(null); state = { number: 0, token: '', last: 0, ended: false }; start(); });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
     main.appendChild(assignment); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
-    var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', text: r.body.error || 'Not sent.' })); if (r.status === 409) { store.set(null); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; }); };
+    var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
     form.addEventListener('submit', function (e) { e.preventDefault(); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
     poll();
@@ -58,6 +76,7 @@
     api('poll?org=' + encodeURIComponent(org) + '&n=' + state.number + '&t=' + encodeURIComponent(state.token) + '&after=' + state.last).then(function (r) {
       if (r.status === 403 || r.status === 404) { store.set(null); return start(); }
       if (r.ok) {
+        var warning = doc.getElementById('chat-connection-warning'); if (warning) warning.remove();
         var log = doc.getElementById('log'); if (!log) return;
         r.body.messages.forEach(function (m) { state.last = Math.max(state.last, m.id); var b = bubble(m); if (b) log.appendChild(b); });
         if (r.body.messages.length) log.scrollTop = log.scrollHeight;
@@ -68,7 +87,7 @@
         if (form) form.style.display = r.body.ended ? 'none' : '';
       }
       timer = root.setTimeout(poll, doc.hidden ? 15000 : 3000);
-    }).catch(function () { timer = root.setTimeout(poll, 8000); });
+    }).catch(function (e) { reportFailure('ChatPollNetworkError', e && e.message || 'Unable to refresh chat', e && e.stack, '/api/chat/poll'); var log = doc.getElementById('log'); if (log && !doc.getElementById('chat-connection-warning')) log.appendChild(el('div', { class: 'note', id: 'chat-connection-warning', role: 'status', text: 'Connection interrupted. Reconnecting…' })); timer = root.setTimeout(poll, 8000); });
   }
   api('config?org=' + encodeURIComponent(org)).then(function (r) {
     if (!r.ok || !r.body.enabled) { main.appendChild(el('div', { class: 'note', text: 'Chat is not available right now.' })); return; }
