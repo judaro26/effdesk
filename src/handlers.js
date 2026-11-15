@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, getChatCapacityConfig, saveChatCapacityRule, saveChatTeam, deleteChatTeam } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -165,7 +165,7 @@ export async function paddleWebhook(req, { pool, env = process.env, now = Date.n
 
 // the agent desk: ONE door, POST {orgId, action, ...}. Every member of the organization may work tickets; the organization is checked on every call.
 // changes that go into the audit log without further ado (team and plan changes write their own entries)
-const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'lifecycle-save', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'incident-provider-create', 'incident-provider-revoke', 'monitoring-alert-create', 'monitoring-alert-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
+const AUDITED = new Set(['help-settings-save', 'wstatus-component-save', 'wstatus-component-delete', 'wstatus-incident-create', 'wstatus-incident-update', 'wstatus-incident-delete', 'status-save', 'status-delete', 'queue-save', 'queue-delete', 'macro-save', 'macro-delete', 'rule-save', 'rule-delete', 'lifecycle-save', 'token-create', 'token-delete', 'webhook-save', 'webhook-delete', 'integration-connect', 'integration-test', 'integration-disconnect', 'scim-token-create', 'scim-token-revoke', 'incident-provider-create', 'incident-provider-revoke', 'monitoring-alert-create', 'monitoring-alert-revoke', 'sla-save', 'sla-hours-save', 'field-save', 'field-delete', 'sso-save', 'sso-delete', 'chat-save', 'chat-capacity-save', 'chat-team-save', 'chat-team-delete', 'mail-save', 'client-save', 'client-delete', 'contact-save', 'article-delete', 'migrate-run', 'role-save', 'role-delete', 'routing-save', 'whatsapp-save', 'whatsapp-delete', 'whatsapp-template-save', 'whatsapp-template-delete', 'form-save', 'form-delete', 'role-assign', 'approval-decide', 'task-update', 'itsm-incident-save', 'itsm-service-save', 'itsm-change-save', 'itsm-change-decide', 'merge', 'bulk', 'edit-message', 'delete-file']);
 const LIGHT_OK = new Set(['help-settings-get', 'presence', 'availability-get', 'availability-set', 'ai-summary', 'fields-list', 'init', 'list', 'get', 'note', 'follow', 'dashboard', 'agents', 'prefs-save', 'ticket-prefs-save', 'article-list', 'article-get', 'mail-get', 'global-search', 'contact-list', 'contact-get', 'approval-get', 'tasks-list']);
 export async function tickets(req, { pool, auth, mailer, store, env = process.env }) {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
@@ -555,6 +555,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
       break;
     }
+    case 'chat-capacity-get': if ((g = adminOnly() || need('live_chat'))) return g; r = await getChatCapacityConfig(pool, orgId); break;
+    case 'chat-capacity-save': if ((g = adminOnly() || need('live_chat'))) return g; r = await saveChatCapacityRule(pool, orgId, b); break;
+    case 'chat-team-save': if ((g = adminOnly() || need('live_chat'))) return g; r = await saveChatTeam(pool, orgId, b); break;
+    case 'chat-team-delete': if ((g = adminOnly() || need('live_chat'))) return g; r = await deleteChatTeam(pool, orgId, b.id); break;
     case 'chat-get': if ((g = need('live_chat'))) return g; r = { ok: true, settings: await chatSettings(pool, orgId) }; break;
     case 'chat-save': if ((g = adminOnly())) return g; if ((g = need('live_chat'))) return g; r = await saveChatSettings(pool, orgId, b); break;
     case 'mail-get': r = await getMailSettings(pool, orgId, env); r.csatOn = await csatOn(pool, orgId); break;
