@@ -11,6 +11,10 @@ create index if not exists tickets_live_chat_assigned_idx
   on tickets (org_id, updated_at desc, id desc)
   where channel = 'chat' and status in ('open','pending','on_hold') and assignee_id is not null;
 
+create index if not exists ticket_messages_chat_requester_cursor_idx
+  on ticket_messages (org_id, id)
+  where kind = 'requester';
+
 create index if not exists ticket_messages_chat_latest_idx
   on ticket_messages (org_id, ticket_id, created_at desc, id desc)
   where kind in ('requester','agent');
