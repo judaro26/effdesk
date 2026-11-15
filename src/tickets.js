@@ -125,7 +125,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   });
 }
 
-export async function getTicket(pool, orgId, actor, number) {
+export async function getTicket(pool, orgId, actor, number, options = {}) {
   return withOrg(pool, orgId, async c => {
     const t = (await c.query(`select ${ticketCols} from tickets where org_id = $1 and number = $2`, [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
