@@ -76,11 +76,12 @@ export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypt
   const take = Math.max(1, Math.min(100, Number(batchSize) || 20));
   const organizations = (await pool.query('select id from "organization" order by id')).rows;
   const summary = { claimed: 0, succeeded: 0, retried: 0, failed: 0 };
-  for (const organization of organizations) {
-    if (summary.claimed >= take) break;
+  const startAt = organizations.length ? Math.floor(Date.now() / 60000) % organizations.length : 0;
+  for (let offset = 0; offset < organizations.length && summary.claimed < take; offset++) {
+    const organization = organizations[(startAt + offset) % organizations.length];
     const jobs = await claimJobs(pool, String(organization.id), workerId, { limit: take - summary.claimed, leaseMs });
     summary.claimed += jobs.length;
-    for (const job of jobs) {
+    await Promise.all(jobs.map(async job => {
       try {
         const handler = handlers && handlers[job.job_type];
         if (typeof handler !== 'function') throw new Error('No worker is registered for job type ' + job.job_type);
@@ -91,7 +92,7 @@ export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypt
         if (result.status === 'queued') summary.retried++;
         else if (result.status === 'failed') summary.failed++;
       }
-    }
+    }));
   }
   return summary;
 }
