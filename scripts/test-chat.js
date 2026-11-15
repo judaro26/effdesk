@@ -50,6 +50,7 @@ const initialChannel = (await pool.query('select channel from tickets where numb
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
 const preAccessInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an admin must explicitly enable their own chat access too', preAccessInbox.status === 403);
+check('agents without Live Chat access cannot read reply notifications', (await A(ann, 'chat-reply-alerts', { initialize: true })).status === 403);
 check('a teammate cannot list live chats until an admin grants access', (await A(ann, 'list', { status: 'active', channel: 'chat', limit: 100 })).status === 403);
 check('unauthorized agents do not see chat tickets in All Tickets', !(await A(ann, 'list', { status: 'active', limit: 100 })).body.tickets.some(t => t.number === n));
 check('unauthorized agents cannot open a chat ticket directly', (await A(ann, 'get', { number: n })).status === 403);
@@ -172,7 +173,10 @@ check('the reply shows up in the chat, without internal notes', p.body.messages.
 await A(olivia, 'note', { number: n, body: 'secret note' });
 p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('internal notes never reach the visitor', !p.body.messages.some(m => /secret/.test(m.body)) && p.body.messages.length === 2);
+const replyCursor = await A(olivia, 'chat-reply-alerts', { initialize: true });
 r = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'Great, thanks' });
+const replyFeed = await A(olivia, 'chat-reply-alerts', { after: replyCursor.body.cursor });
+check('agent reply notifications return only new customer chat messages after the cursor', replyCursor.status === 200 && replyFeed.status === 200 && replyFeed.body.replies.some(x => x.number === n && x.requester_email === 'vera@x.co'));
 check('the visitor can reply', r.status === 200 && (await A(olivia, 'get', { number: n })).body.messages.some(m => m.kind === 'requester' && /thanks/.test(m.body)));
 const replyInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('the chat inbox flags a customer reply awaiting an agent response', replyInbox.status === 200 && replyInbox.body.tickets.some(t => t.number === n && t.chat_last_public_message_kind === 'requester'));
