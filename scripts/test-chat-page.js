@@ -30,4 +30,5 @@ const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('t
 btn.click(); check('clicking it opens the chat in a frame from EffDesk', /app\.effdesk\.com\/chat\.html\?org=acme/.test((hw.document.querySelector('iframe') || {}).src || ''));
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
+check('the customer chat frame permits secure external brand logos while retaining its frame restrictions', headers.includes("img-src 'self' https: data:") && headers.includes('frame-ancestors https: http:'));
 done(); process.exit(0);
