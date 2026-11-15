@@ -7,7 +7,7 @@ const calls = []; let polled = [{ id: 1, from: 'you', name: '', body: 'hello', a
 const fake = async (url, o) => { calls.push([url, o && o.body ? JSON.parse(o.body) : null]); const j = b => ({ ok: true, status: 200, json: async () => b });
   if (/config/.test(url)) return j({ ok: true, enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000', logo: 'https://cdn.example.com/acme.png' });
   if (/start/.test(url)) return j({ ok: true, number: 5, token: 'tok' });
-  if (/poll/.test(url)) return j({ ok: true, ended: false, messages: polled });
+  if (/poll/.test(url)) return j({ ok: true, ended: false, agentTyping: true, messages: polled });
   return j({ ok: true }); };
 const dom = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme' }), w = dom.window; w.fetch = fake;
 w.eval(pub('js/format.js')); w.eval(pub('js/chat.js')); await tick();
@@ -19,6 +19,7 @@ const visitorIdSent = calls.find(c => /start/.test(c[0]))[1].visitorId;
 check('the widget creates and persists a random browser conversation identifier', /^[a-f0-9]{64}$/i.test(visitorIdSent || '') && w.localStorage.getItem('effdesk_chat_acme_visitor') === visitorIdSent);
 check('messages show on the right sides, formatted, and html in them stays text', $('.b.you') && $('.b.agent strong') && !w.document.querySelector('.b img') && /<img/.test($('.b.agent').textContent));
 check('agent replies show the agent name and each message timestamp', $('.b.agent .who').textContent === 'Olivia' && $('.b.you time').getAttribute('datetime') && $('.b.agent time').textContent);
+check('the customer sees the live agent typing indicator when the server reports typing', !$('#chat-typing').hidden && /typing/.test($('#chat-typing').textContent));
 check('the chat is remembered so a reload comes back to it', /tok/.test(w.localStorage.getItem('effdesk_chat_acme') || ''));
 const dom2 = new JSDOM(pub('chat.html'), { runScripts: 'outside-only', url: 'https://app.test/chat.html?org=acme' }); dom2.window.fetch = fake; dom2.window.localStorage.setItem('effdesk_chat_acme', JSON.stringify({ number: 5, token: 'tok' })); dom2.window.eval(pub('js/format.js')); dom2.window.eval(pub('js/chat.js')); await tick(30);
 check('a reload goes straight to the conversation', !!dom2.window.document.querySelector('#log') && !dom2.window.document.querySelector('input[aria-label="Your email"]'));
