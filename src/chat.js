@@ -96,12 +96,12 @@ export async function agentInbox(pool, orgId, input = {}) {
       if (cursor.v !== 1 || cursor.h !== history || !Number.isSafeInteger(Number(cursor.id)) || Number(cursor.id) < 1 || !Number.isFinite(new Date(cursor.u).getTime())) throw new Error('invalid');
       if (history) {
         if (!Number.isFinite(new Date(cursor.s).getTime())) throw new Error('invalid');
-        args.push(new Date(cursor.s).toISOString(), new Date(cursor.u).toISOString(), Number(cursor.id));
+        args.push(String(cursor.s), String(cursor.u), Number(cursor.id));
         const s = args.length - 2, u = args.length - 1, id = args.length;
         cursorWhere = 'where (cursor_history_at < $' + s + '::timestamptz or (cursor_history_at = $' + s + '::timestamptz and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
       } else {
         if (![0,1].includes(Number(cursor.b)) || ![0,1].includes(Number(cursor.n)) || (cursor.w !== null && !Number.isFinite(new Date(cursor.w).getTime()))) throw new Error('invalid');
-        args.push(Number(cursor.b), cursor.w === null ? null : new Date(cursor.w).toISOString(), Number(cursor.n), new Date(cursor.u).toISOString(), Number(cursor.id));
+        args.push(Number(cursor.b), cursor.w === null ? null : String(cursor.w), Number(cursor.n), String(cursor.u), Number(cursor.id));
         const b=args.length-4,w=args.length-3,n=args.length-2,u=args.length-1,id=args.length;
         cursorWhere = 'where (cursor_bucket > $' + b + ' or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) > coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz)) or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply > $' + n + ') or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply = $' + n + ' and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
       }
@@ -114,7 +114,7 @@ export async function agentInbox(pool, orgId, input = {}) {
     const order = history ? 'cursor_history_at desc, updated_at desc, id desc' : 'cursor_bucket asc, cursor_waiting_at asc nulls last, cursor_needs_reply asc, updated_at desc, id desc';
     const sql = [
       'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email, case when t.assignee_id is null then 0 else 1 end as cursor_bucket, case when t.assignee_id is null then t.created_at end as cursor_waiting_at, case when t.assignee_id is not null and latest_public.kind = \'requester\' then 0 else 1 end as cursor_needs_reply, coalesce(t.closed_at,t.solved_at,t.updated_at) as cursor_history_at',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email, case when t.assignee_id is null then 0 else 1 end as cursor_bucket, case when t.assignee_id is null then t.created_at end as cursor_waiting_at, case when t.assignee_id is null then t.created_at::text end as cursor_waiting_at_cursor, t.updated_at::text as cursor_updated_at, case when t.assignee_id is not null and latest_public.kind = \'requester\' then 0 else 1 end as cursor_needs_reply, coalesce(t.closed_at,t.solved_at,t.updated_at) as cursor_history_at, coalesce(t.closed_at,t.solved_at,t.updated_at)::text as cursor_history_at_cursor',
       ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
       '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply, count(*) filter(where status=\'solved\')::int solved, count(*) filter(where status=\'closed\')::int closed from chat_rows),',
@@ -129,10 +129,10 @@ export async function agentInbox(pool, orgId, input = {}) {
     const hasMore = cursorMode && rows.length > limit;
     if (hasMore) rows.pop();
     const last = rows[rows.length - 1];
-    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify(history ? { v:1, h:true, s:last.cursor_history_at, u:last.updated_at, id:Number(last.id) } : { v:1, h:false, b:Number(last.cursor_bucket), w:last.cursor_waiting_at ? new Date(last.cursor_waiting_at).toISOString() : null, n:Number(last.cursor_needs_reply), u:last.updated_at, id:Number(last.id) })).toString('base64url') : null;
+    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify(history ? { v:1, h:true, s:last.cursor_history_at_cursor, u:last.cursor_updated_at, id:Number(last.id) } : { v:1, h:false, b:Number(last.cursor_bucket), w:last.cursor_waiting_at_cursor || null, n:Number(last.cursor_needs_reply), u:last.cursor_updated_at, id:Number(last.id) })).toString('base64url') : null;
     return {
       ok: true,
-      tickets: rows.map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, cursor_bucket, cursor_waiting_at, cursor_needs_reply, cursor_history_at, ...ticket }) => ticket),
+      tickets: rows.map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, cursor_bucket, cursor_waiting_at, cursor_needs_reply, cursor_history_at, cursor_waiting_at_cursor, cursor_updated_at, cursor_history_at_cursor, ...ticket }) => ticket),
       counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0), solved: Number(first.solved_count || 0), closed: Number(first.closed_count || 0) },
       capacity: { active: activeChats, max: maxConcurrent, remaining: Math.max(0,maxConcurrent-activeChats) },
       page: { limit, offset: cursorMode ? (Number(input.pageIndex) || 0) * limit : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000), hasMore: cursorMode ? hasMore : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000) + limit < Number(first.total_count || 0), ...(cursorMode ? { nextCursor } : {}) }
