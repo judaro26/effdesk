@@ -61,7 +61,8 @@
         var log = doc.getElementById('log'); if (!log) return;
         r.body.messages.forEach(function (m) { state.last = Math.max(state.last, m.id); var b = bubble(m); if (b) log.appendChild(b); });
         if (r.body.messages.length) log.scrollTop = log.scrollHeight;
-        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), typing = doc.getElementById('chat-typing');\n        if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
+        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), typing = doc.getElementById('chat-typing');
+        if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
         if (ended) { if (r.body.ended) ended.removeAttribute('hidden'); else ended.setAttribute('hidden', 'hidden'); }
         if (form) form.style.display = r.body.ended ? 'none' : '';
       }
