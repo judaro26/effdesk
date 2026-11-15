@@ -1578,7 +1578,7 @@
         ticketHistoryLoading = true; draw();
         api('get', { number: requestedNumber, messageLimit: current.messagesPage.limit || 50, messageCursor: cursor }).then(function (r) {
           ticketHistoryLoading = false;
-          if (!current || !current.ticket || current.ticket.number !== requestedNumber) return;
+          if (!current || !current.ticket || current.ticket.number !== requestedNumber) { draw(); return; }
           if (!r.ok) return say(r.body.error || 'Could not load older messages.', true);
           var seen = {}; current.messages.forEach(function (m) { seen[String(m.id)] = true; });
           current.messages = (r.body.messages || []).filter(function (m) { return !seen[String(m.id)]; }).concat(current.messages);
