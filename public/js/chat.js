@@ -35,17 +35,18 @@
   function bubble(m) {
     if (seen[m.id]) return null; seen[m.id] = 1;
     var b = el('div', { class: 'b ' + m.from, 'data-id': String(m.id) });
-    if (m.from === 'agent' && m.name) b.appendChild(el('div', { class: 'who', text: m.name }));
+    if (m.from === 'agent') b.appendChild(el('div', { class: 'who', text: m.name || 'Support team' }));
     if (root.EffFormat) root.EffFormat.toDom(doc, m.body, b); else b.appendChild(el('p', { text: m.body }));
+    if (m.at) { var d = new Date(m.at); if (!isNaN(d.getTime())) { var today = new Date(), sameDay = d.toDateString() === today.toDateString(), stamp = sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); b.appendChild(el('time', { class: 'b-time', datetime: d.toISOString(), title: d.toLocaleString() }, stamp)); } }
     return b;
   }
   function conversation() {
     clear(main);
-    var log = el('div', { class: 'log', id: 'log', role: 'log' }), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
+    var log = el('div', { class: 'log', id: 'log', role: 'log' }), typing = el('div', { class: 'chat-typing', id: 'chat-typing', role: 'status', 'aria-live': 'polite', hidden: 'hidden' }, el('span', { class: 'chat-typing-dots', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')), el('span', { class: 'chat-typing-label' }, 'An agent is typing…')), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
     var ta = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a message', rows: '1', maxlength: '2000' }), send = el('button', { type: 'submit', text: 'Send' }), form = el('form', { class: 'send' }, ta, send);
     var again = el('button', { type: 'button', class: 'link', text: 'Start a new chat' }); again.addEventListener('click', function () { store.set(null); state = { number: 0, token: '', last: 0, ended: false }; start(); });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
-    main.appendChild(log); main.appendChild(note); main.appendChild(form);
+    main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
     var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', text: r.body.error || 'Not sent.' })); if (r.status === 409) { store.set(null); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; }); };
     form.addEventListener('submit', function (e) { e.preventDefault(); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
@@ -60,7 +61,8 @@
         var log = doc.getElementById('log'); if (!log) return;
         r.body.messages.forEach(function (m) { state.last = Math.max(state.last, m.id); var b = bubble(m); if (b) log.appendChild(b); });
         if (r.body.messages.length) log.scrollTop = log.scrollHeight;
-        var ended = doc.getElementById('ended'), form = main.querySelector('form.send');
+        var ended = doc.getElementById('ended'), form = main.querySelector('form.send'), typing = doc.getElementById('chat-typing');
+        if (typing) { if (r.body.agentTyping) typing.removeAttribute('hidden'); else typing.setAttribute('hidden', 'hidden'); }
         if (ended) { if (r.body.ended) ended.removeAttribute('hidden'); else ended.setAttribute('hidden', 'hidden'); }
         if (form) form.style.display = r.body.ended ? 'none' : '';
       }
@@ -69,7 +71,7 @@
   }
   api('config?org=' + encodeURIComponent(org)).then(function (r) {
     if (!r.ok || !r.body.enabled) { main.appendChild(el('div', { class: 'note', text: 'Chat is not available right now.' })); return; }
-    cfg = r.body; doc.documentElement.style.setProperty('--c', cfg.color); doc.getElementById('title').textContent = cfg.title; doc.title = cfg.title;
+    cfg = r.body; doc.documentElement.style.setProperty('--c', cfg.color); var head = doc.getElementById('head'), brand = el('img', { class: 'chat-brand', src: cfg.logo || '/brand/mark.svg', alt: '' }); brand.addEventListener('error', function () { if (brand.getAttribute('src') !== '/brand/mark.svg') brand.setAttribute('src', '/brand/mark.svg'); else brand.hidden = true; }); head.insertBefore(brand, doc.getElementById('title')); doc.getElementById('title').textContent = cfg.title; doc.title = cfg.title;
     var saved = store.get(); if (saved && saved.number && saved.token) { state = { number: saved.number, token: saved.token, last: 0, ended: false }; conversation(); } else start();
   }).catch(function () { main.appendChild(el('div', { class: 'note', text: 'Chat is not available right now.' })); });
 })(typeof window !== 'undefined' ? window : globalThis);

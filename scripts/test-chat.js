@@ -37,6 +37,8 @@ check('only an admin can save the settings', (await A(ann, 'chat-save', { enable
 let r = await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
 check('an admin turns chat on and the public config shows the look', r.status === 200 && (await C('GET', '/api/chat/config?org=acme')).body.title === 'Ask Acme' && (await C('GET', '/api/chat/config?org=acme')).body.color === '#aa0000');
 check('a bad color falls back to the default', (await A(olivia, 'chat-save', { enabled: true, color: 'red; x' })).body.settings.color === '#1f73b7');
+check('chat branding accepts a secure custom logo URL and returns it publicly', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'https://cdn.example.com/acme-logo.png' })).body.settings.logo_url === 'https://cdn.example.com/acme-logo.png' && (await C('GET', '/api/chat/config?org=acme')).body.logo === 'https://cdn.example.com/acme-logo.png');
+check('chat branding rejects insecure or malformed logo URLs', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'http://example.com/logo.png' })).status === 400 && (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'javascript:alert(1)' })).status === 400);
 await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
 check('the public widget shows message mode when no agent is enabled for chat', (await C('GET', '/api/chat/config?org=acme')).body.accepting === false);
 check('a chat needs a valid email and a message', (await C('POST', '/api/chat/start?org=acme', { email: 'nope', message: 'hi' })).status === 400 && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: '' })).status === 400);
@@ -129,6 +131,19 @@ check('an authorized admin can list open live-chat tickets', inbox.status === 20
 check('the token is the only way in: wrong token, other number, other workspace', (await C('GET', `/api/chat/poll?org=acme&n=${n}&t=wrong&after=0`)).status === 403 && (await C('GET', `/api/chat/poll?org=acme&n=${n + 1}&t=${tok}&after=0`)).status === 403 && (await C('POST', '/api/chat/send?org=acme', { number: n, token: 'x', message: 'hi' })).status === 403);
 let p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
 check('polling returns the visitor\'s own message', p.status === 200 && p.body.messages.length === 1 && p.body.messages[0].from === 'you');
+check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
+await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Ann',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, ann.user.id]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+check('a different workspace agent cannot spoof the assigned agent typing indicator', p.status === 200 && p.body.agentTyping === false);
+await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Olivia',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, olivia.user.id]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+check('chat polling reports active agent typing without exposing presence details', p.status === 200 && p.body.agentTyping === true && !('agentName' in p.body));
+await pool.query("update ticket_presence set typing=false,seen_at=now() where org_id=$1 and user_id=$2 and ticket_id=(select id from tickets where org_id=$1 and number=$3)", [acme.id, olivia.user.id, n]);
+check('chat polling does not show an agent typing indicator when no agent is typing', p.body.agentTyping === false);
+await pool.query("insert into ticket_presence (org_id,ticket_id,user_id,name,typing,seen_at) select $1,id,$3,'Olivia',true,now() from tickets where org_id=$1 and number=$2 on conflict (ticket_id,user_id) do update set typing=true,seen_at=now()", [acme.id, n, olivia.user.id]);
+p = await C('GET', `/api/chat/poll?org=acme&n=${n}&t=${tok}&after=0`);
+check('chat polling reports active agent typing without exposing presence details', p.status === 200 && p.body.agentTyping === true && !('agentName' in p.body));
+await pool.query("update ticket_presence set typing=false,seen_at=now() where org_id=$1 and user_id=$2 and ticket_id=(select id from tickets where org_id=$1 and number=$3)", [acme.id, olivia.user.id, n]);
 outbox.length = 0;
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 await A(olivia, 'reply', { number: n, body: 'Yes, **we do**.' });

@@ -15,21 +15,23 @@ const secret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET ||
 export const chatToken = (env, orgId, number) => crypto.createHmac('sha256', secret(env)).update(`chat:${orgId}:${number}`).digest('hex').slice(0, 24);
 const tokenOk = (env, orgId, number, tok) => { const a = Buffer.from(chatToken(env, orgId, number)), b = Buffer.from(String(tok || '')); return !!secret(env) && a.length === b.length && crypto.timingSafeEqual(a, b); };
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
-export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7 };
+export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7 };
 
 export async function getSettings(pool, orgId) {
-  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, max_concurrent, auto_resolve_hours, reuse_days from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
+  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
 }
 export async function saveSettings(pool, orgId, input) {
   const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : DEFAULTS.color, title = clean(input.title, 60) || DEFAULTS.title, greeting = clean(input.greeting, 300) || DEFAULTS.greeting, enabled = input.enabled === true;
+  const logoUrl = clean(input.logoUrl, 500);
+  if (logoUrl) { try { const u = new URL(logoUrl); if (u.protocol !== 'https:' || u.username || u.password) return fail('Logo URL must be a secure HTTPS image address.'); } catch { return fail('Enter a valid HTTPS logo URL, or leave it blank to use the EffDesk logo.'); } }
   const maxConcurrent = input.maxConcurrent === undefined ? DEFAULTS.max_concurrent : Number(input.maxConcurrent);
   const autoResolveHours = input.autoResolveHours === undefined ? DEFAULTS.auto_resolve_hours : Number(input.autoResolveHours);
   const reuseDays = input.reuseDays === undefined ? DEFAULTS.reuse_days : Number(input.reuseDays);
   if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 10) return fail('Maximum simultaneous chats must be a whole number from 1 to 10.');
   if (!Number.isInteger(autoResolveHours) || autoResolveHours < 0 || autoResolveHours > 720) return fail('Automatic chat resolution must be 0 (off) or between 1 and 720 hours.');
   if (!Number.isInteger(reuseDays) || reuseDays < 0 || reuseDays > 30) return fail('Conversation reuse must be 0 (off) or between 1 and 30 days.');
-  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, max_concurrent, auto_resolve_hours, reuse_days) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, max_concurrent = $6, auto_resolve_hours = $7, reuse_days = $8, updated_at = now()', [orgId, enabled, title, greeting, color, maxConcurrent, autoResolveHours, reuseDays]));
-  return { ok: true, settings: { enabled, title, greeting, color, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays } };
+  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days) values ($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays]));
+  return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays } };
 }
 async function orgOf(pool, slug) { return (await pool.query('select id, name, slug from "organization" where slug = $1', [String(slug || '').toLowerCase().slice(0, 60)])).rows[0] || null; }
 // the widget may run only where the plan includes live chat and the agents turned it on
@@ -54,7 +56,7 @@ export async function publicConfig(pool, slug) {
     ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
     return r.rows[0]?.accepting === true;
   });
-  return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color };
+  return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null };
 }
 
 export async function startChat(pool, env, slug, input, mailer) {
@@ -110,10 +112,11 @@ export async function pollChat(pool, env, slug, number, token, after) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   number = Number(number) || 0; if (!tokenOk(env, x.org.id, number, token)) return fail('This chat is not yours.', 403);
   return withOrg(pool, x.org.id, async c => {
-    const t = (await c.query('select id, status, channel from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]; if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
+    const t = (await c.query('select id, status, channel, assignee_id from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]; if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
     await c.query('update tickets set chat_seen_at = now() where id = $1', [t.id]);
     const rows = (await c.query("select id, kind, author_name, body, created_at from ticket_messages where org_id = $1 and ticket_id = $2 and kind in ('requester','agent') and id > $3 order by id limit 100", [x.org.id, t.id, Number(after) || 0])).rows;
-    return { ok: true, ended: t.status === 'closed' || t.status === 'solved', messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
+    const agentTyping = !!(t.assignee_id && (await c.query("select 1 from ticket_presence where org_id=$1 and ticket_id=$2 and user_id=$3 and typing=true and seen_at > now() - interval '12 seconds' limit 1", [x.org.id, t.id, t.assignee_id])).rowCount);
+    return { ok: true, ended: t.status === 'closed' || t.status === 'solved', agentTyping, messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
   });
 }
 // is the visitor's chat window open right now? (then an agent's reply is not emailed as well)

@@ -1,0 +1,2 @@
+-- 066_live_chat_branding.sql: optional customer logo for the public chat window.
+alter table chat_settings add column if not exists logo_url text;
