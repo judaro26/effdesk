@@ -50,3 +50,9 @@ check('agents can switch between multiple assigned active conversations without 
 check('the My chats list highlights customer replies and refreshes while the agent is in a chat', js.includes('chat-workspace-unread') && js.includes('chatWorkspaceTimer = root.setTimeout(loadMyChatWorkspace, 15000)'));
 check('agents have a confirmed End chat action in the dedicated conversation header', js.includes("'data-agent-end-chat':'1'") && js.includes("update({status:'closed'})"));
 check('the multi-chat sidebar collapses into a horizontal switcher on mobile', css.includes('@media(max-width:760px){.chat-agent-workspace{display:flex;flex-direction:column'));
+
+check('the My chats sidebar displays the agent workload against the configured concurrent-chat limit', js.includes('chatWorkspaceCapacity.active') && js.includes('chatWorkspaceCapacity.max') && js.includes('chat slots available'));
+check('agents can open a teammate transfer panel from a Live Chat conversation', js.includes("api('chat-team', {})") && js.includes('chatTransferPanel(t.number)'));
+check('handoff options show availability and active chat capacity and disable ineligible teammates', js.includes('a.eligible') && js.includes("a.active_chats + '/' + a.max_concurrent"));
+check('the agent workspace sends chat availability heartbeats while accepting chats', js.includes("api('chat-heartbeat', {})") && js.includes('root.setInterval(chatHeartbeatTick, 30000)'));
+check('the transfer panel is responsive on narrow screens', css.includes('.chat-transfer-panel') && css.includes('@media(max-width:760px){.chat-transfer-panel'));

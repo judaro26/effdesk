@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, heartbeatChat, getChatTeam, transferChat } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -197,7 +197,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
     .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
   let chatAccessAllowed = support;
-  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts'].includes(b.action) || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
+  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts', 'chat-team', 'chat-heartbeat'].includes(b.action) || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
   if (!chatAccessAllowed && !support && targetNumbers.length) {
     const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
@@ -301,6 +301,9 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-get': r = { ok: true, available: await myAvailability(pool, orgId, actor.id) }; break;
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
+    case 'chat-heartbeat': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await heartbeatChat(pool, orgId, actor.id); break; }
+    case 'chat-team': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await getChatTeam(pool, orgId); break; }
+    case 'chat-transfer': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await transferChat(pool, orgId, actor, b.number, b.userId, isAdmin); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.transferred', String(b.number), { targetUserId: r.userId }); break; }
     case 'chat-claim': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await claimChat(pool, orgId, actor.id, b.number); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.claimed', String(b.number), { alreadyAssigned: r.alreadyAssigned === true }); break; }
     case 'chat-convert-to-ticket': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403,{error:'You need Live Chat access to convert this conversation.'}); r=await convertChatToTicket(pool,orgId,actor,b.number); if(r.ok) await audit(pool,orgId,actor.id,'live-chat.converted-to-ticket',String(b.number),{ticketNumber:r.number}); break; }
     case 'chat-access-set': { if ((g = adminOnly() || need('live_chat'))) return g; r = await setChatAccess(pool, orgId, b.userId, b.enabled === true); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.access-changed', String(b.userId), { enabled: b.enabled === true }); break; }

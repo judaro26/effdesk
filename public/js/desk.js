@@ -21,7 +21,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
+    var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
     var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
@@ -128,18 +128,52 @@
       if (!chatConversationOpen || !current || !current.ticket || current.ticket.channel !== 'chat') return Promise.resolve();
       chatWorkspaceLoading = true;
       return api('chat-inbox', { limit: 100, offset: 0, view: 'mine' }).then(function (r) {
-        chatWorkspaceLoading = false; if (r.ok) chatWorkspaceRows = r.body.tickets || [];
+        chatWorkspaceLoading = false; if (r.ok) { chatWorkspaceRows = r.body.tickets || []; chatWorkspaceCapacity = r.body.capacity || chatWorkspaceCapacity; }
         if (chatConversationOpen && current && current.ticket && current.ticket.channel === 'chat') draw();
         if (chatWorkspaceTimer) root.clearTimeout(chatWorkspaceTimer);
         if (chatConversationOpen) chatWorkspaceTimer = root.setTimeout(loadMyChatWorkspace, 15000);
       }).catch(function () { chatWorkspaceLoading = false; if (chatConversationOpen) chatWorkspaceTimer = root.setTimeout(loadMyChatWorkspace, 30000); });
+    }
+
+    function loadChatTeam() {
+      chatTeamLoading = true;
+      return api('chat-team', {}).then(function(r) {
+        chatTeamLoading = false;
+        if (!r.ok) return say(r.body.error || 'Could not load available teammates.', true);
+        chatTeamRows = r.body.agents || [];
+        chatTransferOpen = true;
+        draw();
+      }).catch(function(){ chatTeamLoading = false; say('Could not load available teammates. Try again.', true); });
+    }
+    function submitChatTransfer(number) {
+      var select = doc.getElementById('chat-transfer-agent'), targetId = select && select.value;
+      if (!targetId) return say('Choose an available teammate first.', true);
+      var button = doc.getElementById('chat-transfer-confirm'); if (button) button.disabled = true;
+      api('chat-transfer', { number:number, userId:targetId }).then(function(r) {
+        if (!r.ok) { chatTransferOpen = false; say(r.body.error || 'Could not transfer this chat.', true); draw(); return; }
+        chatTransferOpen = false; say('Conversation transferred to ' + (r.body.agentName || 'your teammate') + '.');
+        open(number);
+      }).catch(function(){ chatTransferOpen = false; say('Connection interrupted. Check the conversation assignment and try again.', true); draw(); });
+    }
+    function chatTransferPanel(number) {
+      if (!chatTransferOpen) return null;
+      var select = el('select', { id:'chat-transfer-agent', 'aria-label':'Choose teammate' }), eligible = 0;
+      chatTeamRows.forEach(function(a) {
+        var option = el('option', { value:a.user_id, disabled:!a.eligible }, a.name + ' · ' + a.active_chats + '/' + a.max_concurrent + ' chats · ' + (a.eligible ? 'Available' : (a.online ? 'At capacity' : 'Away')));
+        if (a.eligible) { eligible++; if (!select.value) option.selected = true; }
+        select.appendChild(option);
+      });
+      return el('div', { class:'chat-transfer-panel' },
+        el('label', { class:'chat-transfer-label' }, 'Transfer conversation to', select),
+        eligible ? el('button', { type:'button', class:'btn sm', id:'chat-transfer-confirm', onclick:function(){submitChatTransfer(number);} }, 'Transfer chat') : el('span', { class:'chat-transfer-none' }, 'No teammates are currently available with spare capacity.'),
+        el('button', { type:'button', class:'btn l sm', onclick:function(){chatTransferOpen=false;draw();} }, 'Cancel'));
     }
     function chatWorkspaceSidebar() {
       var rows = (chatWorkspaceRows || []).filter(function (t) { return ['open','pending','on_hold'].includes(t.status); });
       if (current && current.ticket && !rows.some(function (t) { return t.number === current.ticket.number; })) rows.unshift({ number: current.ticket.number, requester_name: current.ticket.requester_name, requester_email: current.ticket.requester_email, subject: current.ticket.subject, status: current.ticket.status, assignee_id: meId });
       rows.sort(function (a,b) { var ar = a.chat_last_public_message_kind === 'requester' ? 1 : 0, br = b.chat_last_public_message_kind === 'requester' ? 1 : 0; return br-ar || new Date(b.updated_at || 0)-new Date(a.updated_at || 0); });
       var item = function (t) { var active = current && current.ticket && current.ticket.number === t.number, needs = t.chat_last_public_message_kind === 'requester'; return el('button',{type:'button',class:'chat-workspace-item'+(active?' is-active':'')+(needs?' needs-reply':''),'aria-current':active?'page':null,onclick:function(){ if(!active) open(t.number); }},el('span',{class:'chat-workspace-avatar'},initial(t.requester_name || t.requester_email || 'C')),el('span',{class:'chat-workspace-copy'},el('strong',{},t.requester_name || t.requester_email || 'Website visitor'),el('span',{},String(t.subject || 'Live chat').replace(/^\\s*chat\\s*:\\s*/i,'').slice(0,70)),el('small',{},needs?'Customer replied · needs attention':'#'+t.number+' · '+cap(t.status))),needs?el('span',{class:'chat-workspace-unread','aria-label':'Customer replied'},'•'):null); };
-      return el('aside',{class:'chat-workspace-sidebar','aria-label':'My active conversations'},el('div',{class:'chat-workspace-sidebar-head'},el('strong',{},'My chats'),el('span',{},String(rows.length))),el('div',{class:'chat-workspace-sidebar-sub'},'Switch between your active conversations'),rows.length?el('div',{class:'chat-workspace-list'},rows.map(item)):el('div',{class:'chat-workspace-empty'},chatWorkspaceLoading?'Loading your conversations…':'No other active chats yet.'),el('button',{type:'button',class:'chat-workspace-all',onclick:loadChatInbox},'← All conversations'));
+      return el('aside',{class:'chat-workspace-sidebar','aria-label':'My active conversations'},el('div',{class:'chat-workspace-sidebar-head'},el('strong',{},'My chats'),el('span',{},String(chatWorkspaceCapacity.active)+'/'+String(chatWorkspaceCapacity.max))),el('div',{class:'chat-workspace-sidebar-sub'},String(rows.length)+' active conversations · '+String(chatWorkspaceCapacity.remaining)+' chat slots available'),rows.length?el('div',{class:'chat-workspace-list'},rows.map(item)):el('div',{class:'chat-workspace-empty'},chatWorkspaceLoading?'Loading your conversations…':'No other active chats yet.'),el('button',{type:'button',class:'chat-workspace-all',onclick:loadChatInbox},'← All conversations'));
     }
     function loadContacts() {
       if(!has('clients'))return Promise.resolve();
@@ -1106,6 +1140,9 @@
       api('presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 10000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
     }
     root.setInterval(presenceTick, 5000);
+    function chatHeartbeatTick() { if (!chatAccess || !chatAvailable || !orgId) return; api('chat-heartbeat', {}).then(function(r){ if (!r.ok && r.status === 403) { chatAvailable = false; drawMenu(); } }); }
+    root.setInterval(chatHeartbeatTick, 30000);
+    chatHeartbeatTick();
 
     // ── a preview of matching tickets under the search box ──
     var qWrap = el('span', { class: 'qwrap' }), qPop = el('div', { class: 'qpop', id: 'qpop', role: 'listbox', 'aria-label': 'Matching tickets' });
@@ -1635,7 +1672,7 @@
         el('span', { class: 'm' }, 'Drafts only. You read and send.')) : null;
       var actions = mode === 'note' ? el('button', { class: 'btn', type: 'button', 'data-note': '1', onclick: function () { send('note'); } }, 'Add internal note') : permanentlyClosed ? el('button', { class: 'btn', type: 'button', 'data-reply': '1', disabled: true }, 'Public replies disabled') : el('span', { class: 'split' }, el('button', { class: 'btn', type: 'button', 'data-reply': '1', onclick: function () { send('reply'); } }, 'Submit as ' + cap(chosen)), statusSel);
       var permanentNotice = permanentlyClosed ? el('div', { class: 'permanent-close-notice', role: 'status', 'data-permanent-closed': '1' }, el('strong', {}, 'This ticket is permanently closed. Public replies are disabled.'), el('p', {}, 'Create a linked follow-up ticket to continue the conversation. Your saved draft and attachments will be carried over.'), el('button', { type: 'button', class: 'btn sm', 'data-create-followup': '1', onclick: function () { var old = t; newf = blankNew(); newf.subject = 'Follow-up: ' + old.subject; newf.requesterName = old.requester_name || ''; newf.requesterEmail = old.requester_email || ''; newf.body = draft; newf.bodyHtml = draftHtml; newf.firstKind = 'agent'; newf.priority = old.priority || 'normal'; newf.tags = (old.tags || []).join(', '); newf.lifecycleParentTicketNumber = old.number; closePanes(); current = null; creating = true; draw(); } }, 'Create linked follow-up ticket')) : null;
-      var chatHead = chatConversationOpen ? el('div', { class: 'chat-agent-head' }, el('div', { class: 'chat-agent-head-copy' }, el('span', { class: 'chat-agent-eyebrow' }, 'LIVE CHAT · CUSTOMER CONVERSATION'), el('strong', {}, who || 'Website visitor'), el('span', { class: 'chat-agent-email' }, t.requester_email || '')), el('div', { class: 'chat-agent-head-actions' }, el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.converted_ticket ? el('button',{type:'button',class:'btn sm',onclick:function(){open(t.converted_ticket.number);}},'Open ticket #'+t.converted_ticket.number) : el('button',{type:'button',class:'btn sm','data-convert-chat':'1',onclick:function(){var b=this;b.disabled=true;api('chat-convert-to-ticket',{number:t.number}).then(function(r){b.disabled=false;if(!r.ok)return say(r.body.error||'Could not create ticket.',true);say(r.body.alreadyConverted?'This chat already has a linked ticket.':'Created ticket #'+r.body.number+' with transcript.');open(r.body.number);}).catch(function(){b.disabled=false;say('Could not create the ticket. Try again.',true);});}},'Create ticket from chat'), ['open','pending','on_hold'].includes(t.status) ? el('button',{type:'button',class:'btn l sm chat-agent-end','data-agent-end-chat':'1',onclick:function(){if(typeof root.confirm==='function'&&!root.confirm('End this live chat? The visitor will no longer be able to send messages.'))return;update({status:'closed'}).then(function(){say('Live Chat ended.');chatWorkspaceRows=chatWorkspaceRows.filter(function(x){return x.number!==t.number;});loadChatInbox();});}},'End chat') : null, el('button', { type: 'button', class: 'btn l sm', 'data-back-chat-inbox': '1', onclick: loadChatInbox }, '← All conversations'))) : null;
+      var chatHead = chatConversationOpen ? el('div', { class: 'chat-agent-head' }, el('div', { class: 'chat-agent-head-copy' }, el('span', { class: 'chat-agent-eyebrow' }, 'LIVE CHAT · CUSTOMER CONVERSATION'), el('strong', {}, who || 'Website visitor'), el('span', { class: 'chat-agent-email' }, t.requester_email || '')), el('div', { class: 'chat-agent-head-actions' }, el('span', { class: 'badge s-' + t.status }, cap(t.status)), el('button',{type:'button',class:'btn sm chat-transfer-trigger',onclick:loadChatTeam,disabled:chatTeamLoading},chatTeamLoading?'Loading…':'Transfer'), t.converted_ticket ? el('button',{type:'button',class:'btn sm',onclick:function(){open(t.converted_ticket.number);}},'Open ticket #'+t.converted_ticket.number) : el('button',{type:'button',class:'btn sm','data-convert-chat':'1',onclick:function(){var b=this;b.disabled=true;api('chat-convert-to-ticket',{number:t.number}).then(function(r){b.disabled=false;if(!r.ok)return say(r.body.error||'Could not create ticket.',true);say(r.body.alreadyConverted?'This chat already has a linked ticket.':'Created ticket #'+r.body.number+' with transcript.');open(r.body.number);}).catch(function(){b.disabled=false;say('Could not create the ticket. Try again.',true);});}},'Create ticket from chat'), ['open','pending','on_hold'].includes(t.status) ? el('button',{type:'button',class:'btn l sm chat-agent-end','data-agent-end-chat':'1',onclick:function(){if(typeof root.confirm==='function'&&!root.confirm('End this live chat? The visitor will no longer be able to send messages.'))return;update({status:'closed'}).then(function(){say('Live Chat ended.');chatWorkspaceRows=chatWorkspaceRows.filter(function(x){return x.number!==t.number;});loadChatInbox();});}},'End chat') : null, el('button', { type: 'button', class: 'btn l sm', 'data-back-chat-inbox': '1', onclick: loadChatInbox }, '← All conversations')), chatTransferPanel(t.number)) : null;
       var center = el('section', { class: 'col conv' }, chatHead, el('div', { class: 'ch' }, hdrTools, el('h2', {}, chatConversationOpen ? 'Conversation #' + t.number : '#' + t.number + ' ' + t.subject), (function () { var b = el('div', { class: 'collide' + (others.some(function (o) { return o.typing; }) ? ' typing' : ''), role: 'status', 'data-collide': '1' }, othersText()); b.hidden = !others.length; return b; })(), el('div', { class: 'm' }, (t.requester_name ? t.requester_name + ' · ' : '') + t.requester_email + ' · ', el('span', { class: 'badge s-' + t.status }, cap(t.status)), t.type && t.type !== 'question' ? ' · ' + cap(t.type) : ''), t.sla ? el('div', { class: 'slas' }, slaChips(t.sla)) : null, t.csat ? el('div', { class: 'm', 'data-csat': t.csat.good ? 'good' : 'bad' }, (t.csat.good ? '👍 Customer rated the support good' : '👎 Customer rated the support bad') + (t.csat.comment ? ': “' + t.csat.comment + '”' : '')) : null),
         tools,
         permanentNotice,

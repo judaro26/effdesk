@@ -8,6 +8,7 @@ import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
 import { createTicket } from '../src/tickets.js';
+import { getChatAvailability, setChatAvailable, heartbeatChat, getChatTeam, claimChat, transferChat } from '../src/routing.js';
 import { grantLicense } from '../src/license.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
@@ -55,6 +56,32 @@ await A(olivia, 'routing-save', { enabled: true, strategy: 'round_robin' }); awa
 const mine = (await A(olivia, 'create', { subject: 'By hand', body: 'x', requesterEmail: 'h@x.co' })).body.ticket; check('a ticket an agent creates is not routed', (await assignee(mine.number)) == null);
 await A(olivia, 'routing-save', { enabled: false }); check('switching it off stops routing', (await inbound(40)).assignee_id == null);
 check('routing never crosses workspaces', (await tk(otto, 'routing-get', beta.id)).status === 402 || true);
+// Live Chat presence, workload visibility, and safe agent-to-agent handoff.
+await pool.query('insert into chat_settings(org_id,enabled,max_concurrent) values($1,true,2) on conflict(org_id) do update set enabled=true,max_concurrent=2',[acme.id]);
+for (const u of [olivia,bo]) await pool.query('insert into agent_status(org_id,user_id,chat_access,chat_available,chat_last_seen_at) values($1,$2,true,true,now()) on conflict(org_id,user_id) do update set chat_access=true,chat_available=true,chat_last_seen_at=now()',[acme.id,u.user.id]);
+const teamBefore = await getChatTeam(pool,acme.id);
+check('the Live Chat team roster shows only enabled teammates and their current workload',teamBefore.agents.some(a=>a.user_id===olivia.user.id&&a.online&&a.active_chats===0&&a.max_concurrent===2)&&teamBefore.agents.some(a=>a.user_id===bo.user.id));
+const chatForTransfer = await inbound(501);
+const claimedForTransfer = await claimChat(pool,acme.id,olivia.user.id,chatForTransfer.number);
+check('an available agent can claim a chat before handing it off',claimedForTransfer.ok&&claimedForTransfer.activeChats===1);
+const handoff = await transferChat(pool,acme.id,{id:olivia.user.id,name:'Olivia'},chatForTransfer.number,bo.user.id);
+const transferred = await pool.query('select assignee_id from tickets where org_id=$1 and number=$2',[acme.id,chatForTransfer.number]);
+check('an assigned agent can transfer a chat to an online teammate with capacity',handoff.ok&&handoff.agentName==='Bo'&&transferred.rows[0].assignee_id===bo.user.id);
+const unauthorizedHandoff = await transferChat(pool,acme.id,{id:cy.user.id,name:'Cy'},chatForTransfer.number,olivia.user.id);
+check('an unrelated agent cannot transfer someone else’s chat',!unauthorizedHandoff.ok&&unauthorizedHandoff.status===403);
+const chatForOffline = await inbound(504); await claimChat(pool,acme.id,olivia.user.id,chatForOffline.number);
+await setChatAvailable(pool,acme.id,bo.user.id,false);
+const offlineHandoff = await transferChat(pool,acme.id,{id:olivia.user.id,name:'Olivia'},chatForOffline.number,bo.user.id);
+check('handoff rejects a teammate who is marked away',!offlineHandoff.ok&&offlineHandoff.status===409);
+await setChatAvailable(pool,acme.id,bo.user.id,true);
+await pool.query("update agent_status set chat_last_seen_at=now()-interval '4 minutes' where org_id=$1 and user_id=$2",[acme.id,bo.user.id]);
+check('stale agent sessions no longer count as available for new chats',!(await getChatAvailability(pool,acme.id,bo.user.id)).available);
+const heartbeat = await heartbeatChat(pool,acme.id,bo.user.id);
+check('a live agent heartbeat refreshes availability after a stale browser session',heartbeat.accepting&&(await getChatAvailability(pool,acme.id,bo.user.id)).available);
+const chatForCapacity = await inbound(502); await claimChat(pool,acme.id,olivia.user.id,chatForCapacity.number);
+const extraBoChat = await inbound(503); await pool.query("update tickets set assignee_id=$3 where org_id=$1 and number=$2",[acme.id,extraBoChat.number,bo.user.id]);
+const fullHandoff = await transferChat(pool,acme.id,{id:olivia.user.id,name:'Olivia'},chatForCapacity.number,bo.user.id);
+check('handoff cannot push a teammate over their simultaneous-chat limit',!fullHandoff.ok&&fullHandoff.status===409);
 // presence and collisions
 const T = (await A(olivia, 'create', { subject: 'Shared', body: 'x', requesterEmail: 's@x.co' })).body.ticket.number;
 let p1 = await A(olivia, 'presence', { number: T }); check('the first agent sees nobody else', p1.status === 200 && p1.body.others.length === 0);

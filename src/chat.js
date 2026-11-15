@@ -62,7 +62,7 @@ export async function publicConfig(pool, slug) {
       select 1 from agent_status a
       join member m on m."userId" = a.user_id and m."organizationId" = a.org_id
       where a.org_id = $1 and a.chat_access = true and a.chat_available = true
-        and m.role in ('owner','admin','member')
+        and m.role in ('owner','admin','member') and a.chat_last_seen_at > now() - interval '3 minutes'
         and (select count(*) from tickets t where t.org_id = a.org_id and t.channel = 'chat'
           and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < $2
     ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
@@ -101,10 +101,14 @@ export async function agentInbox(pool, orgId, input = {}) {
       'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count, totals.solved as solved_count, totals.closed as closed_count from totals left join page on true'
     ].join(' ');
     const result = await db.query(sql, args), first = result.rows[0] || {};
+    const agentId = String(input.agentId || '');
+    const maxConcurrent = Math.max(1, Math.min(10, Number((await db.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent) || 3));
+    const activeChats = agentId ? Number((await db.query("select count(*)::int n from tickets where org_id=$1 and channel='chat' and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,agentId])).rows[0]?.n || 0) : 0;
     return {
       ok: true,
       tickets: result.rows.filter(row => row.id != null).map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, ...ticket }) => ticket),
       counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0), solved: Number(first.solved_count || 0), closed: Number(first.closed_count || 0) },
+      capacity: { active: activeChats, max: maxConcurrent, remaining: Math.max(0,maxConcurrent-activeChats) },
       page: { limit, offset, hasMore: offset + limit < Number(first.total_count || 0) }
     };
   });
