@@ -132,7 +132,7 @@ const inbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit
 check('an authorized admin can list open live-chat tickets', inbox.status === 200 && inbox.body.tickets.some(t => t.number === n && t.channel === 'chat'));
 const pageOne = await A(olivia, 'chat-inbox', { limit: 2, offset: 0, view: 'all' });
 const pageTwo = await A(olivia, 'chat-inbox', { limit: 2, offset: 2, view: 'all' });
-check('the Live Chat inbox returns a bounded page and full filtered totals', pageOne.status === 200 && pageOne.body.tickets.length === 2 && pageOne.body.page.limit === 2 && pageOne.body.page.hasMore && pageOne.body.counts.total >= 3);
+check('the Live Chat inbox returns a bounded page and full filtered totals ' + JSON.stringify(pageOne), pageOne.status === 200 && pageOne.body.tickets.length === 2 && pageOne.body.page.limit === 2 && pageOne.body.page.hasMore && pageOne.body.counts.total >= 3);
 check('Live Chat inbox pages do not repeat the same conversations', pageTwo.status === 200 && pageTwo.body.tickets.length === 2 && pageOne.body.tickets.every(a => pageTwo.body.tickets.every(b => a.number !== b.number)));
 const waitingPage = await A(olivia, 'chat-inbox', { limit: 10, view: 'waiting' });
 check('the waiting filter returns only unassigned chats with matching totals', waitingPage.status === 200 && waitingPage.body.tickets.every(t => !t.assignee_id) && waitingPage.body.counts.total === waitingPage.body.counts.waiting);
@@ -179,7 +179,7 @@ check('internal notes never reach the visitor', !p.body.messages.some(m => /secr
 const replyCursor = await A(olivia, 'chat-reply-alerts', { initialize: true });
 r = await C('POST', '/api/chat/send?org=acme', { number: n, token: tok, message: 'Great, thanks' });
 const replyFeed = await A(olivia, 'chat-reply-alerts', { after: replyCursor.body.cursor });
-check('agent reply notifications return only new customer chat messages after the cursor', replyCursor.status === 200 && replyFeed.status === 200 && replyFeed.body.replies.some(x => x.number === n && x.requester_email === 'vera@x.co'));
+check('agent reply notifications return only new customer chat messages after the cursor ' + JSON.stringify({ replyCursor, replyFeed }), replyCursor.status === 200 && replyFeed.status === 200 && replyFeed.body.replies.some(x => x.number === n && x.requester_email === 'vera@x.co'));
 check('the visitor can reply', r.status === 200 && (await A(olivia, 'get', { number: n })).body.messages.some(m => m.kind === 'requester' && /thanks/.test(m.body)));
 const replyInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('the chat inbox flags a customer reply awaiting an agent response', replyInbox.status === 200 && replyInbox.body.tickets.some(t => t.number === n && t.chat_last_public_message_kind === 'requester'));
