@@ -9,7 +9,7 @@ export default async function backgroundJobs() {
   const { pool } = context();
   const summary = await runJobs(pool, {
     'webhook.deliver': (orgId, payload) => deliverWebhook(pool, orgId, payload)
-  }, { batchSize: 25, leaseMs: 120000 });
+  }, { batchSize: 5, leaseMs: 120000 });
   return new Response(JSON.stringify({ ok: true, ...summary }), {
     status: 200,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
