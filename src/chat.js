@@ -96,6 +96,19 @@ export async function agentInbox(pool, orgId, input = {}) {
     };
   });
 }
+// Lightweight cursor-based notification feed so each agent does not repeatedly download the full chat queue.
+export async function agentReplyAlerts(pool, orgId, input = {}) {
+  return withOrg(pool, orgId, async db => {
+    if (input.initialize === true) {
+      const row = (await db.query("select coalesce(max(tm.id),0)::text as cursor from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.kind='requester' and t.channel='chat'", [orgId])).rows[0];
+      return { ok: true, cursor: String(row?.cursor || '0'), replies: [], hasMore: false };
+    }
+    const after = /^\d{1,18}$/.test(String(input.after || '')) ? String(input.after) : '0';
+    const rows = (await db.query("select tm.id,t.number,t.requester_name,t.requester_email,t.updated_at,t.status from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.id>$2::bigint and tm.kind='requester' and t.channel='chat' order by tm.id asc limit 101", [orgId, after])).rows;
+    const hasMore = rows.length > 100, page = rows.slice(0, 100), cursor = page.length ? String(page[page.length - 1].id) : after;
+    return { ok: true, cursor, hasMore, replies: page.filter(t => ['open','pending','on_hold'].includes(t.status)).map(t => ({ number: Number(t.number), requester_name: t.requester_name, requester_email: t.requester_email, updated_at: t.updated_at })) };
+  });
+}
 export async function startChat(pool, env, slug, input, mailer) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   const name = clean(input.name, 100), email = clean(input.email, 254).toLowerCase(), body = clean(input.message, 2000);
