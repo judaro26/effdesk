@@ -116,12 +116,12 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     `, args);
     const first = result.rows[0];
     const counts = first && first.__counts || {};
-    const rows = result.rows.filter(row => row.id !== null).map(({ __counts, cursor_updated_at, ...ticket }) => ticket);
+    const rows = result.rows.filter(row => row.id !== null).map(({ __counts, ...ticket }) => ticket);
     const hasMore = cursorMode && rows.length > limit;
     if (hasMore) rows.pop();
     const last = rows[rows.length - 1];
     const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.cursor_updated_at, id: Number(last.id) })).toString('base64url') : null;
-    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
+    return { ok: true, tickets: rows.map(({ cursor_updated_at, ...ticket }) => ticket), counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
   });
 }
 
@@ -138,7 +138,7 @@ export async function getTicket(pool, orgId, actor, number, options = {}) {
           const decoded = JSON.parse(Buffer.from(String(options.messageCursor), 'base64url').toString('utf8'));
           const date = new Date(decoded?.at), id = Number(decoded?.id);
           if (!Number.isFinite(date.getTime()) || !Number.isSafeInteger(id) || id < 1) throw new Error('invalid');
-          messageArgs.push(date.toISOString(), id);
+          messageArgs.push(String(decoded.at), id);
           messageWhere.push('(created_at, id) < ($' + (messageArgs.length - 1) + '::timestamptz, $' + messageArgs.length + '::bigint)');
         } catch { return fail('The conversation page cursor is invalid. Refresh the ticket and try again.'); }
       }
