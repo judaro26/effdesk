@@ -15,7 +15,7 @@
       root.localStorage.setItem(VISITOR_KEY, id); return id;
     } catch (e) { return ''; }
   }
-  var reported = {}, safeDiagnostic = function (value, max) { return String(value || '').replace(/https?:\\/\\/[^\\s)]+/g, '[url]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '[email]').replace(/\\b[a-f0-9]{32,}\\b/gi, '[redacted]').slice(0, max); }, reportFailure = function (name, message, stack, page) {
+  var reported = {}, safeDiagnostic = function (value, max) { return String(value || '').replace(/https?:\/\/[^\s)]+/g, '[url]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]').replace(/\b[a-f0-9]{32,}\b/gi, '[redacted]').slice(0, max); }, reportFailure = function (name, message, stack, page) {
     var key = String(name || 'Error') + '|' + String(message || '').slice(0, 180);
     if (reported[key] || !message) return; reported[key] = 1;
     try { root.fetch('/api/client-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: String(name || 'ChatError').slice(0, 80), message: safeDiagnostic(message, 300), stack: safeDiagnostic(stack, 1200), page: String(page || root.location.pathname).split('?')[0].slice(0, 200) }), keepalive: true }).catch(function () {}); } catch (e) {}
