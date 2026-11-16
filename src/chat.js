@@ -8,6 +8,7 @@ import { createTicket } from './tickets.js';
 import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
+import { autoAssignChat } from './routing.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
@@ -235,6 +236,8 @@ export async function startChat(pool,env,slug,input,mailer,provenance={}){
   await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4)",[x.org.id,id,name||email,body]);
   await c.query("update chat_conversations set visitor_token_hash=$3,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id,crypto.createHash('sha256').update(chatToken(env,x.org.id,chatNumber)).digest('hex')]);
   await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)",[x.org.id,id,name||email,existing?'visitor_returned':'visitor_started',existing?'Visitor returned to the conversation':'Visitor started a Live Chat conversation']);
+  const current=(await c.query('select assignee_id from chat_conversations where org_id=$1 and id=$2',[x.org.id,id])).rows[0];
+  if(!current?.assignee_id)await autoAssignChat(c,x.org.id,id);
   return{ok:true,number:Number(chatNumber),reused:!!existing};
  });
  if(!result.ok)return result;
