@@ -79,7 +79,7 @@ export async function agentInbox(pool, orgId, input = {}) {
   const limit=Math.min(Math.max(parseInt(input.limit,10)||40,1),100),view=['all','waiting','needs-reply','mine','history'].includes(input.view)?input.view:'all',q=clean(input.q,100).toLowerCase();
   return withOrg(pool,orgId,async c=>{
     const args=[orgId],where=['cc.org_id=$1'];
-    where.push(view==='history'?"cc.status in ('solved','closed')":"cc.status in ('open','pending','on_hold')");
+    where.push(view==='history'?"cc.status in ('solved','closed')":"(cc.status in ('open','pending','on_hold') or (cc.status='closed' and exists(select 1 from chat_events ended where ended.org_id=cc.org_id and ended.conversation_id=cc.id and ended.kind='visitor_ended')))");
     if(view==='waiting')where.push('cc.assignee_id is null');
     if(view==='mine'){args.push(String(input.agentId||''));where.push('cc.assignee_id=$'+args.length);}
     if(q){args.push('%'+q.replace(/[\\%_]/g,'\\$&')+'%');where.push('(lower(cc.requester_name) like $'+args.length+' or lower(cc.requester_email) like $'+args.length+' or lower(cc.subject) like $'+args.length+')');}
