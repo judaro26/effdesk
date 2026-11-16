@@ -154,6 +154,36 @@ export async function agentNoteChat(pool,orgId,actor,number,input={}){
   return{ok:true,message:m};
  });
 }
+export async function agentUpdateChat(pool,orgId,actor,number,patch={},canManage=false){
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select m.role,mc.role_id,r.permissions from member m left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId" left join custom_roles r on r.org_id=$1 and r.id=mc.role_id where m."organizationId"=$1 and m."userId"=$2',[orgId,actor.id])).rows[0];
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!member||member.role==='light'||!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  if(member.role==='member'&&Array.isArray(member.permissions)&&!member.permissions.includes('reply'))return fail('Your role does not allow you to update live conversations.',403);
+  const chat=await conversationForNumber(c,orgId,number,true);
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  if(chat.status==='closed')return fail('This conversation has ended and cannot be changed.',409);
+  if(chat.assignee_id&&chat.assignee_id!==actor.id&&!canManage)return fail('Only the assigned agent or an administrator can update this conversation.',403);
+  const sets=[],args=[orgId,chat.id];
+  const status=String(patch.status||'');
+  if(status){
+   if(!['open','pending','on_hold','solved'].includes(status))return fail('Choose a valid Live Chat status.');
+   if(status==='solved'&&!['solved','closed'].includes(chat.status))sets.push("solved_at=coalesce(solved_at,now())");
+   if(status!=='solved')sets.push("solved_at=null");
+   args.push(status);sets.push('status=$'+args.length);
+  }
+  const priority=String(patch.priority||'');
+  if(priority){
+   if(!['low','normal','high','urgent'].includes(priority))return fail('Choose a valid priority.');
+   args.push(priority);sets.push('priority=$'+args.length);
+  }
+  if(!sets.length)return{ok:true,unchanged:true};
+  sets.push('updated_at=now()');
+  await c.query('update chat_conversations set '+sets.join(',')+' where org_id=$1 and id=$2',args);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'updated',$5)",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,'Conversation updated'+(status?' · '+status:'')+(priority?' · '+priority:'')]);
+  return{ok:true,updated:true};
+ });
+}
 export async function agentEndChat(pool,orgId,actor,number,canManage=false){
  return withOrg(pool,orgId,async c=>{
   const chat=await conversationForNumber(c,orgId,number,true);
