@@ -454,7 +454,7 @@
           el('span', { class: 'chat-inbox-page-summary' }, chatInboxTotal ? 'Showing ' + (chatInboxOffset + 1) + '–' + Math.min(chatInboxOffset + rows.length, chatInboxTotal) + ' of ' + chatInboxTotal + ' conversations' : 'No conversations found'),
           el('div', { class: 'chat-inbox-page-actions' },
             el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxPageIndex <= 0 || chatInboxLoading, onclick: function () { chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1); chatInboxOffset = chatInboxPageIndex * chatInboxLimit; fetchChatInbox(true); } }, 'Previous'),
-            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: !chatInboxHasMore || !chatInboxPageNextCursor || chatInboxLoading, onclick: function () { chatInboxCursorStack[chatInboxPageIndex + 1] = chatInboxPageNextCursor; chatInboxPageIndex += 1; chatInboxOffset = chatInboxPageIndex * chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: !chatInboxHasMore || chatInboxLoading, onclick: function () { chatInboxPageIndex += 1; chatInboxOffset = chatInboxPageIndex * chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
         el('p', { class: 'chat-inbox-footnote' }, history ? 'Chat History is read-only from this list. Open a conversation to review its messages or reopen it.' : 'This inbox shows open Live Chat conversations. Resolved and closed conversations are kept in Chat History.'));
     }
     function loadApprovals() {
