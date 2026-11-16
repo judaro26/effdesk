@@ -426,7 +426,7 @@
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
-          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
+          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Conversations stay separate until your team chooses to create a ticket.')),
           el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, chatInboxLoading ? 'Refreshing…' : 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
         chatInboxView === 'history' ? el('div', { class: 'chat-inbox-stats chat-inbox-stats-history' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Past conversations'), el('strong', {}, String(chatInboxCounts.total)), el('small', {}, 'Resolved or closed')),
@@ -437,7 +437,7 @@
           el('div', { class: 'chat-inbox-stat chat-inbox-stat-needs-reply' }, el('span', {}, 'Needs reply'), el('strong', {}, String(chatInboxCounts.needsReply)), el('small', {}, 'Customer replied; agent response pending')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Assigned'), el('strong', {}, String(chatInboxCounts.assigned)), el('small', {}, 'Owned by a teammate'))),
         el('div', { class: 'chat-inbox-toolbar' },
-          el('input', { type: 'search', class: 'chat-inbox-search', 'aria-label': 'Search live chats by customer, email, subject or ticket number', placeholder: 'Search customers, email or ticket #…', value: chatInboxQuery, oninput: function (event) { chatInboxQuery = event.target.value; chatInboxOffset = 0; if (chatInboxSearchTimer) root.clearTimeout(chatInboxSearchTimer); chatInboxSearchTimer = root.setTimeout(function () { chatInboxSearchTimer = null; fetchChatInbox(true, true); }, 300); } }),
+          el('input', { type: 'search', class: 'chat-inbox-search', 'aria-label': 'Search live chats by customer, email, subject or ticket number', placeholder: 'Search customers, email or conversation #…', value: chatInboxQuery, oninput: function (event) { chatInboxQuery = event.target.value; chatInboxOffset = 0; if (chatInboxSearchTimer) root.clearTimeout(chatInboxSearchTimer); chatInboxSearchTimer = root.setTimeout(function () { chatInboxSearchTimer = null; fetchChatInbox(true, true); }, 300); } }),
           el('select', { class: 'chat-inbox-filter', 'aria-label': 'Filter live chat queue', value: chatInboxView, onchange: function (event) { chatInboxView = event.target.value; fetchChatInbox(true, true); } },
             el('option', { value: 'all' }, 'All open chats'),
             el('option', { value: 'waiting' }, 'Waiting for an agent'),
@@ -1402,7 +1402,7 @@
       openTabs.forEach(function (t) {
         var on = !!current && current.ticket.number === t.number;
         tabsEl.appendChild(el('span', { class: 'tab has-x', 'aria-selected': String(on) },
-          el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number, t.isChat === true); } }, '#' + t.number + ' ' + t.subject),
+          el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number, t.isChat === true); } }, 'Conversation #' + t.number + ' ' + t.subject),
           el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (current && current.ticket.number === t.number) current = null; draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
