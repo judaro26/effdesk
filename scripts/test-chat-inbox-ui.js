@@ -34,6 +34,13 @@ check('agents can change their personal Live Chat palette directly from the acti
 check('the multi-chat workspace keeps visitor context visible beside the live conversation', css.includes('.chat-agent-workspace>.chat-agent-conversation{display:grid') && css.includes('.chat-agent-workspace .chat-agent-conversation>.info{display:block!important'));
 check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
 
+check('Live Chat dashboard prioritizes joining the queue over oversized dashboard metrics', js.includes('chat-queue-control') && js.includes('Join queue') && css.includes('.deskapp .chat-inbox-stats{display:flex'));
+check('agents can join or leave the Live Chat queue independently from ticket availability', js.includes('function setChatQueueAvailability') && js.includes("api('chat-availability-set', { available: available === true })"));
+check('agents can pick the oldest waiting conversation from the queue', js.includes('function pickNextChat()') && js.includes('claimChatTicket(next.number)'));
+check('the dashboard displays team online status and active chat capacity', js.includes('chat-queue-agents') && js.includes('a.active_chats + \'/\' + a.max_concurrent') && js.includes("api('chat-team', {})"));
+check('visitor overview uses aligned responsive information cards', css.includes('.deskapp .chat-visitor-context-grid{grid-template-columns:repeat(2,minmax(0,1fr))') && css.includes('.deskapp .chat-visitor-page{gap:7px'));
+check('history view does not show active queue controls', js.includes("chatInboxView === 'history' ? null : el('section', { class: 'chat-queue-control'"));
+
 done();
 
 check('accepted Live Chat conversations stay in the dedicated Live Chat navigation context', js.includes("chatConversationOpen = r.body.ticket.channel === 'chat'") && js.includes("(chatInboxOpen || chatConversationOpen) ? 'chat'"));
