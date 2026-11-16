@@ -10,6 +10,7 @@ import { tickets, ticketExport } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 import { runJobs } from '../src/jobs.js';
 import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
+import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../src/notification-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -22,8 +23,8 @@ const olivia = await signUp('olivia@acme.test', 'Olivia'), ann = await signUp('a
 const acme = await auth.api.createOrganization({ body: { name: 'Acme', slug: 'acme' }, headers: olivia.headers });
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
-const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job) }, { batchSize: 50 });
-const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); const body = await r.json(); if (body.email === 'queued') await flushEmailJobs(); return { status: r.status, body }; };
+const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job), 'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job), 'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, ENV, orgId, payload, job) }, { batchSize: 50 });
+const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); const body = await r.json(); await flushEmailJobs(); return { status: r.status, body }; };
 const msgs = async n => (await A(olivia, 'get', { number: n })).body.messages;
 
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket', fromName: 'Acme' });
