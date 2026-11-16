@@ -57,7 +57,7 @@ input:focus,textarea:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(
 .chat-powered strong{color:var(--ink);font-weight:750}
 @media(max-width:360px){#head{padding-right:126px}[data-effdesk-locale-switcher] span{display:none}[data-effdesk-locale-switcher] select{max-width:82px}}
 
-.chat-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:7px 13px 2px;background:var(--bg)}
+ .chat-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:7px 13px 2px;background:var(--bg)}
 .chat-action-link{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--c);font-size:11px;font-weight:650}
 .chat-action-link.danger{color:#b3261e;border-color:color-mix(in srgb,#b3261e 30%,var(--line))}
 .chat-action-notice{padding:3px 14px;min-height:0}

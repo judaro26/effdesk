@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import { check, done } from './lib/check.js';
 
 const js = fs.readFileSync(new URL('../public/js/desk.js', import.meta.url), 'utf8');
+const widget = fs.readFileSync(new URL('../public/js/chat.js', import.meta.url), 'utf8');
+const embedWidget = fs.readFileSync(new URL('../public/widget.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
 const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
 const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
@@ -94,3 +96,23 @@ check('the supervisor workspace is responsive on tablets and phones', css.includ
 check('visitor overview context tiles stack vertically instead of competing side by side', css.includes('.chat-visitor-context-stack{display:grid;grid-template-columns:minmax(0,1fr)}'));
 check('Live Chat surfaces use theme-aware gradients, elevated cards and polished message bubbles', css.includes('Premium Live Chat presentation') && css.includes('linear-gradient(145deg,var(--d-out)') && css.includes('.chat-visitor-identity'));
 check('each personal Live Chat palette has a distinct workspace background and message treatment', css.includes('html[data-chat-theme="obsidian"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="royal"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="ocean"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="forest"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out'));
+
+check('Live Chat opens on an operations landing page with active conversation cards and an online agent roster', js.includes('function loadChatLanding()') && js.includes('function chatLandingPane()') && js.includes("item('chat', 'Live Chat', 'data-chat-inbox', loadChatLanding)") && js.includes('Current conversations') && js.includes('Agents online'));
+check('joining the Live Chat queue enables availability and opens the chat grid', js.includes('function joinChatQueue()') && js.includes("api('chat-availability-set', { available: true })") && js.includes('return loadChatInbox()'));
+check('the operations landing page refreshes its conversation grid and agent roster every 15 seconds', js.includes('function fetchChatLanding(showLoading)') && js.includes('chatLandingTimer = root.setTimeout(function () { fetchChatLanding(false); }, 15000)'));
+check('visitor-ended conversations remain visible for agent review and are clearly labelled', js.includes('visitor_ended') && js.includes('Visitor ended this conversation') && css.includes('.chat-inbox-card.is-ended'));
+check('ended chat transcripts are visually muted and the reply composer is disabled', js.includes("class:'chat-agent-conversation'+(t.visitor_ended || t.status==='closed'?' is-ended':'')") && css.includes('.chat-agent-conversation.is-ended .thread') && css.includes('.chat-agent-conversation.is-ended .compose{display:none}'));
+check('the agent sees a read-only ended-chat notice with a follow-up ticket action available', js.includes('This conversation has ended. The transcript is read-only') && js.includes('Create ticket from chat'));
+check('workspace settings expose a server-enforced visitor restart cooldown with a 15-second default', js.includes('restartCooldownSeconds: Number(crc.value)') && js.includes('restart_cooldown_seconds === undefined ? 15') && js.includes('Wait after a visitor ends a chat'));
+check('the Live Chat landing dashboard uses responsive conversation-grid and roster styles', css.includes('.chat-landing-grid') && css.includes('.chat-landing-roster') && css.includes('@media(max-width:760px){.chat-landing-hero'));
+
+check('visitors explicitly opt in before sharing approximate location from their browser', widget.includes('Share approximate location') && widget.includes('navigator.geolocation.getCurrentPosition') && widget.includes('latitude: position.coords.latitude'));
+check('the server stores only rounded coordinates and the overview labels them as shared location', fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('Math.round(latitude * 100) / 100') && js.includes('Approximate shared location') && css.includes('openstreetmap.org/export/embed.html'));
+
+check('ticket detail returns opt-in visitor coordinates to the visitor overview', fs.readFileSync(new URL('../src/tickets.js', import.meta.url), 'utf8').includes('user_agent,latitude,longitude,submitted_at'));
+
+check('the active visitor overview redraws when new location coordinates arrive', js.includes('var locationChanged = priorProvenance.latitude !== nextProvenance.latitude') && js.includes('if (locationChanged) { draw(); return; }'));
+
+check('the embedded chat iframe permits browser geolocation only for the visitor-initiated sharing flow', embedWidget.includes("frame.setAttribute('allow', 'geolocation')") && widget.includes('Share approximate location'));
+
+check('an already-open agent conversation picks up visitor-ended status on its 15-second refresh', js.includes('var latestChat = chatWorkspaceRows.filter') && js.includes('current.ticket.visitor_ended = true') && js.includes('The visitor ended this conversation.'));

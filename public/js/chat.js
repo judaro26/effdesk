@@ -84,6 +84,20 @@
         if (notice) notice.textContent = r.ok ? 'Transcript sent to the email address you provided.' : (r.body.error || 'The transcript could not be sent.');
       }).catch(function () { var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = 'Connection interrupted. Please try again.'; }).then(function () { transcript.disabled = false; });
     });
+    var locationShare = el('button', { type: 'button', class: 'chat-action-link', text: 'Share approximate location', title: 'Share an approximate location with support. Coordinates are rounded to about 1 km.' });
+    locationShare.addEventListener('click', function () {
+      var notice = doc.getElementById('chat-action-notice');
+      if (!root.navigator || !root.navigator.geolocation) { if (notice) notice.textContent = 'Location sharing is not available in this browser.'; return; }
+      locationShare.disabled = true;
+      root.navigator.geolocation.getCurrentPosition(function (position) {
+        api('context?org=' + encodeURIComponent(org), { number: state.number, token: state.token, pageUrl: PAGE_URL || doc.referrer || root.location.href, pageTitle: PAGE_TITLE || doc.title || '', latitude: position.coords.latitude, longitude: position.coords.longitude }).then(function (r) {
+          if (!r.ok) { locationShare.disabled = false; if (notice) notice.textContent = r.body.error || 'Your location could not be shared.'; return; }
+          locationShare.textContent = 'Location shared'; if (notice) notice.textContent = 'Approximate location shared with the support team (rounded to about 1 km).';
+        }).catch(function () { locationShare.disabled = false; if (notice) notice.textContent = 'Connection interrupted. Your location was not shared.'; });
+      }, function () {
+        locationShare.disabled = false; if (notice) notice.textContent = 'Location was not shared. You can allow it in your browser settings and try again.';
+      }, { maximumAge: 60000, timeout: 10000, enableHighAccuracy: false });
+    });
     var end = el('button', { type: 'button', class: 'chat-action-link danger', text: 'End chat' });
     end.addEventListener('click', function () {
       if (typeof root.confirm === 'function' && !root.confirm('End this conversation? You will no longer be able to send messages in it.')) return;
@@ -93,7 +107,7 @@
         state.ended = true; poll();
       }).catch(function () { end.disabled = false; var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = 'Connection interrupted. Please try again.'; });
     });
-    controls.appendChild(transcript); controls.appendChild(end);
+    controls.appendChild(transcript); controls.appendChild(locationShare); controls.appendChild(end);
     var actionNotice = el('div', { class: 'note chat-action-notice', id: 'chat-action-notice', role: 'status', 'aria-live': 'polite' });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
     main.appendChild(assignment); main.appendChild(controls); main.appendChild(actionNotice); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
