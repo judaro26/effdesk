@@ -2,6 +2,7 @@
 //   round robin = the agent who was given a ticket longest ago; least busy = the agent with the fewest open tickets. Agents who marked themselves away, light agents, and agents at the open-ticket limit are skipped.
 //   If nobody is eligible the ticket stays unassigned, as before.
 import { withOrg } from './db.js';
+const clean = (value, max) => String(value == null ? '' : value).replace(/\u0000/g, '').trim().slice(0, max);
 const fail = (error, status = 400) => ({ ok: false, status, error });
 export const CHAT_HEARTBEAT_TTL_SECONDS = 180;
 export const STRATEGIES = ['round_robin', 'least_busy'];
