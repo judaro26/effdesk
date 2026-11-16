@@ -9,6 +9,7 @@ import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
 import { autoAssignChat } from './routing.js';
+import { enqueueJob } from './jobs.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
@@ -219,6 +220,38 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
   return{ok:true,message:m};
  });
 }
+
+const chatEmailEscape = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// Queue only after the visitor has stopped polling. A recent visitor heartbeat means
+// the reply is already visible in the live widget and should not also trigger email.
+export async function enqueueChatReplyEmail(pool,orgId,number,messageId){
+ const mark=delivery=>withOrg(pool,orgId,c=>c.query('update chat_messages set delivery=$3 where org_id=$1 and id=$2 and kind=\'agent\'',[orgId,String(messageId),delivery]));
+ try{
+  const data=await withOrg(pool,orgId,async c=>{
+   const row=(await c.query(`select cc.id as conversation_id,cc.chat_number,cc.requester_email,cc.requester_name,cc.subject,cc.last_visitor_seen_at,
+    cm.id as message_id,cm.kind,cm.body,cm.author_name,cm.delivery,o.name as org_name
+    from chat_conversations cc join chat_messages cm on cm.org_id=cc.org_id and cm.conversation_id=cc.id
+    join "organization" o on o.id=cc.org_id
+    where cc.org_id=$1 and cc.chat_number=$2 and cm.id=$3 and cm.kind='agent'`,[orgId,Number(number)||0,String(messageId)])).rows[0];
+   return row||null;
+  });
+  if(!data)return{delivery:'skipped',why:'missing'};
+  if(!data.requester_email||!isEmail(data.requester_email)){await mark('skipped');return{delivery:'skipped',why:'no-email'};}
+  const visitorOnline=data.last_visitor_seen_at&&new Date(data.last_visitor_seen_at).getTime()>Date.now()-45000;
+  if(visitorOnline){await mark('skipped');return{delivery:'skipped',why:'visitor-online'};}
+  if(data.delivery==='sent')return{delivery:'sent'};
+  const job=await enqueueJob(pool,orgId,{type:'chat.email.deliver',payload:{number:Number(number),conversationId:String(data.conversation_id),messageId:String(messageId)},idempotencyKey:'chat-message:'+String(messageId),maxAttempts:8});
+  if(job.status==='failed'){await mark('failed');return{delivery:'failed',why:'delivery-exhausted'};}
+  await mark('queued');
+  return{delivery:job.status==='succeeded'?'sent':'queued',jobId:job.id};
+ }catch(error){
+  logWarn('live_chat.email_queue_failed',{error:error.message,orgId,number});
+  await mark('failed').catch(()=>{});
+  return{delivery:'failed',why:'queue-error'};
+ }
+}
+
 export async function startChat(pool,env,slug,input,mailer,provenance={}){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
  const name=clean(input.name,100),email=clean(input.email,254).toLowerCase(),body=clean(input.message,2000);
