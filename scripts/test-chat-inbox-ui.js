@@ -40,11 +40,6 @@ check('the multi-chat workspace keeps visitor context visible beside the live co
 check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
 
 
-check('the agent chat workspace responds to its actual available width rather than only the browser viewport', css.includes('container-name:chat-agent') && css.includes('container-type:inline-size') && css.includes('@container chat-agent (max-width:1160px)'));
-check('the agent workspace stacks visitor context below the conversation when its content area narrows', css.includes('@container chat-agent (max-width:1160px)') && css.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
-check('the multi-chat switcher becomes a horizontally scrollable strip in a narrow workspace', css.includes('@container chat-agent (max-width:820px)') && css.includes('scroll-snap-type:x proximity') && css.includes('.chat-workspace-item{flex:0 0 min(250px,78%)'));
-check('narrow chat headers, message content and composer controls wrap without overflowing', css.includes('@container chat-agent (max-width:560px)') && css.includes('overflow-wrap:anywhere') && css.includes('compose .bar{display:flex;flex-wrap:wrap'));
-
 done();
 
 check('accepted Live Chat conversations stay in the dedicated Live Chat navigation context', js.includes("chatConversationOpen = r.body.ticket.channel === 'chat'") && js.includes("(chatInboxOpen || chatConversationOpen) ? 'chat'"));
@@ -140,3 +135,10 @@ check('chat conversations retain a dedicated deep link and use chat-scoped attac
 check('the Live Chat landing page opens the agent workspace directly instead of another inbox landing page', js.includes('openNextLiveChat') && js.includes('Open my next chat'));
 check('visitor and agent typing indicators are connected end-to-end and use refreshed client scripts',widget.includes("api('typing?org=")&&widget.includes('r.body.agentTyping')&&js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'")&&js.includes('is typing…')&&chatPage.includes('chat.js?v=live-chat-attachments-typing-20261117')&&deskPage.includes('desk.js?v=live-chat-attachments-typing-20261117'));
 check('visitor chat attachments upload before sending and render secure token-scoped downloads',widget.includes('/api/chat/upload?org=')&&widget.includes('attachmentIds: ids')&&widget.includes('/api/chat/file?org=')&&js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number"));
+
+
+
+check('the agent chat workspace responds to its actual available width rather than only the browser viewport', css.includes('container-name:chat-agent') && css.includes('container-type:inline-size') && css.includes('@container chat-agent (max-width:1160px)'));
+check('the agent workspace stacks visitor context below the conversation when its content area narrows', css.includes('@container chat-agent (max-width:1160px)') && css.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
+check('the multi-chat switcher becomes a horizontally scrollable strip in a narrow workspace', css.includes('@container chat-agent (max-width:820px)') && css.includes('scroll-snap-type:x proximity') && css.includes('.chat-workspace-item{flex:0 0 min(250px,78%)'));
+check('narrow chat headers, message content and composer controls wrap without overflowing', css.includes('@container chat-agent (max-width:560px)') && css.includes('overflow-wrap:anywhere') && css.includes('compose .bar{display:flex;flex-wrap:wrap'));
