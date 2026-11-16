@@ -3,6 +3,7 @@
 import { info as logInfo } from './log.js';
 import crypto from 'node:crypto';
 import { withOrg } from './db.js';
+import { enqueueJob } from './jobs.js';
 import { publicAddress, guardedFetch } from './guard.js';
 export const EVENTS = ['ticket.created', 'ticket.updated', 'message.agent', 'message.customer', 'ticket.mentioned'];
 export const MAX_HOOKS = 10;
@@ -39,27 +40,50 @@ export async function saveHook(pool, orgId, b, { lookup } = {}) {
   });
 }
 export async function deleteHook(pool, orgId, id) { return withOrg(pool, orgId, async c => (await c.query('delete from webhooks where org_id = $1 and id = $2', [orgId, Number(id) || 0])).rowCount > 0); }
-// tell every active webhook that listens for this event. Never throws; each call has a 5 second limit.
-export async function emit(pool, orgId, event, number, extra = {}, { fetchFn = guardedFetch, now = Date.now() } = {}) {
+// Enqueue one durable delivery per subscribed endpoint. Ticket requests no longer wait on remote webhook servers.
+export async function emit(pool, orgId, event, number, extra = {}, { now = Date.now() } = {}) {
   try {
     const data = await withOrg(pool, orgId, async c => ({
-      hooks: (await c.query('select id, url, secret, kind from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,
+      hooks: (await c.query('select id from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,
       t: (await c.query('select custom, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, created_at, updated_at from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0],
     }));
-    if (!data.hooks.length || !data.t) return { sent: 0 };
-    const body = JSON.stringify({ event, organization: orgId, occurredAt: new Date(now).toISOString(), ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, custom: data.t.custom, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
-    const ts = String(Math.floor(now / 1000)), text = chatText(event, data.t, extra);
-    await Promise.allSettled(data.hooks.map(async h => {
-      let status = 'error';
-      try {
-        const chat = h.kind === 'slack' || h.kind === 'cliq' ? JSON.stringify({ text }) : h.kind === 'teams' ? JSON.stringify(teamsCard(text)) : null;
-        const sig = crypto.createHmac('sha256', h.secret).update(ts + '.' + body).digest('hex');
-        const r = await fetchFn(h.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5000), headers: chat ? { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1' } : { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1', 'X-EffDesk-Event': event, 'X-EffDesk-Timestamp': ts, 'X-EffDesk-Signature': 'sha256=' + sig }, body: chat || body });
-        status = String(r.status);
-      } catch (e) { status = e && e.name === 'TimeoutError' ? 'timeout' : 'error'; }
-      logInfo('webhook', { org: orgId, kind: h.kind || 'json', status });
-      await withOrg(pool, orgId, c => c.query('update webhooks set last_status = $3, last_at = now() where org_id = $1 and id = $2', [orgId, h.id, status])).catch(() => {});
-    }));
-    return { sent: data.hooks.length };
-  } catch (e) { console.warn('webhook error:', e.message); return { sent: 0 }; }
+    if (!data.hooks.length || !data.t) return { queued: 0 };
+    const eventId = crypto.randomUUID(), occurredAt = new Date(now).toISOString();
+    const body = JSON.stringify({ eventId, event, organization: orgId, occurredAt, ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, custom: data.t.custom, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
+    const text = chatText(event, data.t, extra);
+    const results = await Promise.allSettled(data.hooks.map(h => enqueueJob(pool, orgId, {
+      type: 'webhook.deliver',
+      payload: { webhookId: String(h.id), event, eventId, body, text },
+      idempotencyKey: eventId + ':' + String(h.id),
+      maxAttempts: 8
+    })));
+    const queued = results.filter(x => x.status === 'fulfilled').length;
+    const failed = results.length - queued;
+    if (failed) logInfo('webhook_enqueue', { org: orgId, queued, failed });
+    return { queued, failed };
+  } catch (e) { console.warn('webhook enqueue error:', e.message); return { queued: 0, failed: 1 }; }
+}
+
+// Worker handler: re-read current endpoint settings, sign each attempt with a fresh timestamp, and throw on failure so the queue retries.
+export async function deliverWebhook(pool, orgId, payload, { fetchFn = guardedFetch, now = Date.now() } = {}) {
+  const hook = await withOrg(pool, orgId, async c => (await c.query('select id,url,secret,kind,active from webhooks where org_id=$1 and id=$2', [orgId, Number(payload.webhookId) || 0])).rows[0] || null);
+  if (!hook || !hook.active) return { skipped: true };
+  const url = safeUrl(hook.url);
+  if (!url || !hostOkFor(hook.kind, url)) throw new Error('Webhook destination is no longer an approved public endpoint.');
+  const timestamp = String(Math.floor(now / 1000)), body = String(payload.body || ''), text = String(payload.text || '');
+  const chat = hook.kind === 'slack' || hook.kind === 'cliq' ? JSON.stringify({ text }) : hook.kind === 'teams' ? JSON.stringify(teamsCard(text)) : null;
+  const signature = crypto.createHmac('sha256', hook.secret).update(timestamp + '.' + body).digest('hex');
+  let status = 'error';
+  try {
+    const response = await fetchFn(url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5000), headers: chat ? { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1' } : { 'Content-Type': 'application/json', 'User-Agent': 'EffDesk-Webhook/1', 'X-EffDesk-Event': String(payload.event || ''), 'X-EffDesk-Event-Id': String(payload.eventId || ''), 'X-EffDesk-Timestamp': timestamp, 'X-EffDesk-Signature': 'sha256=' + signature }, body: chat || body });
+    status = String(response.status);
+    if (!response.ok) throw new Error('Webhook endpoint returned HTTP ' + status);
+  } catch (error) {
+    status = error && error.name === 'TimeoutError' ? 'timeout' : status;
+    await withOrg(pool, orgId, db => db.query('update webhooks set last_status=$3,last_at=now() where org_id=$1 and id=$2', [orgId, hook.id, status])).catch(() => {});
+    throw error;
+  }
+  await withOrg(pool, orgId, db => db.query('update webhooks set last_status=$3,last_at=now() where org_id=$1 and id=$2', [orgId, hook.id, status]));
+  logInfo('webhook', { org: orgId, kind: hook.kind || 'json', status });
+  return { delivered: true, status };
 }

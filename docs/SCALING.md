@@ -17,7 +17,7 @@ Median times on the first run, then after migration 022 (indexes) and the report
 What was slow and why: the report counted tickets per day with 60 scans of the table (now one grouped query with a range index); the default list sorted all of a workspace's tickets on every open (now an index in the list's own order); searches read every row (now trigram indexes, `pg_trgm`).
 
 ## What to do in production
-- Use Neon's **pooled** connection string (host with `-pooler`) for `DATABASE_URL`. Each function instance keeps at most 5 connections; the pooler multiplexes them.
+- Use Neon's **pooled** connection string (host with `-pooler`) for `DATABASE_URL`. Each function instance keeps at most 10 connections (`src/db.js`); the pooler multiplexes them.
 - Keep the Netlify site and the Neon database in the same region. Every screen is a handful of database round trips, so distance costs more than any query.
 - Look at Neon's query insights monthly. Anything over ~100 ms at your size is worth an index; add it as the next numbered migration and run `scripts/bench.js` first.
 - Large workspaces: ticket lists page 50 at a time, exports come in parts of 300 tickets, reports cap the rows they read (`ROW_CAP`).
@@ -29,8 +29,14 @@ What was slow and why: the report counted tickets per day with 60 scans of the t
 
 ## Next steps when needed
 - A per-workspace ticket counter table (list tabs currently count with a group-by, about 20 ms at 100,000 tickets).
-- Move email sending and webhooks to a queue (Netlify background functions) once volume makes them noticeable.
+- Move outbound email delivery to the durable job queue; webhook delivery is now queued and retried independently of ticket requests.
 - Full-text search (`tsvector`) when searching message bodies.
+
+## Durable asynchronous delivery
+
+Outbound webhooks are written to the tenant-scoped `background_jobs` outbox instead of being sent during ticket requests. PostgreSQL `SKIP LOCKED` claims and worker leases prevent overlapping workers from owning the same job. Failed deliveries retry with exponential backoff (up to one hour), up to eight attempts by default; terminal failures remain available for inspection. A Netlify scheduled worker runs once per minute and processes up to five deliveries concurrently.
+
+Webhook delivery is at-least-once: a receiver may see the same event again if the endpoint accepted it but the response was lost. JSON webhook payloads include an `eventId`, also sent in `X-EffDesk-Event-Id`, so receivers can deduplicate. Email delivery remains synchronous and is the next candidate for the outbox.
 
 ## Speed measures (Nov 2026)
 - Scripts and stylesheets are minified at deploy time (`scripts/minify-assets.js`, about 22% smaller before compression); the files in git stay readable. If minifying fails the deploy continues with the originals.
