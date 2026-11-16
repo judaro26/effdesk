@@ -234,7 +234,7 @@
       }).catch(function () { if (!chatLandingOpen) return; chatLandingLoading = false; chatLandingError = 'The Live Chat overview could not refresh. Check your connection.'; draw(); chatLandingTimer = root.setTimeout(function () { fetchChatLanding(false); }, 20000); });
     }
     function joinChatQueue() {
-      if (chatAvailable) return loadChatInbox();
+      if (chatAvailable) return openNextLiveChat();
       api('chat-availability-set', { available: true }).then(function (r) {
         if (!r.ok) return say(r.body.error || 'Could not join the Live Chat queue.', true);
         chatAvailable = r.body.available === true; drawMenu(); loadChatInbox();
@@ -257,11 +257,20 @@
         chatLandingError?el('p',{class:'msg err',role:'alert'},chatLandingError):null,
         el('div',{class:'chat-landing-metrics'},el('div',{class:'chat-landing-metric'},el('span',{},'Active conversations'),el('strong',{},String(active.length))),el('div',{class:'chat-landing-metric'},el('span',{},'Agents online'),el('strong',{},String(online.length))),el('div',{class:'chat-landing-metric'},el('span',{},'Waiting for an agent'),el('strong',{},String(active.filter(function(t){return !t.assignee_id;}).length))),el('div',{class:'chat-landing-metric'},el('span',{},'Ended by visitors'),el('strong',{},String(ended.length)))),
         el('div',{class:'chat-landing-layout'},
-          el('section',{class:'chat-landing-panel'},el('div',{class:'chat-landing-panel-head'},el('div',{},el('h2',{},'Current conversations'),el('p',{},'Open any conversation to review or join the exchange')),el('button',{type:'button',class:'btn l sm',onclick:loadChatInbox},'Open chat grid →')),active.length?el('div',{class:'chat-landing-grid'},active.map(conversationCard)):el('div',{class:'chat-landing-empty'},chatLandingLoading?'Loading conversations…':'No active conversations right now.'),
+          el('section',{class:'chat-landing-panel'},el('div',{class:'chat-landing-panel-head'},el('div',{},el('h2',{},'Current conversations'),el('p',{},'Open any conversation to review or join the exchange')),el('button',{type:'button',class:'btn l sm',onclick:openNextLiveChat},'Open my next chat →')),active.length?el('div',{class:'chat-landing-grid'},active.map(conversationCard)):el('div',{class:'chat-landing-empty'},chatLandingLoading?'Loading conversations…':'No active conversations right now.'),
             ended.length?el('div',{class:'chat-landing-ended'},el('strong',{},'Recently ended by visitors'),ended.slice(0,6).map(conversationCard)):null),
           el('aside',{class:'chat-landing-panel chat-landing-roster'},el('div',{class:'chat-landing-panel-head'},el('div',{},el('h2',{},'Agents online'),el('p',{},'Live availability and current workload')),el('span',{class:'chat-landing-count'},String(online.length))),
             online.length?el('div',{class:'chat-landing-agent-list'},online.map(function(a){return el('div',{class:'chat-landing-agent'},avatarEl('',fmtName(a),null),el('span',{class:'chat-landing-agent-copy'},el('strong',{},fmtName(a)),el('small',{},String(a.active_chats||0)+' / '+String(a.max_concurrent||3)+' chats')) ,el('span',{class:'chat-landing-agent-dot',title:'Online'}));})):el('div',{class:'chat-landing-empty'},'No agents are currently online.'),
             el('div',{class:'chat-landing-roster-foot'},chatLandingLoading?'Refreshing team…':'Auto-refresh · 15 seconds'))));
+    }
+    function openNextLiveChat() {
+      var active = (chatLandingRows || []).filter(function (t) { return t.visitor_ended !== true && ['open','pending','on_hold'].indexOf(t.status) >= 0; });
+      var mine = active.filter(function (t) { return t.assignee_id === meId; }).sort(function (a,b) { return new Date(b.updated_at || 0) - new Date(a.updated_at || 0); });
+      var waiting = active.filter(function (t) { return !t.assignee_id; }).sort(function (a,b) { return new Date(a.created_at || 0) - new Date(b.created_at || 0); });
+      var next = mine[0] || waiting[0] || active[0];
+      if (!next) return say('There are no active conversations to open right now.', false);
+      if (!next.assignee_id) return claimChatTicket(next.number);
+      return open(next.number, true);
     }
     function loadChatInbox() {
       if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
