@@ -158,7 +158,7 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
   if(!member||member.role==='light')return fail('You are not allowed to reply to live chats.',403);
   const access=(await c.query('select chat_access,chat_available from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
   if(!access||access.chat_access!==true)return fail('An admin must enable Live Chat access for you first.',403);
-  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  const chat=await conversationForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);
   if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
   if(chat.assignee_id&&chat.assignee_id!==actor.id)return fail('This live chat is assigned to another agent.',409);
@@ -195,7 +195,7 @@ export async function startChat(pool,env,slug,input,mailer,provenance={}){
  });
  if(!result.ok)return result;
  await emit(pool,x.org.id,'message.customer',result.number,{message:{body}});
- if(x.settings.auto_convert_to_ticket===true){const converted=await convertChatToTicket(pool,x.org.id,null,result.number);if(converted.ok)result.ticketNumber=converted.number;else logWarn('live_chat.auto_conversion_failed',{org:x.org.id,conversation:result.number,error:converted.error});}
+ if(x.settings.auto_convert_to_ticket===true){try{const converted=await convertChatToTicket(pool,x.org.id,null,result.number);if(converted.ok)result.ticketNumber=converted.number;else logWarn('live_chat.auto_conversion_failed',{org:x.org.id,conversation:result.number,error:converted.error});}catch(error){logError('live_chat.auto_conversion_exception',{org:x.org.id,conversation:result.number,error});}}
  return{ok:true,number:result.number,token:chatToken(env,x.org.id,result.number),reused:result.reused===true,orgId:x.org.id,...(result.ticketNumber?{ticketNumber:result.ticketNumber}:{})};
 }
 
