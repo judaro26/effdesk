@@ -443,6 +443,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     }
     case 'chat-reply': {
       if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow customer replies.' });
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentReplyChat(pool, orgId, actor, b.number, b);
       if (r.ok && !r.duplicate) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
@@ -456,6 +457,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     }
     case 'chat-note': {
       if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow internal chat notes.' });
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentNoteChat(pool, orgId, actor, b.number, b);
       break;
