@@ -2,6 +2,7 @@
 //   a visitor proves it is theirs chat with a token only they were given (a signature of the ticket number); nothing else is public.
 import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
+import net from 'node:net';
 import { withOrg } from './db.js';
 import { createTicket } from './tickets.js';
 import { getEntitlements } from './billing.js';
@@ -187,7 +188,7 @@ export async function startChat(pool,env,slug,input,mailer,provenance={}){
   let id,chatNumber;if(existing){id=existing.id;chatNumber=existing.chat_number;await c.query("update chat_conversations set status='open',closed_at=null,solved_at=null,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id]);}
   else{const created=(await c.query(`insert into chat_conversations(org_id,subject,requester_name,requester_email,visitor_key,priority,page_url,page_title,referrer,user_agent,ip_address,source,last_visitor_seen_at)
     values($1,$2,$3,$4,$5,'normal',$6,$7,$8,$9,$10,'widget',now()) returning id,chat_number`,
-    [x.org.id,'Chat: '+body.replace(/\s+/g,' ').slice(0,60),name,email,visitorKey,clean(provenance.pageUrl,2048)||null,clean(provenance.pageTitle,200)||null,clean(provenance.referrer,2048)||null,clean(provenance.userAgent,500)||null,clean(provenance.ip,64)||null])).rows[0];id=created.id;chatNumber=created.chat_number;}
+    [x.org.id,'Chat: '+body.replace(/\s+/g,' ').slice(0,60),name,email,visitorKey,safePageUrl(provenance.pageUrl),clean(provenance.pageTitle,200)||null,safePageUrl(provenance.referrer),clean(provenance.userAgent,500)||null,safeIp(provenance.ip)])).rows[0];id=created.id;chatNumber=created.chat_number;}
   await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4)",[x.org.id,id,name||email,body]);
   await c.query("update chat_conversations set visitor_token_hash=$3,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id,crypto.createHash('sha256').update(chatToken(env,x.org.id,chatNumber)).digest('hex')]);
   await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)",[x.org.id,id,name||email,existing?'visitor_returned':'visitor_started',existing?'Visitor returned to the conversation':'Visitor started a Live Chat conversation']);
