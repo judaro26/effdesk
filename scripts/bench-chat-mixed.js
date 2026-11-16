@@ -33,32 +33,47 @@ const target=validateTarget(rawUrl);
 if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
 const pool=new pg.Pool({connectionString:explicitSsl(rawUrl),max:10,idleTimeoutMillis:10000,ssl:{rejectUnauthorized:true}});
 const connectWait=[], querySamples=new Map(), connect=pool.connect.bind(pool);
-pool.connect=async(...args)=>{
-  const start=performance.now(),client=await connect(...args);
-  connectWait.push(performance.now()-start);
-  if(!client.__effdeskMixedQueryTiming){
-    client.__effdeskMixedQueryTiming=true;
-    const originalQuery=client.query.bind(client);
-    client.query=(...queryArgs)=>{
-      if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
-      const input=queryArgs[0],sql=typeof input==='string'?input:input?.text||'';
-      const fingerprint=createHash('sha256').update(normalizeSqlForFingerprint(sql)).digest('hex').slice(0,12);
-      const sqlTemplate=sanitizeSqlTemplate(sql),started=performance.now();
-      const record=error=>{
-        let entry=querySamples.get(fingerprint);
-        if(!entry){entry={durations:[],errors:0,sql_template:sqlTemplate};querySamples.set(fingerprint,entry);}
-        entry.durations.push(performance.now()-started);
-        if(error)entry.errors++;
-      };
-      try{
-        const result=originalQuery(...queryArgs);
-        return result&&typeof result.then==='function'
-          ?result.then(value=>{record(null);return value;},error=>{record(error);throw error;})
-          :result;
-      }catch(error){record(error);throw error;}
+function instrumentClient(client) {
+  if(!client || client.__effdeskMixedQueryTiming)return;
+  client.__effdeskMixedQueryTiming=true;
+  const originalQuery=client.query.bind(client);
+  client.query=(...queryArgs)=>{
+    if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
+    const input=queryArgs[0],sql=typeof input==='string'?input:input?.text||'';
+    const fingerprint=createHash('sha256').update(normalizeSqlForFingerprint(sql)).digest('hex').slice(0,12);
+    const sqlTemplate=sanitizeSqlTemplate(sql),started=performance.now();
+    const record=error=>{
+      let entry=querySamples.get(fingerprint);
+      if(!entry){entry={durations:[],errors:0,sql_template:sqlTemplate};querySamples.set(fingerprint,entry);}
+      entry.durations.push(performance.now()-started);
+      if(error)entry.errors++;
     };
+    try{
+      const result=originalQuery(...queryArgs);
+      return result&&typeof result.then==='function'
+        ?result.then(value=>{record(null);return value;},error=>{record(error);throw error;})
+        :result;
+    }catch(error){record(error);throw error;}
+  };
+}
+// Preserve node-postgres' two connect() overloads. The callback overload returns
+// immediately and supplies the client later; awaiting it produces undefined.
+pool.connect=function(...args){
+  const started=performance.now();
+  if(typeof args[0]==='function'){
+    const callback=args[0];
+    args[0]=(error,client,release)=>{
+      connectWait.push(performance.now()-started);
+      if(!error)instrumentClient(client);
+      return callback(error,client,release);
+    };
+    return connect(...args);
   }
-  return client;
+  return connect(...args).then(client=>{
+    connectWait.push(performance.now()-started);
+    instrumentClient(client);
+    return client;
+  });
 };
 const maxSamples={total:0,waiting:0};
 const syntheticEnv={EMAIL_TOKEN_SECRET:'effdesk-staging-mixed-chat-benchmark-only-secret-v1'};
