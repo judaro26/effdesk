@@ -132,8 +132,9 @@ export async function getChatConversation(pool,orgId,number,options={}){
 export async function agentNoteChat(pool,orgId,actor,number,input={}){
  const body=clean(input.body,2000);if(!body)return fail('Write an internal note first.');
  return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,actor.id])).rows[0];
   const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
-  if(!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  if(!member||member.role==='light'||!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
   const chat=await conversationForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);
   const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body])).rows[0];
