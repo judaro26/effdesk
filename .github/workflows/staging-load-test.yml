@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: Load profile (runs read-only queries against synthetic staging workspaces)
+        description: Load profile for the selected synthetic staging workload
         required: true
         type: choice
         options:
