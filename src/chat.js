@@ -1,5 +1,5 @@
 // src/chat.js: LIVE CHAT. Visitor conversations and messages live independently of support tickets. Agents can explicitly convert a conversation into a ticket, preserving its transcript.
-//   a visitor proves it is theirs chat with a token only they were given (a signature of the ticket number); nothing else is public.
+//   a visitor proves ownership with a signed, opaque conversation number; nothing else is public.
 import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
 import net from 'node:net';
@@ -99,7 +99,7 @@ export async function agentInbox(pool, orgId, input = {}) {
       from chat_conversations cc left join "user" u on u.id=cc.assignee_id where ${where.join(' and ')}
       order by case when cc.assignee_id is null then 0 else 1 end,cc.updated_at desc,cc.id desc limit $${args.length+1} offset $${args.length+2}`,[...args,limit+1,offset])).rows;
     const hasMore=rows.length>limit;if(hasMore)rows.pop();
-    const counts=(await c.query(`select count(*)::int total,count(*) filter(where status in ('open','pending','on_hold') and assignee_id is null)::int waiting,
+    const counts=(await c.query(`select count(*) filter(where status in ('open','pending','on_hold'))::int total,count(*) filter(where status in ('open','pending','on_hold') and assignee_id is null)::int waiting,
       count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null)::int assigned,
       count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null and (${latest})='requester')::int needs_reply,
       count(*) filter(where status='solved')::int solved,count(*) filter(where status='closed')::int closed from chat_conversations cc where cc.org_id=$1`,[orgId])).rows[0]||{};
