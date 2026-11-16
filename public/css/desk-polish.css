@@ -1018,3 +1018,81 @@
   display:flex;flex-wrap:wrap;min-width:0;max-width:100%;align-items:center
 }
 .deskapp .chat-agent-workspace .chat-agent-conversation .compose .modes>*{min-width:0;max-width:100%}
+
+
+/* Responsive controls for the narrow Live Chat conversation canvas. */
+.deskapp .chat-agent-workspace .chat-agent-conversation>.conv{min-width:0}
+.deskapp .chat-agent-workspace .chat-agent-conversation .ch{
+  display:flex;flex-direction:column;align-items:stretch;gap:10px;min-width:0
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .chtools{
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto minmax(150px,190px);
+  align-items:center;gap:8px;min-width:0;width:100%
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter{
+  grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(110px,132px)) 30px;
+  align-items:center;gap:7px;width:100%;min-width:0
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter>*{
+  width:100%;min-width:0;max-width:100%;box-sizing:border-box
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter .conversation-search{width:100%;min-width:0}
+.deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter .conversation-date{width:100%;min-width:0}
+.deskapp .chat-agent-workspace .chat-agent-conversation .chtools>.ib{justify-self:end}
+.deskapp .chat-agent-workspace .chat-agent-conversation .chtools>select{width:100%;min-width:0;max-width:100%}
+.deskapp .chat-agent-workspace .chat-agent-conversation .ch h2{min-width:0;overflow-wrap:anywhere}
+.deskapp .chat-agent-workspace .chat-agent-conversation .ctools{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .ctools>*{min-width:0;max-width:100%}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .modes{
+  display:flex;flex-wrap:wrap;white-space:normal;overflow:visible;gap:6px;min-width:0
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .modes>*{
+  flex:0 1 auto;min-width:0;max-width:100%;white-space:normal
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .modes select{
+  flex:1 1 150px;width:auto;max-width:100%;margin-left:0
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .ed-bar,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .editor-toolbar,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .ed-tools{
+  display:flex;flex-wrap:wrap;align-items:center;gap:5px;min-width:0;max-width:100%;
+  overflow:visible;white-space:normal
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .ed-bar>*,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .editor-toolbar>*,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose .ed-tools>*{
+  flex:0 1 auto;min-width:0;max-width:100%
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose input,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose select,
+.deskapp .chat-agent-workspace .chat-agent-conversation .compose textarea{
+  max-width:100%;min-width:0;box-sizing:border-box
+}
+@media(max-width:640px){
+  .deskapp .chat-agent-workspace .chat-agent-conversation .chtools{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter{
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter .conversation-search{
+    grid-column:1/-1
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter .conversation-filter-clear{
+    justify-self:start;width:30px
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation .chtools>select{
+    grid-column:1/-1
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation .compose .modes>*{
+    flex:1 1 130px
+  }
+}
+@media(max-width:420px){
+  .deskapp .chat-agent-workspace .chat-agent-conversation .ch{padding:10px}
+  .deskapp .chat-agent-workspace .chat-agent-conversation .chtools{gap:6px}
+  .deskapp .chat-agent-workspace .chat-agent-conversation .conversation-filter{gap:6px}
+  .deskapp .chat-agent-workspace .chat-agent-conversation .compose{padding:9px}
+}
