@@ -122,9 +122,9 @@
     function refresh() { persistTicketPrefs(); kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); draw(); }); }
     // the address bar shows where you are, like /w/acme/agent/10042/tickets/57
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
-    function open(n) {
+    function open(n, isChat) {
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
-      return api('get', { number: n, messageLimit: 50 }).then(function (r) {
+      return api(isChat ? 'chat-get' : 'get', { number: n, messageLimit: 50 }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
         var switchingTicket = !current || current.ticket.number !== n;
         closePanes();
@@ -136,7 +136,7 @@
       });
     }
     function refreshChatVisitorPage(number) {
-      return api('get', { number: number, messageLimit: 1 }).then(function (r) {
+      return api('chat-get', { number: number, messageLimit: 500 }).then(function (r) {
         if (!r.ok || !r.body.ticket || !current || !current.ticket || current.ticket.number !== number) return;
         var priorProvenance = current.ticket.provenance || {}, nextProvenance = r.body.ticket.provenance || priorProvenance;
         var locationChanged = priorProvenance.latitude !== nextProvenance.latitude || priorProvenance.longitude !== nextProvenance.longitude;
@@ -247,7 +247,7 @@
       var fmtName = function (a) { return a.name || a.email || 'Agent'; };
       var conversationCard = function (t) {
         var a = chatLandingAgents.filter(function (x) { return x.user_id === t.assignee_id; })[0];
-        return el('button', { type:'button', class:'chat-landing-conversation' + (t.visitor_ended ? ' is-ended' : ''), onclick:function(){open(t.number);} },
+        return el('button', { type:'button', class:'chat-landing-conversation' + (t.visitor_ended ? ' is-ended' : ''), onclick:function(){open(t.number, true);} },
           el('span',{class:'chat-landing-avatar'},initial(t.requester_name || t.requester_email || 'V')),
           el('span',{class:'chat-landing-conversation-copy'},el('strong',{},t.requester_name || t.requester_email || 'Website visitor'),el('span',{},String(t.subject || 'Live Chat').replace(/^\s*chat\s*:\s*/i,'').slice(0,72)),el('small',{},'#'+t.number+' · '+(t.visitor_ended?'Visitor ended':(a?fmtName(a):'Waiting for an agent')))),
           el('span',{class:'chat-landing-status'+(t.visitor_ended?' ended':'')},t.visitor_ended?'Ended':cap(t.status)));
@@ -349,7 +349,7 @@
       api('chat-claim', { number: number }).then(function (r) {
         if (!r.ok) { say(r.body.error || 'Could not accept this conversation.', true); return fetchChatInbox(false); }
         say(r.body.alreadyAssigned ? 'This conversation is already assigned to you.' : 'You accepted the conversation.');
-        return fetchChatInbox(false).then(function () { open(number); });
+        return fetchChatInbox(false).then(function () { open(number, true); });
       });
     }
     function loadChatSupervision() {
@@ -407,7 +407,7 @@
       var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\s*chat\s*:\s*/i, '').trim() || 'Live chat'; };
       var openCard = function (t) {
         var isEnded = t.visitor_ended === true, isWaiting = !history && !isEnded && !t.assignee_id, activityAt = history ? (t.closed_at || t.solved_at || t.updated_at) : (t.updated_at || t.created_at), statusLabel = isEnded ? 'Ended by visitor' : t.status === 'solved' ? 'Resolved' : t.status === 'closed' ? 'Closed' : cap(t.status);
-        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (history ? 'Open past conversation with ' : isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (history || isEnded || t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
+        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (history ? 'Open past conversation with ' : isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (history || isEnded || t.assignee_id) open(t.number, true); else claimChatTicket(t.number); } },
           el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
           el('span', { class: 'chat-inbox-card-copy' },
             el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), isWaiting ? el('span', { class: 'chat-inbox-new-label', title: 'New unassigned conversation' }, 'NEW') : null, isWaiting ? el('span', { class: 'chat-inbox-waiting-age', title: 'Waiting since ' + fmt(t.created_at || t.updated_at) }, 'Waiting ' + fmt(t.created_at || t.updated_at)) : null, !isWaiting ? el('span', { class: 'chat-inbox-time' }, fmt(activityAt)) : null),
@@ -1705,7 +1705,7 @@
           draw();
         }).catch(function () { ticketHistoryLoading = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
       };
-      var after = function () { return Promise.all([open(t.number), refresh()]); };
+      var after = function () { return Promise.all([open(t.number, chatConversationOpen), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
         var put = function (val) { var c = {}; c[f.key] = val; update({ custom: c }); };
@@ -1721,7 +1721,7 @@
         draft = body.value; draftHtml = richHtml || ''; saveTicketDraft(t.number); if (action === 'reply' && permanentlyClosed) return say('This ticket is permanently closed. Create a linked follow-up ticket instead.', true); if (!body.value.trim()) { if (action === 'reply' && sendStatus && sendStatus !== t.status) { var ns = sendStatus; sendStatus = ''; return update({ status: ns }).then(function () { say('Status set to ' + ns + '.'); }); } return say('Write a message first, or choose a status in the bar above to change only the status.', true); }
         var status = action === 'reply' ? (sendStatus || (macroPatch && macroPatch.status) || undefined) : undefined, ids = action === 'reply' ? pending.map(function (p) { return p.id; }) : [], mp = action === 'reply' ? macroPatch : null;
         if (action === 'reply' && !draftRequestId) draftRequestId = newReplyRequestId(); saveTicketDraft(t.number);
-        var req = api(action, { number: t.number, body: body.value, html: richHtml, status: status, idempotencyKey: action === 'reply' ? draftRequestId : undefined, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
+        var req = api(chatConversationOpen && action === 'reply' ? 'chat-reply' : action, { number: t.number, body: body.value, html: richHtml, status: status, idempotencyKey: action === 'reply' ? draftRequestId : undefined, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
         sending = true; paintSending();
         var done = function () { sending = false; paintSending(); };
         req.then(function (r) {
