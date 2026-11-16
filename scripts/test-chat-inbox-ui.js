@@ -39,6 +39,12 @@ check('agents can change their personal Live Chat palette directly from the acti
 check('the multi-chat workspace keeps visitor context visible beside the live conversation', css.includes('.chat-agent-workspace>.chat-agent-conversation{display:grid') && css.includes('.chat-agent-workspace .chat-agent-conversation>.info{display:block!important'));
 check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
 
+
+check('the agent chat workspace responds to its actual available width rather than only the browser viewport', css.includes('container-name:chat-agent') && css.includes('container-type:inline-size') && css.includes('@container chat-agent (max-width:1160px)'));
+check('the agent workspace stacks visitor context below the conversation when its content area narrows', css.includes('@container chat-agent (max-width:1160px)') && css.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
+check('the multi-chat switcher becomes a horizontally scrollable strip in a narrow workspace', css.includes('@container chat-agent (max-width:820px)') && css.includes('scroll-snap-type:x proximity') && css.includes('.chat-workspace-item{flex:0 0 min(250px,78%)'));
+check('narrow chat headers, message content and composer controls wrap without overflowing', css.includes('@container chat-agent (max-width:560px)') && css.includes('overflow-wrap:anywhere') && css.includes('compose .bar{display:flex;flex-wrap:wrap'));
+
 done();
 
 check('accepted Live Chat conversations stay in the dedicated Live Chat navigation context', js.includes("chatConversationOpen = r.body.ticket.channel === 'chat'") && js.includes("(chatInboxOpen || chatConversationOpen) ? 'chat'"));
