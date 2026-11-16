@@ -1841,7 +1841,7 @@
       var hasVisitorCoords = visitorLatRaw !== undefined && visitorLatRaw !== null && visitorLatRaw !== '' && visitorLonRaw !== undefined && visitorLonRaw !== null && visitorLonRaw !== '' && Number.isFinite(visitorLat) && Number.isFinite(visitorLon) && Math.abs(visitorLat) <= 90 && Math.abs(visitorLon) <= 180;
       var visitorLocation = [provenance.city, provenance.region || provenance.region_name, provenance.country].filter(Boolean).join(', ');
       var visitorMap = el('div',{class:'chat-visitor-map'});
-      visitorMap.appendChild(el('div',{class:'chat-visitor-map-head'},el('span',{},el('strong',{},'Visitor location'),el('small',{},hasVisitorCoords?'Approximate network location':'Location data not available'))));
+      visitorMap.appendChild(el('div',{class:'chat-visitor-map-head'},el('span',{},el('strong',{},'Visitor location'),el('small',{},hasVisitorCoords?'Approximate shared location':'Location data not available'))));
       if (hasVisitorCoords) {
         var delta = 0.025, bbox = [visitorLon-delta,visitorLat-delta,visitorLon+delta,visitorLat+delta].join(',');
         var mapFrame = el('iframe',{title:'Approximate visitor location map',loading:'lazy',referrerpolicy:'no-referrer',src:'https://www.openstreetmap.org/export/embed.html?bbox='+encodeURIComponent(bbox)+'&layer=mapnik&marker='+encodeURIComponent(visitorLat+','+visitorLon)});
@@ -1853,7 +1853,7 @@
         chatConversationOpen?el('div',{class:'chat-visitor-overview'},
           el('section',{class:'chat-visitor-identity'},el('span',{class:'chat-visitor-avatar','aria-hidden':'true'},initial(t.requester_name||t.requester_email||'?')),el('span',{},el('strong',{},t.requester_name||'Website visitor'),el('small',{},t.requester_email||'Anonymous visitor'),el('em',{},'Identity · '+(provenance.identity_type||'Not recorded')))),
           el('section',{class:'chat-visitor-context-stack'},
-            el('div',{class:'chat-visitor-context-item'},el('span',{class:'chat-visitor-context-icon','aria-hidden':'true'},'⌖'),el('span',{},el('small',{},'Location'),el('strong',{},visitorLocation||'Not available'),el('em',{},hasVisitorCoords?'Approximate location from network data':'No approximate location data supplied'))),
+            el('div',{class:'chat-visitor-context-item'},el('span',{class:'chat-visitor-context-icon','aria-hidden':'true'},'⌖'),el('span',{},el('small',{},'Location'),el('strong',{},visitorLocation||(hasVisitorCoords?'Approximate location shared':'Not available')),el('em',{},hasVisitorCoords?'Approximate location from network data':'No approximate location data supplied'))),
             el('div',{class:'chat-visitor-context-item'},el('span',{class:'chat-visitor-context-icon','aria-hidden':'true'},'▣'),el('span',{},el('small',{},'Device'),el('strong',{},visitorDevice),el('em',{},visitorOs))),
             el('div',{class:'chat-visitor-context-item'},el('span',{class:'chat-visitor-context-icon','aria-hidden':'true'},'◉'),el('span',{},el('small',{},'Browser'),el('strong',{},visitorBrowser),el('em',{},visitorUa?'Detected from browser user agent':'Not provided')))),
           visitorMap,
