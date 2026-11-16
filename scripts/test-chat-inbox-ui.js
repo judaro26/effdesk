@@ -7,6 +7,8 @@ const embedWidget = fs.readFileSync(new URL('../public/widget.js', import.meta.u
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
 const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
 const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
+const chatPage = fs.readFileSync(new URL('../public/chat.html', import.meta.url), 'utf8');
+const deskPage = fs.readFileSync(new URL('../public/desk.html', import.meta.url), 'utf8');
 
 check('the waiting queue is presented as New chats', js.includes("panel('New chats', 'First come, first served · oldest waiting first'"));
 check('new unassigned conversations receive a visible NEW marker', js.includes("'chat-inbox-new-label'") && js.includes("' is-new'"));
@@ -129,3 +131,5 @@ check('agent typing presence and visitor widget status are independent of ticket
 check('chat conversations retain a dedicated deep link and use chat-scoped attachments rather than ticket attachment links', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number") && js.includes('picker(t, permanentlyClosed') && fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('chat_message_id'));
 
 check('the Live Chat landing page opens the agent workspace directly instead of another inbox landing page', js.includes('openNextLiveChat') && js.includes('Open my next chat'));
+check('visitor and agent typing indicators are connected end-to-end and use refreshed client scripts',widget.includes("api('typing?org=")&&widget.includes('r.body.agentTyping')&&js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'")&&js.includes('is typing…')&&chatPage.includes('chat.js?v=live-chat-attachments-typing-20261115')&&deskPage.includes('desk.js?v=live-chat-attachments-typing-20261115'));
+check('visitor chat attachments upload before sending and render secure token-scoped downloads',widget.includes('/api/chat/upload?org=')&&widget.includes('attachmentIds: ids')&&widget.includes('/api/chat/file?org=')&&js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number"));
