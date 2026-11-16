@@ -12,6 +12,8 @@ import { ticketToken } from '../src/ticket-mail.js';
 import { helpCenter } from '../src/handlers.js';
 import { csatToken } from '../src/csat.js';
 import { withOrg } from '../src/db.js';
+import { runJobs } from '../src/jobs.js';
+import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../src/notification-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -25,7 +27,8 @@ const acme = await auth.api.createOrganization({ body: { name: 'Acme', slug: 'ac
 const beta = await auth.api.createOrganization({ body: { name: 'Beta', slug: 'beta' }, headers: otto.headers });
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
-const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const flushJobs = () => runJobs(pool, { 'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job), 'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, ENV, orgId, payload, job) }, { batchSize: 50 });
+const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); const result = { status: r.status, body: await r.json() }; await flushJobs(); return result; };
 const A = (who, action, extra = {}) => call(who, { orgId: acme.id, action, ...extra }), B = (who, action, extra = {}) => call(who, { orgId: beta.id, action, ...extra });
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 const web = async (method, path, body) => { const r = await helpCenter(new Request('https://app.effdesk.test' + path, { method, headers: body ? { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://app.effdesk.test' } : {}, body }), { pool, mailer, env: ENV }); return { status: r.status, text: await r.text() }; };
