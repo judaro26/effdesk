@@ -4,6 +4,10 @@
 import { withOrg } from './db.js';
 const clean = (value, max) => String(value == null ? '' : value).replace(/\u0000/g, '').trim().slice(0, max);
 const fail = (error, status = 400) => ({ ok: false, status, error });
+async function chatForNumber(c,orgId,number,lock=false){
+ const sql=`select * from chat_conversations where org_id=$1 and (chat_number=$2 or id=$2) order by (chat_number=$2) desc limit 1${lock?' for update':''}`;
+ return (await c.query(sql,[orgId,Number(number)||0])).rows[0]||null;
+}
 export const CHAT_HEARTBEAT_TTL_SECONDS = 180;
 export const STRATEGIES = ['round_robin', 'least_busy'];
 export async function getRouting(pool, orgId) {
@@ -116,7 +120,7 @@ export async function transferChat(pool,orgId,actor,number,targetUserId,canManag
   const agent=(await c.query('select chat_access,chat_available,chat_last_seen_at from agent_status where org_id=$1 and user_id=$2 for update',[orgId,targetId])).rows[0];
   if(!agent||agent.chat_access!==true)return fail('Enable Live Chat access for that teammate first.',409);
   if(agent.chat_available!==true||!agent.chat_last_seen_at||new Date(agent.chat_last_seen_at).getTime()<=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000)return fail('That teammate is not currently available for Live Chat.',409);
-  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  const chat=await chatForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has already ended.',409);
   if(chat.assignee_id&&chat.assignee_id!==actor.id&&!canManage)return fail('Only the assigned agent or an administrator can transfer this conversation.',403);
   if(!chat.assignee_id&&!canManage)return fail('An administrator must assign this conversation before it can be transferred.',403);
@@ -132,7 +136,7 @@ export async function transferChat(pool,orgId,actor,number,targetUserId,canManag
 
 export async function listSupervisedChats(pool,orgId){
  return withOrg(pool,orgId,async c=>{
-  const rows=(await c.query(`select cc.id as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+  const rows=(await c.query(`select cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
    from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.status in ('open','pending','on_hold')
    order by (cc.assignee_id is null) desc,cc.updated_at desc limit 100`,[orgId])).rows;
   return{ok:true,chats:rows,counts:{total:rows.length,waiting:rows.filter(x=>!x.assignee_id).length,assigned:rows.filter(x=>!!x.assignee_id).length,needs_attention:0}};
@@ -141,10 +145,10 @@ export async function listSupervisedChats(pool,orgId){
 
 export async function monitorChat(pool,orgId,number){
  return withOrg(pool,orgId,async c=>{
-  const t=(await c.query(`select cc.id as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
-   from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.id=$2`,[orgId,Number(number)||0])).rows[0];
+  const t=(await c.query(`select cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+   from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.chat_number=$2`,[orgId,Number(number)||0])).rows[0];
   if(!t)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(t.status))return fail('This conversation has ended.',409);
-  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit 100",[orgId,t.number])).rows.reverse();
+  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit 100",[orgId,t.id])).rows.reverse();
   return{ok:true,ticket:{...t,number:Number(t.number),assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null},messages,provenance:{page_url:t.page_url,page_title:t.page_title},readOnly:true};
  });
 }
@@ -153,7 +157,7 @@ export async function monitorChat(pool,orgId,number){
 export async function copilotChat(pool,orgId,actor,number,body){
  const note=clean(body,2000);if(!note)return fail('Write a coaching note first.');
  return withOrg(pool,orgId,async c=>{
-  const chat=(await c.query("select id,status from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  const chat=await chatForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
   const message=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,note])).rows[0];
   await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'coaching','Private supervisor coaching added')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
