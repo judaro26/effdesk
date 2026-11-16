@@ -48,7 +48,7 @@ outbox.length = 0; await A(olivia, 'update', { number: t1.number, patch: { statu
 check('nothing is asked before a ticket is solved', outbox.filter(m => /How did we do/.test(m.subject)).length === 0);
 await A(olivia, 'reply', { number: t1.number, body: 'Fixed it.', status: 'solved' });
 const sv = outbox.filter(m => /How did we do/.test(m.subject));
-check('solving a ticket asks the customer once, with a good and a bad link', sv.length === 1 && sv[0].to === 'tina@example.com' && /\/help\/acme\/csat\/1\?t=[\w-]{22}&amp;r=good/.test(sv[0].html) && /r=bad/.test(sv[0].html) && /Tina, how did we do/.test(sv[0].html));
+check('solving a ticket asks the customer once, with both rating links and provider idempotency', sv.length === 1 && sv[0].to === 'tina@example.com' && /\/help\/acme\/csat\/1\?t=[\w-]{22}&amp;r=good/.test(sv[0].html) && /r=bad/.test(sv[0].html) && /Tina, how did we do/.test(sv[0].html) && sv[0].idempotencyKey && sv[0].idempotencyKey.startsWith('csat-survey-job:'));
 await A(olivia, 'update', { number: t1.number, patch: { status: 'open' } }); outbox.length = 0; await A(olivia, 'update', { number: t1.number, patch: { status: 'solved' } });
 check('solving it again does not ask again', outbox.filter(m => /How did we do/.test(m.subject)).length === 0);
 const tok = csatToken(ENV, acme.id, 1);
