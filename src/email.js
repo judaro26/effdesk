@@ -23,7 +23,7 @@ import { info as logInfo, error as logError } from './log.js';
 export function makeMailer({ apiKey = process.env.RESEND_API_KEY, from = process.env.MAIL_FROM || `${PRODUCT.name} <no-reply@effdesk.com>`, transport } = {}) {
   const send0 = transport || (async msg => {
     if (!apiKey) { console.warn('RESEND_API_KEY is not set: mail not sent:', msg.subject); return; }
-    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: msg.from || from, to: msg.to, ...(msg.cc && msg.cc.length ? { cc: msg.cc } : {}), subject: msg.subject, html: msg.html, text: msg.text, ...(msg.replyTo ? { reply_to: msg.replyTo } : {}), ...(msg.headers ? { headers: msg.headers } : {}), ...(msg.attachments ? { attachments: msg.attachments } : {}) }) });
+    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(msg.idempotencyKey ? { 'Idempotency-Key': String(msg.idempotencyKey).slice(0, 256) } : {}) }, body: JSON.stringify({ from: msg.from || from, to: msg.to, ...(msg.cc && msg.cc.length ? { cc: msg.cc } : {}), subject: msg.subject, html: msg.html, text: msg.text, ...(msg.replyTo ? { reply_to: msg.replyTo } : {}), ...(msg.headers ? { headers: msg.headers } : {}), ...(msg.attachments ? { attachments: msg.attachments } : {}) }) });
     if (!r.ok) throw new Error(`mail provider answered ${r.status}`);
     const j = await r.json().catch(() => null); return j && j.id ? String(j.id) : undefined;   // the provider's id for this email, kept so its delivery reports can be matched
   });
