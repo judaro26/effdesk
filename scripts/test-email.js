@@ -82,7 +82,7 @@ check('a reply to a solved ticket reopens it', r.reopened === true && (await tic
 await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'closed' } });
 await withOrg(pool, acme.id, c => c.query("update tickets set closed_at = now() - interval '31 days' where org_id = $1 and number = 1", [acme.id]));
 r = await inbound({ to: [mail.replyTo], text: 'Cold again.' });
-check('a reply to a closed ticket starts a follow-up ticket instead', r.action === 'followup' && (await ticket(r.number)).t.subject === 'Re: Heater broken' && (await ticket(1)).t.status === 'closed');
+check('a reply to a closed ticket starts a follow-up ticket instead', r.action === 'followup' && (await ticket(r.number)).t.subject === 'Follow-up: Heater broken' && (await ticket(1)).t.status === 'closed');
 await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'open' } });
 
 // reply modes
