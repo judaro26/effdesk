@@ -15,6 +15,7 @@ export const PERMS = [
   { id: 'reports', label: 'See reports', actions: ['report', 'report-csv'] },
   { id: 'ai', label: 'Use AI to draft and rewrite replies', actions: ['ai-suggest', 'ai-rewrite'] },
   { id: 'approvals', label: 'Approve service requests, changes and manage fulfillment tasks', actions: ['approval-decide', 'task-update', 'itsm-change-decide'] },
+  { id: 'chat_supervise', label: 'Monitor, coach and take over other agents’ live chats', actions: ['chat-monitor', 'chat-copilot', 'chat-takeover'] },
   { id: 'itsm', label: 'Manage ITSM incidents, problems, changes, services and configuration items', actions: ['itsm-incident-save', 'itsm-service-save', 'itsm-problem-save', 'itsm-change-save', 'itsm-ci-save', 'itsm-ci-relationship-save', 'itsm-ci-record-link', 'itsm-ci-vendor-save', 'itsm-ci-contract-save', 'itsm-ci-license-save'] },
 ];
 const PERM_OF = Object.fromEntries(PERMS.flatMap(p => p.actions.map(a => [a, p.id])));
