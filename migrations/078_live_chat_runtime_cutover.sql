@@ -41,3 +41,5 @@ update chat_conversations set chat_number=1000000000000+id where chat_number is 
 alter table chat_conversations alter column chat_number set default nextval('chat_conversation_number_seq');
 create unique index if not exists chat_conversations_org_chat_number_idx
   on chat_conversations(org_id,chat_number);
+
+select setval('chat_conversation_number_seq', greatest(1000000000001, coalesce((select max(chat_number) from chat_conversations),1000000000000)+1), false);
