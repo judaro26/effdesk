@@ -222,25 +222,24 @@ export async function endChat(pool,env,slug,input){
 }
 
 const transcriptEscape = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-export async function requestChatTranscript(pool, env, slug, input, mailer) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
-  if (!mailer || typeof mailer.ticketMail !== 'function') return fail('Transcript email is temporarily unavailable. Please try again later.', 503);
-  const data = await withOrg(pool, x.org.id, async db => {
-    const t = (await db.query("select id,subject,requester_name,requester_email,status from tickets where org_id=$1 and number=$2 and channel='chat'", [x.org.id, number])).rows[0];
-    if (!t) return null;
-    const messages = (await db.query("select kind,author_name,body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent') order by created_at asc,id asc limit 501", [x.org.id, t.id])).rows;
-    return { ticket:t, messages };
-  });
-  if (!data) return fail('No such chat.', 404);
-  if (!isEmail(String(data.ticket.requester_email || ''))) return fail('There is no valid email address on this conversation. Please contact the support team.', 400);
-  const truncated = data.messages.length > 500, messages = data.messages.slice(0,500);
-  const lines = messages.map(m => '[' + (m.created_at ? new Date(m.created_at).toISOString() : '') + '] ' + (m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + ':\n' + String(m.body || ''));
-  if (truncated) lines.push('[Transcript shortened to the most recent 500 messages.]');
-  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202a33;line-height:1.5"><h1>Your support conversation</h1><p>' + transcriptEscape(x.org.name) + ' · Conversation #' + number + '</p>' + messages.map(m => '<section style="padding:12px 0;border-bottom:1px solid #e5e9ed"><strong>' + transcriptEscape(m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + '</strong><small style="display:block;color:#66737d">' + transcriptEscape(m.created_at ? new Date(m.created_at).toISOString() : '') + '</small><p style="white-space:pre-wrap">' + transcriptEscape(m.body) + '</p></section>').join('') + (truncated ? '<p>Transcript limited to the most recent 500 messages.</p>' : '') + '<p style="color:#66737d;font-size:12px">Internal notes and private agent-only content are excluded.</p></body></html>';
-  await mailer.ticketMail({ to:data.ticket.requester_email, subject:'Your support conversation transcript · #' + number, text:'Your support conversation with ' + x.org.name + ' · #' + number + '\n\n' + lines.join('\n\n') + '\n\nInternal notes are excluded.', html });
-  await withOrg(pool, x.org.id, db => logEvent(db, x.org.id, data.ticket.id, 'Website visitor', 'transcript_requested', 'Visitor requested an emailed transcript'));
-  return { ok:true, sent:true };
+export async function requestChatTranscript(pool,env,slug,input,mailer){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
+ if(!mailer||typeof mailer.ticketMail!=='function')return fail('Transcript email is temporarily unavailable. Please try again later.',503);
+ const data=await withOrg(pool,x.org.id,async c=>{
+  const t=await conversationForNumber(c,x.org.id,number);if(!t)return null;
+  const messages=(await c.query("select kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') order by created_at asc,id asc limit 501",[x.org.id,t.id])).rows;
+  return{ticket:t,messages};
+ });
+ if(!data)return fail('No such chat.',404);
+ if(!isEmail(String(data.ticket.requester_email||'')))return fail('There is no valid email address on this conversation. Please contact the support team.',400);
+ const truncated=data.messages.length>500,messages=data.messages.slice(0,500);
+ const lines=messages.map(m=>'['+(m.created_at?new Date(m.created_at).toISOString():'')+'] '+(m.kind==='agent'?(m.author_name||'Support agent'):(data.ticket.requester_name||'You'))+':\\n'+String(m.body||''));
+ if(truncated)lines.push('[Transcript shortened to the most recent 500 messages.]');
+ const html='<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202a33;line-height:1.5"><h1>Your support conversation</h1><p>'+transcriptEscape(x.org.name)+' · Conversation #'+number+'</p>'+messages.map(m=>'<section style="padding:12px 0;border-bottom:1px solid #e5e9ed"><strong>'+transcriptEscape(m.kind==='agent'?(m.author_name||'Support agent'):(data.ticket.requester_name||'You'))+'</strong><small style="display:block;color:#66737d">'+transcriptEscape(m.created_at?new Date(m.created_at).toISOString():'')+'</small><p style="white-space:pre-wrap">'+transcriptEscape(m.body)+'</p></section>').join('')+(truncated?'<p>Transcript limited to the most recent 500 messages.</p>':'')+'<p style="color:#66737d;font-size:12px">Internal notes and private agent-only content are excluded.</p></body></html>';
+ await mailer.ticketMail({to:data.ticket.requester_email,subject:'Your support conversation transcript · #'+number,text:'Your support conversation with '+x.org.name+' · #'+number+'\\n\\n'+lines.join('\\n\\n')+'\\n\\nInternal notes are excluded.',html});
+ await withOrg(pool,x.org.id,c=>c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Website visitor','transcript_requested','Visitor requested an emailed transcript')",[x.org.id,data.ticket.id]));
+ return{ok:true,sent:true};
 }
 
 export async function sendChat(pool,env,slug,input,mailer){
@@ -293,34 +292,20 @@ export async function chatOpen(pool,orgId,number){
 
 // Resolve inactive chats hourly. A visitor whose chat window is still polling is
 // considered present; fresh ticket activity also protects conversations being handled.
-export async function runChatLifecycle(pool, nowMs = Date.now()) {
-  let actions = 0, errors = 0;
-  const now = new Date(nowMs).toISOString();
-  const orgs = (await pool.query('select id from "organization"')).rows;
-  for (const { id: orgId } of orgs) {
-    try {
-      const settings = await getSettings(pool, orgId);
-      const hours = Number(settings.auto_resolve_hours ?? DEFAULTS.auto_resolve_hours);
-      if (!hours) continue;
-      const count = await withOrg(pool, orgId, async c => {
-        const stale = await c.query(`update tickets
-          set status='solved', solved_at=coalesce(solved_at,$2::timestamptz), updated_at=$2::timestamptz
-          where org_id=$1 and channel='chat' and status in ('open','pending','on_hold')
-            and updated_at <= $2::timestamptz - ($3::int * interval '1 hour')
-            and (chat_seen_at is null or chat_seen_at <= $2::timestamptz - interval '45 seconds')
-          returning id, number`, [orgId, now, hours]);
-        for (const t of stale.rows) {
-          await c.query('insert into ticket_events (org_id,ticket_id,actor_name,kind,detail) values ($1,$2,$3,$4,$5)', [orgId, t.id, 'Live Chat automation', 'status', 'Automatically resolved after ' + hours + ' hours without activity']);
-        }
-        return stale.rowCount;
-      });
-      actions += count;
-    } catch (e) {
-      errors++;
-      console.warn('Live Chat lifecycle failed', orgId, e.message);
-    }
-  }
-  return { actions, errors };
+export async function runChatLifecycle(pool,nowMs=Date.now()){
+ let actions=0,errors=0;const now=new Date(nowMs).toISOString();
+ const orgs=(await pool.query('select id from "organization"')).rows;
+ for(const {id:orgId} of orgs){try{
+  const settings=await getSettings(pool,orgId),hours=Number(settings.auto_resolve_hours??DEFAULTS.auto_resolve_hours);if(!hours)continue;
+  const count=await withOrg(pool,orgId,async c=>{
+   const stale=await c.query(`update chat_conversations set status='solved',solved_at=coalesce(solved_at,$2::timestamptz),updated_at=$2::timestamptz
+    where org_id=$1 and status in ('open','pending','on_hold') and updated_at<=$2::timestamptz-($3::int*interval '1 hour')
+    and (last_visitor_seen_at is null or last_visitor_seen_at<=$2::timestamptz-interval '45 seconds') returning id`,[orgId,now,hours]);
+   for(const row of stale.rows)await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Live Chat automation','auto_resolved',$3)",[orgId,row.id,'Automatically resolved after '+hours+' hours without activity']);
+   return stale.rowCount;
+  });actions+=count;
+ }catch(e){errors++;console.warn('Live Chat lifecycle failed',orgId,e.message);}}
+ return{actions,errors};
 }
 
 // ---- the public endpoints: /api/chat/config, /start, /send, /poll (same origin as the chat page, so no cross-site access is given) ----
