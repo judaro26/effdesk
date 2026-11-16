@@ -63,6 +63,8 @@ check('the background worker sends the queued public reply', r.body.email === 'q
 check('from is the organization\'s name on its own address, with its signature below the text', mail.from === 'Acme Support <acme@in.effdesk.test>' && /\n-- \nAcme Rentals, 1 Main St/.test(mail.text) && /Acme Rentals, 1 Main St/.test(mail.html));
 const tok = ticketToken(ENV, acme.id, 1);
 check('in "ticket" mode Reply-To is a private address for this ticket', mail.replyTo === `acme+1.${tok}@in.effdesk.test` && mail.headers['Auto-Submitted'] === 'no' && /^<m\d+@in\.effdesk\.test>$/.test(mail.headers['Message-ID']));
+const firstAgentMessage = (await withOrg(pool, acme.id, c => c.query("select id from ticket_messages where org_id = $1 and ticket_id = (select id from tickets where org_id = $1 and number = 1) and kind = 'agent' order by created_at asc limit 1", [acme.id]))).rows[0];
+check('the queued reply uses a stable per-message Resend idempotency key and deterministic Message-ID', mail.idempotencyKey === `ticket-message:${firstAgentMessage.id}` && mail.headers['Message-ID'] === `<m${firstAgentMessage.id}@in.effdesk.test>`);
 r = await inbound({ to: [mail.replyTo], text: 'Thanks, 3pm works.\n\nOn Mon, Ann wrote:\n> We are sending someone today.' });
 tk = await ticket(1);
 check('a customer\'s reply to that address lands in the same ticket, without the quoted text, and the ticket is open again', r.action === 'replied' && r.number === 1 && tk.m.at(-1).body === 'Thanks, 3pm works.' && tk.m.at(-1).kind === 'requester' && tk.t.status === 'open');
