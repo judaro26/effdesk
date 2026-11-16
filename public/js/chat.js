@@ -116,9 +116,11 @@
     function uploadVisitorFiles(files) { var selected = [].slice.call(files || []).slice(0, Math.max(0, 5 - pendingAttachments.length)), chain = Promise.resolve(); selected.forEach(function (file) { chain = chain.then(function () { if (file.size > 5 * 1024 * 1024) { log.appendChild(el('div', { class: 'note', role: 'alert', text: file.name + ' is over 5 MB.' })); return; } var url = '/api/chat/upload?org=' + encodeURIComponent(org) + '&n=' + encodeURIComponent(state.number) + '&t=' + encodeURIComponent(state.token) + '&name=' + encodeURIComponent(file.name || 'file') + '&type=' + encodeURIComponent(file.type || 'application/octet-stream'); return root.fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }).then(function (response) { return response.json().catch(function () { return {}; }).then(function (result) { if (!response.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: result.error || 'That file could not be uploaded.' })); return; } pendingAttachments.push(result.attachment); drawPending(); }); }); }); }); return chain.catch(function () { log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted while uploading. Please try again.' })); }); }
     fileInput.addEventListener('change', function () { uploadVisitorFiles(fileInput.files).then(function () { fileInput.value = ''; }); });
     var post = function () { var text = ta.value.trim(), ids = pendingAttachments.map(function (file) { return file.id; }); if (!text && !ids.length) return; sendTyping(false); send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text, attachmentIds: ids }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; pendingAttachments.length = 0; drawPending(); poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
-    var typingActive = false, typingRefresh = null, typingDebounce = null;
+    var typingActive = false, typingRefresh = null, typingDebounce = null, typingIdle = null;
     function sendTyping(active) {
       if (state.ended || !state.number || !state.token) return;
+      if (!active) { if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; } if (typingIdle) { root.clearTimeout(typingIdle); typingIdle = null; } }
+      else if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; }
       typingActive = active === true;
       if (typingRefresh) { root.clearInterval(typingRefresh); typingRefresh = null; }
       var signal = function () { api('typing?org=' + encodeURIComponent(org), { number: state.number, token: state.token, typing: typingActive }).catch(function () {}); };
@@ -126,11 +128,13 @@
       if (typingActive) typingRefresh = root.setInterval(function () { if (typingActive && !state.ended) signal(); else { root.clearInterval(typingRefresh); typingRefresh = null; } }, 5000);
     }
     ta.addEventListener('input', function () {
-      if (typingDebounce) root.clearTimeout(typingDebounce);
+      if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; }
+      if (typingIdle) root.clearTimeout(typingIdle);
       if (!ta.value.trim()) { sendTyping(false); return; }
       if (!typingActive) typingDebounce = root.setTimeout(function () { sendTyping(true); }, 250);
+      typingIdle = root.setTimeout(function () { sendTyping(false); }, 3000);
     });
-    ta.addEventListener('blur', function () { if (typingDebounce) root.clearTimeout(typingDebounce); sendTyping(false); });
+    ta.addEventListener('blur', function () { sendTyping(false); });
     form.addEventListener('submit', function (e) { e.preventDefault(); sendTyping(false); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
     poll();
