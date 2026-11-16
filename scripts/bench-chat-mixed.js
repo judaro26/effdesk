@@ -1,6 +1,8 @@
 // Mixed visitor/agent Live Chat load test. Runs only against guarded synthetic staging data.
 // Visitor polls refresh last_visitor_seen_at (a deliberate presence heartbeat); no messages or tickets are created.
 import pg from 'pg';
+import { createHash } from 'node:crypto';
+import { normalizeSqlForFingerprint, sanitizeSqlTemplate } from './staging-sql-diagnostics.js';
 import { explicitSsl, withOrg } from '../src/db.js';
 import { pollChat, chatToken, agentInbox } from '../src/chat.js';
 
@@ -30,8 +32,34 @@ function validateTarget(value) {
 const target=validateTarget(rawUrl);
 if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
 const pool=new pg.Pool({connectionString:explicitSsl(rawUrl),max:10,idleTimeoutMillis:10000,ssl:{rejectUnauthorized:true}});
-const connectWait=[], connect=pool.connect.bind(pool);
-pool.connect=async(...args)=>{const start=performance.now();const client=await connect(...args);connectWait.push(performance.now()-start);return client;};
+const connectWait=[], querySamples=new Map(), connect=pool.connect.bind(pool);
+pool.connect=async(...args)=>{
+  const start=performance.now(),client=await connect(...args);
+  connectWait.push(performance.now()-start);
+  if(!client.__effdeskMixedQueryTiming){
+    client.__effdeskMixedQueryTiming=true;
+    const originalQuery=client.query.bind(client);
+    client.query=(...queryArgs)=>{
+      if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
+      const input=queryArgs[0],sql=typeof input==='string'?input:input?.text||'';
+      const fingerprint=createHash('sha256').update(normalizeSqlForFingerprint(sql)).digest('hex').slice(0,12);
+      const sqlTemplate=sanitizeSqlTemplate(sql),started=performance.now();
+      const record=error=>{
+        let entry=querySamples.get(fingerprint);
+        if(!entry){entry={durations:[],errors:0,sql_template:sqlTemplate};querySamples.set(fingerprint,entry);}
+        entry.durations.push(performance.now()-started);
+        if(error)entry.errors++;
+      };
+      try{
+        const result=originalQuery(...queryArgs);
+        return result&&typeof result.then==='function'
+          ?result.then(value=>{record(null);return value;},error=>{record(error);throw error;})
+          :result;
+      }catch(error){record(error);throw error;}
+    };
+  }
+  return client;
+};
 const maxSamples={total:0,waiting:0};
 const syntheticEnv={EMAIL_TOKEN_SECRET:'effdesk-staging-mixed-chat-benchmark-only-secret-v1'};
 const targets=[];
@@ -78,13 +106,20 @@ try {
   } finally { clearInterval(sampler); }
   const elapsed=performance.now()-started;
   const summary=scenarios.map(s=>({scenario:s.name,requests:samples[s.name].length+failures[s.name],failures:failures[s.name],...sortedStats(samples[s.name])}));
+  const queryDiagnostics=[...querySamples.entries()].map(([fingerprint,entry])=>{
+    const values=entry.durations.sort((a,b)=>a-b);
+    return{fingerprint,sql_template:entry.sql_template,calls:values.length,errors:entry.errors,
+      total_ms:round(values.reduce((sum,value)=>sum+value,0)),
+      p50_ms:round(percentile(values,.5)),p95_ms:round(percentile(values,.95)),max_ms:round(values.at(-1))};
+  }).sort((a,b)=>b.total_ms-a.total_ms).slice(0,12);
   console.log(JSON.stringify({
     target:{host:target.host,database:target.dbName},
     workload:'mixed visitor polls and agent inbox refreshes; visitor polls update last_visitor_seen_at at most once per 15 seconds',
     profile,workspaces:targets.length,concurrency:settings.concurrency,elapsed_ms:round(elapsed),
     requests_per_second:round(tasks.length/Math.max(elapsed,1)*1000),
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait)},
-    scenarios:summary
+    scenarios:summary,
+    top_query_fingerprints:queryDiagnostics
   },null,2));
   if(summary.some(s=>s.failures))process.exitCode=1;
 } finally { await pool.end(); }
