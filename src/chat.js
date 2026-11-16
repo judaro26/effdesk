@@ -71,7 +71,7 @@ export async function publicConfig(pool, slug) {
       join member m on m."userId" = a.user_id and m."organizationId" = a.org_id
       where a.org_id = $1 and a.chat_access = true and a.chat_available = true
         and m.role in ('owner','admin','member') and a.chat_last_seen_at > now() - interval '3 minutes'
-        and (select count(*) from tickets t where t.org_id = a.org_id and t.channel = 'chat'
+        and (select count(*) from chat_conversations t where t.org_id = a.org_id
           and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < $2
     ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
     return r.rows[0]?.accepting === true;
