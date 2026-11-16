@@ -43,7 +43,7 @@
     parsed.search = ''; parsed.hash = '';
     var key = parsed.href + '|' + pageTitle;
     if (key === lastContext) return;
-    lastContext = key; PAGE_URL = parsed.href;
+    lastContext = key; PAGE_URL = parsed.href; PAGE_TITLE = pageTitle;
     if (state.number && state.token && !state.ended) api('context?org=' + encodeURIComponent(org), { number: state.number, token: state.token, pageUrl: PAGE_URL, pageTitle: pageTitle }).catch(function () {});
   });
   var clear = function (n) { while (n.firstChild) n.removeChild(n.firstChild); };
