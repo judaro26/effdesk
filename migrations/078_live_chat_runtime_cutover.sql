@@ -66,5 +66,6 @@ create table if not exists chat_presence (
 );
 create index if not exists chat_presence_fresh_idx on chat_presence(org_id,conversation_id,seen_at desc);
 alter table chat_presence enable row level security;
+alter table chat_presence force row level security;
 drop policy if exists tenant_isolation on chat_presence;
 create policy tenant_isolation on chat_presence using (org_id = current_setting('app.org_id', true)) with check (org_id = current_setting('app.org_id', true));
