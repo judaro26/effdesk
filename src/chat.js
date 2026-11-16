@@ -16,7 +16,7 @@ const secret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET ||
 export const chatToken = (env, orgId, number) => crypto.createHmac('sha256', secret(env)).update(`chat:${orgId}:${number}`).digest('hex').slice(0, 24);
 const tokenOk = (env, orgId, number, tok) => { const a = Buffer.from(chatToken(env, orgId, number)), b = Buffer.from(String(tok || '')); return !!secret(env) && a.length === b.length && crypto.timingSafeEqual(a, b); };
 async function conversationForNumber(c,orgId,number,lock=false){
- const sql=`select cc.*,u.name as assignee_name,u.email as assignee_email from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id left join \\"user\\" u on u.id=cc.assignee_id
+ const sql=`select cc.*,(exists(select 1 from chat_events ended where ended.org_id=cc.org_id and ended.conversation_id=cc.id and ended.kind='visitor_ended')) as visitor_ended,u.name as assignee_name,u.email as assignee_email from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id left join "user" u on u.id=cc.assignee_id
   where cc.org_id=$1 and (cc.chat_number=$2 or legacy_ticket.number=$2 or cc.id=$2) order by (cc.chat_number=$2) desc,(legacy_ticket.number=$2) desc limit 1${lock?' for update of cc':''}`;
  return (await c.query(sql,[orgId,Number(number)||0])).rows[0]||null;
 }
