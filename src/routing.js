@@ -172,7 +172,7 @@ export async function takeoverChat(pool,orgId,actor,number){
   if(!member||member.role==='light')return fail('You are not allowed to take over live chats.',403);
   const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
   if(!access||access.chat_access!==true)return fail('An admin must enable Live Chat access for you before taking over a conversation.',403);
-  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  const chat=await chatForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
   if(chat.assignee_id===actor.id)return{ok:true,alreadyAssigned:true};
   await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,actor.id]);
@@ -189,7 +189,7 @@ export async function claimChat(pool,orgId,userId,number){
   const agent=(await c.query('select chat_access,chat_available,chat_last_seen_at from agent_status where org_id=$1 and user_id=$2 for update',[orgId,userId])).rows[0];
   if(!agent||agent.chat_access!==true)return fail('An admin must enable Live Chat access for you first.',403);
   if(agent.chat_available!==true)return fail('Switch on Accept live chats before accepting a conversation.',409);
-  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  const chat=await chatForNumber(c,orgId,number,true);
   if(!chat)return fail('No such live chat.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This chat has ended.',409);
   if(chat.assignee_id)return chat.assignee_id===userId?{ok:true,alreadyAssigned:true}:fail('Another agent has already accepted this chat.',409);
   if(!agent.chat_last_seen_at||new Date(agent.chat_last_seen_at).getTime()<=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000)await c.query('update agent_status set chat_last_seen_at=now() where org_id=$1 and user_id=$2',[orgId,userId]);
