@@ -109,3 +109,5 @@ check('visitors explicitly opt in before sharing approximate location from their
 check('the server stores only rounded coordinates and the overview labels them as shared location', fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('Math.round(latitude * 100) / 100') && js.includes('Approximate shared location') && css.includes('openstreetmap.org/export/embed.html'));
 
 check('ticket detail returns opt-in visitor coordinates to the visitor overview', fs.readFileSync(new URL('../src/tickets.js', import.meta.url), 'utf8').includes('user_agent,latitude,longitude,submitted_at'));
+
+check('the active visitor overview redraws when new location coordinates arrive', js.includes('var locationChanged = priorProvenance.latitude !== nextProvenance.latitude') && js.includes('if (locationChanged) { draw(); return; }'));
