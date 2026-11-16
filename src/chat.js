@@ -257,13 +257,16 @@ export async function convertChatToTicket(pool,orgId,actor,number){
   const src=await conversationForNumber(c,orgId,number,true);
   if(!src)return fail('Live Chat conversation not found.',404);
   if(src.converted_ticket_id){const old=(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,src.converted_ticket_id])).rows[0];return old?{ok:true,number:old.number,subject:old.subject,alreadyConverted:true}:fail('The linked ticket could not be found.',409);}
-  const msgs=(await c.query("select kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;
+  const msgs=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;
   if(!msgs.length)return fail('This conversation has no transcript to copy.');
   const made=await createTicket(pool,orgId,actor,{subject:('Follow-up: '+String(src.subject||'Live Chat').replace(/^\s*chat\s*:\s*/i,'')).slice(0,200),body:'Transcript imported from Live Chat conversation #'+number+'.',requesterName:src.requester_name,requesterEmail:src.requester_email,priority:src.priority,channel:'web',firstKind:'note'},c);
   if(!made.ok)return made;
   await c.query('update tickets set source_chat_conversation_id=$3 where org_id=$1 and id=$2',[orgId,made.ticket.id,src.id]);
   await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);
-  for(const m of msgs)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at]);
+  for(const m of msgs){
+   const copied=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8) returning id',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at])).rows[0];
+   await c.query('update attachments set ticket_id=$3,message_id=$4,chat_conversation_id=null,chat_message_id=null where org_id=$1 and chat_message_id=$2',[orgId,m.id,made.ticket.id,copied.id]);
+  }
   await c.query('update chat_conversations set converted_ticket_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);
   await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'converted',$5)",[orgId,src.id,actor?.id||null,actor?.name||actor?.email||'Automation','Converted to support ticket #'+made.ticket.number]);
   return{ok:true,number:made.ticket.number,subject:made.ticket.subject,alreadyConverted:false};
