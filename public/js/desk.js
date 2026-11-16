@@ -213,7 +213,31 @@
     function loadChatInbox() {
       if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
       closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
+      refreshChatTeam();
       return fetchChatInbox(true);
+    }
+    function refreshChatTeam() {
+      if (!chatAccess || role === 'light') return Promise.resolve();
+      return api('chat-team', {}).then(function (r) { if (r.ok) { chatTeamRows = r.body.agents || []; draw(); } }).catch(function () {});
+    }
+    function setChatQueueAvailability(available, pickNext) {
+      api('chat-availability-set', { available: available === true }).then(function (r) {
+        if (!r.ok) return say(r.body.error || 'Could not update your Live Chat queue status.', true);
+        chatAvailable = r.body.available === true;
+        drawMenu(); draw();
+        say(chatAvailable ? 'You joined the Live Chat queue. You can now receive new conversations.' : 'You left the Live Chat queue.');
+        if (pickNext && chatAvailable) {
+          var next = (chatInboxRows || []).filter(function (t) { return !t.assignee_id && ['open','pending','on_hold'].includes(t.status); }).sort(function (a,b) { return new Date(a.created_at || 0) - new Date(b.created_at || 0); })[0];
+          if (next) claimChatTicket(next.number); else say('You are in the queue. No unassigned chats are waiting right now.');
+        }
+        refreshChatTeam();
+      }).catch(function () { say('Could not update your Live Chat queue status. Try again.', true); });
+    }
+    function pickNextChat() {
+      var next = (chatInboxRows || []).filter(function (t) { return !t.assignee_id && ['open','pending','on_hold'].includes(t.status); }).sort(function (a,b) { return new Date(a.created_at || 0) - new Date(b.created_at || 0); })[0];
+      if (!next) return say('There are no unassigned chats waiting right now.');
+      if (!chatAvailable) return setChatQueueAvailability(true, true);
+      claimChatTicket(next.number);
     }
     function playChatSound() {
       var Audio = root.AudioContext || root.webkitAudioContext; if (!Audio) return;
@@ -373,8 +397,15 @@
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
-          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
+          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Your live support floor. Join the queue, pick up the next visitor, and keep conversations moving.')),
           el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, chatInboxLoading ? 'Refreshing…' : 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+        el('section', { class: 'chat-queue-control', 'aria-label': 'Live Chat team and queue' },
+          el('div', { class: 'chat-queue-control-main' },
+            el('div', { class: 'chat-queue-control-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'TEAM QUEUE'), el('strong', {}, chatAvailable ? 'You are in the queue' : 'Ready to help?'), el('span', {}, chatAvailable ? 'You are available for the next visitor.' : 'Join the queue to become available for incoming visitors.')),
+            el('div', { class: 'chat-queue-control-actions' },
+              el('button', { type: 'button', class: chatAvailable ? 'chat-queue-leave' : 'chat-queue-join', onclick: function () { setChatQueueAvailability(!chatAvailable, false); } }, chatAvailable ? 'Leave queue' : 'Join queue'),
+              el('button', { type: 'button', class: 'chat-queue-next', disabled: !waiting.length, onclick: pickNextChat, title: waiting.length ? 'Accept the oldest waiting conversation' : 'No unassigned chats are waiting' }, 'Pick next chat' + (waiting.length ? ' · ' + waiting.length + ' waiting' : '')))),
+          el('div', { class: 'chat-queue-team' }, el('div', { class: 'chat-queue-team-heading' }, el('strong', {}, 'Your team'), el('button', { type: 'button', class: 'chat-queue-team-refresh', onclick: refreshChatTeam }, 'Refresh team')), chatTeamLoading ? el('span', { class: 'chat-queue-muted' }, 'Loading teammates…') : chatTeamRows.length ? el('div', { class: 'chat-queue-agents' }, chatTeamRows.map(function (a) { return el('div', { class: 'chat-queue-agent' }, el('span', { class: 'chat-queue-agent-dot' + (a.online ? ' is-online' : '') }), el('span', { class: 'chat-queue-agent-name' }, a.name), el('span', { class: 'chat-queue-agent-load' }, a.active_chats + '/' + a.max_concurrent + ' chats')); })) : el('span', { class: 'chat-queue-muted' }, 'No teammates with Live Chat access yet.'))),
         chatInboxView === 'history' ? el('div', { class: 'chat-inbox-stats chat-inbox-stats-history' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Past conversations'), el('strong', {}, String(chatInboxCounts.total)), el('small', {}, 'Resolved or closed')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Resolved'), el('strong', {}, String(chatInboxCounts.solved)), el('small', {}, 'Marked as solved')),
