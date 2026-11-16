@@ -72,6 +72,8 @@ const visitorReply=await C('POST','/api/chat/send?org=acme',{number:n,token,mess
 const inbox=await A(ann,'chat-inbox',{limit:50,view:'all'});
 check('visitor follow-up messages appear in the agent inbox as needing a reply',visitorReply.status===200&&inbox.body.tickets.some(t=>t.number===n&&t.chat_last_public_message_kind==='requester'));
 check('the inbox exposes independent conversation identifiers and customer details',inbox.status===200&&inbox.body.tickets.some(t=>t.number===n&&t.requester_email==='vera@x.co'));
+const regularTickets=await A(ann,'list',{limit:100});
+check('independent Live Chat conversations are not mixed into the regular ticket desk',regularTickets.status===200&&!(regularTickets.body.tickets||[]).some(t=>t.channel==='chat'));
 const monitor=await A(olivia,'chat-monitor',{number:n});
 const coach=await A(olivia,'chat-copilot',{number:n,body:'Please confirm the delivery postcode.'});
 const coached=await A(olivia,'chat-monitor',{number:n});
