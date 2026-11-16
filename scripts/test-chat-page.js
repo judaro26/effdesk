@@ -26,7 +26,7 @@ check('the customer sees the live agent typing indicator when the server reports
 check('the customer sees a waiting message before an agent accepts the chat', $('#chat-assignment').textContent === 'Waiting for an agent to join…');
 check('the customer chat shows the Powered by EffDesk footer', $('.chat-powered').textContent.includes('Powered by EffDesk'));
 const chatSource = pub('js/chat.js'), chatStyles = pub('css/chat.css'), chatHtml = pub('chat.html'), chatApiSource = readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8');
-check('the customer widget updates the waiting message with the assigned agent name', chatSource.includes("r.body.agentName || 'a support agent'") && chatApiSource.includes('agentName: t.assignee_name || t.assignee_email'));
+check('the customer widget updates the waiting message with the assigned agent name', chatSource.includes("r.body.agentName || 'a support agent'") && chatApiSource.includes('agentName:t.assignee_name||t.assignee_email||'));
 check('the customer chat language selector is compact', chatStyles.includes('[data-effdesk-locale-switcher]{top:8px!important') && chatStyles.includes('[data-effdesk-locale-switcher] select{max-width:86px'));
 check('the customer chat includes the product credit footer', chatHtml.includes('Powered by <strong>EffDesk</strong>') && chatStyles.includes('.chat-powered'));
 check('the chat is remembered so a reload comes back to it', /tok/.test(w.localStorage.getItem('effdesk_chat_acme') || ''));
