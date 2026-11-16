@@ -373,7 +373,7 @@ export async function pollChat(pool,env,slug,number,token,after){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
  number=Number(number)||0;if(!tokenOk(env,x.org.id,number,token))return fail('This chat is not yours.',403);
  return withOrg(pool,x.org.id,async c=>{
-  const base=await conversationForNumber(c,x.org.id,number);const t=base?{...base,assignee_name:(await c.query('select name,email from "user" where id=$1',[base.assignee_id])).rows[0]?.name,assignee_email:(await c.query('select email from "user" where id=$1',[base.assignee_id])).rows[0]?.email}:null;
+  const t=await conversationForNumber(c,x.org.id,number);
   if(!t)return fail('No such chat.',404);
   if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
   const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
