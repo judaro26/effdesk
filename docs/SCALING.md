@@ -52,7 +52,7 @@ Webhook delivery is at-least-once: a receiver may see the same event again if th
 
 ### Outbound ticket email delivery
 
-Public ticket replies are persisted first and then placed in the tenant-scoped background job outbox. The scheduled worker loads the message and attachment bytes at delivery time, sends through Resend with a stable per-message idempotency key and deterministic Message-ID, and retries transient failures with the existing lease/backoff policy. The API returns `email: queued`; the message delivery state progresses through queued, sent, skipped, or failed. Only the small ticket/message reference is stored in the job payload, not message bodies or attachment contents. Other transactional email (invites, authentication, notices, and surveys) remains synchronous for now.
+Public ticket replies are persisted first and then placed in the tenant-scoped background job outbox. The scheduled worker loads the message and attachment bytes at delivery time, sends through Resend with a stable per-message idempotency key and deterministic Message-ID, and retries transient failures with the existing lease/backoff policy. The API returns `email: queued`; the message delivery state progresses through queued, sent, skipped, or failed. Only the small ticket/message reference is stored in the job payload, not message bodies or attachment contents. Authentication, invitations, portal links, approval workflow notices, and platform alerts remain synchronous for now.
 
 
 ### Agent notices and CSAT delivery
