@@ -94,7 +94,7 @@ try {
            (array['low','normal','high','urgent'])[((g-1)%4)+1],
            (array['web','email','api'])[((g-1)%3)+1],
            $3 || ' ' || g, 'requester-' || g || '@example.invalid',
-           $4[((g-1)%array_length($4,1))+1], array['staging','synthetic'],
+           ($4::text[])[((g-1)%array_length($4::text[],1))+1], array['staging','synthetic'],
            now() - (g || ' hours')::interval, now() - ((g%24) || ' hours')::interval
          from generate_series(1,$5::int) g
          on conflict (org_id,number) do nothing`,
