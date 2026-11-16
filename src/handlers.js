@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -433,6 +433,19 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if ((g = need('live_chat'))) return g;
       if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
       r = await agentInbox(pool, orgId, { ...b, agentId: actor.id });
+      break;
+    }
+    case 'chat-get': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await getChatConversation(pool, orgId, b.number);
+      break;
+    }
+    case 'chat-reply': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentReplyChat(pool, orgId, actor, b.number, b);
+      if (r.ok) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
     case 'list': {
