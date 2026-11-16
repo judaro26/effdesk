@@ -252,6 +252,16 @@ export async function updateChatContext(pool, env, slug, input) {
   const number = Number(input.number) || 0;
   if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
   const pageUrl = clean(input.pageUrl, 2048), pageTitle = clean(input.pageTitle, 200);
+  const hasLatitude = input.latitude !== undefined && input.latitude !== null && input.latitude !== '';
+  const hasLongitude = input.longitude !== undefined && input.longitude !== null && input.longitude !== '';
+  if (hasLatitude !== hasLongitude) return fail('Share both location coordinates together.');
+  let latitude = null, longitude = null;
+  if (hasLatitude) {
+    latitude = Number(input.latitude); longitude = Number(input.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return fail('The shared location is not valid.');
+    // Store a coarse position (~1 km), not the browser's full-precision coordinates.
+    latitude = Math.round(latitude * 100) / 100; longitude = Math.round(longitude * 100) / 100;
+  }
   let parsed;
   try { parsed = new URL(pageUrl); } catch { return fail('A valid page URL is required.'); }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return fail('A valid page URL is required.');
@@ -260,8 +270,10 @@ export async function updateChatContext(pool, env, slug, input) {
     const t = (await c.query("select id,status,channel from tickets where org_id=$1 and number=$2 for update", [x.org.id, number])).rows[0];
     if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
     if (['closed','solved'].includes(t.status)) return fail('This chat has ended.', 409);
-    await c.query(`update ticket_provenance set page_url=$3,page_title=$4,submitted_at=now()
-      where org_id=$1 and ticket_id=$2`, [x.org.id, t.id, parsed.href.slice(0,2048), pageTitle || null]);
+    await c.query(`update ticket_provenance set page_url=$3,page_title=$4,
+      latitude=case when $5::boolean then $6::double precision else latitude end,
+      longitude=case when $5::boolean then $7::double precision else longitude end,
+      submitted_at=now() where org_id=$1 and ticket_id=$2`, [x.org.id, t.id, parsed.href.slice(0,2048), pageTitle || null, hasLatitude, latitude, longitude]);
     return { ok: true };
   });
 }
