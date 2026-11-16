@@ -80,6 +80,7 @@ await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { statu
 r = await inbound({ to: [mail.replyTo], text: 'Still cold.' });
 check('a reply to a solved ticket reopens it', r.reopened === true && (await ticket(1)).t.status === 'open');
 await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'closed' } });
+await withOrg(pool, acme.id, c => c.query("update tickets set closed_at = now() - interval '31 days' where org_id = $1 and number = 1", [acme.id]));
 r = await inbound({ to: [mail.replyTo], text: 'Cold again.' });
 check('a reply to a closed ticket starts a follow-up ticket instead', r.action === 'followup' && (await ticket(r.number)).t.subject === 'Re: Heater broken' && (await ticket(1)).t.status === 'closed');
 await call(olivia, { orgId: acme.id, action: 'update', number: 1, patch: { status: 'open' } });
@@ -123,7 +124,7 @@ r = await hookWith(b, h, fakeFetch());
 check('the same event delivered again is acknowledged once and not repeated', r.status === 200 && r.body.duplicate === true && fakeFetch.calls.length === 1);
 b = evBody('em_2'); h = svix(b); r = await hookWith(b, h, fakeFetch(false));
 check('if the message cannot be fetched we answer 502 so Resend retries, and the event is not marked done', r.status === 502 && (await hookWith(b, h, fakeFetch())).status === 200);
-b = JSON.stringify({ type: 'email.opened', data: {} }); r = await hookWith(b, svix(b), fakeFetch());
+b = JSON.stringify({ type: 'email.opened', data: {} }); const ignoredEvent = await hookWith(b, svix(b), fakeFetch());
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/mZkAAAAASUVORK5CYII=';
 const prepared = prepareInlineDataImages('<div>just confirming<img alt="image.png" src="data:image/png;base64,' + png + '"></div>');
@@ -146,5 +147,5 @@ const inlineTicket = (await call(olivia, { orgId: acme.id, action: 'get', number
 const inlineMessage = inlineTicket.messages[0];
 const inlineRows = await withOrg(pool, acme.id, c => c.query('select is_inline, filename from attachments where org_id = $1 and message_id = $2', [acme.id, inlineMessage.id]));
 check('a received data-URI image is rendered inside the conversation and is not listed as an attachment', r.status === 200 && !!inlineMessage.html_body && /<img[^>]+src="\/api\/attachments\//.test(inlineMessage.html_body) && inlineMessage.attachments.length === 0 && inlineRows.rows.length === 1 && inlineRows.rows[0].is_inline === true && inlineRows.rows[0].filename === 'inline-image-1.png' && inlineAttachmentDownloads === 0);
-check('other event types are acknowledged and ignored', r.status === 200 && r.body.ignored === true);
+check('other event types are acknowledged and ignored', ignoredEvent.status === 200 && ignoredEvent.body.ignored === true);
 await pool.end(); done();
