@@ -201,7 +201,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   let chatAccessAllowed = support || (supervisionAction && canSuperviseChat);
   if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts', 'chat-team', 'chat-heartbeat'].includes(b.action) || (targetNumbers.length && !supervisionAction))) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access || (supervisionAction && canSuperviseChat);
   if (!chatAccessAllowed && !support && targetNumbers.length) {
-    const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
+    const found = await withOrg(pool, orgId, c => c.query("select cc.chat_number from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id where cc.org_id=$1 and (cc.chat_number=any($2::bigint[]) or cc.id=any($2::bigint[]) or legacy_ticket.number=any($2::bigint[])) limit 1", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
   }
   switch (b.action) {
