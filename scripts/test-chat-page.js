@@ -41,7 +41,7 @@ const s = hw.document.createElement('script'); s.setAttribute('src', 'https://ap
 Object.defineProperty(hw.document, 'currentScript', { value: s }); hw.eval(pub('widget.js')); await tick(30);
 const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('the widget adds the chat button on the host page', !!btn);
 btn.click();
-check('the widget passes the exact host page path to the frame but strips query strings and fragments', (hw.document.querySelector('iframe') || {}).src === 'https://app.effdesk.com/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' && !/session=secret|private/.test((hw.document.querySelector('iframe') || {}).src || ''));
+check('the widget passes the exact host page path to the frame but strips query strings and fragments', (hw.document.querySelector('iframe') || {}).src === 'https://app.effdesk.com/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc&pageTitle=abc' && !/session=secret|private/.test((hw.document.querySelector('iframe') || {}).src || ''));
 const frame = hw.document.querySelector('iframe');
 let pageMessage = null;
 frame.contentWindow.postMessage = function (message, target) { pageMessage = { message, target }; };
