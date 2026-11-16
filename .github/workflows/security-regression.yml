@@ -69,7 +69,7 @@ jobs:
         run: node scripts/test-tickets.js
 
       - name: Test queued outbound ticket email delivery
-        run: node scripts/test-email.js && node scripts/test-newticket.js
+        run: node scripts/test-email.js && node scripts/test-newticket.js && node scripts/test-csat.js
 
       - name: Test durable background jobs and webhook retries
         run: node scripts/test-background-jobs.js
