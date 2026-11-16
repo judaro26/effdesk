@@ -64,22 +64,34 @@ async function orgOf(pool, slug) { return (await pool.query('select id, name, sl
 // repeating organization, entitlement, and settings reads on every visitor poll. Settings
 // writes invalidate it immediately; entitlement changes converge within five seconds.
 const LIVE_ORG_CACHE_MS = 5000;
+// Keep entries scoped to their pool instance so tests or multiple runtime pools can
+// never reuse another pool's workspace/configuration result.
 const liveOrgCache = new Map();
+function cacheForPool(pool) {
+  let cache = liveOrgCache.get(pool);
+  if (!cache) { cache = new Map(); liveOrgCache.set(pool, cache); }
+  return cache;
+}
 function invalidateLiveOrgCache(orgId) {
-  for (const [key, entry] of liveOrgCache) if (entry.orgId === orgId) liveOrgCache.delete(key);
+  for (const cache of liveOrgCache.values()) {
+    for (const [key, entry] of cache) if (entry.orgId === orgId) cache.delete(key);
+  }
 }
 // the widget may run only where the plan includes live chat and the agents turned it on
 async function liveOrg(pool, slug) {
-  const key = String(slug || '').toLowerCase().slice(0, 60), hit = liveOrgCache.get(key);
+  const cache = cacheForPool(pool), key = String(slug || '').toLowerCase().slice(0, 60), hit = cache.get(key);
   if (hit && Date.now() - hit.at < LIVE_ORG_CACHE_MS) return hit.value;
+  const remember = entry => {
+    if (cache.size > 2000) cache.clear();
+    cache.set(key, entry);
+  };
   const org = await orgOf(pool, key);
-  if (!org) { liveOrgCache.set(key, { at: Date.now(), orgId: null, value: null }); return null; }
+  if (!org) { remember({ at: Date.now(), orgId: null, value: null }); return null; }
   if (!planHas(await getEntitlements(pool, org.id), 'live_chat')) {
-    liveOrgCache.set(key, { at: Date.now(), orgId: org.id, value: null }); return null;
+    remember({ at: Date.now(), orgId: org.id, value: null }); return null;
   }
   const settings = await getSettings(pool, org.id), value = settings.enabled ? { org, settings } : null;
-  if (liveOrgCache.size > 2000) liveOrgCache.clear();
-  liveOrgCache.set(key, { at: Date.now(), orgId: org.id, value });
+  remember({ at: Date.now(), orgId: org.id, value });
   return value;
 }
 export async function publicConfig(pool, slug) {
