@@ -1,0 +1,73 @@
+name: Seed synthetic staging workspaces
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging:
+        description: Confirm this is the dedicated, disposable Neon staging project
+        required: true
+        type: boolean
+      workspaces:
+        description: Number of synthetic workspaces (2–30)
+        required: true
+        type: choice
+        options:
+          - "2"
+          - "5"
+          - "10"
+          - "20"
+          - "30"
+        default: "10"
+      tickets_per_workspace:
+        description: Synthetic tickets per workspace
+        required: true
+        type: choice
+        options:
+          - "25"
+          - "100"
+          - "250"
+          - "500"
+        default: "100"
+      chats_per_workspace:
+        description: Synthetic Live Chat conversations per workspace
+        required: true
+        type: choice
+        options:
+          - "10"
+          - "20"
+          - "50"
+          - "100"
+        default: "20"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effdesk-staging-seed
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: ${{ inputs.confirm_staging == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Seed synthetic workspaces
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_SEED_WORKSPACES: ${{ inputs.workspaces }}
+          STAGING_SEED_TICKETS: ${{ inputs.tickets_per_workspace }}
+          STAGING_SEED_CHATS: ${{ inputs.chats_per_workspace }}
+        run: npm run seed:staging
