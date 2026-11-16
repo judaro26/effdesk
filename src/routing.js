@@ -93,7 +93,7 @@ export async function getChatTeam(pool, orgId) {
     const maxConcurrent = Math.max(1, Math.min(10, Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent) || 3));
     const rows = (await c.query(`select m."userId" as user_id, u.name, u.email, m.role, r.permissions, a.chat_available,
       (a.chat_last_seen_at > now() - interval '3 minutes') as recently_seen,
-      (select count(*)::int from tickets t where t.org_id=$1 and t.channel='chat' and t.assignee_id=m."userId" and t.status in ('open','pending','on_hold')) as active_chats
+      (select count(*)::int from chat_conversations t where t.org_id=$1 and t.assignee_id=m."userId" and t.status in ('open','pending','on_hold')) as active_chats
       from member m join "user" u on u.id=m."userId" join agent_status a on a.org_id=$1 and a.user_id=m."userId"
       left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId"
       left join custom_roles r on r.org_id=$1 and r.id=mc.role_id
