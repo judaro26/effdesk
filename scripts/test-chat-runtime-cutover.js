@@ -106,6 +106,8 @@ const converted=await A(olivia,'chat-convert-to-ticket',{number:n});
 const ticket=converted.status===200?await A(olivia,'get',{number:converted.body.number}):{status:500,body:{}};
 const again=await A(olivia,'chat-convert-to-ticket',{number:n});
 check('ticket conversion is an explicit agent action and copies the complete transcript',converted.status===200&&ticket.status===200&&ticket.body.ticket.source_chat_conversation_id===chatRow.id&&ticket.body.messages.some(m=>m.body==='Do you ship to Canada?')&&ticket.body.messages.some(m=>m.body==='Yes, we ship to Canada.'));
+const transferredChatFiles=converted.status===200?Number((await pool.query('select count(*)::int n from attachments where org_id=$1 and ticket_id=(select id from tickets where org_id=$1 and number=$2) and message_id is not null and chat_conversation_id is null and chat_message_id is null',[acme.id,converted.body.number])).rows[0].n):0;
+check('chat attachments remain attached to their transcript messages after ticket conversion',transferredChatFiles>=2);
 check('conversion is idempotent and creates exactly one linked ticket',again.status===200&&again.body.alreadyConverted&&again.body.number===converted.body.number&&Number((await pool.query('select count(*)::int n from tickets where org_id=$1',[acme.id])).rows[0].n)===beforeConvert+1);
 check('the source conversation remains independent and links to its ticket',(await pool.query('select converted_ticket_id from chat_conversations where org_id=$1 and id=$2',[acme.id,chatRow.id])).rows[0].converted_ticket_id!==null);
 const endVisitor=await C('POST','/api/chat/end?org=acme',{number:n,token});
