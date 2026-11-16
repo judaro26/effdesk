@@ -14,6 +14,7 @@ import { csatToken } from '../src/csat.js';
 import { withOrg } from '../src/db.js';
 import { runJobs } from '../src/jobs.js';
 import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../src/notification-jobs.js';
+import { notifyTicket } from '../src/notify.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -33,6 +34,16 @@ const A = (who, action, extra = {}) => call(who, { orgId: acme.id, action, ...ex
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket' });
 const web = async (method, path, body) => { const r = await helpCenter(new Request('https://app.effdesk.test' + path, { method, headers: body ? { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://app.effdesk.test' } : {}, body }), { pool, mailer, env: ENV }); return { status: r.status, text: await r.text() }; };
 const t1 = (await A(olivia, 'create', { subject: 'Heater', body: 'cold', requesterEmail: 'tina@example.com', requesterName: 'Tina Smith' })).body.ticket;
+await withOrg(pool, acme.id, c => c.query('update tickets set assignee_id=$3 where org_id=$1 and number=$2', [acme.id, t1.number, ann.user.id]));
+outbox.length = 0;
+const noticeQueued = await notifyTicket(pool, mailer, acme.id, t1.number, { kind: 'assigned', onlyUserId: ann.user.id, summary: 'Please take a look.' });
+check('agent ticket notices are queued without blocking the ticket request', noticeQueued.queued === 1 && outbox.length === 0);
+await flushJobs();
+const agentNotice = outbox.find(m => /A ticket was assigned to you/.test(m.subject));
+check('the notification worker sends agent notices with a stable provider idempotency key', agentNotice && agentNotice.to === 'ann@acme.test' && agentNotice.idempotencyKey && agentNotice.idempotencyKey.startsWith('agent-notice-job:'));
+const beforeCrossTenant = outbox.length;
+const crossTenantNotice = await deliverAgentNoticeJob(pool, mailer, acme.id, { userId: otto.user.id, number: t1.number, kind: 'assigned' }, { id: 'cross-tenant-test' });
+check('agent notice jobs cannot deliver to a user outside the workspace', crossTenantNotice.skipped === true && outbox.length === beforeCrossTenant);
 outbox.length = 0; await A(olivia, 'update', { number: t1.number, patch: { status: 'pending' } });
 check('nothing is asked before a ticket is solved', outbox.filter(m => /How did we do/.test(m.subject)).length === 0);
 await A(olivia, 'reply', { number: t1.number, body: 'Fixed it.', status: 'solved' });
