@@ -82,3 +82,8 @@ check('Live Chat theme preference is returned on initialization and defaults saf
 check('the agent workspace refreshes the current visitor page during the existing Live Chat inbox refresh cycle', js.includes('function refreshChatVisitorPage(number)') && js.includes("api('get', { number: number, messageLimit: 1 })") && js.includes('refreshChatVisitorPage(current.ticket.number)'));
 check('the visitor page context is labelled as current for chats and as submission context for other tickets', js.includes("chatConversationOpen?'Current page':'Page at submission'"));
 check('the Classic Live Chat palette stays independent from whichever global desk theme the agent uses', css.includes('html[data-chat-theme="classic"] .chat-agent-workspace') && css.includes('--d-rail:#03363d'));
+
+check('supervisors get a dedicated workspace navigation entry gated by the server-provided permission', js.includes("data-chat-supervision") && js.includes("canSuperviseChat = b.canSuperviseChat === true") && js.includes("item('supervisor'"));
+check('the supervisor workspace shows active team conversations and a read-only transcript', js.includes("api('chat-supervision-inbox')") && js.includes("api('chat-monitor'") && js.includes('READ-ONLY SUPERVISION'));
+check('supervisors can send private coaching notes and explicitly take over a conversation', js.includes("api('chat-copilot'") && js.includes("api('chat-takeover'") && js.includes('Take over chat'));
+check('the supervisor workspace is responsive on tablets and phones', css.includes('.chat-supervisor-layout') && css.includes('@media(max-width:850px){.chat-supervisor-layout'));
