@@ -30,7 +30,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
-    var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
+    var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxCursorStack = [''], chatInboxPageIndex = 0, chatInboxHasMore = false, chatInboxPageNextCursor = null, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
     var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
@@ -196,7 +196,7 @@
     function goViews() { closePanes(); return refresh(); }
     function loadChatInbox() {
       if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
-      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
+      closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
       return fetchChatInbox(true);
     }
     function playChatSound() {
@@ -216,15 +216,15 @@
     function fetchChatInbox(showLoading, resetPage) {
       if (!chatInboxOpen) return Promise.resolve();
       if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; }
-      if (resetPage) chatInboxOffset = 0;
+      if (resetPage) { chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; }
       var seq = chatInboxSeq, request = ++chatInboxRequest;
       if (showLoading) { chatInboxLoading = true; draw(); }
-      return api('chat-inbox', { limit: chatInboxLimit, offset: chatInboxOffset, q: chatInboxQuery, view: chatInboxView }).then(function (r) {
+      return api('chat-inbox', { limit: chatInboxLimit, cursorMode: true, cursor: chatInboxCursorStack[chatInboxPageIndex] || '', pageIndex: chatInboxPageIndex, q: chatInboxQuery, view: chatInboxView }).then(function (r) {
         if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false;
         if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
         else {
-          chatInboxError = ''; var nextRows = r.body.tickets || []; chatInboxTotal = Number(r.body.counts && r.body.counts.total || 0); chatInboxCounts = r.body.counts || chatInboxCounts;
+          chatInboxError = ''; var nextRows = r.body.tickets || []; chatInboxTotal = Number(r.body.counts && r.body.counts.total || 0); chatInboxCounts = r.body.counts || chatInboxCounts; chatInboxHasMore = !!(r.body.page && r.body.page.hasMore); chatInboxPageNextCursor = r.body.page && r.body.page.nextCursor || null; chatInboxOffset = chatInboxPageIndex * chatInboxLimit;
           if (chatInboxPrimed && chatSoundEnabled) {
             var previous = {}; chatInboxRows.forEach(function (t) { previous[String(t.number)] = t.updated_at || t.created_at || ''; });
             var hasNewReply = nextRows.some(function (t) { var prior = previous[String(t.number)]; return t.chat_last_public_message_kind === 'requester' && (!prior || prior !== (t.updated_at || t.created_at || '')); });
@@ -337,8 +337,8 @@
         el('div', { class: 'chat-inbox-pagination' },
           el('span', { class: 'chat-inbox-page-summary' }, chatInboxTotal ? 'Showing ' + (chatInboxOffset + 1) + '–' + Math.min(chatInboxOffset + rows.length, chatInboxTotal) + ' of ' + chatInboxTotal + ' conversations' : 'No conversations found'),
           el('div', { class: 'chat-inbox-page-actions' },
-            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset <= 0 || chatInboxLoading, onclick: function () { chatInboxOffset = Math.max(0, chatInboxOffset - chatInboxLimit); fetchChatInbox(true); } }, 'Previous'),
-            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxOffset + chatInboxLimit >= chatInboxTotal || chatInboxLoading, onclick: function () { chatInboxOffset += chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: chatInboxPageIndex <= 0 || chatInboxLoading, onclick: function () { chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1); chatInboxOffset = chatInboxPageIndex * chatInboxLimit; fetchChatInbox(true); } }, 'Previous'),
+            el('button', { type: 'button', class: 'chat-inbox-page-btn', disabled: !chatInboxHasMore || !chatInboxPageNextCursor || chatInboxLoading, onclick: function () { chatInboxCursorStack[chatInboxPageIndex + 1] = chatInboxPageNextCursor; chatInboxPageIndex += 1; chatInboxOffset = chatInboxPageIndex * chatInboxLimit; fetchChatInbox(true); } }, 'Next'))),
         el('p', { class: 'chat-inbox-footnote' }, history ? 'Chat History is read-only from this list. Open a conversation to review its messages or reopen it.' : 'This inbox shows open Live Chat conversations. Resolved and closed conversations are kept in Chat History.'));
     }
     function loadApprovals() {

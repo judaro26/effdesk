@@ -74,11 +74,11 @@ export async function publicConfig(pool, slug) {
 // Server-paged Live Chat inbox. Counts describe the full filtered set, not only the visible page.
 export async function agentInbox(pool, orgId, input = {}) {
   const limit = Math.min(Math.max(parseInt(input.limit, 10) || 50, 1), 100);
-  const offset = Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000);
+  const cursorMode = input.cursorMode === true || typeof input.cursor === 'string';
   const query = clean(input.q, 100);
   const view = ['all', 'waiting', 'needs-reply', 'mine', 'history'].includes(input.view) ? input.view : 'all';
   const history = view === 'history';
-  const args = [orgId], where = ["t.org_id = $1", "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "t.status in ('open','pending','on_hold')"];
+  const args = [orgId], where = ['t.org_id = $1', "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "t.status in ('open','pending','on_hold')"];
   if (view === 'waiting') where.push('t.assignee_id is null');
   if (view === 'needs-reply') where.push("t.assignee_id is not null and latest_public.kind = 'requester'");
   if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
@@ -89,31 +89,56 @@ export async function agentInbox(pool, orgId, input = {}) {
     args.push(number);
     where.push('(lower(t.subject) like $' + i + ' or lower(t.requester_name) like $' + i + ' or lower(t.requester_email) like $' + i + ' or lower(assignee.name) like $' + i + ' or lower(assignee.email) like $' + i + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
   }
-  args.push(limit, offset);
+  let cursor = null, cursorWhere = '';
+  if (cursorMode && input.cursor) {
+    try {
+      cursor = JSON.parse(Buffer.from(String(input.cursor), 'base64url').toString('utf8'));
+      if (cursor.v !== 1 || cursor.h !== history || !Number.isSafeInteger(Number(cursor.id)) || Number(cursor.id) < 1 || !Number.isFinite(new Date(cursor.u).getTime())) throw new Error('invalid');
+      if (history) {
+        if (!Number.isFinite(new Date(cursor.s).getTime())) throw new Error('invalid');
+        args.push(String(cursor.s), String(cursor.u), Number(cursor.id));
+        const s = args.length - 2, u = args.length - 1, id = args.length;
+        cursorWhere = 'where (cursor_history_at < $' + s + '::timestamptz or (cursor_history_at = $' + s + '::timestamptz and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
+      } else {
+        if (![0,1].includes(Number(cursor.b)) || ![0,1].includes(Number(cursor.n)) || (cursor.w !== null && !Number.isFinite(new Date(cursor.w).getTime()))) throw new Error('invalid');
+        args.push(Number(cursor.b), cursor.w === null ? null : String(cursor.w), Number(cursor.n), String(cursor.u), Number(cursor.id));
+        const b=args.length-4,w=args.length-3,n=args.length-2,u=args.length-1,id=args.length;
+        cursorWhere = 'where (cursor_bucket > $' + b + ' or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) > coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz)) or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply > $' + n + ') or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply = $' + n + ' and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
+      }
+    } catch { return fail('The Live Chat inbox cursor is invalid. Refresh the inbox and try again.'); }
+  }
   return withOrg(pool, orgId, async db => {
+    const limitArg = args.length + 1; args.push(cursorMode ? limit + 1 : limit);
+    let offsetSql = '';
+    if (!cursorMode) { args.push(Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000)); offsetSql = ' offset $' + args.length; }
+    const order = history ? 'cursor_history_at desc, updated_at desc, id desc' : 'cursor_bucket asc, cursor_waiting_at asc nulls last, cursor_needs_reply asc, updated_at desc, id desc';
     const sql = [
       'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email',
+      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email, case when t.assignee_id is null then 0 else 1 end as cursor_bucket, case when t.assignee_id is null then t.created_at end as cursor_waiting_at, case when t.assignee_id is null then t.created_at::text end as cursor_waiting_at_cursor, t.updated_at::text as cursor_updated_at, case when t.assignee_id is not null and latest_public.kind = \'requester\' then 0 else 1 end as cursor_needs_reply, coalesce(t.closed_at,t.solved_at,t.updated_at) as cursor_history_at, coalesce(t.closed_at,t.solved_at,t.updated_at)::text as cursor_history_at_cursor',
       ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
       ' where ' + where.join(' and '),
       '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null)::int waiting, count(*) filter(where assignee_id is not null)::int assigned, count(*) filter(where assignee_id is not null and chat_last_public_message_kind=\'requester\')::int needs_reply, count(*) filter(where status=\'solved\')::int solved, count(*) filter(where status=\'closed\')::int closed from chat_rows),',
-      'page as (select * from chat_rows order by ' + (history ? "coalesce(closed_at, solved_at, updated_at) desc, updated_at desc, id desc" : "case when assignee_id is null then 0 else 1 end, case when assignee_id is null then created_at end asc, case when assignee_id is not null and chat_last_public_message_kind='requester' then 0 else 1 end, updated_at desc, id desc") + ' limit $' + (args.length - 1) + ' offset $' + args.length + ')',
+      'page as (select * from chat_rows ' + cursorWhere + ' order by ' + order + ' limit $' + limitArg + offsetSql + ')',
       'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count, totals.solved as solved_count, totals.closed as closed_count from totals left join page on true'
     ].join(' ');
     const result = await db.query(sql, args), first = result.rows[0] || {};
     const agentId = String(input.agentId || '');
     const maxConcurrent = Math.max(1, Math.min(10, Number((await db.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent) || 3));
     const activeChats = agentId ? Number((await db.query("select count(*)::int n from tickets where org_id=$1 and channel='chat' and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,agentId])).rows[0]?.n || 0) : 0;
+    let rows = result.rows.filter(row => row.id != null);
+    const hasMore = cursorMode && rows.length > limit;
+    if (hasMore) rows.pop();
+    const last = rows[rows.length - 1];
+    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify(history ? { v:1, h:true, s:last.cursor_history_at_cursor, u:last.cursor_updated_at, id:Number(last.id) } : { v:1, h:false, b:Number(last.cursor_bucket), w:last.cursor_waiting_at_cursor || null, n:Number(last.cursor_needs_reply), u:last.cursor_updated_at, id:Number(last.id) })).toString('base64url') : null;
     return {
       ok: true,
-      tickets: result.rows.filter(row => row.id != null).map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, ...ticket }) => ticket),
+      tickets: rows.map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, cursor_bucket, cursor_waiting_at, cursor_needs_reply, cursor_history_at, cursor_waiting_at_cursor, cursor_updated_at, cursor_history_at_cursor, ...ticket }) => ticket),
       counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0), solved: Number(first.solved_count || 0), closed: Number(first.closed_count || 0) },
       capacity: { active: activeChats, max: maxConcurrent, remaining: Math.max(0,maxConcurrent-activeChats) },
-      page: { limit, offset, hasMore: offset + limit < Number(first.total_count || 0) }
+      page: { limit, offset: cursorMode ? (Number(input.pageIndex) || 0) * limit : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000), hasMore: cursorMode ? hasMore : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000) + limit < Number(first.total_count || 0), ...(cursorMode ? { nextCursor } : {}) }
     };
   });
 }
-
 // Lightweight cursor-based notification feed so each agent does not repeatedly download the full chat queue.
 export async function agentReplyAlerts(pool, orgId, input = {}) {
   return withOrg(pool, orgId, async db => {
