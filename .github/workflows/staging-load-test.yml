@@ -12,6 +12,14 @@ on:
           - standard
           - stress
         default: smoke
+      workload:
+        description: Workload type
+        required: true
+        type: choice
+        options:
+          - read-only
+          - mixed-chat
+        default: read-only
       confirm_staging:
         description: Confirm the target is the dedicated staging database, never production
         required: true
@@ -49,10 +57,27 @@ jobs:
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging.js --check
 
+      - name: Validate mixed chat workload target
+        if: ${{ inputs.workload == 'mixed-chat' }}
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-chat-mixed.js --check
+
       - name: Run read-only multi-tenant workload
+        if: ${{ inputs.workload == 'read-only' }}
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging.js
+
+      - name: Run mixed visitor and agent chat workload
+        if: ${{ inputs.workload == 'mixed-chat' }}
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-chat-mixed.js
 
