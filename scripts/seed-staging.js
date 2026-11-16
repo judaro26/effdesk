@@ -15,7 +15,7 @@ function validate() {
   if (!databaseUrl) throw new Error('STAGING_DATABASE_URL is required. DATABASE_URL is deliberately not supported.');
   let url;
   try { url = new URL(databaseUrl); } catch { throw new Error('STAGING_DATABASE_URL must be a valid PostgreSQL URL.'); }
-  const dbName = decodeURIComponent(url.pathname.replace(/^\\//, '')).toLowerCase();
+  const dbName = decodeURIComponent(url.pathname.replace(/^\//, '')).toLowerCase();
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname.toLowerCase().endsWith('.neon.tech') || !url.hostname.toLowerCase().includes('-pooler')) {
     throw new Error('Refusing to seed: use a pooled Neon connection string.');
   }
