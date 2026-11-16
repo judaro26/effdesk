@@ -43,3 +43,12 @@ create unique index if not exists chat_conversations_org_chat_number_idx
   on chat_conversations(org_id,chat_number);
 
 select setval('chat_conversation_number_seq', greatest(1000000000001, coalesce((select max(chat_number) from chat_conversations),1000000000000)+1), false);
+
+-- Preserve any previously collected, visitor-consented coordinates during backfill.
+update chat_conversations cc
+set latitude=p.latitude,longitude=p.longitude
+from ticket_provenance p
+where p.org_id=cc.org_id and p.ticket_id=cc.source_ticket_id
+  and cc.source_ticket_id is not null
+  and cc.latitude is null and cc.longitude is null
+  and p.latitude is not null and p.longitude is not null;
