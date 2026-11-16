@@ -104,10 +104,13 @@ check('visitor restart cooldown is enforced from the chat event stream',cooldown
 const disabledCooldown=await A(olivia,'chat-save',{enabled:true,restartCooldownSeconds:0});
 const allowed=await C('POST','/api/chat/start?org=acme',{name:'Cooldown',email:'cooldown@example.test',message:'Restart allowed',visitorId:cooldownId},'8.8.8.8');
 check('admins can disable the visitor restart cooldown',disabledCooldown.status===200&&disabledCooldown.body.settings.restart_cooldown_seconds===0&&allowed.status===200);
+await A(olivia,'routing-save',{enabled:true,strategy:'round_robin'});
 const autoSetting=await A(olivia,'chat-save',{enabled:true,autoConvertToTicket:true,restartCooldownSeconds:0});
 const autoStart=await C('POST','/api/chat/start?org=acme',{name:'Automation',email:'auto@example.test',message:'Create a linked ticket',visitorId:crypto.randomBytes(32).toString('hex')},'9.9.9.9');
-const autoConversation=(await pool.query('select converted_ticket_id from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,autoStart.body.number])).rows[0];
+const autoConversation=(await pool.query('select converted_ticket_id,assignee_id from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,autoStart.body.number])).rows[0];
 check('automatic ticket creation occurs only after an admin explicitly enables it',autoSetting.status===200&&autoStart.status===200&&autoConversation?.converted_ticket_id&&autoStart.body.ticketNumber);
+check('configured routing assigns new chats to an available agent',autoConversation?.assignee_id===ann.user.id);
+await A(olivia,'routing-save',{enabled:false,strategy:'round_robin'});
 await A(olivia,'chat-save',{enabled:true,autoConvertToTicket:false});
 const foreign=await tk(otto,'chat-get',beta.id,{number:n});
 check('conversation identifiers cannot cross tenant boundaries',foreign.status===402||foreign.status===404);
