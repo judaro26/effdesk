@@ -11,6 +11,8 @@ import { emit } from './webhooks.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
+const safePageUrl = value => { try { const u = new URL(clean(value,2048)); if (!['http:','https:'].includes(u.protocol) || u.username || u.password) return null; u.search=''; u.hash=''; return u.href.slice(0,2048); } catch { return null; } };
+const safeIp = value => { const ip=clean(value,64).replace(/^\\[|\\]$/g,'').split('%')[0]; return net.isIP(ip) ? ip : null; };
 const fail = (error, status = 400) => ({ ok: false, status, error });
 const secret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET || '');
 export const chatToken = (env, orgId, number) => crypto.createHmac('sha256', secret(env)).update(`chat:${orgId}:${number}`).digest('hex').slice(0, 24);
