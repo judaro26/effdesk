@@ -48,19 +48,18 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
         where org_id = $1 and solved_at >= bounds.first_day and solved_at < bounds.after_last_day
         group by 1
       ), daily_rows as (
-        select to_char(days.day, 'Dy') as label,
+        select days.day, to_char(days.day, 'Dy') as label,
                coalesce(created.n, 0)::int as created,
                coalesce(solved.n, 0)::int as solved
         from days
         left join created on created.day = days.day
         left join solved on solved.day = days.day
-        order by days.day
       )
       select ticket_counts.*,
         coalesce((select jsonb_agg(to_jsonb(mine_page)) from mine_page), '[]'::jsonb) as mine,
         coalesce((select jsonb_agg(to_jsonb(unassigned_page)) from unassigned_page), '[]'::jsonb) as unassigned,
         coalesce((select jsonb_agg(to_jsonb(recent_page)) from recent_page), '[]'::jsonb) as recent,
-        coalesce((select jsonb_agg(to_jsonb(daily_rows)) from daily_rows), '[]'::jsonb) as daily,
+        coalesce((select jsonb_agg(jsonb_build_object('label', label, 'created', created, 'solved', solved) order by day) from daily_rows), '[]'::jsonb) as daily,
         (select count(*)::int from help_articles where org_id = $1) as articles,
         coalesce((select inbox from inbox_directory where org_id = $1), false) as inbox,
         (select slug from "organization" where id = $1) as slug
