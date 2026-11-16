@@ -1328,3 +1328,127 @@ html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out{background:l
 @media(max-width:1000px){.chat-landing-layout{grid-template-columns:minmax(0,1fr) 260px}.chat-landing-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.chat-landing-hero{align-items:flex-start;flex-direction:column}.chat-landing-actions{width:100%;justify-content:space-between}.chat-landing-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.chat-landing-layout{grid-template-columns:1fr}.chat-landing-grid{grid-template-columns:1fr}.chat-agent-workspace .chat-agent-conversation>.info{max-height:none}}
 @media(max-width:420px){.chat-landing{padding:10px}.chat-landing-metric{padding:12px}.chat-landing-metric strong{font-size:22px}.chat-landing-panel-head{padding:13px}}
+
+
+/* Container-aware Live Chat agent layout. The available workspace width can be
+   much narrower than the browser viewport when the desk navigation is open. */
+.deskapp .chat-agent-workspace{
+  min-width:0;
+  width:100%;
+  container-name:chat-agent;
+  container-type:inline-size;
+}
+.deskapp .chat-agent-workspace>.chat-workspace-sidebar,
+.deskapp .chat-agent-workspace>.chat-agent-conversation,
+.deskapp .chat-agent-workspace .chat-agent-conversation>.conv,
+.deskapp .chat-agent-workspace .chat-agent-conversation>.info{
+  min-width:0;
+  max-width:100%;
+}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.conv{
+  width:100%;
+  box-sizing:border-box;
+}
+.deskapp .chat-agent-conversation .chat-agent-head-copy{flex:1 1 180px;min-width:0}
+.deskapp .chat-agent-conversation .chat-agent-head-actions{
+  display:flex;
+  flex:0 1 auto;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  align-items:center;
+  min-width:0;
+  max-width:100%;
+}
+.deskapp .chat-agent-conversation .chat-agent-head-actions>*{min-width:0;max-width:100%}
+.deskapp .chat-agent-conversation .ch,
+.deskapp .chat-agent-conversation .thread,
+.deskapp .chat-agent-conversation .compose{min-width:0;max-width:100%;box-sizing:border-box}
+.deskapp .chat-agent-conversation .thread{overflow-wrap:anywhere}
+.deskapp .chat-agent-conversation .msg,
+.deskapp .chat-agent-conversation .msg-b{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.deskapp .chat-agent-conversation .compose textarea,
+.deskapp .chat-agent-conversation .compose .editor,
+.deskapp .chat-agent-conversation .compose [contenteditable="true"]{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+@container chat-agent (max-width:1160px){
+  .deskapp .chat-agent-workspace{grid-template-columns:200px minmax(0,1fr);gap:10px}
+  .deskapp .chat-agent-workspace>.chat-agent-conversation{grid-template-columns:minmax(0,1fr);gap:10px}
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.info{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    align-content:start;
+    gap:10px;
+    max-height:none;
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.info h3{grid-column:1/-1}
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.conv{height:clamp(440px,calc(100dvh - 160px),820px);min-height:440px}
+}
+@container chat-agent (max-width:820px){
+  .deskapp .chat-agent-workspace{display:flex;flex-direction:column;gap:10px;padding:10px}
+  .deskapp .chat-agent-workspace>.chat-workspace-sidebar{width:100%;max-height:190px;overflow:auto}
+  .deskapp .chat-agent-workspace .chat-workspace-list{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:4px 1px 8px;
+    scroll-snap-type:x proximity;
+  }
+  .deskapp .chat-agent-workspace .chat-workspace-item{flex:0 0 min(250px,78%);min-width:0;scroll-snap-align:start}
+  .deskapp .chat-agent-workspace>.chat-agent-conversation{display:flex;flex-direction:column;gap:10px;width:100%}
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.conv{
+    height:clamp(420px,calc(100dvh - 190px),760px);
+    min-height:420px;
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.info{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    max-height:none;
+  }
+}
+@container chat-agent (max-width:560px){
+  .deskapp .chat-agent-workspace{padding:6px;gap:8px}
+  .deskapp .chat-agent-workspace>.chat-workspace-sidebar{padding:10px}
+  .deskapp .chat-agent-workspace .chat-workspace-sidebar-sub{font-size:11px;overflow-wrap:anywhere}
+  .deskapp .chat-agent-workspace .chat-workspace-item{flex-basis:min(220px,86%)}
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.conv{
+    height:clamp(400px,calc(100dvh - 180px),700px);
+    min-height:400px;
+  }
+  .deskapp .chat-agent-conversation .chat-agent-head{gap:8px;padding:10px}
+  .deskapp .chat-agent-conversation .chat-agent-head-actions{
+    flex:1 1 100%;
+    justify-content:flex-start;
+    gap:6px;
+  }
+  .deskapp .chat-agent-conversation .chat-agent-head-actions button,
+  .deskapp .chat-agent-conversation .chat-agent-head-actions select{max-width:100%;min-width:0}
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.info{
+    grid-template-columns:minmax(0,1fr);
+    padding:10px;
+  }
+  .deskapp .chat-agent-workspace .chat-agent-conversation>.info h3{grid-column:1}
+  .deskapp .chat-agent-conversation .ch{padding:10px}
+  .deskapp .chat-agent-conversation .thread{padding:12px 10px}
+  .deskapp .chat-agent-conversation .compose{padding:10px}
+  .deskapp .chat-agent-conversation .compose .bar{display:flex;flex-wrap:wrap;gap:6px}
+  .deskapp .chat-agent-conversation .compose .bar>*{min-width:0;max-width:100%}
+}
+
+
+/* The workspace itself is a grid child, so its breakpoints must query the
+   available main content column (not its own container). */
+.deskapp main{container-name:desk-content;container-type:inline-size}
+@container desk-content (max-width:1160px){
+  .deskapp .chat-agent-workspace{grid-template-columns:200px minmax(0,1fr);gap:10px}
+}
+@container desk-content (max-width:820px){
+  .deskapp .chat-agent-workspace{display:flex;flex-direction:column;gap:10px;padding:10px}
+}
+@container desk-content (max-width:560px){
+  .deskapp .chat-agent-workspace{padding:6px;gap:8px}
+}
