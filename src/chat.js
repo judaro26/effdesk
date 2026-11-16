@@ -131,13 +131,26 @@ export async function agentInbox(pool, orgId, input = {}) {
       from chat_conversations cc left join "user" u on u.id=cc.assignee_id where ${where.join(' and ')}
       order by case when cc.assignee_id is null then 0 else 1 end,cc.updated_at desc,cc.id desc limit $${args.length+1} offset $${args.length+2}`,[...args,limit+1,offset])).rows;
     const hasMore=rows.length>limit;if(hasMore)rows.pop();
-    const counts=(await c.query(`select count(*) filter(where status in ('open','pending','on_hold'))::int total,count(*) filter(where status in ('open','pending','on_hold') and assignee_id is null)::int waiting,
-      count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null)::int assigned,
-      count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null and (${latest})='requester')::int needs_reply,
-      count(*) filter(where status='solved')::int solved,count(*) filter(where status='closed')::int closed from chat_conversations cc where cc.org_id=$1`,[orgId])).rows[0]||{};
-    const max=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
-    const active=input.agentId?Number((await c.query("select count(*)::int n from chat_conversations where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,String(input.agentId)])).rows[0]?.n||0):0;
-    return{ok:true,tickets:rows.map(r=>({...r,number:Number(r.number),id:Number(r.id)})),counts:{total:Number(counts.total||0),waiting:Number(counts.waiting||0),assigned:Number(counts.assigned||0),needsReply:Number(counts.needs_reply||0),solved:Number(counts.solved||0),closed:Number(counts.closed||0)},capacity:{active,max,remaining:Math.max(0,max-active)},page:{limit,offset,hasMore,nextCursor:null}};
+    const metadata=(await c.query(`with conversation_counts as (
+      select count(*) filter(where cc.status in ('open','pending','on_hold'))::int total,
+        count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is null)::int waiting,
+        count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is not null)::int assigned,
+        count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is not null and (${latest})='requester')::int needs_reply,
+        count(*) filter(where cc.status='solved')::int solved,
+        count(*) filter(where cc.status='closed')::int closed
+      from chat_conversations cc where cc.org_id=$1
+    ), agent_capacity as (
+      select count(*)::int active from chat_conversations
+      where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')
+    )
+    select conversation_counts.*,
+      coalesce((select max_concurrent from chat_settings where org_id=$1),3)::int max_concurrent,
+      agent_capacity.active
+    from conversation_counts cross join agent_capacity`,
+      [orgId,String(input.agentId||'')])).rows[0]||{};
+    const max=Math.max(1,Math.min(10,Number(metadata.max_concurrent)||3));
+    const active=input.agentId?Number(metadata.active||0):0;
+    return{ok:true,tickets:rows.map(r=>({...r,number:Number(r.number),id:Number(r.id)})),counts:{total:Number(metadata.total||0),waiting:Number(metadata.waiting||0),assigned:Number(metadata.assigned||0),needsReply:Number(metadata.needs_reply||0),solved:Number(metadata.solved||0),closed:Number(metadata.closed||0)},capacity:{active,max,remaining:Math.max(0,max-active)},page:{limit,offset,hasMore,nextCursor:null}};
   });
 }
 
