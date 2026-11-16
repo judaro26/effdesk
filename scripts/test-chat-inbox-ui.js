@@ -124,3 +124,6 @@ check('the agent UI opens dedicated chat detail and reply actions rather than ti
 check('Live Chat claim, transfer, supervision and takeover operate on conversation rows', routing.includes('chatForNumber(c,orgId,number,true)') && routing.includes('update chat_conversations set assignee_id'));
 check('automatic ticket conversion is exposed as an explicit admin setting and defaults off', js.includes('autoConvertToTicket: autoConvert.checked') && chatRuntime.includes('auto_convert_to_ticket: false'));
 check('chat conversation numbers are separate from support ticket numbers', chatRuntime.includes('cc.chat_number=$2') && fs.readFileSync(new URL('../migrations/078_live_chat_runtime_cutover.sql', import.meta.url), 'utf8').includes('chat_conversation_number_seq'));
+
+check('agent typing presence and visitor widget status are independent of ticket presence', js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'") && chatRuntime.includes('from chat_presence where org_id=$1'));
+check('chat conversations retain a chat-specific deep link and never upload into ticket attachments', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes('File attachments are not enabled for Live Chat yet.') && js.includes('if (!chatConversationOpen) uploadFiles(t, files)'));
