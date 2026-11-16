@@ -141,6 +141,20 @@ export async function transferChat(pool, orgId, actor, number, targetUserId, can
  * Keep the payload intentionally narrow: conversation metadata, transcript and
  * visitor page context only; no attachment bytes or unrelated ticket extras.
  */
+export async function listSupervisedChats(pool, orgId) {
+  return withOrg(pool, orgId, async c => {
+    const rows=(await c.query(`select t.number,t.subject,t.status,t.priority,t.assignee_id,t.requester_name,t.requester_email,t.created_at,t.updated_at,
+      u.name as assignee_name,u.email as assignee_email,p.page_url,p.page_title
+      from tickets t
+      left join "user" u on u.id=t.assignee_id
+      left join ticket_provenance p on p.org_id=t.org_id and p.ticket_id=t.id
+      where t.org_id=$1 and t.channel='chat' and t.status in ('open','pending','on_hold')
+      order by (t.assignee_id is null) desc,t.updated_at desc limit 100`,[orgId])).rows;
+    const counts={total:rows.length,waiting:rows.filter(x=>!x.assignee_id).length,assigned:rows.filter(x=>!!x.assignee_id).length,needs_attention:0};
+    return {ok:true,chats:rows,counts};
+  });
+}
+
 export async function monitorChat(pool, orgId, number) {
   return withOrg(pool, orgId, async c => {
     const ticket = (await c.query(`select id, number, subject, status, priority, assignee_id, requester_name,

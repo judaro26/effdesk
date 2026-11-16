@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var STATUS = ['active', 'open', 'pending', 'on_hold', 'solved', 'closed'];
-  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6', changes: 'M4 7h16M4 12h16M4 17h10 M17 15l3 3 3-3', assets: 'M4 7h16v13H4z M8 7V4h8v3 M8 12h8 M8 16h5', chat: 'M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5z' };
+  var ICONS = { home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', tickets: 'M4 6h16M4 12h16M4 18h16', mail: 'M3 6h18v12H3z M3 7l9 6 9-6', help: 'M12 6c-2-1.5-5-2-8-1.5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-13c-3-.5-6 0-8 1.5z M12 6v13', manage: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6', reports: 'M4 20V11M10 20V4M16 20v-8M22 20H2', account: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21c0-4 4-6 8-6s8 2 8 6', contacts: 'M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M20 8v6 M23 11h-6', integrations: 'M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1 M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1', approvals: 'M5 12l4 4L19 6 M4 4h16v16H4z', itsm: 'M3 12h5l3 8 4-16 3 8h3', problems: 'M4 5h16M4 12h16M4 19h10 M18 16v6 M15 19h6', changes: 'M4 7h16M4 12h16M4 17h10 M17 15l3 3 3-3', assets: 'M4 7h16v13H4z M8 7V4h8v3 M8 12h8 M8 16h5', chat: 'M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5z', supervisor: 'M12 3l8 3v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3z M8.5 12l2.2 2.2 4.8-4.8' };
   // preview colours for the theme cards: [rail, background, panel, accent]; the real look is in desk.css
   var THEMES = [
     { id: 'classic', name: 'Classic', blurb: 'White workspace with a teal rail and blue accents, the familiar help-desk look.', sw: ['#03363d', '#f4f5f7', '#ffffff', '#1f73b7'] },
@@ -30,6 +30,7 @@
     var main = doc.getElementById('main'), rail = doc.getElementById('rail'), tabsEl = doc.getElementById('tabs'), qBox = doc.getElementById('q'), newBtn = doc.getElementById('newbtn'), orgSlot = doc.getElementById('orgsel'), userBtn = doc.getElementById('userbtn'), userMenu = doc.getElementById('usermenu');
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
+    var supervisorOpen = false, supervisorRows = [], supervisorLoading = false, supervisorError = '', supervisorSelected = null, supervisorDetail = null, supervisorNote = '', canSuperviseChat = false;
     var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxCursorStack = [''], chatInboxPageIndex = 0, chatInboxHasMore = false, chatInboxPageNextCursor = null, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
     var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
@@ -75,7 +76,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatInboxOpen = false; chatConversationOpen = false; chatInboxSeq++; if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; } integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatInboxOpen = false; chatConversationOpen = false; supervisorOpen = false; supervisorSelected = null; supervisorDetail = null; chatInboxSeq++; if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; } integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -106,7 +107,7 @@
       if (!doc.getElementById('supportbar')) { var bar = el('div', { id: 'supportbar', class: 'supportbar', role: 'status', 'data-support-bar': '1' }, 'Support view: you are looking at this workspace with the customer’s permission. It is read-only and every visit is logged for them. ', el('a', { href: '/admin.html#customers' }, 'Back to the admin page')); doc.body.insertBefore(bar, doc.body.firstChild); }
       if (!supportEntered) { supportEntered = true; api('support-enter'); }
     }
-    function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; statuses = b.statuses || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; chatAccess = b.chatAccess === true; chatAvailable = b.chatAvailable === true; if (chatAccess) startChatReplyMonitor(); if (support) supportBar(); views = b.views || []; if (b.ticketPrefs) { filter = Object.assign({ status: 'active', assignee: '', q: '', columnFilters: {} }, b.ticketPrefs.filters || {}); ticketColumns = Array.isArray(b.ticketPrefs.columns) && b.ticketPrefs.columns.length ? b.ticketPrefs.columns.slice() : ticketColumns; qBox.value = filter.q || ''; if (b.ticketPrefs.locale === 'es' || b.ticketPrefs.locale === 'en') locale = b.ticketPrefs.locale; else if (root.EffI18n) locale = root.EffI18n.getLocale(); if (root.EffI18n) root.EffI18n.setLocale(locale, { persist: false }); ticketPrefsSig = JSON.stringify({ filters: filter, columns: ticketColumns, locale: locale }); } labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); applyChatTheme(b.chatTheme || 'classic'); }); }
+    function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; statuses = b.statuses || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; chatAccess = b.chatAccess === true; chatAvailable = b.chatAvailable === true; canSuperviseChat = b.canSuperviseChat === true; if (chatAccess) startChatReplyMonitor(); if (support) supportBar(); views = b.views || []; if (b.ticketPrefs) { filter = Object.assign({ status: 'active', assignee: '', q: '', columnFilters: {} }, b.ticketPrefs.filters || {}); ticketColumns = Array.isArray(b.ticketPrefs.columns) && b.ticketPrefs.columns.length ? b.ticketPrefs.columns.slice() : ticketColumns; qBox.value = filter.q || ''; if (b.ticketPrefs.locale === 'es' || b.ticketPrefs.locale === 'en') locale = b.ticketPrefs.locale; else if (root.EffI18n) locale = root.EffI18n.getLocale(); if (root.EffI18n) root.EffI18n.setLocale(locale, { persist: false }); ticketPrefsSig = JSON.stringify({ filters: filter, columns: ticketColumns, locale: locale }); } labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); applyChatTheme(b.chatTheme || 'classic'); }); }
     function persistTicketPrefs() {
       var snapshot = { filters: filter, columns: ticketColumns, locale: locale }, signature = JSON.stringify(snapshot);
       if (signature === ticketPrefsSig) return;
@@ -297,6 +298,53 @@
         say(r.body.alreadyAssigned ? 'This conversation is already assigned to you.' : 'You accepted the conversation.');
         return fetchChatInbox(false).then(function () { open(number); });
       });
+    }
+    function loadChatSupervision() {
+      closePanes(); supervisorOpen = true; supervisorLoading = true; supervisorError = ''; supervisorRows = []; supervisorSelected = null; supervisorDetail = null; draw();
+      return refreshSupervisedChats();
+    }
+    function refreshSupervisedChats() {
+      supervisorLoading = true; draw();
+      return api('chat-supervision-inbox').then(function (r) {
+        supervisorLoading = false;
+        if (!r.ok) supervisorError = r.body.error || 'Could not load supervised conversations.';
+        else { supervisorRows = r.body.chats || []; supervisorError = ''; }
+        draw();
+      }).catch(function () { supervisorLoading = false; supervisorError = 'The supervision inbox could not be refreshed.'; draw(); });
+    }
+    function inspectSupervisedChat(number) {
+      supervisorSelected = Number(number); supervisorDetail = null; supervisorNote = ''; draw();
+      api('chat-monitor', { number: supervisorSelected }).then(function (r) {
+        if (!r.ok) { supervisorError = r.body.error || 'Could not open this conversation.'; return draw(); }
+        supervisorDetail = r.body; supervisorError = ''; draw();
+      });
+    }
+    function supervisorPane() {
+      var rows = supervisorRows || [], selected = supervisorDetail, ticket = selected && selected.ticket;
+      var fmt = function(v) { if (!v) return 'Just now'; var d=new Date(v); return isNaN(d.getTime())?'':d.toLocaleString(); };
+      var list = el('section',{class:'chat-supervisor-list'},el('div',{class:'chat-supervisor-list-head'},el('div',{},el('strong',{},'Team conversations'),el('span',{class:'m'},rows.length+' active chats')),el('button',{type:'button',class:'btn l sm',onclick:refreshSupervisedChats},'Refresh')));
+      if (supervisorLoading && !rows.length) list.appendChild(el('p',{class:'m'},'Loading active conversations…'));
+      else if (!rows.length) list.appendChild(el('div',{class:'chat-supervisor-empty'},el('strong',{},'No active chats right now'),el('p',{class:'m'},'New and assigned conversations will appear here.')));
+      rows.forEach(function(t){
+        var assignee=t.assignee_name||t.assignee_email||'Unassigned';
+        list.appendChild(el('button',{type:'button',class:'chat-supervisor-row'+(supervisorSelected===Number(t.number)?' selected':''),onclick:function(){inspectSupervisedChat(t.number);}},
+          el('span',{class:'chat-supervisor-avatar'},String(t.requester_name||t.requester_email||'V').trim().charAt(0).toUpperCase()),
+          el('span',{class:'chat-supervisor-row-copy'},el('strong',{},t.requester_name||t.requester_email||'Website visitor'),el('span',{},assignee),el('small',{},'#'+t.number+' · '+(t.page_title||t.page_url||'Website visitor'))),
+          el('span',{class:'chat-supervisor-status'},t.assignee_id?'Assigned':'Waiting')));
+      });
+      var detail = el('section',{class:'chat-supervisor-detail'});
+      if (!ticket) detail.appendChild(el('div',{class:'chat-supervisor-empty'},el('strong',{},'Select a conversation'),el('p',{class:'m'},'Monitor the transcript, leave private coaching for the agent, or take over when needed.')));
+      else {
+        detail.appendChild(el('div',{class:'chat-supervisor-detail-head'},el('div',{},el('span',{class:'chat-agent-eyebrow'},'READ-ONLY SUPERVISION'),el('h2',{},ticket.requester_name||ticket.requester_email||'Website visitor'),el('span',{class:'m'},'Ticket #'+ticket.number+' · '+(ticket.assignee?(ticket.assignee.name||ticket.assignee.email):'Unassigned'))),el('span',{class:'badge'},'Monitoring')));
+        if(selected.provenance&&selected.provenance.page_url) detail.appendChild(el('a',{href:selected.provenance.page_url,target:'_blank',rel:'noopener noreferrer',class:'chat-supervisor-page'},'Viewing: '+(selected.provenance.page_title||selected.provenance.page_url)));
+        var transcript=el('div',{class:'chat-supervisor-transcript','aria-label':'Read-only conversation transcript'});
+        (selected.messages||[]).forEach(function(m){transcript.appendChild(el('article',{class:'chat-supervisor-message '+(m.kind==='requester'?'visitor':'agent')},el('div',{class:'m'},(m.author_name|| (m.kind==='requester'?'Visitor':'Agent'))+' · '+fmt(m.created_at)+(m.kind==='note'?' · Private note':'')),el('p',{},m.body||'')));});
+        detail.appendChild(transcript);
+        var coach=el('div',{class:'chat-supervisor-coach'},el('label',{},'Private coaching note'),el('textarea',{placeholder:'Share guidance with the assigned agent…','aria-label':'Private coaching note',maxlength:'2000'}),el('button',{type:'button',class:'btn sm',onclick:function(){var field=coach.querySelector('textarea'),body=field.value.trim();if(!body)return say('Write a coaching note first.',true);api('chat-copilot',{number:ticket.number,body:body}).then(function(r){if(!r.ok)return say(r.body.error||'Could not send coaching note.',true);say('Private coaching note added.');field.value='';inspectSupervisedChat(ticket.number);});}},'Send private note'));
+        detail.appendChild(coach);
+        detail.appendChild(el('div',{class:'chat-supervisor-actions'},el('span',{class:'m'},'Monitoring is read-only; visitors do not see coaching notes.'),el('button',{type:'button',class:'btn sm',onclick:function(){if(!root.confirm||root.confirm('Take over this live conversation? The current agent will lose assignment.'))api('chat-takeover',{number:ticket.number}).then(function(r){if(!r.ok)return say(r.body.error||'Could not take over chat.',true);say('You are now assigned to this conversation.');loadChatSupervision();});}},'Take over chat')));
+      }
+      return el('div',{class:'chat-supervisor-workspace'},el('header',{class:'chat-supervisor-header'},el('div',{},el('span',{class:'chat-agent-eyebrow'},'LIVE CHAT OPERATIONS'),el('h1',{},'Supervisor workspace'),el('p',{class:'m'},'A team-wide view of active conversations with transparent, permission-controlled oversight.')),el('span',{class:'chat-supervisor-live'},'● Active oversight')),supervisorError?el('p',{class:'msg err',role:'alert'},supervisorError):null,el('div',{class:'chat-supervisor-layout'},list,detail));
     }
     function chatInboxPane() {
       var rows = (chatInboxRows || []).slice(), history = chatInboxView === 'history', waiting = rows.filter(function (t) { return !history && !t.assignee_id; }).sort(function (a, b) { return new Date(a.created_at || a.updated_at || 0) - new Date(b.created_at || b.updated_at || 0); }), assigned = rows.filter(function (t) { return !!t.assignee_id; }).sort(function (a, b) { var aNeedsReply = a.chat_last_public_message_kind === 'requester' ? 1 : 0, bNeedsReply = b.chat_last_public_message_kind === 'requester' ? 1 : 0; return bNeedsReply - aNeedsReply || new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); }), needsReply = assigned.filter(function (t) { return t.chat_last_public_message_kind === 'requester'; });
@@ -1274,13 +1322,14 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = (chatInboxOpen || chatConversationOpen) ? 'chat' : integrationsOpen ? 'integrations' : ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = supervisorOpen ? 'supervisor' : (chatInboxOpen || chatConversationOpen) ? 'chat' : integrationsOpen ? 'integrations' : ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
       if (has('live_chat') && role !== 'light' && chatAccess) rail.appendChild(item('chat', 'Live Chat', 'data-chat-inbox', loadChatInbox));
+      if (has('live_chat') && canSuperviseChat) rail.appendChild(item('supervisor', 'Live Chat supervision', 'data-chat-supervision', loadChatSupervision));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
       if (role !== 'light' && has('itsm')) { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
       if (role !== 'light') rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems));
@@ -2814,7 +2863,7 @@
       }
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, chatInboxOpen ? chatInboxPane() : integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, supervisorOpen ? supervisorPane() : chatInboxOpen ? chatInboxPane() : integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
       var nextThread = main.querySelector('.thread');
       if (nextThread) {
         var threadNumber = nextThread.getAttribute('data-ticket-number');

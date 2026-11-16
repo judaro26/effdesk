@@ -1177,3 +1177,39 @@ html[data-chat-theme="classic"] .chat-inbox,html[data-chat-theme="classic"] .cha
  .deskapp .chat-agent-workspace .chat-agent-conversation>.info{max-height:none}
  .deskapp .chat-agent-conversation .chat-theme-quick-select{max-width:100%;min-width:0}
 }
+
+
+/* Dedicated Live Chat supervisor workspace */
+.chat-supervisor-workspace{display:flex;flex-direction:column;gap:18px;padding:22px;min-height:calc(100vh - 110px);background:var(--surface,#fff);border:1px solid var(--line,#e5e7eb);border-radius:18px}
+.chat-supervisor-header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.chat-supervisor-header h1{margin:4px 0;font-size:25px;letter-spacing:-.04em}
+.chat-supervisor-header p{margin:0}
+.chat-supervisor-live{white-space:nowrap;color:var(--green,#16845b);font-size:12px;font-weight:700;background:var(--green-soft,#eaf7f0);padding:8px 11px;border-radius:99px}
+.chat-supervisor-layout{display:grid;grid-template-columns:minmax(260px,350px) minmax(0,1fr);gap:16px;min-height:570px;flex:1}
+.chat-supervisor-list,.chat-supervisor-detail{min-width:0;border:1px solid var(--line,#e5e7eb);border-radius:14px;background:var(--panel,#fff);overflow:hidden}
+.chat-supervisor-list-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px;border-bottom:1px solid var(--line,#e5e7eb)}
+.chat-supervisor-list-head>div{display:flex;flex-direction:column;gap:3px}
+.chat-supervisor-row{display:flex;align-items:center;gap:11px;width:100%;padding:13px 14px;text-align:left;border:0;border-bottom:1px solid var(--line,#edf0f3);background:transparent;color:inherit;cursor:pointer}
+.chat-supervisor-row:hover,.chat-supervisor-row.selected{background:var(--hover,#f5f7fa)}
+.chat-supervisor-avatar{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:12px;background:var(--accent-soft,#edf3ff);font-weight:750}
+.chat-supervisor-row-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.chat-supervisor-row-copy strong,.chat-supervisor-row-copy span,.chat-supervisor-row-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-supervisor-row-copy span,.chat-supervisor-row-copy small{font-size:12px;color:var(--muted,#6b7280)}
+.chat-supervisor-status{font-size:10px;font-weight:700;color:var(--muted,#6b7280)}
+.chat-supervisor-empty{display:grid;place-content:center;min-height:220px;padding:25px;text-align:center}
+.chat-supervisor-empty p{max-width:290px;margin:6px auto 0}
+.chat-supervisor-detail{display:flex;flex-direction:column;min-height:570px}
+.chat-supervisor-detail-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--line,#e5e7eb)}
+.chat-supervisor-detail-head h2{margin:4px 0;font-size:19px}
+.chat-supervisor-page{display:block;padding:10px 18px;background:var(--panel-muted,#f7f8fa);font-size:12px;text-decoration:none}
+.chat-supervisor-transcript{display:flex;flex:1;flex-direction:column;gap:10px;min-height:230px;max-height:440px;overflow:auto;padding:16px}
+.chat-supervisor-message{max-width:82%;padding:10px 13px;border:1px solid var(--line,#e5e7eb);border-radius:12px;background:var(--panel-muted,#f8fafc)}
+.chat-supervisor-message.visitor{align-self:flex-start}
+.chat-supervisor-message.agent{align-self:flex-end;background:var(--accent-soft,#edf3ff)}
+.chat-supervisor-message p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-supervisor-coach{display:grid;gap:8px;padding:14px 18px;border-top:1px solid var(--line,#e5e7eb)}
+.chat-supervisor-coach textarea{width:100%;min-height:76px;resize:vertical;padding:10px;border:1px solid var(--line,#d8dde5);border-radius:10px;font:inherit;background:var(--surface,#fff);color:inherit}
+.chat-supervisor-coach .btn{justify-self:end}
+.chat-supervisor-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-top:1px solid var(--line,#e5e7eb);background:var(--panel-muted,#fafbfc)}
+@media(max-width:850px){.chat-supervisor-layout{grid-template-columns:1fr}.chat-supervisor-list{max-height:310px;overflow:auto}.chat-supervisor-detail{min-height:440px}}
+@media(max-width:520px){.chat-supervisor-workspace{padding:13px}.chat-supervisor-header{align-items:flex-start;flex-direction:column}.chat-supervisor-actions{align-items:flex-start;flex-direction:column}.chat-supervisor-message{max-width:94%}}

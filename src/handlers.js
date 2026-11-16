@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, heartbeatChat, getChatTeam, transferChat, monitorChat, copilotChat, takeoverChat } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, heartbeatChat, getChatTeam, transferChat, listSupervisedChats, monitorChat, copilotChat, takeoverChat } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -211,7 +211,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       const fields = planHas(ent, 'custom_fields') ? (await listFields(pool, orgId)).fields : [];
       const [agents, labels, queues, clients, macros, views, statuses, ticketPrefs, chatStatus] = await Promise.all([listAgents(pool, orgId), desk.labelsInUse(pool, orgId), planHas(ent, 'queues') ? desk.listQueues(pool, orgId) : { queues: [] }, planHas(ent, 'clients') ? desk.listClients(pool, orgId) : { clients: [] }, desk.listMacros(pool, orgId), planHas(ent, 'saved_views') ? desk.listViews(pool, orgId, actor) : { views: [] }, planHas(ent, 'queues') ? desk.listStatuses(pool, orgId) : { statuses: [] }, desk.getTicketPreferences(pool, orgId, actor.id), planHas(ent, 'live_chat') && role !== 'light' ? getChatAvailability(pool, orgId, actor.id) : { access: false, available: false }]);
       const pref = (await pool.query('select theme, chat_theme, notify, avatar from desk_prefs where user_id = $1', [actor.id])).rows[0], theme = usableTheme(pref?.theme, planHas(ent, 'themes')), chatTheme = usableChatTheme(pref?.chat_theme);
-      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, chatTheme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, chatAccess: chatStatus.access, chatAvailable: chatStatus.available, features: [...ent.features], plan: ent.plan, admin: isAdmin }; break;
+      r = { ok: true, support, perms: cr ? cr.permissions : null, customRole: cr ? cr.name : null, fields, theme, chatTheme, avatar: pref ? pref.avatar : null, notify: pref ? pref.notify : true, sla: planHas(ent, 'sla') ? (await getSla(pool, orgId)).policies : null, agents, labels: labels.labels, queues: queues.queues, statuses: statuses.statuses, clients: clients.clients, macros: macros.macros, views: views.views, ticketPrefs: ticketPrefs.ticketPrefs, chatAccess: chatStatus.access, chatAvailable: chatStatus.available, features: [...ent.features], plan: ent.plan, admin: isAdmin, canSuperviseChat }; break;
     }
     case 'sandbox-get': {
       if ((g = need('sandbox'))) return g;
@@ -305,6 +305,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
     case 'chat-heartbeat': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await heartbeatChat(pool, orgId, actor.id); break; }
+    case 'chat-supervision-inbox': {
+      if ((g = need('live_chat'))) return g;
+      if (!canSuperviseChat) return json(403, { error: 'Your role does not allow supervising live chats.' });
+      r = await listSupervisedChats(pool, orgId);
+      break;
+    }
     case 'chat-monitor': {
       if ((g = need('live_chat'))) return g;
       if (!canSuperviseChat) return json(403, { error: 'Your role does not allow monitoring other agents’ live chats.' });

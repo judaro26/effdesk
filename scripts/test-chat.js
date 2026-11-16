@@ -278,9 +278,13 @@ const supervisorAccess = await A(olivia, 'chat-access-set', { userId: ann.user.i
 const managerMonitor = await A(olivia, 'chat-monitor', { number: finalChat.body.number });
 check('workspace admins can monitor an active live chat without changing its assignment', supervisorAccess.status === 200 && managerMonitor.status === 200 && managerMonitor.body.readOnly === true && managerMonitor.body.ticket.number === finalChat.body.number);
 check('monitoring returns the transcript and visitor page context but no write capability', managerMonitor.body.messages.some(m => m.body === 'Please send me a transcript.') && managerMonitor.body.provenance.page_url === 'https://shop.example/products/new' && managerMonitor.body.readOnly === true);
+const supervisorInbox = await A(olivia, 'chat-supervision-inbox', {});
+check('workspace admins can load a tenant-scoped active Live Chat supervision inbox', supervisorInbox.status === 200 && supervisorInbox.body.chats.some(t => t.number === finalChat.body.number) && supervisorInbox.body.counts.total >= 1);
 check('ordinary agents cannot monitor another agent chat without the supervision permission', (await A(ann, 'chat-monitor', { number: finalChat.body.number })).status === 403);
 const supervisorRole = await A(olivia, 'role-save', { name: 'Chat Supervisor', permissions: ['chat_supervise'] });
 await A(olivia, 'role-assign', { userId: ann.user.id, roleId: supervisorRole.body.id });
+const customSupervisorInbox = await A(ann, 'chat-supervision-inbox', {});
+check('a custom role with chat_supervise can access the supervisor inbox', customSupervisorInbox.status === 200 && customSupervisorInbox.body.chats.some(t => t.number === finalChat.body.number));
 const privateCoach = await A(ann, 'chat-copilot', { number: finalChat.body.number, body: 'Try confirming the visitor’s delivery postcode before proceeding.' });
 const coachedMessages = (await A(olivia, 'get', { number: finalChat.body.number })).body.messages;
 check('a custom role with Live Chat supervision can add private coaching notes', privateCoach.status === 200 && privateCoach.body.message.kind === 'note' && coachedMessages.some(m => m.kind === 'note' && m.body.includes('delivery postcode')));
