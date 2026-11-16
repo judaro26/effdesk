@@ -91,7 +91,11 @@ export async function enqueueTicketReply(pool, orgId, number, messageRowId) {
       const m = (await c.query('select id, delivery from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
       const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
       const sentToday = (await c.query("select count(*)::int n from ticket_messages where org_id = $1 and delivery = 'sent' and created_at > now() - interval '24 hours'", [orgId])).rows[0].n;
-      return { t, m, inbox, sentToday };
+      const prev = (await c.query(
+        "select message_id from ticket_messages where org_id = $1 and ticket_id = $2 and message_id is not null and (created_at, id) < (select created_at, id from ticket_messages where org_id = $1 and id = $3) order by created_at desc, id desc limit 5",
+        [orgId, t.id, messageRowId]
+      )).rows.map(row => row.message_id);
+      return { t, m, inbox, sentToday, prev };
     });
     if (!data?.t || !data.m) return { delivery: 'skipped', why: 'missing' };
     if (!data.inbox) { await mark('skipped'); return { delivery: 'skipped', why: 'no-inbox' }; }
@@ -99,7 +103,7 @@ export async function enqueueTicketReply(pool, orgId, number, messageRowId) {
     if (data.sentToday >= mailLimit(ent)) { await mark('skipped'); return { delivery: 'skipped', why: 'limit' }; }
     const job = await enqueueJob(pool, orgId, {
       type: 'ticket.email.deliver',
-      payload: { number: Number(number), messageRowId: String(messageRowId) },
+      payload: { number: Number(number), messageRowId: String(messageRowId), previousMessageIds: data.prev },
       idempotencyKey: 'ticket-message:' + String(messageRowId),
       maxAttempts: 8
     });
@@ -123,7 +127,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
       const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
       const orgName = (await c.query('select name from "organization" where id = $1', [orgId])).rows[0]?.name || '';
       const sentToday = (await c.query("select count(*)::int n from ticket_messages where org_id = $1 and delivery = 'sent' and created_at > now() - interval '24 hours'", [orgId])).rows[0].n;
-      const prev = (await c.query("select message_id from ticket_messages where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at desc limit 5", [orgId, t.id])).rows.map(r => r.message_id);
+      const prev = Array.isArray(options.previousMessageIds) ? options.previousMessageIds.map(String).slice(0, 5) : (await c.query("select message_id from ticket_messages where org_id = $1 and ticket_id = $2 and message_id is not null order by created_at desc, id desc limit 5", [orgId, t.id])).rows.map(r => r.message_id);
       return { t, m, settings, inbox, orgName, sentToday, prev };
     });
     const mark = (d, mid) => withOrg(pool, orgId, c => c.query('update ticket_messages set delivery = $3, message_id = coalesce($4, message_id) where org_id = $1 and id = $2', [orgId, messageRowId, d, mid || null]));
