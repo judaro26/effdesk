@@ -114,3 +114,5 @@ check('ticket detail returns opt-in visitor coordinates to the visitor overview'
 check('the active visitor overview redraws when new location coordinates arrive', js.includes('var locationChanged = priorProvenance.latitude !== nextProvenance.latitude') && js.includes('if (locationChanged) { draw(); return; }'));
 
 check('the embedded chat iframe permits browser geolocation only for the visitor-initiated sharing flow', embedWidget.includes("frame.setAttribute('allow', 'geolocation')") && widget.includes('Share approximate location'));
+
+check('an already-open agent conversation picks up visitor-ended status on its 15-second refresh', js.includes('var latestChat = chatWorkspaceRows.filter') && js.includes('current.ticket.visitor_ended = true') && js.includes('The visitor ended this conversation.'));
