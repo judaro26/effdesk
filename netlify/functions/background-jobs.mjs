@@ -14,7 +14,7 @@ export default async function backgroundJobs() {
     'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, store, process.env, orgId, payload, job),
     'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job),
     'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, process.env, orgId, payload, job)
-  }, { batchSize: 5, leaseMs: 120000 });
+  }, { batchSize: Math.max(1, Math.min(50, Number(process.env.BACKGROUND_JOB_BATCH_SIZE) || 10)), leaseMs: 120000 });
   return new Response(JSON.stringify({ ok: true, ...summary }), {
     status: 200,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
