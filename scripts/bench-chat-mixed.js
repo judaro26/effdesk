@@ -40,13 +40,12 @@ function finishLease(client) {
   connectionLease.push(performance.now()-started);
   leaseStarted.delete(client);
 }
+// node-postgres emits acquire/release for both callback and promise connect() overloads.
+pool.on('acquire',client=>leaseStarted.set(client,performance.now()));
+pool.on('release',(error,client)=>finishLease(client));
 function instrumentClient(client) {
-  if(!client)return;
-  leaseStarted.set(client,performance.now());
-  if(client.__effdeskMixedQueryTiming)return;
+  if(!client || client.__effdeskMixedQueryTiming)return;
   client.__effdeskMixedQueryTiming=true;
-  const originalRelease=client.release?.bind(client);
-  if(originalRelease)client.release=(...args)=>{finishLease(client);return originalRelease(...args);};
   const originalQuery=client.query.bind(client);
   client.query=(...queryArgs)=>{
     if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
