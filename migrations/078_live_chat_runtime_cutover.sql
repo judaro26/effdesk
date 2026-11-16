@@ -28,3 +28,8 @@ create unique index if not exists tickets_source_chat_conversation_idx
   on tickets(source_chat_conversation_id) where source_chat_conversation_id is not null;
 create index if not exists chat_conversations_org_updated_idx
   on chat_conversations(org_id,updated_at desc,id desc);
+
+alter table chat_messages add column if not exists idempotency_key text;
+create unique index if not exists chat_messages_org_idempotency_idx
+  on chat_messages(org_id,conversation_id,author_id,idempotency_key)
+  where idempotency_key is not null;
