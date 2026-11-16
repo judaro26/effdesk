@@ -1706,7 +1706,7 @@
         }).catch(function () { ticketHistoryLoading = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
       };
       var after = function () { return Promise.all([open(t.number, chatConversationOpen), refresh()]); };
-      var update = function (patch) { if (chatConversationOpen && patch.status === 'closed') return api('chat-end-agent', { number: t.number }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
+      var update = function (patch) { if (chatConversationOpen) return api(patch.status === 'closed' ? 'chat-end-agent' : 'chat-update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
         var put = function (val) { var c = {}; c[f.key] = val; update({ custom: c }); };
         if (f.type === 'dropdown') return sel(f.label, v === undefined ? '' : String(v), [['', '—']].concat(f.options.map(function (o) { return [o, o]; })), function (x) { put(x); });
