@@ -39,6 +39,7 @@ create sequence if not exists chat_conversation_number_seq start with 1000000000
 alter table chat_conversations add column if not exists chat_number bigint;
 update chat_conversations set chat_number=1000000000000+id where chat_number is null;
 alter table chat_conversations alter column chat_number set default nextval('chat_conversation_number_seq');
+alter table chat_conversations alter column chat_number set not null;
 create unique index if not exists chat_conversations_org_chat_number_idx
   on chat_conversations(org_id,chat_number);
 
