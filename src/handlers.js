@@ -305,6 +305,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
     case 'chat-heartbeat': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await heartbeatChat(pool, orgId, actor.id); break; }
+    case 'chat-presence': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed || role === 'light') return json(403, { error: 'Live Chat access is required.' });
+      r = await heartbeatChatPresence(pool, orgId, actor, b.number, b.typing === true);
+      break;
+    }
     case 'chat-supervision-inbox': {
       if ((g = need('live_chat'))) return g;
       if (!canSuperviseChat) return json(403, { error: 'Your role does not allow supervising live chats.' });
