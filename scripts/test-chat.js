@@ -302,6 +302,18 @@ const endedPollAfter = (await pool.query('select chat_seen_at::text as seen from
 check('a visitor can end their own chat and polling reports it as ended', visitorEnd.status === 200 && finalPoll.status === 200 && finalPoll.body.ended === true);
 check('polling an ended chat does not keep its visitor-presence heartbeat alive', endedPollBefore === endedPollAfter);
 check('ending a chat is idempotent and the visitor cannot send another message afterward', (await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7')).status === 200 && (await C('POST', '/api/chat/send?org=acme', { number: finalChat.body.number, token: finalChat.body.token, message: 'After ending' }, '7.7.7.7')).status === 409);
+
+const cooldownVisitorId = crypto.randomBytes(32).toString('hex');
+const cooldownChat = await C('POST', '/api/chat/start?org=acme', { name:'Cooldown Visitor', email:'cooldown@example.test', message:'One quick question', visitorId:cooldownVisitorId });
+const cooldownEnd = await C('POST', '/api/chat/end?org=acme', { number:cooldownChat.body.number, token:cooldownChat.body.token });
+const blockedRestart = await C('POST', '/api/chat/start?org=acme', { name:'Cooldown Visitor', email:'cooldown@example.test', message:'Another question', visitorId:cooldownVisitorId });
+check('visitor-ended chats enforce the configured 15-second restart cooldown server-side', cooldownChat.status===200 && cooldownEnd.status===200 && blockedRestart.status===429 && blockedRestart.body.retryAfterSeconds>0 && blockedRestart.body.retryAfterSeconds<=15);
+check('the cooldown error tells the visitor how long to wait', blockedRestart.body.error.includes('seconds before starting another chat'));
+const cooldownOff = await A(olivia,'chat-save',{restartCooldownSeconds:0});
+const allowedRestart = await C('POST','/api/chat/start?org=acme',{name:'Cooldown Visitor',email:'cooldown@example.test',message:'Restart after cooldown disabled',visitorId:cooldownVisitorId});
+check('workspace admins can disable visitor restart cooldown without changing other chat settings',cooldownOff.status===200 && cooldownOff.body.settings.restart_cooldown_seconds===0 && allowedRestart.status===200);
+check('visitor restart cooldown rejects values outside 0 to 3600 seconds',(await A(olivia,'chat-save',{restartCooldownSeconds:3601})).status===400);
+await A(olivia,'chat-save',{restartCooldownSeconds:15});
 // Exercise a burst of independent visitors and simultaneous visitor replies against the real chat API.
 const concurrentVisitors = await Promise.all(Array.from({ length: 12 }, (_, i) => {
   const id = i + 1;
