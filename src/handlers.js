@@ -5,7 +5,7 @@ import { signupContext } from './auth.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
-import { getMailSettings, saveMailSettings, sendTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
+import { getMailSettings, saveMailSettings, sendTicketReply, enqueueTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
 import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, storeInlineDataImages, prepareInlineDataImages, MAX_UPLOAD, cleanName } from './attachments.js';
 import { effectiveHelpSettings, getHelpSettings, saveHelpSettings, saveHelpImage, readHelpImage, MAX_IMAGE } from './help.js';
 import { clean as cleanHtml, withToc } from './html-clean.js';
@@ -473,9 +473,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       }
       if (b.follow) await desk.follow(pool, orgId, actor, num, true);
       if (first === 'agent' && mailer) {
-        const rows = store ? await filesOfMessage(pool, orgId, r.messageRowId) : [], files = [];
-        for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
-        const d = await sendTicketReply(pool, mailer, env, orgId, num, r.messageRowId, files); r.email = d.delivery; r.emailWhy = d.why;
+        const d = await enqueueTicketReply(pool, orgId, num, r.messageRowId); r.email = d.delivery; r.emailWhy = d.why;
       }
       if (planHas(ent, 'triggers') && first === 'requester') await runTriggers(pool, mailer, env, orgId, 'created', num, String(b.body || ''));
       if (b.patch && b.patch.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, num);
@@ -505,9 +503,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
         const chatIsOpen = await chatOpen(pool, orgId, b.number);
         if (chatIsOpen) { r.email = 'skipped'; r.emailWhy = 'chat-open'; }
         else if (mailer) {
-          const rows = store ? await filesOfMessage(pool, orgId, r.message.id) : [], files = [];
-          for (const f of rows) { const x = await readFile(pool, store, orgId, f.id); if (x) files.push(x); }
-          const d = await sendTicketReply(pool, mailer, env, orgId, Number(b.number), r.message.id, files, { html: b.html }); r.email = d.delivery; r.emailWhy = d.why;
+          const d = await enqueueTicketReply(pool, orgId, Number(b.number), r.message.id); r.email = d.delivery; r.emailWhy = d.why;
         } else { r.email = 'skipped'; r.emailWhy = 'mailer-unavailable'; }
       }
       if (r.ok && b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, b.number);
@@ -920,7 +916,7 @@ export async function apiV1(req, { pool, mailer, env = process.env }) {
   }
   if (parts[2] === 'comments' && !parts[3] && m === 'POST') {
     const internal = b.public === false, r = await addMessage(pool, orgId, actor, n, { body: b.body, internal, status: internal ? undefined : b.status }); if (!r.ok) return out(r);
-    if (!internal && mailer) { const d = await sendTicketReply(pool, mailer, env, orgId, n, r.message.id, []); r.email = d.delivery; await emitHook(pool, orgId, 'message.agent', n, { message: { author: actor.name, body: String(b.body || '').slice(0, 2000) } }); if (b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, n); }
+    if (!internal && mailer) { const d = await enqueueTicketReply(pool, orgId, n, r.message.id); r.email = d.delivery; await emitHook(pool, orgId, 'message.agent', n, { message: { author: actor.name, body: String(b.body || '').slice(0, 2000) } }); if (b.status === 'solved') await surveyIfSolved(pool, mailer, env, orgId, n); }
     return json(201, { message: { id: r.message.id, kind: r.message.kind }, email: r.email || null });
   }
   return json(404, { error: 'Not found.' });
