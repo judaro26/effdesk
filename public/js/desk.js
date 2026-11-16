@@ -31,7 +31,7 @@
     var orgId = '', appBase = '', orgs = [], agents = [], list = [], counts = {}, filter = { status: 'active', assignee: '', q: '', columnFilters: {} }, current = null, note = '', bad = false, creating = false, settings = null, role = '', slug = '', pending = [], articles = null, editing = null, openTabs = [], draft = '', draftHtml = '', draftRequestId = '', mode = 'reply', me = '', meId = '', meName = '';
     var approvalInbox = false, approvalRows = null, approvalLoading = false, ticketTasks = {}, ticketApprovals = {};
     var supervisorOpen = false, supervisorRows = [], supervisorLoading = false, supervisorError = '', supervisorSelected = null, supervisorDetail = null, supervisorNote = '', canSuperviseChat = false;
-    var chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxCursorStack = [''], chatInboxPageIndex = 0, chatInboxHasMore = false, chatInboxPageNextCursor = null, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
+    var chatLandingOpen = false, chatLandingRows = [], chatLandingAgents = [], chatLandingLoading = false, chatLandingError = '', chatLandingTimer = null, chatInboxOpen = false, chatConversationOpen = false, chatWorkspaceRows = [], chatWorkspaceLoading = false, chatWorkspaceTimer = null, chatWorkspaceCapacity = { active: 0, max: 3, remaining: 3 }, chatTeamRows = [], chatTeamLoading = false, chatTransferOpen = false, chatInboxRows = [], chatInboxLoading = false, chatInboxError = '', chatInboxTimer = null, chatInboxSeq = 0, chatInboxRequest = 0, chatAccess = false, chatAvailable = false, chatInboxPrimed = false, chatSoundEnabled = false, chatAudioContext = null, chatInboxOffset = 0, chatInboxLimit = 40, chatInboxCursorStack = [''], chatInboxPageIndex = 0, chatInboxHasMore = false, chatInboxPageNextCursor = null, chatInboxTotal = 0, chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }, chatInboxQuery = '', chatInboxView = 'all', chatInboxSearchTimer = null;
     var chatReplyCursor = null, chatReplyMonitorTimer = null, chatReplyMonitorBusy = false, chatReplyMonitorDelay = 30000, chatReplyAlertTimer = null;
     var sandboxInfo = null, sandboxLoading = false;
     var incidentsOpen = false, incidentRows = null, incidentLoading = false, incidentDetail = null, incidentServices = [], incidentSelected = 0, incidentSeverity = '', incidentMajorOnly = false, serviceEditorOpen = false;
@@ -76,7 +76,7 @@
     var slaText = function (t) { if (!t) return ''; if (t.state === 'met') return 'met'; if (t.state === 'missed') return 'missed'; var d = t.due - Date.now(); return d < 0 ? 'breached ' + dur(-d) + ' ago' : 'due in ' + dur(d); };
     var slaChips = function (s) { return s ? [s.first ? el('span', { class: 'sla s-' + s.first.state, 'data-sla': 'first' }, 'First reply ' + slaText(s.first)) : null, s.resolve ? el('span', { class: 'sla s-' + s.resolve.state, 'data-sla': 'resolve' }, 'Solve ' + slaText(s.resolve)) : null] : []; };
     var lock = function (f) { return el('span', { class: 'lock', 'data-lock': f }, 'Part of the ' + PLAN_OF[f] + ' plan. ', el('a', { href: '/app.html' }, 'Upgrade')); };
-    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatInboxOpen = false; chatConversationOpen = false; supervisorOpen = false; supervisorSelected = null; supervisorDetail = null; chatInboxSeq++; if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; } integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
+    var closePanes = function () { if (current && current.ticket) saveTicketDraft(current.ticket.number); if (menuOpen) setMenu(false); chatLandingOpen = false; if (chatLandingTimer) { root.clearTimeout(chatLandingTimer); chatLandingTimer = null; } chatInboxOpen = false; chatConversationOpen = false; supervisorOpen = false; supervisorSelected = null; supervisorDetail = null; chatInboxSeq++; if (chatInboxTimer) { root.clearTimeout(chatInboxTimer); chatInboxTimer = null; } integrationsOpen=false;ciOpen=false; ciSelected=0; ciDetail=null; ciEditing=null; changesOpen = false; changeSelected = 0; changeDetail = null; changeCreating = false; changeApprovalStages = []; problemsOpen = false; problemSelected = 0; problemDetail = null; problemCreating = false; incidentsOpen = false; incidentSelected = 0; incidentDetail = null; serviceEditorOpen = false; approvalInbox = false; winClosed = false; mDetail = false; picked = {}; home = false; current = null; creating = false; settings = null; articles = null; editing = null; manage = ''; profile = false; report = null; mergeArmed = false; editMsg = null; };
     var noteFrom = function (r) { return say(r.body.error || 'That did not work.', true); };
 
     function applyTheme(id) { theme = id; doc.documentElement.setAttribute('data-theme', id); try { root.localStorage.setItem('eff_theme', id); } catch (e) { /* storage may be blocked */ } }
@@ -210,6 +210,56 @@
       api('contact-get',{email:email}).then(function(r){if(!r.ok)return say(r.body.error||'Could not open contact.',true);contactProfile=r.body;draw();});
     }
     function goViews() { closePanes(); return refresh(); }
+    function loadChatLanding() {
+      if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
+      closePanes(); chatLandingOpen = true; chatLandingLoading = true; chatLandingError = ''; chatLandingRows = []; chatLandingAgents = []; draw();
+      return fetchChatLanding(true);
+    }
+    function fetchChatLanding(showLoading) {
+      if (!chatLandingOpen) return Promise.resolve();
+      if (chatLandingTimer) { root.clearTimeout(chatLandingTimer); chatLandingTimer = null; }
+      if (showLoading) { chatLandingLoading = true; draw(); }
+      return Promise.all([api('chat-inbox', { limit: 100, cursorMode: true, view: 'all' }), api('chat-team', {})]).then(function (results) {
+        if (!chatLandingOpen) return;
+        var inbox = results[0], teamResult = results[1];
+        chatLandingLoading = false;
+        if (!inbox.ok) chatLandingError = inbox.body.error || 'Could not load current conversations.';
+        else { chatLandingError = ''; chatLandingRows = inbox.body.tickets || []; }
+        if (teamResult.ok) chatLandingAgents = teamResult.body.agents || [];
+        draw();
+        chatLandingTimer = root.setTimeout(function () { fetchChatLanding(false); }, 15000);
+      }).catch(function () { if (!chatLandingOpen) return; chatLandingLoading = false; chatLandingError = 'The Live Chat overview could not refresh. Check your connection.'; draw(); chatLandingTimer = root.setTimeout(function () { fetchChatLanding(false); }, 20000); });
+    }
+    function joinChatQueue() {
+      if (chatAvailable) return loadChatInbox();
+      api('chat-availability-set', { available: true }).then(function (r) {
+        if (!r.ok) return say(r.body.error || 'Could not join the Live Chat queue.', true);
+        chatAvailable = r.body.available === true; drawMenu(); loadChatInbox();
+      });
+    }
+    function chatLandingPane() {
+      var active = chatLandingRows.filter(function (t) { return ['open','pending','on_hold'].includes(t.status); });
+      var ended = chatLandingRows.filter(function (t) { return t.visitor_ended === true; });
+      var online = chatLandingAgents.filter(function (a) { return a.online === true; });
+      var fmtName = function (a) { return a.name || a.email || 'Agent'; };
+      var conversationCard = function (t) {
+        var a = chatLandingAgents.filter(function (x) { return x.user_id === t.assignee_id; })[0];
+        return el('button', { type:'button', class:'chat-landing-conversation' + (t.visitor_ended ? ' is-ended' : ''), onclick:function(){open(t.number);} },
+          el('span',{class:'chat-landing-avatar'},initial(t.requester_name || t.requester_email || 'V')),
+          el('span',{class:'chat-landing-conversation-copy'},el('strong',{},t.requester_name || t.requester_email || 'Website visitor'),el('span',{},String(t.subject || 'Live Chat').replace(/^\\s*chat\\s*:\\s*/i,'').slice(0,72)),el('small',{},'#'+t.number+' · '+(t.visitor_ended?'Visitor ended':(a?fmtName(a):'Waiting for an agent')))),
+          el('span',{class:'chat-landing-status'+(t.visitor_ended?' ended':'')},t.visitor_ended?'Ended':cap(t.status)));
+      };
+      return el('div',{class:'chat-landing'},
+        el('header',{class:'chat-landing-hero'},el('div',{},el('span',{class:'chat-agent-eyebrow'},'EFFDESK · LIVE CHAT OPERATIONS'),el('h1',{},'Live Chat'),el('p',{},'A real-time view of your team and customer conversations.')),el('div',{class:'chat-landing-actions'},el('span',{class:'chat-landing-live'+(chatAvailable?' online':'')},chatAvailable?'● You are in the queue':'○ You are not in the queue'),el('button',{type:'button',class:'btn',onclick:joinChatQueue},chatAvailable?'Open chat grid':'Join queue'))),
+        chatLandingError?el('p',{class:'msg err',role:'alert'},chatLandingError):null,
+        el('div',{class:'chat-landing-metrics'},el('div',{class:'chat-landing-metric'},el('span',{},'Active conversations'),el('strong',{},String(active.length))),el('div',{class:'chat-landing-metric'},el('span',{},'Agents online'),el('strong',{},String(online.length))),el('div',{class:'chat-landing-metric'},el('span',{},'Waiting for an agent'),el('strong',{},String(active.filter(function(t){return !t.assignee_id;}).length))),el('div',{class:'chat-landing-metric'},el('span',{},'Ended by visitors'),el('strong',{},String(ended.length)))),
+        el('div',{class:'chat-landing-layout'},
+          el('section',{class:'chat-landing-panel'},el('div',{class:'chat-landing-panel-head'},el('div',{},el('h2',{},'Current conversations'),el('p',{},'Open any conversation to review or join the exchange')),el('button',{type:'button',class:'btn l sm',onclick:loadChatInbox},'Open chat grid →')),active.length?el('div',{class:'chat-landing-grid'},active.map(conversationCard)):el('div',{class:'chat-landing-empty'},chatLandingLoading?'Loading conversations…':'No active conversations right now.'),
+            ended.length?el('div',{class:'chat-landing-ended'},el('strong',{},'Recently ended by visitors'),ended.slice(0,6).map(conversationCard)):null),
+          el('aside',{class:'chat-landing-panel chat-landing-roster'},el('div',{class:'chat-landing-panel-head'},el('div',{},el('h2',{},'Agents online'),el('p',{},'Live availability and current workload')),el('span',{class:'chat-landing-count'},String(online.length))),
+            online.length?el('div',{class:'chat-landing-agent-list'},online.map(function(a){return el('div',{class:'chat-landing-agent'},avatarEl('',fmtName(a),null),el('span',{class:'chat-landing-agent-copy'},el('strong',{},fmtName(a)),el('small',{},String(a.active_chats||0)+' / '+String(a.max_concurrent||3)+' chats')) ,el('span',{class:'chat-landing-agent-dot',title:'Online'}));})):el('div',{class:'chat-landing-empty'},'No agents are currently online.'),
+            el('div',{class:'chat-landing-roster-foot'},chatLandingLoading?'Refreshing team…':'Auto-refresh · 15 seconds'))));
+    }
     function loadChatInbox() {
       if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
       closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
@@ -1322,13 +1372,13 @@
 
     // ── chrome: the rail and the tabs ──
     function drawChrome() {
-      var where = supervisorOpen ? 'supervisor' : (chatInboxOpen || chatConversationOpen) ? 'chat' : integrationsOpen ? 'integrations' : ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
+      var where = supervisorOpen ? 'supervisor' : (chatLandingOpen || chatInboxOpen || chatConversationOpen) ? 'chat' : integrationsOpen ? 'integrations' : ciOpen ? 'assets' : changesOpen ? 'changes' : problemsOpen ? 'problems' : incidentsOpen ? 'itsm' : approvalInbox ? 'approvals' : home ? 'home' : articles ? 'help' : settings ? 'mail' : manage ? 'manage' : report ? 'reports' : 'tickets';
       var item = function (name, label, data, onclick) { var b = el('button', { type: 'button', class: 'ri', 'aria-label': label, title: label, 'aria-current': String(where === name) }, icon(name)); b.setAttribute(data, '1'); b.addEventListener('click', onclick); return b; };
       while (rail.firstChild) rail.removeChild(rail.firstChild);
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
-      if (has('live_chat') && role !== 'light' && chatAccess) rail.appendChild(item('chat', 'Live Chat', 'data-chat-inbox', loadChatInbox));
+      if (has('live_chat') && role !== 'light' && chatAccess) rail.appendChild(item('chat', 'Live Chat', 'data-chat-inbox', loadChatLanding));
       if (has('live_chat') && canSuperviseChat) rail.appendChild(item('supervisor', 'Live Chat supervision', 'data-chat-supervision', loadChatSupervision));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
       if (role !== 'light' && has('itsm')) { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
@@ -2891,7 +2941,7 @@
       }
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
-      main.appendChild(el('div', { class: 'desk' }, supervisorOpen ? supervisorPane() : chatInboxOpen ? chatInboxPane() : integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      main.appendChild(el('div', { class: 'desk' }, supervisorOpen ? supervisorPane() : chatLandingOpen ? chatLandingPane() : chatInboxOpen ? chatInboxPane() : integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
       var nextThread = main.querySelector('.thread');
       if (nextThread) {
         var threadNumber = nextThread.getAttribute('data-ticket-number');
