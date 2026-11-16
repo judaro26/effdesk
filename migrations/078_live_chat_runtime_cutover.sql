@@ -12,7 +12,7 @@ do $
 begin
   if not exists (select 1 from pg_constraint where conname='tickets_source_chat_conversation_fk') then
     alter table tickets add constraint tickets_source_chat_conversation_fk
-      foreign key (org_id,source_chat_conversation_id) references chat_conversations(org_id,id) on delete set null;
+      foreign key (org_id,source_chat_conversation_id) references chat_conversations(org_id,id) on delete restrict;
   end if;
 end $;
 alter table chat_conversations drop constraint if exists chat_conversations_coordinates_valid;
