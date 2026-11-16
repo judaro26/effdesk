@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat, agentNoteChat } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -445,13 +445,19 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if ((g = need('live_chat'))) return g;
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentReplyChat(pool, orgId, actor, b.number, b);
-      if (r.ok) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
+      if (r.ok && !r.duplicate) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
     case 'chat-end-agent': {
       if ((g = need('live_chat'))) return g;
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
-      r = await agentEndChat(pool, orgId, actor, b.number);
+      r = await agentEndChat(pool, orgId, actor, b.number, isAdmin);
+      break;
+    }
+    case 'chat-note': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentNoteChat(pool, orgId, actor, b.number, b);
       break;
     }
     case 'list': {
