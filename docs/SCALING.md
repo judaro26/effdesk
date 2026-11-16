@@ -16,6 +16,10 @@ Median times on the first run, then after migration 022 (indexes) and the report
 
 What was slow and why: the report counted tickets per day with 60 scans of the table (now one grouped query with a range index); the default list sorted all of a workspace's tickets on every open (now an index in the list's own order); searches read every row (now trigram indexes, `pg_trgm`).
 
+## Reading the benchmark
+
+The benchmark reports p50, p95 and p99 latency, maximum latency, and sampled pool pressure during concurrent bursts. It also compares the deep-offset ticket page with keyset cursor pages. It seeds a throwaway database; its timings are not a production capacity guarantee. Before increasing tenant or agent limits, run the same workload against a staging deployment using the production Neon region and pooled connection configuration, then compare request latency, database saturation, pool waiters and recovery after the burst.
+
 ## What to do in production
 - Use Neon's **pooled** connection string (host with `-pooler`) for `DATABASE_URL`. Each function instance keeps at most 10 connections (`src/db.js`); the pooler multiplexes them.
 - Keep the Netlify site and the Neon database in the same region. Every screen is a handful of database round trips, so distance costs more than any query.
