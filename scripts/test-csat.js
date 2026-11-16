@@ -1,4 +1,4 @@
-// scripts/test-csat.js: CUSTOMER SATISFACTION ON A REAL POSTGRES: the survey email, the signed link, the rating page, the switch, the reports.
+// scripts/test-csat.js: CUSTOMER SATISFACTION ON A REAL POSTGRES: the queued survey email, signed link, rating page, switch, and reports.
 import crypto from 'crypto';
 import { check, done } from './lib/check.js';
 import { freshDb } from './lib/pg-temp.js';
