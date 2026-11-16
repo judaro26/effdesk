@@ -138,7 +138,7 @@ check('visitor chat attachments upload before sending and render secure token-sc
 
 
 
-check('the agent chat workspace responds to its actual available width rather than only the browser viewport', css.includes('container-name:chat-agent') && css.includes('container-type:inline-size') && css.includes('@container chat-agent (max-width:1160px)'));
+check('the agent chat workspace responds to its actual available width rather than only the browser viewport', css.includes('container-name:desk-content') && css.includes('container-type:inline-size') && css.includes('@container desk-content (max-width:1160px)') && css.includes('container-name:chat-agent'));
 check('the agent workspace stacks visitor context below the conversation when its content area narrows', css.includes('@container chat-agent (max-width:1160px)') && css.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
 check('the multi-chat switcher becomes a horizontally scrollable strip in a narrow workspace', css.includes('@container chat-agent (max-width:820px)') && css.includes('scroll-snap-type:x proximity') && css.includes('.chat-workspace-item{flex:0 0 min(250px,78%)'));
 check('narrow chat headers, message content and composer controls wrap without overflowing', css.includes('@container chat-agent (max-width:560px)') && css.includes('overflow-wrap:anywhere') && css.includes('compose .bar{display:flex;flex-wrap:wrap'));
