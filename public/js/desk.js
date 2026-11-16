@@ -213,7 +213,32 @@
     function loadChatInbox() {
       if (chatWorkspaceTimer) { root.clearTimeout(chatWorkspaceTimer); chatWorkspaceTimer = null; }
       closePanes(); chatInboxOpen = true; chatInboxLoading = true; chatInboxError = ''; chatInboxRows = []; chatInboxPrimed = false; chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; chatInboxQuery = ''; chatInboxView = 'all'; chatInboxTotal = 0; chatInboxCounts = { total: 0, waiting: 0, assigned: 0, needsReply: 0, solved: 0, closed: 0 }; try { chatSoundEnabled = root.localStorage.getItem('eff_chat_sound:' + orgId + ':' + meId) === '1'; } catch (e) { chatSoundEnabled = false; } draw();
+      refreshChatTeam();
       return fetchChatInbox(true);
+    }
+    function refreshChatTeam() {
+      if (!chatAccess || role === 'light') return Promise.resolve();
+      chatTeamLoading = true;
+      return api('chat-team', {}).then(function (r) { chatTeamLoading = false; if (r.ok) chatTeamRows = r.body.agents || []; draw(); }).catch(function () { chatTeamLoading = false; });
+    }
+    function setChatQueueAvailability(available, pickNext) {
+      api('chat-availability-set', { available: available === true }).then(function (r) {
+        if (!r.ok) return say(r.body.error || 'Could not update your Live Chat queue status.', true);
+        chatAvailable = r.body.available === true;
+        drawMenu(); draw();
+        say(chatAvailable ? 'You joined the Live Chat queue. You can now receive new conversations.' : 'You left the Live Chat queue.');
+        if (pickNext && chatAvailable) {
+          var next = (chatInboxRows || []).filter(function (t) { return !t.assignee_id && ['open','pending','on_hold'].includes(t.status); }).sort(function (a,b) { return new Date(a.created_at || 0) - new Date(b.created_at || 0); })[0];
+          if (next) claimChatTicket(next.number); else say('You are in the queue. No unassigned chats are waiting right now.');
+        }
+        refreshChatTeam();
+      }).catch(function () { say('Could not update your Live Chat queue status. Try again.', true); });
+    }
+    function pickNextChat() {
+      var next = (chatInboxRows || []).filter(function (t) { return !t.assignee_id && ['open','pending','on_hold'].includes(t.status); }).sort(function (a,b) { return new Date(a.created_at || 0) - new Date(b.created_at || 0); })[0];
+      if (!next) return say('There are no unassigned chats waiting right now.');
+      if (!chatAvailable) return setChatQueueAvailability(true, true);
+      claimChatTicket(next.number);
     }
     function playChatSound() {
       var Audio = root.AudioContext || root.webkitAudioContext; if (!Audio) return;
@@ -354,13 +379,13 @@
       var chatSubject = function (t) { return String(t.subject || 'Live chat').replace(/^\s*chat\s*:\s*/i, '').trim() || 'Live chat'; };
       var openCard = function (t) {
         var isWaiting = !history && !t.assignee_id, activityAt = history ? (t.closed_at || t.solved_at || t.updated_at) : (t.updated_at || t.created_at), statusLabel = t.status === 'solved' ? 'Resolved' : t.status === 'closed' ? 'Closed' : cap(t.status);
-        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (history ? 'Open past conversation with ' : isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', ticket ' + t.number, onclick: function () { if (history || t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
+        var main = el('button', { type: 'button', class: 'chat-inbox-card-main', 'aria-label': (history ? 'Open past conversation with ' : isWaiting ? 'Open new chat from ' : 'Open conversation with ') + (t.requester_name || t.requester_email || 'website visitor') + ', conversation ' + t.number, onclick: function () { if (history || t.assignee_id) open(t.number); else claimChatTicket(t.number); } },
           el('span', { class: 'chat-inbox-avatar' }, initials(t.requester_name || t.requester_email)),
           el('span', { class: 'chat-inbox-card-copy' },
             el('span', { class: 'chat-inbox-card-top' }, el('strong', {}, t.requester_name || t.requester_email || 'Website visitor'), isWaiting ? el('span', { class: 'chat-inbox-new-label', title: 'New unassigned conversation' }, 'NEW') : null, isWaiting ? el('span', { class: 'chat-inbox-waiting-age', title: 'Waiting since ' + fmt(t.created_at || t.updated_at) }, 'Waiting ' + fmt(t.created_at || t.updated_at)) : null, !isWaiting ? el('span', { class: 'chat-inbox-time' }, fmt(activityAt)) : null),
             el('span', { class: 'chat-inbox-subject' }, chatSubject(t)),
             t.assignee_id && t.chat_last_public_message_kind === 'requester' ? el('span', { class: 'chat-inbox-customer-replied', role: 'status' }, 'Customer replied · needs attention') : null,
-            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, '#' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, isWaiting ? 'Waiting for an agent' : t.assignee_id ? agentName(t.assignee_id, t) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, statusLabel))),
+            el('span', { class: 'chat-inbox-card-meta' }, el('span', { class: 'chat-inbox-ticket' }, 'Conversation #' + t.number), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, isWaiting ? 'Waiting for an agent' : t.assignee_id ? agentName(t.assignee_id, t) : 'Unassigned'), el('span', { class: 'chat-inbox-dot' }, '·'), el('span', {}, statusLabel))),
           el('span', { class: 'chat-inbox-open', 'aria-hidden': 'true' }, '›'));
         var accept = !history && isWaiting ? el('button', { type: 'button', class: 'chat-inbox-accept', disabled: !chatAvailable, 'aria-label': 'Accept chat ' + t.number, title: chatAvailable ? 'Accept this conversation' : 'Switch on Accept live chats to take a conversation', onclick: function () { claimChatTicket(t.number); } }, 'Accept') : null;
         return el('div', { class: 'chat-inbox-card' + (isWaiting ? ' is-new' : '') + (history ? ' is-history' : '') }, main, accept);
@@ -373,8 +398,15 @@
       };
       return el('div', { class: 'chat-inbox' },
         el('div', { class: 'chat-inbox-hero' },
-          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Meet customers in the moment. Every conversation stays connected to its EffDesk ticket.')),
+          el('div', { class: 'chat-inbox-hero-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'CUSTOMER CONVERSATIONS'), el('h1', {}, 'Live Chat'), el('p', {}, 'Your live support floor. Join the queue, pick up the next visitor, and keep conversations moving.')),
           el('div', { class: 'chat-inbox-hero-actions' }, el('span', { class: 'chat-inbox-live-indicator' + (chatAvailable ? ' is-available' : '' ) }, el('i', {}), chatAvailable ? 'Available for new chats' : 'Not accepting new chats'), el('button', { type: 'button', class: 'chat-inbox-refresh chat-inbox-sound', 'aria-pressed': chatSoundEnabled ? 'true' : 'false', title: 'Play a short sound when a customer reply arrives', onclick: toggleChatSound }, chatSoundEnabled ? '♫ Sound on' : '♫ Sound off'), el('span', { class: 'chat-inbox-refresh-note' }, chatInboxLoading ? 'Refreshing…' : 'Auto-refresh · 15 sec'), el('button', { type: 'button', class: 'chat-inbox-refresh', disabled: chatInboxLoading, onclick: function () { fetchChatInbox(true); } }, chatInboxLoading ? 'Refreshing…' : '↻ Refresh'))),
+        chatInboxView === 'history' ? null : el('section', { class: 'chat-queue-control', 'aria-label': 'Live Chat team and queue' },
+          el('div', { class: 'chat-queue-control-main' },
+            el('div', { class: 'chat-queue-control-copy' }, el('span', { class: 'chat-inbox-eyebrow' }, 'TEAM QUEUE'), el('strong', {}, chatAvailable ? 'You are in the queue' : 'Ready to help?'), el('span', {}, chatAvailable ? 'You are available for the next visitor.' : 'Join the queue to become available for incoming visitors.')),
+            el('div', { class: 'chat-queue-control-actions' },
+              el('button', { type: 'button', class: chatAvailable ? 'chat-queue-leave' : 'chat-queue-join', onclick: function () { setChatQueueAvailability(!chatAvailable, false); } }, chatAvailable ? 'Leave queue' : 'Join queue'),
+              el('button', { type: 'button', class: 'chat-queue-next', disabled: !waiting.length, onclick: pickNextChat, title: waiting.length ? 'Accept the oldest waiting conversation' : 'No unassigned chats are waiting' }, 'Pick next chat' + (waiting.length ? ' · ' + waiting.length + ' waiting' : '')))),
+          el('div', { class: 'chat-queue-team' }, el('div', { class: 'chat-queue-team-heading' }, el('strong', {}, 'Your team'), el('button', { type: 'button', class: 'chat-queue-team-refresh', onclick: refreshChatTeam }, 'Refresh team')), chatTeamLoading ? el('span', { class: 'chat-queue-muted' }, 'Loading teammates…') : chatTeamRows.length ? el('div', { class: 'chat-queue-agents' }, chatTeamRows.map(function (a) { return el('div', { class: 'chat-queue-agent' }, el('span', { class: 'chat-queue-agent-dot' + (a.online ? ' is-online' : '') }), el('span', { class: 'chat-queue-agent-name' }, a.name), el('span', { class: 'chat-queue-agent-load' }, a.active_chats + '/' + a.max_concurrent + ' chats')); })) : el('span', { class: 'chat-queue-muted' }, 'No teammates with Live Chat access yet.'))),
         chatInboxView === 'history' ? el('div', { class: 'chat-inbox-stats chat-inbox-stats-history' },
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Past conversations'), el('strong', {}, String(chatInboxCounts.total)), el('small', {}, 'Resolved or closed')),
           el('div', { class: 'chat-inbox-stat' }, el('span', {}, 'Resolved'), el('strong', {}, String(chatInboxCounts.solved)), el('small', {}, 'Marked as solved')),

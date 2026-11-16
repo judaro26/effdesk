@@ -1213,3 +1213,50 @@ html[data-chat-theme="classic"] .chat-inbox,html[data-chat-theme="classic"] .cha
 .chat-supervisor-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-top:1px solid var(--line,#e5e7eb);background:var(--panel-muted,#fafbfc)}
 @media(max-width:850px){.chat-supervisor-layout{grid-template-columns:1fr}.chat-supervisor-list{max-height:310px;overflow:auto}.chat-supervisor-detail{min-height:440px}}
 @media(max-width:520px){.chat-supervisor-workspace{padding:13px}.chat-supervisor-header{align-items:flex-start;flex-direction:column}.chat-supervisor-actions{align-items:flex-start;flex-direction:column}.chat-supervisor-message{max-width:94%}}
+
+
+/* Live Chat queue-first dashboard: compact metrics, clear availability action, calm team roster. */
+.deskapp .chat-inbox{max-width:1600px;padding:22px 28px 38px}
+.deskapp .chat-inbox-hero{padding:20px 25px;border-radius:18px;min-height:112px}
+.deskapp .chat-inbox-hero h1{font-size:27px;margin-bottom:5px}
+.deskapp .chat-inbox-hero p{font-size:13px;max-width:620px}
+.deskapp .chat-inbox-stats{display:flex;gap:8px;margin:12px 0 16px;flex-wrap:wrap}
+.deskapp .chat-inbox-stat{display:grid;grid-template-columns:auto auto;align-items:center;column-gap:9px;row-gap:0;padding:9px 13px;border-radius:11px;box-shadow:none;min-width:0;flex:0 0 auto}
+.deskapp .chat-inbox-stat>span{font-size:10px;grid-column:1;grid-row:1}
+.deskapp .chat-inbox-stat strong{font-size:18px;grid-column:2;grid-row:1 / span 2}
+.deskapp .chat-inbox-stat small{font-size:9px;grid-column:1;grid-row:2}
+.deskapp .chat-queue-control{display:grid;grid-template-columns:minmax(260px,.95fr) minmax(300px,1.35fr);gap:18px;margin:14px 0 18px;padding:17px 19px;background:var(--d-panel);border:1px solid var(--d-line);border-radius:16px;box-shadow:0 5px 20px rgba(20,30,40,.025)}
+.deskapp .chat-queue-control-main{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0}
+.deskapp .chat-queue-control-copy{display:grid;gap:5px;min-width:0}
+.deskapp .chat-queue-control-copy .chat-inbox-eyebrow{margin:0;font-size:9px}
+.deskapp .chat-queue-control-copy>strong{font-size:16px;letter-spacing:-.02em;color:var(--d-ink)}
+.deskapp .chat-queue-control-copy>span:last-child{font-size:11px;line-height:1.45;color:var(--d-muted)}
+.deskapp .chat-queue-control-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.deskapp .chat-queue-join,.deskapp .chat-queue-leave,.deskapp .chat-queue-next{border:1px solid var(--d-line);border-radius:9px;padding:9px 12px;font:inherit;font-size:11px;font-weight:750;white-space:nowrap;cursor:pointer}
+.deskapp .chat-queue-join{background:var(--accent);border-color:var(--accent);color:#fff}
+.deskapp .chat-queue-leave{background:var(--d-hover);color:var(--d-ink)}
+.deskapp .chat-queue-next{background:color-mix(in srgb,var(--accent) 9%,var(--d-panel));border-color:color-mix(in srgb,var(--accent) 25%,var(--d-line));color:var(--accent)}
+.deskapp .chat-queue-next:disabled{opacity:.45;cursor:not-allowed}
+.deskapp .chat-queue-team{min-width:0;border-left:1px solid var(--d-line);padding-left:18px}
+.deskapp .chat-queue-team-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.deskapp .chat-queue-team-heading strong{font-size:11px;color:var(--d-ink)}
+.deskapp .chat-queue-team-refresh{border:0;background:none;color:var(--accent);font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.deskapp .chat-queue-agents{display:flex;flex-wrap:wrap;gap:7px}
+.deskapp .chat-queue-agent{display:flex;align-items:center;gap:7px;min-width:0;padding:6px 9px;border:1px solid var(--d-line);border-radius:9px;background:var(--d-bg)}
+.deskapp .chat-queue-agent-dot{width:7px;height:7px;flex:none;border-radius:50%;background:#9aa4af}
+.deskapp .chat-queue-agent-dot.is-online{background:#20a779;box-shadow:0 0 0 3px rgba(32,167,121,.12)}
+.deskapp .chat-queue-agent-name{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:700;color:var(--d-ink)}
+.deskapp .chat-queue-agent-load{font-size:9px;color:var(--d-muted);white-space:nowrap}
+.deskapp .chat-queue-muted{font-size:10px;color:var(--d-muted)}
+.deskapp .chat-inbox-toolbar{margin-top:8px}
+/* Visitor overview: align the visitor facts into a predictable information hierarchy. */
+.deskapp .chat-visitor-context{gap:14px;padding:16px}
+.deskapp .chat-visitor-context-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.deskapp .chat-visitor-context-item{min-height:76px;align-items:center;padding:12px;border-radius:11px}
+.deskapp .chat-visitor-context-item strong{font-size:12px;line-height:1.35}
+.deskapp .chat-visitor-context-item em{font-size:10px;line-height:1.4}
+.deskapp .chat-visitor-page{gap:7px;padding:13px;border:1px solid var(--d-line);border-radius:11px;background:color-mix(in srgb,var(--d-panel) 84%,var(--d-hover))}
+.deskapp .chat-visitor-page a{line-height:1.45}
+.deskapp .chat-visitor-context+.m,.deskapp .chat-visitor-context>.m{font-size:11px;line-height:1.5}
+@media(max-width:1050px){.deskapp .chat-queue-control{grid-template-columns:1fr}.deskapp .chat-queue-team{border-left:0;border-top:1px solid var(--d-line);padding:13px 0 0}}
+@media(max-width:650px){.deskapp .chat-inbox{padding:14px}.deskapp .chat-inbox-hero{align-items:flex-start;flex-direction:column;padding:17px}.deskapp .chat-inbox-hero h1{font-size:24px}.deskapp .chat-queue-control{padding:14px}.deskapp .chat-queue-control-main{align-items:flex-start;flex-direction:column}.deskapp .chat-queue-control-actions{justify-content:flex-start}.deskapp .chat-inbox-stat{flex:1 1 135px}.deskapp .chat-visitor-context-grid{grid-template-columns:1fr}}
