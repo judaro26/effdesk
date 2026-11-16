@@ -1150,8 +1150,10 @@
       api('presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 10000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
     }
     root.setInterval(presenceTick, 5000);
-    function chatHeartbeatTick() { if (!chatAccess || !chatAvailable || !orgId) return; api('chat-heartbeat', {}).then(function(r){ if (!r.ok && r.status === 403) { chatAvailable = false; drawMenu(); } }); }
+    function chatHeartbeatTick() { if (!chatAccess || !chatAvailable || !orgId) return; api('chat-heartbeat', {}).then(function(r){ if ((!r.ok && r.status === 403) || (r.ok && r.body.accepting === false)) { chatAvailable = false; drawMenu(); } }); }
     root.setInterval(chatHeartbeatTick, 30000);
+    root.addEventListener('focus', chatHeartbeatTick);
+    doc.addEventListener('visibilitychange', function () { if (!doc.visibilityState || doc.visibilityState === 'visible') chatHeartbeatTick(); });
     chatHeartbeatTick();
 
     // ── a preview of matching tickets under the search box ──

@@ -92,6 +92,9 @@ check('changing an agent to light revokes chat availability', (await A(ann, 'cha
 await A(olivia, 'team-role', { memberId: annMember, role: 'member' });
 await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
 await A(ann, 'chat-availability-set', { available: true });
+await pool.query("update agent_status set chat_last_seen_at = now() - interval '10 minutes' where org_id = $1 and user_id = $2", [acme.id, ann.user.id]);
+const recoveredClaim = await A(ann, 'chat-claim', { number: n });
+check('a manual Accept click refreshes an expired heartbeat without toggling availability off and on', recoveredClaim.status === 200 && recoveredClaim.body.alreadyAssigned === false);
 await A(ann, 'availability-set', { available: false });
 await A(olivia, 'routing-save', { enabled: true, strategy: 'round_robin' });
 await A(olivia, 'chat-access-set', { userId: olivia.user.id, enabled: true });
