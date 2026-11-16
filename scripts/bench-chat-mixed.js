@@ -33,10 +33,20 @@ function validateTarget(value) {
 const target=validateTarget(rawUrl);
 if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
 const pool=new pg.Pool({connectionString:explicitSsl(rawUrl),max:10,idleTimeoutMillis:10000,ssl:{rejectUnauthorized:true}});
-const connectWait=[], querySamples=new Map(), connect=pool.connect.bind(pool);
+const connectWait=[], connectionLease=[], leaseStarted=new WeakMap(), querySamples=new Map(), connect=pool.connect.bind(pool);
+function finishLease(client) {
+  const started=leaseStarted.get(client);
+  if(started===undefined)return;
+  connectionLease.push(performance.now()-started);
+  leaseStarted.delete(client);
+}
 function instrumentClient(client) {
-  if(!client || client.__effdeskMixedQueryTiming)return;
+  if(!client)return;
+  leaseStarted.set(client,performance.now());
+  if(client.__effdeskMixedQueryTiming)return;
   client.__effdeskMixedQueryTiming=true;
+  const originalRelease=client.release?.bind(client);
+  if(originalRelease)client.release=(...args)=>{finishLease(client);return originalRelease(...args);};
   const originalQuery=client.query.bind(client);
   client.query=(...queryArgs)=>{
     if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
@@ -66,7 +76,8 @@ pool.connect=function(...args){
     args[0]=(error,client,release)=>{
       connectWait.push(performance.now()-started);
       if(!error)instrumentClient(client);
-      return callback(error,client,release);
+      const trackedRelease=typeof release==='function'?(...releaseArgs)=>{finishLease(client);return release(...releaseArgs)}:release;
+      return callback(error,client,trackedRelease);
     };
     return connect(...args);
   }
@@ -134,6 +145,8 @@ try {
 
   // Exclude setup and warm-up connection waits from measured acquisition percentiles.
   connectWait.splice(0);
+  connectionLease.splice(0);
+  querySamples.clear();
   maxSamples.total=0; maxSamples.waiting=0;
   const measuredTasks=buildTasks(settings.rounds);
   const measuredRounds=[];
@@ -173,7 +186,7 @@ try {
     profile,workspaces:targets.length,concurrency:settings.concurrency,
     warmup:{requests:warmupTasks.length,elapsed_ms:round(warmupElapsed),failures:warmupFailures},
     measured:{rounds:settings.rounds,requests:totalRequests,elapsed_ms:round(elapsed),requests_per_second:round(totalRequests/Math.max(elapsed,1)*1000),failures:totalFailures},
-    pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait)},
+    pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait),connection_lease_ms:sortedStats(connectionLease)},
     scenarios:aggregateScenarios,
     rounds:measuredRounds,
     top_query_fingerprints:queryDiagnostics
