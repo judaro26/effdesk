@@ -74,4 +74,6 @@ check('Live Chat themes include a preview and apply only to chat surfaces', js.i
 check('Live Chat theme preference is validated and persisted per signed-in agent', handlers.includes("b.chatTheme === undefined ? null : chatThemeById") && handlers.includes('chat_theme = coalesce($6, desk_prefs.chat_theme)') && handlers.includes('chatTheme, avatar:'));
 check('Live Chat theme preference is returned on initialization and defaults safely', handlers.includes('usableChatTheme(pref?.chat_theme)') && themeRegistry.includes("export const usableChatTheme"));
 
+check('the agent workspace refreshes the current visitor page during the existing Live Chat inbox refresh cycle', js.includes('function refreshChatVisitorPage(number)') && js.includes("api('get', { number: number, messageLimit: 1 })") && js.includes('refreshChatVisitorPage(current.ticket.number)'));
+check('the visitor page context is labelled as current for chats and as submission context for other tickets', js.includes("chatConversationOpen?'Current page':'Page at submission'"));
 check('the Classic Live Chat palette stays independent from whichever global desk theme the agent uses', css.includes('html[data-chat-theme="classic"] .chat-agent-workspace') && css.includes('--d-rail:#03363d'));
