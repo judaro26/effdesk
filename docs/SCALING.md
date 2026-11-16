@@ -40,7 +40,7 @@ The benchmark reports p50, p95 and p99 latency, maximum latency, and sampled poo
 
 Outbound webhooks are written to the tenant-scoped `background_jobs` outbox instead of being sent during ticket requests. PostgreSQL `SKIP LOCKED` claims and worker leases prevent overlapping workers from owning the same job. Failed deliveries retry with exponential backoff (up to one hour), up to eight attempts by default; terminal failures remain available for inspection. A Netlify scheduled worker runs once per minute and processes up to five deliveries concurrently.
 
-Webhook delivery is at-least-once: a receiver may see the same event again if the endpoint accepted it but the response was lost. JSON webhook payloads include an `eventId`, also sent in `X-EffDesk-Event-Id`, so receivers can deduplicate. Email delivery remains synchronous and is the next candidate for the outbox.
+Webhook delivery is at-least-once: a receiver may see the same event again if the endpoint accepted it but the response was lost. JSON webhook payloads include an `eventId`, also sent in `X-EffDesk-Event-Id`, so receivers can deduplicate. Public ticket replies, agent ticket notices, and CSAT survey emails use the durable email outbox; authentication, invitations, approval workflow notices, and platform alerts remain synchronous.
 
 ## Speed measures (Nov 2026)
 - Scripts and stylesheets are minified at deploy time (`scripts/minify-assets.js`, about 22% smaller before compression); the files in git stay readable. If minifying fails the deploy continues with the originals.
@@ -53,3 +53,8 @@ Webhook delivery is at-least-once: a receiver may see the same event again if th
 ### Outbound ticket email delivery
 
 Public ticket replies are persisted first and then placed in the tenant-scoped background job outbox. The scheduled worker loads the message and attachment bytes at delivery time, sends through Resend with a stable per-message idempotency key and deterministic Message-ID, and retries transient failures with the existing lease/backoff policy. The API returns `email: queued`; the message delivery state progresses through queued, sent, skipped, or failed. Only the small ticket/message reference is stored in the job payload, not message bodies or attachment contents. Other transactional email (invites, authentication, notices, and surveys) remains synchronous for now.
+
+
+### Agent notices and CSAT delivery
+
+Ticket assignment, follower, and customer-reply notices are queued per recipient. The worker reloads current workspace membership, notification preferences, and ticket assignment/follower state before sending, so stale or revoked recipients are skipped. CSAT survey emails are also queued after the one-per-ticket rating record is created. Both job types use the shared tenant-scoped retry/lease system and stable Resend idempotency keys. The email payload contains references and short notice metadata rather than message bodies or attachment data.
