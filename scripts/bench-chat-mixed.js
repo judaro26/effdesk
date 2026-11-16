@@ -48,7 +48,7 @@ function buildTasks(rounds) {
   }
   return tasks;
 }
-async function executeTasks(tasks, concurrency) {
+async function executeTasks(tasks, concurrency, phase) {
   const samples=Object.fromEntries(scenarios.map(s=>[s.name,[]]));
   const failures=Object.fromEntries(scenarios.map(s=>[s.name,0]));
   let cursor=0;
@@ -62,7 +62,7 @@ async function executeTasks(tasks, concurrency) {
         samples[task.scenario.name].push(performance.now()-at);
       } catch(error) {
         failures[task.scenario.name]++;
-        console.error(JSON.stringify({phase:tasks===warmupTasks?'warmup':'measurement',scenario:task.scenario.name,workspace:task.target.orgId,error:String(error?.message||error).slice(0,240)}));
+        console.error(JSON.stringify({phase,scenario:task.scenario.name,workspace:task.target.orgId,error:String(error?.message||error).slice(0,240)}));
       }
     }
   }));
@@ -85,7 +85,7 @@ try {
   // Warm the same application paths and tenant data before timing. Warm-up failures are still fatal.
   const warmupTasks=buildTasks(1);
   const warmupStarted=performance.now();
-  const warmup=await executeTasks(warmupTasks,settings.concurrency);
+  const warmup=await executeTasks(warmupTasks,settings.concurrency,'warmup');
   const warmupElapsed=performance.now()-warmupStarted;
   const warmupFailures=Object.values(warmup.failures).reduce((a,b)=>a+b,0);
 
@@ -101,7 +101,7 @@ try {
     for(let index=0;index<settings.rounds;index++) {
       const roundTasks=measuredTasks.slice(index*targets.length*4,(index+1)*targets.length*4);
       const roundStarted=performance.now();
-      const result=await executeTasks(roundTasks,settings.concurrency);
+      const result=await executeTasks(roundTasks,settings.concurrency,'measurement');
       measuredResults.push(result);
       const elapsed=performance.now()-roundStarted;
       const requests=roundTasks.length;
