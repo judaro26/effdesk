@@ -221,8 +221,6 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
  });
 }
 
-const chatEmailEscape = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-
 // Queue only after the visitor has stopped polling. A recent visitor heartbeat means
 // the reply is already visible in the live widget and should not also trigger email.
 export async function enqueueChatReplyEmail(pool,orgId,number,messageId){
@@ -243,7 +241,7 @@ export async function enqueueChatReplyEmail(pool,orgId,number,messageId){
   if(data.delivery==='sent')return{delivery:'sent'};
   const job=await enqueueJob(pool,orgId,{type:'chat.email.deliver',payload:{number:Number(number),conversationId:String(data.conversation_id),messageId:String(messageId)},idempotencyKey:'chat-message:'+String(messageId),maxAttempts:8});
   if(job.status==='failed'){await mark('failed');return{delivery:'failed',why:'delivery-exhausted'};}
-  await mark('queued');
+  await mark(job.status==='succeeded'?'sent':'queued');
   return{delivery:job.status==='succeeded'?'sent':'queued',jobId:job.id};
  }catch(error){
   logWarn('live_chat.email_queue_failed',{error:error.message,orgId,number});
