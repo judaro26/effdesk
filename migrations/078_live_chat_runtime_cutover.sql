@@ -33,3 +33,11 @@ alter table chat_messages add column if not exists idempotency_key text;
 create unique index if not exists chat_messages_org_idempotency_idx
   on chat_messages(org_id,conversation_id,author_id,idempotency_key)
   where idempotency_key is not null;
+
+-- Keep chat identifiers in a separate numeric namespace from support ticket numbers.
+create sequence if not exists chat_conversation_number_seq start with 1000000000001;
+alter table chat_conversations add column if not exists chat_number bigint;
+update chat_conversations set chat_number=1000000000000+id where chat_number is null;
+alter table chat_conversations alter column chat_number set default nextval('chat_conversation_number_seq');
+create unique index if not exists chat_conversations_org_chat_number_idx
+  on chat_conversations(org_id,chat_number);
