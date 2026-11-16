@@ -1148,3 +1148,32 @@ html[data-chat-theme="classic"] .chat-inbox,html[data-chat-theme="classic"] .cha
 .deskapp .chat-visitor-raw-ua summary{color:var(--d-muted);cursor:pointer;font-weight:650}
 .deskapp .chat-visitor-raw-ua .ticket-provenance-agent{margin-top:7px;overflow-wrap:anywhere}
 @media(max-width:900px){.deskapp .chat-visitor-context-grid{grid-template-columns:1fr}}
+
+
+/* Live Chat workspace refinement: keep visitor context visible beside the conversation. */
+.deskapp .chat-agent-workspace{grid-template-columns:248px minmax(0,1fr);gap:14px;align-items:stretch}
+.deskapp .chat-agent-workspace>.chat-agent-conversation{display:grid;grid-template-columns:minmax(0,1fr) 286px;gap:12px;align-items:stretch;min-width:0}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.props{display:none!important}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.conv{width:auto;height:calc(100vh - 148px);min-height:500px;margin:0;min-width:0}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.info{display:block!important;min-width:0;max-height:calc(100vh - 148px);overflow:auto;padding:16px;border:1px solid var(--d-line);border-radius:16px;background:var(--d-panel);color:var(--d-ink)}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.info h3{margin:14px 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--d-muted)}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.info h3:first-child{margin-top:0}
+.deskapp .chat-agent-conversation .chat-theme-quick-select{min-width:116px;max-width:150px;padding:8px 28px 8px 10px;border:1px solid var(--d-line);border-radius:9px;background:var(--d-panel);color:var(--d-ink);font:inherit;font-size:11px;font-weight:700}
+.deskapp .chat-agent-conversation .chat-agent-head-actions{flex-wrap:wrap}
+.deskapp .chat-agent-workspace .chat-agent-conversation>.conv .ch h2{display:none}
+@media(max-width:1100px){
+ .deskapp .chat-agent-workspace>.chat-agent-conversation{grid-template-columns:minmax(0,1fr) 250px}
+}
+@media(max-width:900px){
+ .deskapp .chat-agent-workspace{grid-template-columns:210px minmax(0,1fr)}
+ .deskapp .chat-agent-workspace>.chat-agent-conversation{grid-template-columns:minmax(0,1fr)}
+ .deskapp .chat-agent-workspace .chat-agent-conversation>.info{max-height:none}
+ .deskapp .chat-agent-workspace .chat-agent-conversation>.conv{height:calc(100vh - 148px)}
+}
+@media(max-width:760px){
+ .deskapp .chat-agent-workspace{display:flex;flex-direction:column;padding:8px}
+ .deskapp .chat-agent-workspace>.chat-agent-conversation{display:flex;flex-direction:column}
+ .deskapp .chat-agent-workspace .chat-agent-conversation>.conv{height:calc(100vh - 112px);min-height:420px}
+ .deskapp .chat-agent-workspace .chat-agent-conversation>.info{max-height:none}
+ .deskapp .chat-agent-conversation .chat-theme-quick-select{max-width:100%;min-width:0}
+}
