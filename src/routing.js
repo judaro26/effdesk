@@ -42,7 +42,7 @@ export async function setChatAccess(pool, orgId, userId, enabled) {
     await c.query(`insert into agent_status (org_id, user_id, available, chat_access, chat_available)
       values ($1,$2,true,$3,false)
       on conflict (org_id, user_id) do update set chat_access = $3, chat_available = false`, [orgId, String(userId), enabled === true]);
-    if (!enabled) await c.query("update tickets set assignee_id = null, updated_at = now() where org_id = $1 and assignee_id = $2 and channel = 'chat' and status in ('open','pending','on_hold')", [orgId, String(userId)]);
+    if (!enabled) await c.query("update chat_conversations set assignee_id = null, updated_at = now() where org_id = $1 and assignee_id = $2 and status in ('open','pending','on_hold')", [orgId, String(userId)]);
     return { ok: true, access: enabled === true, available: false };
   });
 }
@@ -106,128 +106,95 @@ export async function getChatTeam(pool, orgId) {
     }) };
   });
 }
-export async function transferChat(pool, orgId, actor, number, targetUserId, canManage=false) {
-  return withOrg(pool, orgId, async c => {
-    const targetId=String(targetUserId||'').slice(0,128);
-    if(!targetId)return fail('Choose a teammate to receive this conversation.');
-    // Lock order matches claimChat: membership, agent status, then ticket.
-    const member=(await c.query(`select m.role,r.permissions,u.name,u.email from member m join "user" u on u.id=m."userId"
-      left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId"
-      left join custom_roles r on r.org_id=$1 and r.id=mc.role_id
-      where m."organizationId"=$1 and m."userId"=$2 for update of m`,[orgId,targetId])).rows[0];
-    if(!member || member.role==='light' || (member.role==='member' && Array.isArray(member.permissions) && !member.permissions.includes('reply')))return fail('That teammate is not permitted to handle customer chats.',403);
-    const agent=(await c.query('select chat_access,chat_available,chat_last_seen_at from agent_status where org_id=$1 and user_id=$2 for update',[orgId,targetId])).rows[0];
-    if(!agent || agent.chat_access!==true)return fail('Enable Live Chat access for that teammate first.',409);
-    if(agent.chat_available!==true || !agent.chat_last_seen_at || new Date(agent.chat_last_seen_at).getTime()<=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000)return fail('That teammate is not currently available for Live Chat.',409);
-    const ticket=(await c.query("select id,number,status,assignee_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];
-    if(!ticket)return fail('Live Chat conversation not found.',404);
-    if(!['open','pending','on_hold'].includes(ticket.status))return fail('This conversation has already ended.',409);
-    if(ticket.assignee_id && ticket.assignee_id!==actor.id && !canManage)return fail('Only the assigned agent or an administrator can transfer this conversation.',403);
-    if(!ticket.assignee_id && !canManage)return fail('An administrator must assign this conversation before it can be transferred.',403);
-    if(ticket.assignee_id===targetId)return {ok:true,alreadyAssigned:true,userId:targetId};
-    const maxConcurrent=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
-    const activeChats=Number((await c.query("select count(*)::int n from tickets where org_id=$1 and channel='chat' and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,targetId])).rows[0]?.n||0);
-    if(activeChats>=maxConcurrent)return fail('That teammate has reached their simultaneous-chat limit.',409);
-    await c.query('update tickets set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,ticket.id,targetId]);
-    const actorName=actor?.name||actor?.email||'Agent';
-    await c.query("insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,'assigned',$4)",[orgId,ticket.id,actorName,'Transferred Live Chat to '+(member.name||member.email)]);
-    return {ok:true,alreadyAssigned:false,userId:targetId,agentName:member.name||member.email,activeChats:activeChats+1,maxConcurrent};
-  });
+export async function transferChat(pool,orgId,actor,number,targetUserId,canManage=false){
+ return withOrg(pool,orgId,async c=>{
+  const targetId=String(targetUserId||'').slice(0,128);if(!targetId)return fail('Choose a teammate to receive this conversation.');
+  const member=(await c.query(`select m.role,r.permissions,u.name,u.email from member m join "user" u on u.id=m."userId"
+    left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId" left join custom_roles r on r.org_id=$1 and r.id=mc.role_id
+    where m."organizationId"=$1 and m."userId"=$2 for update of m`,[orgId,targetId])).rows[0];
+  if(!member||member.role==='light'||(member.role==='member'&&Array.isArray(member.permissions)&&!member.permissions.includes('reply')))return fail('That teammate is not permitted to handle customer chats.',403);
+  const agent=(await c.query('select chat_access,chat_available,chat_last_seen_at from agent_status where org_id=$1 and user_id=$2 for update',[orgId,targetId])).rows[0];
+  if(!agent||agent.chat_access!==true)return fail('Enable Live Chat access for that teammate first.',409);
+  if(agent.chat_available!==true||!agent.chat_last_seen_at||new Date(agent.chat_last_seen_at).getTime()<=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000)return fail('That teammate is not currently available for Live Chat.',409);
+  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has already ended.',409);
+  if(chat.assignee_id&&chat.assignee_id!==actor.id&&!canManage)return fail('Only the assigned agent or an administrator can transfer this conversation.',403);
+  if(!chat.assignee_id&&!canManage)return fail('An administrator must assign this conversation before it can be transferred.',403);
+  if(chat.assignee_id===targetId)return{ok:true,alreadyAssigned:true,userId:targetId};
+  const max=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
+  const active=Number((await c.query("select count(*)::int n from chat_conversations where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,targetId])).rows[0]?.n||0);
+  if(active>=max)return fail('That teammate has reached their simultaneous-chat limit.',409);
+  await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,targetId]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'transferred',$5)",[orgId,chat.id,actor.id,actor.name||actor.email||'Agent','Transferred to '+(member.name||member.email)]);
+  return{ok:true,alreadyAssigned:false,userId:targetId,agentName:member.name||member.email,activeChats:active+1,maxConcurrent:max};
+ });
 }
 
-
-/**
- * Supervisors can inspect a live conversation without changing its assignee.
- * Keep the payload intentionally narrow: conversation metadata, transcript and
- * visitor page context only; no attachment bytes or unrelated ticket extras.
- */
-export async function listSupervisedChats(pool, orgId) {
-  return withOrg(pool, orgId, async c => {
-    const rows=(await c.query(`select t.number,t.subject,t.status,t.priority,t.assignee_id,t.requester_name,t.requester_email,t.created_at,t.updated_at,
-      u.name as assignee_name,u.email as assignee_email,p.page_url,p.page_title
-      from tickets t
-      left join "user" u on u.id=t.assignee_id
-      left join ticket_provenance p on p.org_id=t.org_id and p.ticket_id=t.id
-      where t.org_id=$1 and t.channel='chat' and t.status in ('open','pending','on_hold')
-      order by (t.assignee_id is null) desc,t.updated_at desc limit 100`,[orgId])).rows;
-    const counts={total:rows.length,waiting:rows.filter(x=>!x.assignee_id).length,assigned:rows.filter(x=>!!x.assignee_id).length,needs_attention:0};
-    return {ok:true,chats:rows,counts};
-  });
+export async function listSupervisedChats(pool,orgId){
+ return withOrg(pool,orgId,async c=>{
+  const rows=(await c.query(`select cc.id as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+   from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.status in ('open','pending','on_hold')
+   order by (cc.assignee_id is null) desc,cc.updated_at desc limit 100`,[orgId])).rows;
+  return{ok:true,chats:rows,counts:{total:rows.length,waiting:rows.filter(x=>!x.assignee_id).length,assigned:rows.filter(x=>!!x.assignee_id).length,needs_attention:0}};
+ });
 }
 
-export async function monitorChat(pool, orgId, number) {
-  return withOrg(pool, orgId, async c => {
-    const ticket = (await c.query(`select id, number, subject, status, priority, assignee_id, requester_name,
-      requester_email, created_at, updated_at, channel
-      from tickets where org_id=$1 and number=$2 and channel='chat'`, [orgId, Number(number)||0])).rows[0];
-    if (!ticket) return fail('Live Chat conversation not found.', 404);
-    if (!['open','pending','on_hold'].includes(ticket.status)) return fail('This conversation has ended.', 409);
-    const messages = (await c.query(`select id, kind, author_id, author_name, body, html_body, created_at
-      from ticket_messages where org_id=$1 and ticket_id=$2 order by created_at desc,id desc limit 100`, [orgId,ticket.id])).rows.reverse();
-    const provenance = (await c.query('select page_url,page_title,submitted_at from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,ticket.id])).rows[0] || null;
-    const assignee = ticket.assignee_id ? (await c.query('select u.id,u.name,u.email from member m join "user" u on u.id=m."userId" where m."organizationId"=$1 and m."userId"=$2',[orgId,ticket.assignee_id])).rows[0] || null : null;
-    return {ok:true, ticket:{...ticket,assignee},messages,provenance,readOnly:true};
-  });
+export async function monitorChat(pool,orgId,number){
+ return withOrg(pool,orgId,async c=>{
+  const t=(await c.query(`select cc.id as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+   from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.id=$2`,[orgId,Number(number)||0])).rows[0];
+  if(!t)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(t.status))return fail('This conversation has ended.',409);
+  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit 100",[orgId,t.number])).rows.reverse();
+  return{ok:true,ticket:{...t,number:Number(t.number),assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null},messages,provenance:{page_url:t.page_url,page_title:t.page_title},readOnly:true};
+ });
 }
 
 /** Add a private coaching note to the conversation. It is never sent to the visitor. */
-export async function copilotChat(pool, orgId, actor, number, body) {
-  const note=clean(body,2000);
-  if(!note)return fail('Write a coaching note first.');
-  return withOrg(pool, orgId, async c => {
-    const ticket=(await c.query("select id,status from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];
-    if(!ticket)return fail('Live Chat conversation not found.',404);
-    if(!['open','pending','on_hold'].includes(ticket.status))return fail('This conversation has ended.',409);
-    const message=(await c.query("insert into ticket_messages (org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,ticket.id,actor.id,clean(actor.name,100)||actor.email,note])).rows[0];
-    await c.query("insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,'note','Private supervisor coaching added')",[orgId,ticket.id,clean(actor.name,100)||actor.email]);
-    return {ok:true,message};
-  });
+export async function copilotChat(pool,orgId,actor,number,body){
+ const note=clean(body,2000);if(!note)return fail('Write a coaching note first.');
+ return withOrg(pool,orgId,async c=>{
+  const chat=(await c.query("select id,status from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
+  const message=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,note])).rows[0];
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'coaching','Private supervisor coaching added')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
+  return{ok:true,message};
+ });
 }
 
 /** A supervisor can take ownership immediately; no visitor transcript is rewritten. */
-export async function takeoverChat(pool, orgId, actor, number) {
-  return withOrg(pool, orgId, async c => {
-    const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2 for update',[orgId,actor.id])).rows[0];
-    if(!member || member.role==='light')return fail('You are not allowed to take over live chats.',403);
-    const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
-    if(!access || access.chat_access!==true)return fail('An admin must enable Live Chat access for you before taking over a conversation.',403);
-    const ticket=(await c.query("select id,status,assignee_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];
-    if(!ticket)return fail('Live Chat conversation not found.',404);
-    if(!['open','pending','on_hold'].includes(ticket.status))return fail('This conversation has ended.',409);
-    if(ticket.assignee_id===actor.id)return {ok:true,alreadyAssigned:true};
-    await c.query('update tickets set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,ticket.id,actor.id]);
-    const actorName=clean(actor.name,100)||actor.email||'Supervisor';
-    await c.query("insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,'assigned',$4)",[orgId,ticket.id,actorName,'Supervisor took over the live conversation']);
-    return {ok:true,previousAssigneeId:ticket.assignee_id||null,assigneeId:actor.id};
-  });
+export async function takeoverChat(pool,orgId,actor,number){
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2 for update',[orgId,actor.id])).rows[0];
+  if(!member||member.role==='light')return fail('You are not allowed to take over live chats.',403);
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
+  if(!access||access.chat_access!==true)return fail('An admin must enable Live Chat access for you before taking over a conversation.',403);
+  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
+  if(chat.assignee_id===actor.id)return{ok:true,alreadyAssigned:true};
+  await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,actor.id]);
+  const name=clean(actor.name,100)||actor.email||'Supervisor';
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'assigned','Supervisor took over the live conversation')",[orgId,chat.id,actor.id,name]);
+  return{ok:true,previousAssigneeId:chat.assignee_id||null,assigneeId:actor.id};
+ });
 }
 
-// Atomically claim an unassigned chat. The membership and agent-status row locks serialize
-// concurrent claims by the same agent; the ticket row lock makes competing claims single-winner.
-export async function claimChat(pool, orgId, userId, number) {
-  return withOrg(pool, orgId, async c => {
-    const member = (await c.query('select m.role, u.name, u.email from member m join "user" u on u.id = m."userId" where m."organizationId" = $1 and m."userId" = $2 for update of m', [orgId, userId])).rows[0];
-    if (!member || member.role === 'light') return fail('You are not allowed to accept live chats.', 403);
-    const agent = (await c.query('select chat_access, chat_available, chat_last_seen_at from agent_status where org_id = $1 and user_id = $2 for update', [orgId, userId])).rows[0];
-    if (!agent || agent.chat_access !== true) return fail('An admin must enable Live Chat access for you first.', 403);
-    if (agent.chat_available !== true) return fail('Switch on Accept live chats before accepting a conversation.', 409);
-    const ticket = (await c.query("select id, status, assignee_id from tickets where org_id = $1 and number = $2 and channel = 'chat' for update", [orgId, Number(number) || 0])).rows[0];
-    if (!ticket) return fail('No such live chat.', 404);
-    if (ticket.status === 'closed' || ticket.status === 'solved') return fail('This chat has ended.', 409);
-    if (ticket.assignee_id) return ticket.assignee_id === userId ? { ok: true, alreadyAssigned: true } : fail('Another agent has already accepted this chat.', 409);
-    // A manual Accept click is an explicit sign that the agent is active now. Refresh
-    // an expired heartbeat here so a background-tab/browser sleep does not force an
-    // unnecessary off/on cycle. Automatic routing still requires a fresh heartbeat.
-    if (!agent.chat_last_seen_at || new Date(agent.chat_last_seen_at).getTime() <= Date.now() - CHAT_HEARTBEAT_TTL_SECONDS * 1000) {
-      await c.query('update agent_status set chat_last_seen_at = now() where org_id = $1 and user_id = $2 and chat_access = true and chat_available = true', [orgId, userId]);
-    }
-    const configured = (await c.query('select max_concurrent from chat_settings where org_id = $1', [orgId])).rows[0];
-    const maxConcurrent = Math.max(1, Math.min(10, Number(configured?.max_concurrent) || 3));
-    const active = Number((await c.query("select count(*)::int as n from tickets where org_id = $1 and channel = 'chat' and assignee_id = $2 and status in ('open','pending','on_hold')", [orgId, userId])).rows[0]?.n || 0);
-    if (active >= maxConcurrent) return fail('You have reached your maximum of ' + maxConcurrent + ' simultaneous chats.', 409);
-    await c.query('update tickets set assignee_id = $3, updated_at = now() where org_id = $1 and id = $2', [orgId, ticket.id, userId]);
-    await c.query("insert into ticket_events (org_id, ticket_id, actor_name, kind, detail) values ($1,$2,$3,'assigned','Accepted live chat')", [orgId, ticket.id, member.name || member.email]);
-    await c.query('update agent_status set last_assigned_at = now() where org_id = $1 and user_id = $2', [orgId, userId]);
-    return { ok: true, alreadyAssigned: false, activeChats: active + 1, maxConcurrent };
-  });
+export async function claimChat(pool,orgId,userId,number){
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select m.role,u.name,u.email from member m join "user" u on u.id=m."userId" where m."organizationId"=$1 and m."userId"=$2 for update of m',[orgId,userId])).rows[0];
+  if(!member||member.role==='light')return fail('You are not allowed to accept live chats.',403);
+  const agent=(await c.query('select chat_access,chat_available,chat_last_seen_at from agent_status where org_id=$1 and user_id=$2 for update',[orgId,userId])).rows[0];
+  if(!agent||agent.chat_access!==true)return fail('An admin must enable Live Chat access for you first.',403);
+  if(agent.chat_available!==true)return fail('Switch on Accept live chats before accepting a conversation.',409);
+  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('No such live chat.',404);if(!['open','pending','on_hold'].includes(chat.status))return fail('This chat has ended.',409);
+  if(chat.assignee_id)return chat.assignee_id===userId?{ok:true,alreadyAssigned:true}:fail('Another agent has already accepted this chat.',409);
+  if(!agent.chat_last_seen_at||new Date(agent.chat_last_seen_at).getTime()<=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000)await c.query('update agent_status set chat_last_seen_at=now() where org_id=$1 and user_id=$2',[orgId,userId]);
+  const max=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
+  const active=Number((await c.query("select count(*)::int n from chat_conversations where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,userId])).rows[0]?.n||0);
+  if(active>=max)return fail('You have reached your maximum of '+max+' simultaneous chats.',409);
+  await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,userId]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'assigned','Accepted live chat')",[orgId,chat.id,userId,member.name||member.email]);
+  await c.query('update agent_status set last_assigned_at=now() where org_id=$1 and user_id=$2',[orgId,userId]);
+  return{ok:true,alreadyAssigned:false,activeChats:active+1,maxConcurrent:max};
+ });
 }
