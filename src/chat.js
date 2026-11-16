@@ -110,6 +110,17 @@ export async function agentInbox(pool, orgId, input = {}) {
 }
 
 // Lightweight notification feed over independent chat messages.
+export async function heartbeatChatPresence(pool,orgId,actor,number,typing=false){
+ return withOrg(pool,orgId,async c=>{
+  const chat=await conversationForNumber(c,orgId,number);if(!chat)return fail('Live Chat conversation not found.',404);
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  await c.query(`insert into chat_presence(org_id,conversation_id,user_id,name,typing,seen_at) values($1,$2,$3,$4,$5,now())
+   on conflict(org_id,conversation_id,user_id) do update set name=excluded.name,typing=excluded.typing,seen_at=now()`,[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,typing===true]);
+  const others=(await c.query("select user_id as id,name,typing,seen_at from chat_presence where org_id=$1 and conversation_id=$2 and user_id<>$3 and seen_at>now()-interval '30 seconds' order by seen_at desc",[orgId,chat.id,actor.id])).rows;
+  return{ok:true,others};
+ });
+}
 export async function agentReplyAlerts(pool,orgId,input={}){
  return withOrg(pool,orgId,async c=>{
   if(input.initialize===true){const row=(await c.query("select coalesce(max(id),0)::text cursor from chat_messages where org_id=$1 and kind='requester'",[orgId])).rows[0];return{ok:true,cursor:String(row?.cursor||'0'),replies:[],hasMore:false};}
@@ -293,7 +304,8 @@ export async function pollChat(pool,env,slug,number,token,after){
   if(!t)return fail('No such chat.',404);
   if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
   const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
-  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping:false,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at}))};
+  const agentTyping=!!(await c.query("select 1 from chat_presence where org_id=$1 and conversation_id=$2 and typing=true and seen_at>now()-interval '15 seconds' limit 1",[x.org.id,t.id])).rowCount;
+  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at}))};
  });
 }
 
