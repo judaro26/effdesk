@@ -65,6 +65,10 @@ const initialChannel = (await pool.query('select channel from tickets where numb
 check('starting a chat makes a ticket on the chat channel and gives the visitor a token', r.status === 200 && n && tok && initialChannel === 'chat');
 const prov=(await pool.query('select ip_address,page_url,identity_type from ticket_provenance p join tickets t on t.id=p.ticket_id where t.org_id=$1 and t.number=$2',[acme.id,n])).rows[0];
 check('chat provenance captures server IP and strips sensitive page query strings',prov&&prov.ip_address==='1.1.1.1'&&prov.page_url==='https://customer.example/support'&&prov.identity_type==='visitor');
+const sharedLocation = await C('POST','/api/chat/context?org=acme',{number:n,token:tok,pageUrl:'https://customer.example/product',pageTitle:'Product page',latitude:37.7749,longitude:-122.4194});
+const storedLocation = (await pool.query('select latitude,longitude from ticket_provenance p join tickets t on t.id=p.ticket_id where t.org_id=$1 and t.number=$2',[acme.id,n])).rows[0];
+check('a visitor can explicitly share a coarse location that is rounded before storage',sharedLocation.status===200 && Number(storedLocation.latitude)===37.77 && Number(storedLocation.longitude)===-122.42);
+check('visitor location sharing rejects out-of-range or incomplete coordinates',(await C('POST','/api/chat/context?org=acme',{number:n,token:tok,pageUrl:'https://customer.example/product',latitude:91,longitude:10})).status===400 && (await C('POST','/api/chat/context?org=acme',{number:n,token:tok,pageUrl:'https://customer.example/product',latitude:37})).status===400);
 const preAccessInbox = await A(olivia, 'list', { status: 'active', channel: 'chat', limit: 100 });
 check('an admin must explicitly enable their own chat access too', preAccessInbox.status === 403);
 check('a teammate without Live Chat access cannot use the paginated inbox', (await A(ann, 'chat-inbox', { limit: 10 })).status === 403);
