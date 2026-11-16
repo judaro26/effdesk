@@ -41,9 +41,11 @@ const legacyColumns = (await client.query(`
 `)).rows;
 check('legacy backfill links and opt-in ticket automation setting exist', legacyColumns.length === 5);
 check('automatic ticket creation defaults off', (await client.query("select column_default from information_schema.columns where table_name='chat_settings' and column_name='auto_create_ticket'")).rows[0]?.column_default === 'false');
+const migrationNames = ['073_dedicated_live_chat_data_model.sql','074_live_chat_legacy_backfill.sql'];
+const migrationCounts = await Promise.all(migrationNames.map(async name =>
+  (await client.query('select count(*)::int n from schema_migrations where name=$1',[name])).rows[0].n));
 check('migration 073 and 074 were applied exactly once',
-  ['073_dedicated_live_chat_data_model.sql','074_live_chat_legacy_backfill.sql'].every(name =>
-    ran.includes(name) && (await client.query('select count(*)::int n from schema_migrations where name=$1',[name])).rows[0].n === 1));
+  migrationNames.every((name,i) => ran.includes(name) && migrationCounts[i] === 1));
 
 await client.end();
 done();
