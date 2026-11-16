@@ -2,6 +2,8 @@
 
 The manual **Staging multi-tenant load test** GitHub Actions workflow offers two workload types against a dedicated Neon staging database: read-only ticket/dashboard/Live Chat inbox/report reads, or a mixed visitor-poll and agent-inbox workload. The read-only workload reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. The mixed workload reports visitor-poll and agent-inbox latency plus connection-pool pressure, connection-acquisition wait, and connection lease duration (time a request holds a checked-out client); it updates only the synthetic conversations' visitor-seen timestamp. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted. The mixed workload performs one unmeasured warm-up round at the selected concurrency, then runs each measured round separately and reports both per-round and aggregate request-level percentiles. Setup and warm-up connection waits are excluded from measured acquisition percentiles. Use repeated runs and compare the individual rounds; this reduces cold-cache bias but does not eliminate Neon Free compute, network, or shared-resource variability.
 
+Lease duration is captured from node-postgres pool `acquire` and `release` lifecycle events, so it covers both callback- and promise-based client checkout paths.
+
 ### One-time setup
 
 1. Create a dedicated Neon staging database. Do not point this workflow at production.
