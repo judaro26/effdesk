@@ -461,10 +461,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       break;
     }
     case 'list': {
-      if (b.channel === 'chat') {
-        if ((g = need('live_chat'))) return g;
-        if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
-      } else if (!chatAccessAllowed) b.excludeChat = true;
+      if (b.channel === 'chat') return json(400, { error: 'Live Chat conversations are available in the dedicated Live Chat inbox.' });
+      b.excludeChat = true;
       if (!planHas(ent, 'sla')) b.sla = undefined;
       const cal = planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null;
       if (cal && cal.enabled && (b.sla === 'breached' || b.sla === 'risk')) { b.numbers = await slaNumbers(pool, orgId, b.sla, cal); }
