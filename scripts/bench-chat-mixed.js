@@ -94,6 +94,7 @@ try {
   maxSamples.total=0; maxSamples.waiting=0;
   const measuredTasks=buildTasks(settings.rounds);
   const measuredRounds=[];
+  const measuredResults=[];
   const sampler=setInterval(()=>{maxSamples.total=Math.max(maxSamples.total,pool.totalCount);maxSamples.waiting=Math.max(maxSamples.waiting,pool.waitingCount);},5);
   const started=performance.now();
   try {
@@ -101,6 +102,7 @@ try {
       const roundTasks=measuredTasks.slice(index*targets.length*4,(index+1)*targets.length*4);
       const roundStarted=performance.now();
       const result=await executeTasks(roundTasks,settings.concurrency);
+      measuredResults.push(result);
       const elapsed=performance.now()-roundStarted;
       const requests=roundTasks.length;
       measuredRounds.push({
@@ -112,21 +114,11 @@ try {
     }
   } finally { clearInterval(sampler); }
   const elapsed=performance.now()-started;
-  const aggregateSamples=Object.fromEntries(scenarios.map(s=>[s.name,measuredRounds.flatMap(r=>r.scenarios.find(x=>x.scenario===s.name)?[]:[])]));
-  // Aggregate raw measurements separately so percentiles represent all measured requests, not round percentiles.
-  // Re-run summaries from round-level values is not statistically valid; merge the retained samples below.
-  const allSamples=Object.fromEntries(scenarios.map(s=>[s.name,[]]));
-  const allFailures=Object.fromEntries(scenarios.map(s=>[s.name,0]));
-  // Round summaries are the primary diagnostic; totals are derived from their exact counts/failures.
-  for(const s of scenarios) {
-    for(const r of measuredRounds) {
-      const item=r.scenarios.find(x=>x.scenario===s.name);
-      allFailures[s.name]+=item.failures;
-      // Percentiles across rounds are intentionally not synthesized from per-round percentiles.
-    }
-  }
+  const aggregateSamples=Object.fromEntries(scenarios.map(s=>[s.name,measuredResults.flatMap(r=>r.samples[s.name])]));
+  const aggregateFailures=Object.fromEntries(scenarios.map(s=>[s.name,measuredResults.reduce((sum,r)=>sum+r.failures[s.name],0)]));
   const totalRequests=measuredTasks.length;
-  const totalFailures=Object.values(allFailures).reduce((a,b)=>a+b,0);
+  const totalFailures=Object.values(aggregateFailures).reduce((a,b)=>a+b,0);
+  const aggregateScenarios=summarize(aggregateSamples,aggregateFailures);
   const connectionStats=sortedStats(connectWait);
   console.log(JSON.stringify({
     target:{host:target.host,database:target.dbName},
@@ -135,6 +127,7 @@ try {
     warmup:{requests:warmupTasks.length,elapsed_ms:round(warmupElapsed),failures:warmupFailures},
     measured:{rounds:settings.rounds,requests:totalRequests,elapsed_ms:round(elapsed),requests_per_second:round(totalRequests/Math.max(elapsed,1)*1000),failures:totalFailures},
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:connectionStats},
+    scenarios:aggregateScenarios,
     rounds:measuredRounds
   },null,2));
   if(warmupFailures||totalFailures)process.exitCode=1;
