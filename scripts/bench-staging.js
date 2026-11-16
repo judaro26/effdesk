@@ -46,9 +46,12 @@ const pool = new pg.Pool({
 });
 // Capture query-level timings with redacted SQL shapes; never log bind values or tenant/customer content.
 const querySamples = new Map();
+const connectWaitSamples = [];
 const connect = pool.connect.bind(pool);
 pool.connect = async (...args) => {
+  const connectStartedAt = performance.now();
   const client = await connect(...args);
+  connectWaitSamples.push(performance.now() - connectStartedAt);
   if (!client.__effdeskQueryTiming) {
     client.__effdeskQueryTiming = true;
     const originalQuery = client.query.bind(client);
@@ -141,7 +144,18 @@ console.log(JSON.stringify({
   concurrency: settings.concurrency,
   elapsed_ms: round(elapsed),
   requests_per_second: round((tasks.length / Math.max(elapsed, 1)) * 1000),
-  pool: { max: pool.options.max, max_total_sampled: maxTotal, max_waiting_sampled: maxWaiting },
+  pool: {
+    max: pool.options.max,
+    max_total_sampled: maxTotal,
+    max_waiting_sampled: maxWaiting,
+    connection_acquire_ms: {
+      requests: connectWaitSamples.length,
+      p50: connectWaitSamples.length ? round(percentile([...connectWaitSamples].sort((a, b) => a - b), .50)) : null,
+      p95: connectWaitSamples.length ? round(percentile([...connectWaitSamples].sort((a, b) => a - b), .95)) : null,
+      p99: connectWaitSamples.length ? round(percentile([...connectWaitSamples].sort((a, b) => a - b), .99)) : null,
+      max: connectWaitSamples.length ? round(Math.max(...connectWaitSamples)) : null
+    }
+  },
   scenarios: summary,
   top_query_fingerprints: queryDiagnostics
 }, null, 2));
