@@ -6,7 +6,7 @@ The manual **Staging multi-tenant load test** GitHub Actions workflow offers two
 
 1. Create a dedicated Neon staging database. Do not point this workflow at production.
 2. Add the staging **pooled** connection string as the GitHub Actions repository secret `STAGING_DATABASE_URL`. Its hostname must include `-pooler` and end in `.neon.tech`.
-3. Seed synthetic workspaces using the guarded seeder below. It applies migrations and creates 10 workspaces by default, each with 3 synthetic agents, 100 tickets, and 20 Live Chat conversations. It is idempotent and refuses non-staging database names.
+3. Seed synthetic workspaces using the guarded seeder below. It applies migrations and creates 10 workspaces by default, each with 3 synthetic agents, 100 tickets, and 20 Live Chat conversations. It also grants the `live_chat` feature override only to the generated `stg_effdesk_org_NN` workspaces in this staging database. It is idempotent and refuses non-staging database names.
 4. Add the generated organization IDs, comma-separated, as the repository Actions variable `STAGING_ORG_IDS` (2–30 IDs).
 5. Run the workflow manually with `smoke` first. Increase to `standard` or `stress` only after checking staging database health.
 
@@ -26,7 +26,7 @@ The query diagnostics include each fingerprint's redacted SQL shape to make it e
 
 ### Mixed Live Chat workload
 
-Choose `mixed-chat` in the workflow to run `scripts/bench-chat-mixed.js`. It executes three visitor polls for each agent inbox refresh across the seeded workspaces, at the selected concurrency. It uses the existing synthetic visitor conversations and a benchmark-only token secret; it does not create messages or tickets. Visitor polls may refresh `last_visitor_seen_at` (throttled by the application to once per 15 seconds), so this workload is not strictly read-only and must only target the dedicated synthetic staging database. The workflow retains the pooled-Neon and staging-name guard. Each staging workspace must have Live Chat enabled by a staging-only feature override, because Live Chat is not included in the Free plan by default; do not change production customer entitlements for this test. The benchmark fails clearly if a workspace has no active synthetic conversation or Live Chat is unavailable.
+Choose `mixed-chat` in the workflow to run `scripts/bench-chat-mixed.js`. It executes three visitor polls for each agent inbox refresh across the seeded workspaces, at the selected concurrency. It uses the existing synthetic visitor conversations and a benchmark-only token secret; it does not create messages or tickets. Visitor polls may refresh `last_visitor_seen_at` (throttled by the application to once per 15 seconds), so this workload is not strictly read-only and must only target the dedicated synthetic staging database. The workflow retains the pooled-Neon and staging-name guard. The staging seeder automatically ensures a `live_chat` feature override for its synthetic `stg_effdesk_org_NN` workspaces, because Live Chat is not included in the Free plan by default. The override helper rejects non-synthetic workspace IDs, and the seeder itself refuses non-staging database names; do not change production customer entitlements for this test. The benchmark fails clearly if a workspace has no active synthetic conversation or Live Chat is unavailable.
 
 Before raising customer or agent limits, compare results with Neon query insights, compute/connection saturation, and Netlify function latency in the same region.
 
