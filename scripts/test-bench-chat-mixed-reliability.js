@@ -5,6 +5,11 @@ const source=fs.readFileSync(new URL('./bench-chat-mixed.js',import.meta.url),'u
 assert.match(source,/const warmupTasks=buildTasks\(1\)/,'runs one unmeasured warm-up round');
 assert.match(source,/executeTasks\(warmupTasks,settings\.concurrency,'warmup'\)/,'executes warm-up at profile concurrency');
 assert.match(source,/connectWait\.splice\(0\)/,'excludes setup and warm-up connection waits');
+assert.match(source,/connectionLease\.splice\(0\)/,'excludes setup and warm-up connection lease samples');
+assert.match(source,/const leaseStarted=new WeakMap\(\)/,'tracks lease start per pooled client');
+assert.match(source,/function finishLease\(client\)/,'records connection hold duration exactly once per lease');
+assert.match(source,/connection_lease_ms:sortedStats\(connectionLease\)/,'reports connection lease percentiles separately from acquisition wait');
+assert.match(source,/querySamples\.clear\(\)/,'limits SQL timing diagnostics to measured rounds');
 assert.match(source,/const measuredResults=\[\]/,'retains raw measured samples');
 assert.match(source,/measuredResults\.flatMap\(r=>r\.samples\[s\.name\]\)/,'computes aggregate percentiles from raw samples');
 assert.match(source,/rounds:measuredRounds/,'reports independent per-round results');
