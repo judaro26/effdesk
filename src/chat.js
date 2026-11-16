@@ -133,6 +133,17 @@ export async function getChatConversation(pool,orgId,number,options={}){
   return{ok:true,ticket:{id:t.id,number:Number(t.id),subject:t.subject,status:t.status,channel:'chat',requester_name:t.requester_name,requester_email:t.requester_email,assignee_id:t.assignee_id,assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null,assignee_name:t.assignee_name,assignee_email:t.assignee_email,priority:t.priority,created_at:t.created_at,updated_at:t.updated_at,solved_at:t.solved_at,closed_at:t.closed_at,visitor_ended:t.visitor_ended,provenance:{page_url:t.page_url,page_title:t.page_title,referrer:t.referrer,user_agent:t.user_agent,ip_address:t.ip_address,latitude:t.latitude,longitude:t.longitude},converted_ticket:converted},messages,messagesPage:{limit:500,hasMore:false,nextCursor:null},extras:{followers:[],events:[],sides:[],incidents:[],merged:[],following:false}};
  });
 }
+export async function agentNoteChat(pool,orgId,actor,number,input={}){
+ const body=clean(input.body,2000);if(!body)return fail('Write an internal note first.');
+ return withOrg(pool,orgId,async c=>{
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  const chat=(await c.query("select id,status from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body])).rows[0];
+  return{ok:true,message:m};
+ });
+}
 export async function agentEndChat(pool,orgId,actor,number){
  return withOrg(pool,orgId,async c=>{
   const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
@@ -160,7 +171,9 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
     await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,actor.id]);
     await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'assigned','Agent accepted the conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
   }
-  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body,html_body) values($1,$2,'agent',$3,$4,$5,$6) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body,clean(input.html,100000)||null])).rows[0];
+  const key=clean(input.idempotencyKey,80)||null;
+  if(key){const old=(await c.query('select id,kind,author_id,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and author_id=$3 and idempotency_key=$4',[orgId,chat.id,actor.id,key])).rows[0];if(old)return{ok:true,duplicate:true,message:old};}
+  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body,idempotency_key) values($1,$2,'agent',$3,$4,$5,$6) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body,key])).rows[0];
   await c.query("update chat_conversations set updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
   return{ok:true,message:m};
  });
@@ -287,7 +300,7 @@ export async function pollChat(pool,env,slug,number,token,after){
 
 // Whether the visitor's widget is actively polling a dedicated conversation.
 export async function chatOpen(pool,orgId,number){
- return withOrg(pool,orgId,async c=>!!(await c.query("select 1 from chat_conversations where org_id=$1 and id=$2 and last_visitor_seen_at>now()-interval '45 seconds'",[orgId,Number(number)||0])).rowCount);
+ return withOrg(pool,orgId,async c=>{const chat=await conversationForNumber(c,orgId,number);return !!(chat&&chat.last_visitor_seen_at&&new Date(chat.last_visitor_seen_at).getTime()>Date.now()-45000);});
 }
 
 // Resolve inactive chats hourly. A visitor whose chat window is still polling is
