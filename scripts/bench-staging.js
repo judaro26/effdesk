@@ -2,6 +2,7 @@
 // No records are created, updated, or deleted. Results contain timings only.
 import pg from 'pg';
 import { createHash } from 'node:crypto';
+import { normalizeSqlForFingerprint, sanitizeSqlTemplate } from './staging-sql-diagnostics.js';
 import { explicitSsl } from '../src/db.js';
 import { listTickets } from '../src/tickets.js';
 import { dashboard } from '../src/dashboard.js';
@@ -43,7 +44,7 @@ const pool = new pg.Pool({
   idleTimeoutMillis: 10000,
   ssl: { rejectUnauthorized: true }
 });
-// Capture query-level timings without logging SQL text, parameters, or tenant/customer data.
+// Capture query-level timings with redacted SQL shapes; never log bind values or tenant/customer content.
 const querySamples = new Map();
 const connect = pool.connect.bind(pool);
 pool.connect = async (...args) => {
@@ -56,11 +57,13 @@ pool.connect = async (...args) => {
       if (queryArgs.some(value => typeof value === 'function')) return originalQuery(...queryArgs);
       const input = queryArgs[0];
       const sql = typeof input === 'string' ? input : input?.text || '';
-      const fingerprint = createHash('sha256').update(sql.replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
+      const normalizedSql = normalizeSqlForFingerprint(sql);
+      const fingerprint = createHash('sha256').update(normalizedSql).digest('hex').slice(0, 12);
+      const sqlTemplate = sanitizeSqlTemplate(sql);
       const startedAt = performance.now();
       const record = error => {
         let entry = querySamples.get(fingerprint);
-        if (!entry) { entry = { durations: [], errors: 0 }; querySamples.set(fingerprint, entry); }
+        if (!entry) { entry = { durations: [], errors: 0, sql_template: sqlTemplate }; querySamples.set(fingerprint, entry); }
         entry.durations.push(performance.now() - startedAt);
         if (error) entry.errors++;
       };
@@ -129,7 +132,7 @@ const summary = scenarios.map(s => {
 });
 const queryDiagnostics = [...querySamples.entries()].map(([fingerprint, entry]) => {
   const values = entry.durations.sort((a, b) => a - b);
-  return { fingerprint, calls: values.length, errors: entry.errors, total_ms: round(values.reduce((sum, value) => sum + value, 0)), p50_ms: round(percentile(values, .50)), p95_ms: round(percentile(values, .95)), max_ms: round(values.at(-1)) };
+  return { fingerprint, sql_template: entry.sql_template, calls: values.length, errors: entry.errors, total_ms: round(values.reduce((sum, value) => sum + value, 0)), p50_ms: round(percentile(values, .50)), p95_ms: round(percentile(values, .95)), max_ms: round(values.at(-1)) };
 }).sort((a, b) => b.total_ms - a.total_ms).slice(0, 12);
 console.log(JSON.stringify({
   target: { host: target.host, database: target.dbName },
