@@ -1,6 +1,6 @@
 ## Staging multi-tenant load test
 
-The manual **Staging multi-tenant load test** GitHub Actions workflow runs the existing ticket, dashboard, Live Chat inbox, and 30-day report query paths concurrently against a dedicated Neon staging database. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
+The manual **Staging multi-tenant load test** GitHub Actions workflow offers two workload types against a dedicated Neon staging database: read-only ticket/dashboard/Live Chat inbox/report reads, or a mixed visitor-poll and agent-inbox workload. The read-only workload reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. The mixed workload reports visitor-poll and agent-inbox latency plus connection-pool pressure; it updates only the synthetic conversations' visitor-seen timestamp. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
 
 ### One-time setup
 
@@ -20,9 +20,13 @@ The harness refuses to connect unless the database name explicitly contains `sta
 | standard | 15 | 3 |
 | stress | 30 | 3 |
 
-Each worker runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, visitor polling, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors. The visitor poll path was separately optimized to reuse assignee details already returned by its tenant-scoped conversation query, avoiding two additional sequential user lookups per poll. That reduction is not represented in the four current benchmark scenarios.
+The `read-only` workload runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors. The visitor poll path was separately optimized to reuse assignee details already returned by its tenant-scoped conversation query, avoiding two additional sequential user lookups per poll.
 
 The query diagnostics include each fingerprint's redacted SQL shape to make it easier to identify the application query without exposing bind values or customer data. String and dollar-quoted literals, numeric constants, and SQL comments are removed or masked; long shapes are truncated. Fingerprints continue to hash the original normalized SQL. Use the shape and timing distribution with Neon query insights before changing indexes or query structure.
+
+### Mixed Live Chat workload
+
+Choose `mixed-chat` in the workflow to run `scripts/bench-chat-mixed.js`. It executes three visitor polls for each agent inbox refresh across the seeded workspaces, at the selected concurrency. It uses the existing synthetic visitor conversations and a benchmark-only token secret; it does not create messages or tickets. Visitor polls may refresh `last_visitor_seen_at` (throttled by the application to once per 15 seconds), so this workload is not strictly read-only and must only target the dedicated synthetic staging database. The workflow retains the pooled-Neon and staging-name guard. Each staging workspace must have Live Chat enabled by a staging-only feature override, because Live Chat is not included in the Free plan by default; do not change production customer entitlements for this test. The benchmark fails clearly if a workspace has no active synthetic conversation or Live Chat is unavailable.
 
 Before raising customer or agent limits, compare results with Neon query insights, compute/connection saturation, and Netlify function latency in the same region.
 
