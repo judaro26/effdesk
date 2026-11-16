@@ -9,6 +9,8 @@ import { makeMailer } from '../src/email.js';
 import { tickets, inboundEmail } from '../src/handlers.js';
 import { stripQuoted, isAutomated, verifySvix, ticketToken, handleInbound, cleanInboundHtml } from '../src/ticket-mail.js';
 import { prepareInlineDataImages } from '../src/attachments.js';
+import { runJobs } from '../src/jobs.js';
+import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -21,7 +23,9 @@ const olivia = await signUp('olivia@acme.test', 'Olivia'), ann = await signUp('a
 const acme = await auth.api.createOrganization({ body: { name: 'Acme Rentals', slug: 'acme-rentals' }, headers: olivia.headers });
 const beta = await auth.api.createOrganization({ body: { name: 'Beta', slug: 'beta' }, headers: otto.headers });
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
-const call = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job) }, { batchSize: 50 });
+const callRaw = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const call = async (who, body) => { const result = await callRaw(who, body); if (result.body.email === 'queued') await flushEmailJobs(); return result; };
 const inbound = (over = {}) => handleInbound(pool, ENV, { from: 'tina@example.com', to: ['acme@in.effdesk.test'], messageId: '<' + crypto.randomBytes(6).toString('hex') + '@mail.example.com>', subject: 'Heater broken', text: 'It is cold.', headers: {}, ...over });
 const ticket = async (n, org = acme.id) => (await withOrg(pool, org, async c => ({ t: (await c.query('select * from tickets where org_id = $1 and number = $2', [org, n])).rows[0], m: (await c.query('select kind, body, html_body, author_name, delivery from ticket_messages where org_id = $1 and ticket_id = (select id from tickets where org_id = $1 and number = $2) order by id', [org, n])).rows })));
 
@@ -51,12 +55,14 @@ check('inbound email HTML is sanitized while preserving email layout and removin
 
 // sending
 failSend = false; outbox.length = 0;
-r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone today.' });
+r = await callRaw(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone today.' });
+check('the reply endpoint queues email without waiting for the provider', r.body.email === 'queued' && outbox.length === 0 && (await ticket(1)).m.at(-1).delivery === 'queued');
+await flushEmailJobs();
 let mail = outbox[0];
-check('an agent\'s public reply is emailed, and the response says "sent"', r.body.email === 'sent' && outbox.length === 1 && mail.to === 'tina@example.com' && mail.subject === '[#1] Heater broken');
+check('the background worker sends the queued public reply', r.body.email === 'queued' && outbox.length === 1 && mail.to === 'tina@example.com' && mail.subject === '[#1] Heater broken');
 check('from is the organization\'s name on its own address, with its signature below the text', mail.from === 'Acme Support <acme@in.effdesk.test>' && /\n-- \nAcme Rentals, 1 Main St/.test(mail.text) && /Acme Rentals, 1 Main St/.test(mail.html));
 const tok = ticketToken(ENV, acme.id, 1);
-check('in "ticket" mode Reply-To is a private address for this ticket', mail.replyTo === `acme+1.${tok}@in.effdesk.test` && mail.headers['Auto-Submitted'] === 'no' && /^<m\d+\.[0-9a-f]+@in\.effdesk\.test>$/.test(mail.headers['Message-ID']));
+check('in "ticket" mode Reply-To is a private address for this ticket', mail.replyTo === `acme+1.${tok}@in.effdesk.test` && mail.headers['Auto-Submitted'] === 'no' && /^<m\\d+@in\\.effdesk\\.test>$/.test(mail.headers['Message-ID']));
 r = await inbound({ to: [mail.replyTo], text: 'Thanks, 3pm works.\n\nOn Mon, Ann wrote:\n> We are sending someone today.' });
 tk = await ticket(1);
 check('a customer\'s reply to that address lands in the same ticket, without the quoted text, and the ticket is open again', r.action === 'replied' && r.number === 1 && tk.m.at(-1).body === 'Thanks, 3pm works.' && tk.m.at(-1).kind === 'requester' && tk.t.status === 'open');
@@ -89,7 +95,7 @@ check('an internal note is never emailed', outbox.length === 0);
 
 // failure and limits
 failSend = true; r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'Provider is down.' }); failSend = false;
-check('if the mail provider fails the reply is still saved and the response says "failed"', r.status === 200 && r.body.email === 'failed' && (await ticket(1)).m.at(-1).delivery === 'failed');
+check('if the provider fails the reply remains saved and queued for a background retry', r.status === 200 && r.body.email === 'queued' && (await ticket(1)).m.at(-1).delivery === 'queued');
 await withOrg(pool, acme.id, c => c.query(`insert into ticket_messages (org_id, ticket_id, kind, body, delivery) select $1, id, 'agent', 'bulk', 'sent' from tickets, generate_series(1, 50) where org_id = $1 and number = 1`, [acme.id]));
 outbox.length = 0; r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'One more.' });
 check('the free plan\'s daily limit stops further emails (the reply is saved, the response says "skipped")', r.body.email === 'skipped' && r.body.emailWhy === 'limit' && outbox.length === 0);
