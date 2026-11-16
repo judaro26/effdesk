@@ -114,7 +114,7 @@ export async function agentReplyAlerts(pool,orgId,input={}){
 }
 
 // Agent detail for the dedicated conversation store; shaped for the existing Live Chat view.
-export async function getChatConversation(pool,orgId,number){
+export async function getChatConversation(pool,orgId,number,options={}){
  return withOrg(pool,orgId,async c=>{
   const t=(await c.query(`select cc.id,cc.subject,cc.status,cc.requester_name,cc.requester_email,cc.assignee_id,cc.priority,
     cc.created_at,cc.updated_at,cc.solved_at,cc.closed_at,cc.page_url,cc.page_title,cc.referrer,cc.user_agent,cc.ip_address,cc.latitude,cc.longitude,cc.converted_ticket_id,
@@ -122,9 +122,21 @@ export async function getChatConversation(pool,orgId,number){
     u.name assignee_name,u.email assignee_email
     from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.id=$2`,[orgId,Number(number)||0])).rows[0];
   if(!t)return fail('Live Chat conversation not found.',404);
-  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at,id limit 500",[orgId,t.id])).rows;
+  const messageLimit=Math.max(1,Math.min(500,Number(options.messageLimit)||50));
+  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at,id limit $3",[orgId,t.id,messageLimit])).rows;
   const converted=t.converted_ticket_id?(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.converted_ticket_id])).rows[0]||null:null;
   return{ok:true,ticket:{id:t.id,number:Number(t.id),subject:t.subject,status:t.status,channel:'chat',requester_name:t.requester_name,requester_email:t.requester_email,assignee_id:t.assignee_id,assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null,assignee_name:t.assignee_name,assignee_email:t.assignee_email,priority:t.priority,created_at:t.created_at,updated_at:t.updated_at,solved_at:t.solved_at,closed_at:t.closed_at,visitor_ended:t.visitor_ended,provenance:{page_url:t.page_url,page_title:t.page_title,referrer:t.referrer,user_agent:t.user_agent,ip_address:t.ip_address,latitude:t.latitude,longitude:t.longitude},converted_ticket:converted},messages,messagesPage:{limit:500,hasMore:false,nextCursor:null},extras:{followers:[],events:[],sides:[],incidents:[],merged:[],following:false}};
+ });
+}
+export async function agentEndChat(pool,orgId,actor,number){
+ return withOrg(pool,orgId,async c=>{
+  const chat=(await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and id=$2 for update",[orgId,Number(number)||0])).rows[0];
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  if(['closed','solved'].includes(chat.status))return{ok:true,ended:true,alreadyEnded:true};
+  if(chat.assignee_id&&chat.assignee_id!==actor.id&&!['owner','admin'].includes(actor.role))return fail('Only the assigned agent or an administrator can end this conversation.',403);
+  await c.query("update chat_conversations set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'agent_ended','Agent ended the Live Chat conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
+  return{ok:true,ended:true};
  });
 }
 export async function agentReplyChat(pool,orgId,actor,number,input={}){
