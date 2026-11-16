@@ -163,7 +163,7 @@ export async function agentUpdateChat(pool,orgId,actor,number,patch={},canManage
   const chat=await conversationForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);
   if(chat.status==='closed')return fail('This conversation has ended and cannot be changed.',409);
-  if(chat.assignee_id&&chat.assignee_id!==actor.id&&!canManage)return fail('Only the assigned agent or an administrator can update this conversation.',403);
+  if(!canManage&&chat.assignee_id!==actor.id)return fail('Only the assigned agent or an administrator can update this conversation.',403);
   const sets=[],args=[orgId,chat.id];
   const status=String(patch.status||'');
   if(status){
@@ -189,7 +189,7 @@ export async function agentEndChat(pool,orgId,actor,number,canManage=false){
   const chat=await conversationForNumber(c,orgId,number,true);
   if(!chat)return fail('Live Chat conversation not found.',404);
   if(['closed','solved'].includes(chat.status))return{ok:true,ended:true,alreadyEnded:true};
-  if(chat.assignee_id&&chat.assignee_id!==actor.id&&!canManage)return fail('Only the assigned agent or an administrator can end this conversation.',403);
+  if(!canManage&&chat.assignee_id!==actor.id)return fail('Only the assigned agent or an administrator can end this conversation.',403);
   await c.query("update chat_conversations set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
   await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'agent_ended','Agent ended the Live Chat conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
   return{ok:true,ended:true};
