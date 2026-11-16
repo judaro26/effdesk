@@ -71,4 +71,15 @@ const run = await runJobs(pool, { 'test.worker': async (orgId, payload) => { if 
 const workerStatus = (await withOrg(pool, acme.id, db => db.query('select status from background_jobs where org_id=$1 and id=$2', [acme.id, workerJob.id]))).rows[0].status;
 check('the scheduled worker dispatches registered job types and marks successful work complete', handled === 1 && run.succeeded === 1 && workerStatus === 'succeeded');
 
+// Tenant fairness: a noisy workspace must not take the entire worker batch.
+await pool.query("update background_jobs set status='failed', locked_at=null, locked_by=null where status in ('queued','running')");
+for (let i = 0; i < 3; i++) {
+  await enqueueJob(pool, acme.id, { type: 'test.fairness', payload: { tenant: acme.id }, idempotencyKey: 'acme-' + i });
+  await enqueueJob(pool, beta.id, { type: 'test.fairness', payload: { tenant: beta.id }, idempotencyKey: 'beta-' + i });
+}
+const fairnessTenants = [];
+const fairness = await runJobs(pool, { 'test.fairness': async orgId => { fairnessTenants.push(orgId); } }, { batchSize: 2, workerId: 'fair-worker' });
+check('the worker gives separate tenants a turn before taking a second job from a busy tenant', fairness.claimed === 2 && new Set(fairnessTenants).size === 2 && fairness.tenantsProcessed === 2 && fairness.maxJobsPerTenant === 1);
+check('worker run summaries expose tenant coverage and per-tenant batch concentration', fairness.organizationsVisited >= 2 && fairness.succeeded === 2);
+
 await pool.end(); done();
