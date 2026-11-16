@@ -6,7 +6,10 @@ const html = fs.readFileSync(new URL('../public/desk.html', import.meta.url), 'u
 
 assert.match(css, /@media\s*\(max-width:\s*1120px\)/, 'tablet layout breakpoint is present');
 assert.match(css, /@media\s*\(max-width:\s*760px\)/, 'compact layout breakpoint is present');
-assert.match(css, /\.chat-agent-conversation\.ticket\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/s, 'narrow chat layout collapses to one column');
+assert.match(css, /\.chat-agent-workspace \.chat-agent-conversation\.ticket\s*\{[^}]*grid-template-columns:minmax\(0,1fr\)/s, 'Live Chat conversation uses a single primary column');
+assert.match(css, /\.chat-agent-workspace \.chat-agent-conversation>\.props\{display:none!important\}/, 'empty ticket properties rail is removed from Live Chat');
+assert.match(css, /\.chat-agent-workspace \.chat-agent-conversation>\.info\s*\{[^}]*grid-row:2/s, 'requester context follows the conversation');
+assert.match(css, /\.chat-agent-head-actions\s*\{[^}]*flex-wrap:wrap/s, 'conversation actions wrap instead of overflowing');
 assert.match(css, /\.chat-agent-conversation>\.info\s*\{[^}]*grid-column:1\/-1/s, 'context panel moves below the conversation on tablet widths');
 assert.match(css, /\.chat-agent-conversation>\.conv \.thread\s*\{[^}]*overflow:auto!important/s, 'message thread remains independently scrollable on narrow screens');
 assert.match(css, /\.chat-agent-conversation>\.conv \.compose\s*\{[^}]*position:relative/s, 'composer remains in normal flow on narrow screens');
