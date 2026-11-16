@@ -6,6 +6,7 @@ import { withOrg } from './db.js';
 import { inboundDomain, PRODUCT } from './config.js';
 import { getEntitlements } from './billing.js';
 import { mailLimit } from './plans.js';
+import { enqueueJob } from './jobs.js';
 import { createTicket, addRequesterMessage, ticketByMessageId, messageSeen } from './tickets.js';
 import { sideTokenOk, sideReplyIn } from './desk.js';
 import '../public/js/format.js';
@@ -78,6 +79,40 @@ export async function saveMailSettings(pool, orgId, input, env = process.env) {
 
 // ---------- outgoing ----------
 // Emails an agent's public reply to the requester. Never throws: the reply is already saved, the result says what happened ('sent', 'failed' or 'skipped' with why).
+// Persist public replies first; the worker loads the message and attachments later.
+export async function enqueueTicketReply(pool, orgId, number, messageRowId) {
+  const mark = delivery => withOrg(pool, orgId, c => c.query(
+    'update ticket_messages set delivery = $3 where org_id = $1 and id = $2',
+    [orgId, messageRowId, delivery]
+  ));
+  try {
+    const data = await withOrg(pool, orgId, async c => {
+      const t = (await c.query('select id from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0];
+      const m = (await c.query('select id, delivery from ticket_messages where org_id = $1 and id = $2', [orgId, messageRowId])).rows[0];
+      const inbox = (await c.query('select inbox from inbox_directory where org_id = $1', [orgId])).rows[0]?.inbox;
+      const sentToday = (await c.query("select count(*)::int n from ticket_messages where org_id = $1 and delivery = 'sent' and created_at > now() - interval '24 hours'", [orgId])).rows[0].n;
+      return { t, m, inbox, sentToday };
+    });
+    if (!data?.t || !data.m) return { delivery: 'skipped', why: 'missing' };
+    if (!data.inbox) { await mark('skipped'); return { delivery: 'skipped', why: 'no-inbox' }; }
+    const ent = await getEntitlements(pool, orgId);
+    if (data.sentToday >= mailLimit(ent)) { await mark('skipped'); return { delivery: 'skipped', why: 'limit' }; }
+    const job = await enqueueJob(pool, orgId, {
+      type: 'ticket.email.deliver',
+      payload: { number: Number(number), messageRowId: String(messageRowId) },
+      idempotencyKey: 'ticket-message:' + String(messageRowId),
+      maxAttempts: 8
+    });
+    if (job.status === 'succeeded') return { delivery: data.m.delivery === 'sent' ? 'sent' : 'skipped' };
+    await mark('queued');
+    return { delivery: 'queued', jobId: job.id };
+  } catch (error) {
+    console.warn('ticket email could not be queued:', error.message);
+    await mark('failed').catch(() => {});
+    return { delivery: 'failed', why: 'queue-error' };
+  }
+}
+
 export async function sendTicketReply(pool, mailer, env, orgId, number, messageRowId, files = [], options = {}) {
   const domain = inboundDomain(env);
   try {
@@ -97,7 +132,7 @@ export async function sendTicketReply(pool, mailer, env, orgId, number, messageR
     const ent = await getEntitlements(pool, orgId);
     if (data.sentToday >= mailLimit(ent)) { await mark('skipped'); return { delivery: 'skipped', why: 'limit' }; }
     const { t, m, settings, inbox, orgName } = data, mode = settings?.reply_mode || 'ticket', display = clean(settings?.from_name, 100) || orgName || 'Support';
-    const mid = `<m${m.id}.${crypto.randomBytes(8).toString('hex')}@${domain}>`;
+    const mid = options.idempotencyKey ? `<m${m.id}@${domain}>` : `<m${m.id}.${crypto.randomBytes(8).toString('hex')}@${domain}>`;
     const from = mode === 'none' ? `${display.replace(/[<>"]/g, '')} <no-reply@${domain}>` : `${display.replace(/[<>"]/g, '')} <${inbox}@${domain}>`;
     const replyTo = mode === 'ticket' ? `${inbox}+${t.number}.${ticketToken(env, orgId, t.number)}@${domain}` : mode === 'custom' ? settings.reply_to : undefined;
     const sig = settings?.signature ? `\n\n-- \n${settings.signature}` : '', foot = mode === 'none' ? '\n\n(This address does not receive replies.)' : '';
