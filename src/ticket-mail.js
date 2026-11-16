@@ -108,6 +108,7 @@ export async function enqueueTicketReply(pool, orgId, number, messageRowId) {
       maxAttempts: 8
     });
     if (job.status === 'succeeded') return { delivery: data.m.delivery === 'sent' ? 'sent' : 'skipped' };
+    if (job.status === 'failed') { await mark('failed'); return { delivery: 'failed', why: 'delivery-exhausted' }; }
     await mark('queued');
     return { delivery: 'queued', jobId: job.id };
   } catch (error) {
