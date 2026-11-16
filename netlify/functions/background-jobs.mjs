@@ -5,12 +5,15 @@ import { context } from '../../src/context.js';
 import { runJobs } from '../../src/jobs.js';
 import { deliverWebhook } from '../../src/webhooks.js';
 import { deliverTicketEmailJob } from '../../src/ticket-mail-jobs.js';
+import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../../src/notification-jobs.js';
 
 export default async function backgroundJobs() {
   const { pool, mailer, store } = context();
   const summary = await runJobs(pool, {
     'webhook.deliver': (orgId, payload) => deliverWebhook(pool, orgId, payload),
-    'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, store, process.env, orgId, payload, job)
+    'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, store, process.env, orgId, payload, job),
+    'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job),
+    'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, process.env, orgId, payload, job)
   }, { batchSize: 5, leaseMs: 120000 });
   return new Response(JSON.stringify({ ok: true, ...summary }), {
     status: 200,

@@ -1,6 +1,8 @@
 // Agent email notifications for tickets and approval workflows.
+import crypto from 'node:crypto';
 import { withOrg } from './db.js';
 import { PRODUCT } from './config.js';
+import { enqueueJob } from './jobs.js';
 export async function notifyApproval(pool,mailer,orgId,approvalId,stageIndex=0,event='requested',createdBy=null,actorId=null){
  if(!mailer||!mailer.agentNotice)return {sent:0};
  try{
@@ -67,24 +69,30 @@ export async function notifyChangeApproval(pool,mailer,orgId,changeId,stageIndex
  }catch(e){console.warn('change approval notification error:',e.message);return {sent:0};}
 }
 export async function notifyTicket(pool, mailer, orgId, number, { kind, actorId = null, onlyUserId = null, summary = '' }) {
-  if (!mailer || !mailer.agentNotice) return { sent: 0 };
+  if (!mailer || !mailer.agentNotice) return { queued: 0 };
   try {
     const data = await withOrg(pool, orgId, async c => {
       const t = (await c.query('select id, subject, assignee_id from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0]; if (!t) return null;
       const org = (await c.query('select name from "organization" where id = $1', [orgId])).rows[0];
       const ids = onlyUserId ? [onlyUserId] : [...new Set([t.assignee_id, ...(await c.query('select user_id from ticket_followers where org_id = $1 and ticket_id = $2', [orgId, t.id])).rows.map(r => r.user_id)].filter(Boolean))];
-      return { t, orgName: org ? org.name : '', ids: ids.filter(i => i !== actorId) };
+      return { t, orgName: org ? org.name : '', ids: ids.filter(id => id !== actorId) };
     });
-    if (!data || !data.ids.length) return { sent: 0 };
-    const people = (await pool.query('select u.id, u.email, coalesce(p.notify, true) notify from "user" u join member m on m."userId" = u.id and m."organizationId" = $1 left join desk_prefs p on p.user_id = u.id where u.id = any($2)', [orgId, data.ids])).rows.filter(p => p.notify);
-    let sent = 0;
-    for (const p of people) {
+    if (!data || !data.ids.length) return { queued: 0 };
+    const people = (await pool.query('select u.id, u.email, coalesce(p.notify, true) notify from "user" u join member m on m."userId" = u.id and m."organizationId" = $1 left join desk_prefs p on p.user_id = u.id where u.id = any($2)', [orgId, data.ids])).rows.filter(p => p.notify && p.email);
+    let queued = 0;
+    for (const person of people) {
       if (kind !== 'assigned') {
-        const hit = (await pool.query("insert into desk_notify_log (user_id, ticket_id) values ($1,$2) on conflict (user_id, ticket_id) do update set notified_at = now() where desk_notify_log.notified_at < now() - interval '10 minutes' returning 1", [p.id, data.t.id])).rowCount;
+        const hit = (await pool.query("insert into desk_notify_log (user_id, ticket_id) values ($1,$2) on conflict (user_id, ticket_id) do update set notified_at = now() where desk_notify_log.notified_at < now() - interval '10 minutes' returning 1", [person.id, data.t.id])).rowCount;
         if (!hit) continue;
       }
-      try { await mailer.agentNotice(p.email, { kind, orgName: data.orgName, number, subject: data.t.subject, summary: String(summary || '').slice(0, 300), url: PRODUCT.appUrl+'/desk.html?org='+encodeURIComponent(orgId)+'&ticket='+Number(number) }); sent++; } catch (e) { console.warn('agent notice failed:', e.message); }
+      const job = await enqueueJob(pool, orgId, {
+        type: 'email.agent_notice',
+        payload: { userId: String(person.id), number: Number(number), kind: String(kind || 'reply'), summary: String(summary || '').slice(0, 300) },
+        idempotencyKey: 'agent-notice:' + crypto.randomUUID(),
+        maxAttempts: 8
+      });
+      if (job.status !== 'failed' && job.status !== 'succeeded') queued++;
     }
-    return { sent };
-  } catch (e) { console.warn('notify error:', e.message); return { sent: 0 }; }
+    return { queued };
+  } catch (e) { console.warn('notify queue error:', e.message); return { queued: 0 }; }
 }

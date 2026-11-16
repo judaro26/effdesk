@@ -14,6 +14,7 @@ import { memoryStore } from '../src/storage.js';
 import { listContacts } from '../src/contacts.js';
 import { runJobs } from '../src/jobs.js';
 import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
+import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../src/notification-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -28,13 +29,13 @@ const acme = await auth.api.createOrganization({ body: { name: 'Acme', slug: 'ac
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
 const tk = async (who, action, orgId, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId, action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
-const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job) }, { batchSize: 50 });
-const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); const body = await r.json(); if (body.email === 'queued') await flushEmailJobs(); return { status: r.status, body }; };
+const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job), 'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job), 'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, ENV, orgId, payload, job) }, { batchSize: 50 });
+const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); const body = await r.json(); await flushEmailJobs(); return { status: r.status, body }; };
 const _unused = async n => (await A(olivia, 'get', { number: n })).body.messages;
 
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket', fromName: 'Acme' });
 
-const C = async (method, path, body, ip = '1.1.1.1') => { const r = await chatApi(new Request('http://x' + path, { method, headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: body ? JSON.stringify(body) : undefined }), { pool, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const C = async (method, path, body, ip = '1.1.1.1') => { const r = await chatApi(new Request('http://x' + path, { method, headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: body ? JSON.stringify(body) : undefined }), { pool, mailer, env: ENV }); const result = { status: r.status, body: await r.json() }; await flushEmailJobs(); return result; };
 check('chat is off until an admin turns it on', (await C('GET', '/api/chat/config?org=acme')).body.enabled === false && (await C('POST', '/api/chat/start?org=acme', { email: 'v@x.co', message: 'hi' })).status === 404);
 const crossOriginConfig = await chatApi(new Request('http://x/api/chat/config?org=acme', { headers: { origin: 'null' } }), { pool, mailer, env: ENV });
 check('public widget config allows cross-origin embeds, including opaque test origins', crossOriginConfig.status === 200 && crossOriginConfig.headers.get('access-control-allow-origin') === '*');
