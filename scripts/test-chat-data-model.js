@@ -27,6 +27,26 @@ check('conversation queue, requester, visitor reuse and assignment indexes exist
   ['chat_conversations_org_queue_idx','chat_conversations_org_requester_idx','chat_conversations_org_visitor_reuse_idx','chat_conversations_org_assignee_idx'].every(x => indexes.includes(x)));
 check('migration 073 was applied exactly once', ran.includes('073_dedicated_live_chat_data_model.sql') &&
   (await client.query("select count(*)::int n from schema_migrations where name='073_dedicated_live_chat_data_model.sql'")).rows[0].n === 1);
+
+const legacyColumns = (await client.query(`
+  select table_name, column_name from information_schema.columns
+  where table_schema='public' and
+    (table_name,column_name) in (
+      ('chat_conversations','legacy_ticket_id'),
+      ('chat_conversations','legacy_ticket_number'),
+      ('chat_messages','legacy_ticket_message_id'),
+      ('chat_events','legacy_ticket_event_id'),
+      ('chat_settings','auto_create_ticket')
+    )
+`)).rows;
+check('legacy backfill links and opt-in ticket automation setting exist', legacyColumns.length === 5);
+check('automatic ticket creation defaults off', (await client.query("select column_default from information_schema.columns where table_name='chat_settings' and column_name='auto_create_ticket'")).rows[0]?.column_default === 'false');
+const migrationNames = ['073_dedicated_live_chat_data_model.sql','074_live_chat_legacy_backfill.sql'];
+const migrationCounts = await Promise.all(migrationNames.map(async name =>
+  (await client.query('select count(*)::int n from schema_migrations where name=$1',[name])).rows[0].n));
+check('migration 073 and 074 were applied exactly once',
+  migrationNames.every((name,i) => ran.includes(name) && migrationCounts[i] === 1));
+
 await client.end();
 done();
 process.exit(0);
