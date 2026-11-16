@@ -112,7 +112,22 @@
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
     main.appendChild(assignment); main.appendChild(controls); main.appendChild(actionNotice); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
     var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
-    form.addEventListener('submit', function (e) { e.preventDefault(); post(); });
+    var typingActive = false, typingRefresh = null, typingDebounce = null;
+    function sendTyping(active) {
+      if (state.ended || !state.number || !state.token) return;
+      typingActive = active === true;
+      if (typingRefresh) { root.clearInterval(typingRefresh); typingRefresh = null; }
+      var signal = function () { api('typing?org=' + encodeURIComponent(org), { number: state.number, token: state.token, typing: typingActive }).catch(function () {}); };
+      signal();
+      if (typingActive) typingRefresh = root.setInterval(function () { if (typingActive && !state.ended) signal(); else { root.clearInterval(typingRefresh); typingRefresh = null; } }, 5000);
+    }
+    ta.addEventListener('input', function () {
+      if (typingDebounce) root.clearTimeout(typingDebounce);
+      if (!ta.value.trim()) { sendTyping(false); return; }
+      if (!typingActive) typingDebounce = root.setTimeout(function () { sendTyping(true); }, 250);
+    });
+    ta.addEventListener('blur', function () { if (typingDebounce) root.clearTimeout(typingDebounce); sendTyping(false); });
+    form.addEventListener('submit', function (e) { e.preventDefault(); sendTyping(false); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
     poll();
   }

@@ -127,3 +127,5 @@ check('chat conversation numbers are separate from support ticket numbers', chat
 
 check('agent typing presence and visitor widget status are independent of ticket presence', js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'") && chatRuntime.includes('from chat_presence where org_id=$1'));
 check('chat conversations retain a chat-specific deep link and never upload into ticket attachments', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes('File attachments are not enabled for Live Chat yet.') && js.includes('if (!chatConversationOpen) uploadFiles(t, files)'));
+
+check('the Live Chat landing page opens the agent workspace directly instead of another inbox landing page', js.includes('openNextLiveChat') && js.includes('Open my next chat'));

@@ -59,6 +59,9 @@ check('agent detail reads independent conversation and visitor overview',detail.
 const typingPresence=await A(ann,'chat-presence',{number:n,typing:true});
 const typingPoll=await C('GET','/api/chat/poll?org=acme&n='+n+'&t='+token+'&after=0');
 check('agent typing indicators use the dedicated chat presence table',typingPresence.status===200&&typingPoll.body.agentTyping===true);
+const visitorTyping=await C('POST','/api/chat/typing?org=acme',{number:n,token,typing:true},'1.2.3.4');
+const agentTyping=await A(ann,'chat-presence',{number:n,typing:false});
+check('visitor typing signals are authenticated and visible to the agent presence feed',visitorTyping.status===200&&agentTyping.status===200&&(agentTyping.body.others||[]).some(p=>p.name==='Website visitor'&&p.typing===true));
 await A(ann,'chat-presence',{number:n,typing:false});
 const reply=await A(ann,'chat-reply',{number:n,body:'Yes, we ship to Canada.',idempotencyKey:'reply-1'});
 const duplicate=await A(ann,'chat-reply',{number:n,body:'Yes, we ship to Canada.',idempotencyKey:'reply-1'});
