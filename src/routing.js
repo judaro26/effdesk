@@ -86,6 +86,32 @@ export async function autoAssign(c, orgId, ticketId) {
 }
 
 
+export async function autoAssignChat(c,orgId,conversationId){
+ const settings=(await c.query('select enabled,strategy,max_open from routing_settings where org_id=$1',[orgId])).rows[0];
+ if(!settings||settings.enabled!==true)return null;
+ const rows=(await c.query(`select m."userId" as id,u.name,u.email,a.chat_access,a.chat_available,a.chat_last_seen_at,a.last_assigned_at,
+  (select count(*)::int from tickets t where t.org_id=$1 and t.assignee_id=m."userId" and t.status in ('open','pending','on_hold')) as open_tickets,
+  (select count(*)::int from chat_conversations cc where cc.org_id=$1 and cc.assignee_id=m."userId" and cc.status in ('open','pending','on_hold')) as open_chats
+  from member m join "user" u on u.id=m."userId" left join agent_status a on a.org_id=$1 and a.user_id=m."userId"
+  where m."organizationId"=$1 and m.role in ('owner','admin','member')`,[orgId])).rows;
+ const fresh=Date.now()-CHAT_HEARTBEAT_TTL_SECONDS*1000;
+ const eligible=rows.filter(r=>r.chat_access===true&&r.chat_available===true&&r.chat_last_seen_at&&new Date(r.chat_last_seen_at).getTime()>fresh&&(!settings.max_open||Number(r.open_tickets)+Number(r.open_chats)<settings.max_open));
+ const last=r=>r.last_assigned_at?new Date(r.last_assigned_at).getTime():0;
+ eligible.sort(settings.strategy==='least_busy'?(a,b)=>(Number(a.open_chats)-Number(b.open_chats))||(Number(a.open_tickets)-Number(b.open_tickets))||last(a)-last(b):(a,b)=>last(a)-last(b)||(Number(a.open_chats)-Number(b.open_chats))||(a.id<b.id?-1:1));
+ const maxChats=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
+ for(const pick of eligible){
+  await c.query('select user_id from agent_status where org_id=$1 and user_id=$2 for update',[orgId,pick.id]);
+  const active=Number((await c.query("select count(*)::int n from chat_conversations where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,pick.id])).rows[0]?.n||0);
+  if(active>=maxChats)continue;
+  await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2 and assignee_id is null',[orgId,conversationId,pick.id]);
+  if((await c.query('select 1 from chat_conversations where org_id=$1 and id=$2 and assignee_id=$3',[orgId,conversationId,pick.id])).rowCount){
+   await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Routing','assigned',$3)",[orgId,conversationId,'Automatically assigned to '+(pick.name||pick.email)]);
+   await c.query('update agent_status set last_assigned_at=now() where org_id=$1 and user_id=$2',[orgId,pick.id]);
+   return{id:pick.id,name:pick.name||pick.email};
+  }
+ }
+ return null;
+}
 export async function heartbeatChat(pool, orgId, userId) {
   return withOrg(pool, orgId, async c => {
     const r = await c.query("update agent_status set chat_last_seen_at=now() where org_id=$1 and user_id=$2 and chat_access=true and chat_available=true returning chat_last_seen_at", [orgId,userId]);
