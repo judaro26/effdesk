@@ -154,4 +154,13 @@ await A(olivia,'chat-save',{enabled:true,autoResolveHours:1,autoConvertToTicket:
 const lifecycle=await runChatLifecycle(pool,Date.now());
 const lifecycleRow=(await pool.query('select status from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,allowed.body.number])).rows[0];
 check('inactive dedicated conversations are auto-resolved without ticket records',lifecycle.actions>=1&&lifecycleRow.status==='solved');
+const messageCountBeforeReturn=Number((await pool.query('select count(*)::int n from chat_messages where org_id=$1 and conversation_id=(select id from chat_conversations where org_id=$1 and chat_number=$2)',[acme.id,allowed.body.number])).rows[0].n);
+const returned=await C('POST','/api/chat/start?org=acme',{name:'Cooldown',email:'cooldown@example.test',message:'I have one more question',visitorId:cooldownId},'8.8.8.8');
+const reopened=(await pool.query('select status,solved_at from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,allowed.body.number])).rows[0];
+const messageCountAfterReturn=Number((await pool.query('select count(*)::int n from chat_messages where org_id=$1 and conversation_id=(select id from chat_conversations where org_id=$1 and chat_number=$2)',[acme.id,allowed.body.number])).rows[0].n);
+const returnedEvent=(await pool.query("select count(*)::int n from chat_events where org_id=$1 and conversation_id=(select id from chat_conversations where org_id=$1 and chat_number=$2) and kind='visitor_returned'",[acme.id,allowed.body.number])).rows[0].n;
+check('visitor returning within the configured reuse window reopens the resolved conversation and preserves its transcript',returned.status===200&&returned.body.number===allowed.body.number&&reopened.status==='open'&&reopened.solved_at===null&&messageCountAfterReturn===messageCountBeforeReturn+1&&Number(returnedEvent)>=1);
+await pool.query("update chat_conversations set status='solved',solved_at=now()-interval '8 days',updated_at=now()-interval '8 days' where org_id=$1 and chat_number=$2",[acme.id,allowed.body.number]);
+const returnedAfterWindow=await C('POST','/api/chat/start?org=acme',{name:'Cooldown',email:'cooldown@example.test',message:'A new issue after the reuse window',visitorId:cooldownId},'8.8.8.8');
+check('visitor returning after the reuse window starts a separate conversation',returnedAfterWindow.status===200&&returnedAfterWindow.body.number!==allowed.body.number);
 await pool.end();done();
