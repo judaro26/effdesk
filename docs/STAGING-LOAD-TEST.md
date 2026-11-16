@@ -26,7 +26,7 @@ Before raising customer or agent limits, compare results with Neon query insight
 
 ### Creating synthetic data
 
-Run this from a trusted local checkout after the repository changes containing `scripts/seed-staging.js` are available:
+After merging the setup PR, the easiest option is GitHub Actions → **Seed synthetic staging workspaces** → Run workflow. Confirm that this is the dedicated staging project, then choose the workspace and data sizes. The workflow uses the existing `STAGING_DATABASE_URL` secret; you never need to paste the URL into a workflow input. Alternatively, run locally from a trusted checkout:
 
 ```bash
 STAGING_DATABASE_URL='your-staging-pooled-neon-url' npm run seed:staging
