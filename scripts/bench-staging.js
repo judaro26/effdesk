@@ -56,7 +56,7 @@ pool.connect = async (...args) => {
       if (queryArgs.some(value => typeof value === 'function')) return originalQuery(...queryArgs);
       const input = queryArgs[0];
       const sql = typeof input === 'string' ? input : input?.text || '';
-      const fingerprint = createHash('sha256').update(sql.replace(/\\s+/g, ' ').trim()).digest('hex').slice(0, 12);
+      const fingerprint = createHash('sha256').update(sql.replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
       const startedAt = performance.now();
       const record = error => {
         let entry = querySamples.get(fingerprint);
