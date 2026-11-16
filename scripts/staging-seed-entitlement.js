@@ -2,7 +2,7 @@
 // The caller must first validate STAGING_DATABASE_URL against the dedicated staging database.
 export async function enableStagingLiveChatOverride(client, orgId) {
   const id = String(orgId || '');
-  if (!/^stg_effdesk_org_\\d{2}$/.test(id)) {
+  if (!/^stg_effdesk_org_\d{2}$/.test(id)) {
     throw new Error('Refusing to grant the staging Live Chat override to a non-synthetic workspace.');
   }
   await client.query(
