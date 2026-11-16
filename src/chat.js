@@ -137,16 +137,13 @@ export async function agentInbox(pool, orgId, input = {}) {
         count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is not null)::int assigned,
         count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is not null and (${latest})='requester')::int needs_reply,
         count(*) filter(where cc.status='solved')::int solved,
-        count(*) filter(where cc.status='closed')::int closed
+        count(*) filter(where cc.status='closed')::int closed,
+        count(*) filter(where cc.assignee_id=$2 and cc.status in ('open','pending','on_hold'))::int active
       from chat_conversations cc where cc.org_id=$1
-    ), agent_capacity as (
-      select count(*)::int active from chat_conversations
-      where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')
     )
     select conversation_counts.*,
-      coalesce((select max_concurrent from chat_settings where org_id=$1),3)::int max_concurrent,
-      agent_capacity.active
-    from conversation_counts cross join agent_capacity`,
+      coalesce((select max_concurrent from chat_settings where org_id=$1),3)::int max_concurrent
+    from conversation_counts`,
       [orgId,String(input.agentId||'')])).rows[0]||{};
     const max=Math.max(1,Math.min(10,Number(metadata.max_concurrent)||3));
     const active=input.agentId?Number(metadata.active||0):0;
