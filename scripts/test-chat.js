@@ -43,6 +43,7 @@ check('the free plan cannot configure chat', (await tk(otto, 'chat-get', beta.id
 check('only an admin can save the settings', (await A(ann, 'chat-save', { enabled: true })).status === 403);
 let r = await A(olivia, 'chat-save', { enabled: true, title: 'Ask Acme', greeting: 'Hello!', color: '#aa0000' });
 check('an admin turns chat on and the public config shows the look', r.status === 200 && (await C('GET', '/api/chat/config?org=acme')).body.title === 'Ask Acme' && (await C('GET', '/api/chat/config?org=acme')).body.color === '#aa0000');
+check('public widget config exposes the visitor restart cooldown', (await C('GET','/api/chat/config?org=acme')).body.restartCooldownSeconds === 15);
 check('a bad color falls back to the default', (await A(olivia, 'chat-save', { enabled: true, color: 'red; x' })).body.settings.color === '#1f73b7');
 check('chat branding accepts a secure custom logo URL and returns it publicly', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'https://cdn.example.com/acme-logo.png' })).body.settings.logo_url === 'https://cdn.example.com/acme-logo.png' && (await C('GET', '/api/chat/config?org=acme')).body.logo === 'https://cdn.example.com/acme-logo.png');
 check('chat branding rejects insecure or malformed logo URLs', (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'http://example.com/logo.png' })).status === 400 && (await A(olivia, 'chat-save', { enabled: true, logoUrl: 'javascript:alert(1)' })).status === 400);
