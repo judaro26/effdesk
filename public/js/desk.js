@@ -138,7 +138,10 @@
     function refreshChatVisitorPage(number) {
       return api('get', { number: number, messageLimit: 1 }).then(function (r) {
         if (!r.ok || !r.body.ticket || !current || !current.ticket || current.ticket.number !== number) return;
-        current.ticket.provenance = r.body.ticket.provenance || current.ticket.provenance || {};
+        var priorProvenance = current.ticket.provenance || {}, nextProvenance = r.body.ticket.provenance || priorProvenance;
+        var locationChanged = priorProvenance.latitude !== nextProvenance.latitude || priorProvenance.longitude !== nextProvenance.longitude;
+        current.ticket.provenance = nextProvenance;
+        if (locationChanged) { draw(); return; }
         var p = current.ticket.provenance, box = doc.querySelector('[data-ticket-provenance] .chat-visitor-page');
         if (!box) return;
         while (box.firstChild) box.removeChild(box.firstChild);
