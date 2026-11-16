@@ -29,6 +29,11 @@ check('the chat inbox offers previous and next page navigation', js.includes('ch
 check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
 check('queue controls remain usable on mobile', css.includes('.chat-inbox-pagination') && css.includes('.chat-inbox-search') && css.includes('@media(max-width:560px)'));
 
+
+check('agents can change their personal Live Chat palette directly from the active conversation header', js.includes('chat-theme-quick-select') && js.includes("api('prefs-save', { chatTheme: next })") && js.includes('CHAT_THEMES.forEach'));
+check('the multi-chat workspace keeps visitor context visible beside the live conversation', css.includes('.chat-agent-workspace>.chat-agent-conversation{display:grid') && css.includes('.chat-agent-workspace .chat-agent-conversation>.info{display:block!important'));
+check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
+
 done();
 
 check('accepted Live Chat conversations stay in the dedicated Live Chat navigation context', js.includes("chatConversationOpen = r.body.ticket.channel === 'chat'") && js.includes("(chatInboxOpen || chatConversationOpen) ? 'chat'"));
@@ -77,7 +82,3 @@ check('Live Chat theme preference is returned on initialization and defaults saf
 check('the agent workspace refreshes the current visitor page during the existing Live Chat inbox refresh cycle', js.includes('function refreshChatVisitorPage(number)') && js.includes("api('get', { number: number, messageLimit: 1 })") && js.includes('refreshChatVisitorPage(current.ticket.number)'));
 check('the visitor page context is labelled as current for chats and as submission context for other tickets', js.includes("chatConversationOpen?'Current page':'Page at submission'"));
 check('the Classic Live Chat palette stays independent from whichever global desk theme the agent uses', css.includes('html[data-chat-theme="classic"] .chat-agent-workspace') && css.includes('--d-rail:#03363d'));
-
-check('agents can change their personal Live Chat palette directly from the active conversation header', js.includes('chat-theme-quick-select') && js.includes("api('prefs-save', { chatTheme: next })") && js.includes('CHAT_THEMES.forEach'));
-check('the multi-chat workspace keeps visitor context visible beside the live conversation', css.includes('.chat-agent-workspace>.chat-agent-conversation{display:grid') && css.includes('.chat-agent-workspace .chat-agent-conversation>.info{display:block!important'));
-check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
