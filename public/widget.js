@@ -51,7 +51,7 @@
     function toggle() {
       open = !open;
       if (!frame) {
-        frame = document.createElement('iframe'); frame.title = cfg.title || 'Chat'; var pageUrl = ''; try { var page = new URL(window.location.href); page.search = ''; page.hash = ''; pageUrl = page.href.slice(0, 2000); } catch (e) { pageUrl = window.location.origin; } frame.src = origin + '/chat.html?org=' + encodeURIComponent(org) + '&page=' + encodeURIComponent(pageUrl);
+        frame = document.createElement('iframe'); frame.title = cfg.title || 'Chat'; var pageUrl = ''; try { var page = new URL(window.location.href); page.search = ''; page.hash = ''; pageUrl = page.href.slice(0, 2000); } catch (e) { pageUrl = window.location.origin; } frame.src = origin + '/chat.html?org=' + encodeURIComponent(org) + '&page=' + encodeURIComponent(pageUrl) + '&pageTitle=' + encodeURIComponent(String(document.title || '').slice(0, 200));
         frame.style.cssText = 'position:fixed;right:20px;bottom:88px;width:360px;max-width:calc(100vw - 24px);height:520px;max-height:calc(100vh - 110px);border:0;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.3);background:#fff;z-index:2147483647';
         frame.addEventListener('load', function () { lastPage = ''; sendPageContext(); });
         document.body.appendChild(frame);
