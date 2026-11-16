@@ -6,7 +6,8 @@ The manual **Staging multi-tenant load test** GitHub Actions workflow runs the e
 
 1. Create a dedicated Neon staging database. Do not point this workflow at production.
 2. Add the staging **pooled** connection string as the GitHub Actions repository secret `STAGING_DATABASE_URL`. Its hostname must include `-pooler` and end in `.neon.tech`.
-3. Seed synthetic workspaces using the guarded seeder below. It applies migrations and creates 10 workspaces by default, each with 3 synthetic agents, 100 tickets, and 20 Live Chat conversations. It is idempotent and refuses non-staging database names.\n4. Add the generated organization IDs, comma-separated, as the repository Actions variable `STAGING_ORG_IDS` (2–30 IDs).
+3. Seed synthetic workspaces using the guarded seeder below. It applies migrations and creates 10 workspaces by default, each with 3 synthetic agents, 100 tickets, and 20 Live Chat conversations. It is idempotent and refuses non-staging database names.
+4. Add the generated organization IDs, comma-separated, as the repository Actions variable `STAGING_ORG_IDS` (2–30 IDs).
 5. Run the workflow manually with `smoke` first. Increase to `standard` or `stress` only after checking staging database health.
 
 The harness refuses to connect unless the database name explicitly contains `staging`, `stage`, or `test`. It requires the explicit workflow confirmation, is serialized to prevent overlapping runs, and performs no inserts, updates, deletes, migrations, or schema changes. Use synthetic data only; do not use production customer records in staging.
