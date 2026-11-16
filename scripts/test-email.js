@@ -11,6 +11,7 @@ import { stripQuoted, isAutomated, verifySvix, ticketToken, handleInbound, clean
 import { prepareInlineDataImages } from '../src/attachments.js';
 import { runJobs } from '../src/jobs.js';
 import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
+import { deliverAgentNoticeJob, deliverCsatSurveyJob } from '../src/notification-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -23,9 +24,9 @@ const olivia = await signUp('olivia@acme.test', 'Olivia'), ann = await signUp('a
 const acme = await auth.api.createOrganization({ body: { name: 'Acme Rentals', slug: 'acme-rentals' }, headers: olivia.headers });
 const beta = await auth.api.createOrganization({ body: { name: 'Beta', slug: 'beta' }, headers: otto.headers });
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
-const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job) }, { batchSize: 50 });
+const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job), 'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job), 'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, ENV, orgId, payload, job) }, { batchSize: 50 });
 const callRaw = async (who, body) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify(body) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
-const call = async (who, body) => { const result = await callRaw(who, body); if (result.body.email === 'queued') await flushEmailJobs(); return result; };
+const call = async (who, body) => { const result = await callRaw(who, body); await flushEmailJobs(); return result; };
 const inbound = (over = {}) => handleInbound(pool, ENV, { from: 'tina@example.com', to: ['acme@in.effdesk.test'], messageId: '<' + crypto.randomBytes(6).toString('hex') + '@mail.example.com>', subject: 'Heater broken', text: 'It is cold.', headers: {}, ...over });
 const ticket = async (n, org = acme.id) => (await withOrg(pool, org, async c => ({ t: (await c.query('select * from tickets where org_id = $1 and number = $2', [org, n])).rows[0], m: (await c.query('select kind, body, html_body, author_name, delivery from ticket_messages where org_id = $1 and ticket_id = (select id from tickets where org_id = $1 and number = $2) order by id', [org, n])).rows })));
 
