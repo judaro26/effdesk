@@ -136,7 +136,7 @@
       });
     }
     function refreshChatVisitorPage(number) {
-      return api('chat-get', { number: number, messageLimit: 500 }).then(function (r) {
+      return api('chat-get', { number: number, messageLimit: 1 }).then(function (r) {
         if (!r.ok || !r.body.ticket || !current || !current.ticket || current.ticket.number !== number) return;
         var priorProvenance = current.ticket.provenance || {}, nextProvenance = r.body.ticket.provenance || priorProvenance;
         var locationChanged = priorProvenance.latitude !== nextProvenance.latitude || priorProvenance.longitude !== nextProvenance.longitude;
@@ -1402,7 +1402,7 @@
       openTabs.forEach(function (t) {
         var on = !!current && current.ticket.number === t.number;
         tabsEl.appendChild(el('span', { class: 'tab has-x', 'aria-selected': String(on) },
-          el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number); } }, '#' + t.number + ' ' + t.subject),
+          el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number, t.isChat === true); } }, '#' + t.number + ' ' + t.subject),
           el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (current && current.ticket.number === t.number) current = null; draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
