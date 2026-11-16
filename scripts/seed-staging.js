@@ -3,6 +3,7 @@
 import pg from 'pg';
 import { explicitSsl } from '../src/db.js';
 import { migrate } from './migrate.js';
+import { enableStagingLiveChatOverride } from './staging-seed-entitlement.js';
 
 const databaseUrl = process.env.STAGING_DATABASE_URL;
 const workspaceCount = Number(process.env.STAGING_SEED_WORKSPACES || 10);
@@ -57,8 +58,9 @@ try {
       const orgSlug = `effdesk-staging-${String(n).padStart(2, '0')}`;
       const seeded = await client.query('select metadata from "organization" where id=$1', [orgId]);
       if (seeded.rows[0]?.metadata?.includes('effdesk-staging-seed-v1')) {
-        console.log(`Skipping ${orgId}: already seeded.`);
-        await client.query('rollback');
+        await enableStagingLiveChatOverride(client, orgId);
+        await client.query('commit');
+        console.log(`Skipping ${orgId}: already seeded; staging Live Chat entitlement ensured.`);
         continue;
       }
 
@@ -66,6 +68,7 @@ try {
         'insert into "organization" (id,name,slug,"createdAt",metadata) values ($1,$2,$3,now(),$4) on conflict (id) do update set name=excluded.name, slug=excluded.slug, metadata=excluded.metadata',
         [orgId, orgName, orgSlug, 'effdesk-staging-seed-v1']
       );
+      await enableStagingLiveChatOverride(client, orgId);
 
       const agentIds = [];
       for (let a = 1; a <= agentsPerWorkspace; a++) {
@@ -151,7 +154,7 @@ try {
       );
 
       await client.query('commit');
-      console.log(`Seeded ${orgId}: ${agentsPerWorkspace} agents, ${ticketsPerWorkspace} tickets, ${chatsPerWorkspace} chats.`);
+      console.log(`Seeded ${orgId}: ${agentsPerWorkspace} agents, ${ticketsPerWorkspace} tickets, ${chatsPerWorkspace} chats, Live Chat entitlement enabled.`);
     } catch (error) {
       await client.query('rollback').catch(() => {});
       throw new Error(`Failed seeding ${orgId}: ${error.message}`);
