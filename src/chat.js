@@ -4,6 +4,7 @@ import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
 import net from 'node:net';
 import { withOrg } from './db.js';
+import { MAX_UPLOAD, saveChatUpload, readFile, cleanName } from './attachments.js';
 import { createTicket } from './tickets.js';
 import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
@@ -139,6 +140,9 @@ export async function getChatConversation(pool,orgId,number,options={}){
   if(!t)return fail('Live Chat conversation not found.',404);
   const messageLimit=Math.max(1,Math.min(500,Number(options.messageLimit)||50));
   const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit $3",[orgId,t.id,messageLimit])).rows.reverse();
+  const files=messages.length?(await c.query('select id,chat_message_id,filename,content_type,size from attachments where org_id=$1 and chat_message_id=any($2::bigint[]) order by created_at',[orgId,messages.map(m=>m.id)])).rows:[];
+  const fileMap={};for(const file of files){const k=String(file.chat_message_id);(fileMap[k]||(fileMap[k]=[])).push({id:file.id,filename:file.filename,content_type:file.content_type,size:file.size});}
+  messages.forEach(m=>{m.attachments=fileMap[String(m.id)]||[];});
   const converted=t.converted_ticket_id?(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.converted_ticket_id])).rows[0]||null:null;
   return{ok:true,ticket:{id:t.id,number:Number(t.chat_number),subject:t.subject,status:t.status,channel:'chat',requester_name:t.requester_name,requester_email:t.requester_email,assignee_id:t.assignee_id,assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null,assignee_name:t.assignee_name,assignee_email:t.assignee_email,priority:t.priority,created_at:t.created_at,updated_at:t.updated_at,solved_at:t.solved_at,closed_at:t.closed_at,visitor_ended:t.visitor_ended,provenance:{page_url:t.page_url,page_title:t.page_title,referrer:t.referrer,user_agent:t.user_agent,ip_address:t.ip_address,latitude:t.latitude,longitude:t.longitude},converted_ticket:converted},messages,messagesPage:{limit:500,hasMore:false,nextCursor:null},extras:{followers:[],events:[],sides:[],incidents:[],merged:[],following:false}};
  });
@@ -197,7 +201,7 @@ export async function agentEndChat(pool,orgId,actor,number,canManage=false){
  });
 }
 export async function agentReplyChat(pool,orgId,actor,number,input={}){
- const body=clean(input.body,20000);if(!body)return fail('Write a reply first.');
+ const body=clean(input.body,20000), attachmentIds=Array.isArray(input.attachmentIds)?[...new Set(input.attachmentIds.map(String))].slice(0,5):[];if(!body&&!attachmentIds.length)return fail('Write a reply or attach a file.');
  return withOrg(pool,orgId,async c=>{
   const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2 for update',[orgId,actor.id])).rows[0];
   if(!member||member.role==='light')return fail('You are not allowed to reply to live chats.',403);
@@ -213,8 +217,9 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
     await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'assigned','Agent accepted the conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
   }
   const key=clean(input.idempotencyKey,80)||null;
-  if(key){const old=(await c.query('select id,kind,author_id,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and author_id=$3 and idempotency_key=$4',[orgId,chat.id,actor.id,key])).rows[0];if(old)return{ok:true,duplicate:true,message:old};}
+  if(key){const old=(await c.query('select id,kind,author_id,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and author_id=$3 and idempotency_key=$4',[orgId,chat.id,actor.id,key])).rows[0];if(old){if(attachmentIds.length)await c.query("update attachments set chat_message_id=$4 where org_id=$1 and chat_conversation_id=$2 and id=any($3::text[]) and chat_message_id is null and message_id is null and uploaded_by=$5",[orgId,chat.id,attachmentIds,old.id,actor.id]);return{ok:true,duplicate:true,message:old};}}
   const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body,idempotency_key) values($1,$2,'agent',$3,$4,$5,$6) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body,key])).rows[0];
+  if(attachmentIds.length)await c.query("update attachments set chat_message_id=$4 where org_id=$1 and chat_conversation_id=$2 and id=any($3::text[]) and chat_message_id is null and message_id is null and uploaded_by=$5",[orgId,chat.id,attachmentIds,m.id,actor.id]);
   await c.query("update chat_conversations set updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
   return{ok:true,message:m};
  });
@@ -301,11 +306,12 @@ export async function requestChatTranscript(pool,env,slug,input,mailer){
 export async function sendChat(pool,env,slug,input,mailer){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
  const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
- const body=clean(input.message,2000);if(!body)return fail('Write a message.');
+ const body=clean(input.message,2000), attachmentIds=Array.isArray(input.attachmentIds)?[...new Set(input.attachmentIds.map(String))].slice(0,5):[];if(!body&&!attachmentIds.length)return fail('Write a message or attach a file.');
  const result=await withOrg(pool,x.org.id,async c=>{
   const t=await conversationForNumber(c,x.org.id,number,true);
   if(!t)return fail('No such chat.',404);if(['closed','solved'].includes(t.status))return fail('This chat has ended. Start a new one.',409);
   const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4) returning id",[x.org.id,t.id,t.requester_name||t.requester_email,body])).rows[0];
+  if(attachmentIds.length) await c.query("update attachments set chat_message_id=$4 where org_id=$1 and chat_conversation_id=$2 and id=any($3::text[]) and chat_message_id is null and message_id is null and uploaded_by is null",[x.org.id,t.id,attachmentIds,m.id]);
   await c.query("update chat_conversations set updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,t.id]);
   return{ok:true,id:Number(m.id)};
  });
@@ -337,8 +343,10 @@ export async function pollChat(pool,env,slug,number,token,after){
   if(!t)return fail('No such chat.',404);
   if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
   const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
+  const files=rows.length?(await c.query('select id,chat_message_id,filename,content_type,size from attachments where org_id=$1 and chat_message_id=any($2::bigint[]) order by created_at',[x.org.id,rows.map(m=>m.id)])).rows:[];
+  const fileMap={};for(const file of files){const k=String(file.chat_message_id);(fileMap[k]||(fileMap[k]=[])).push({id:file.id,filename:file.filename,content_type:file.content_type,size:file.size});}
   const agentTyping=!!(await c.query("select 1 from chat_presence where org_id=$1 and conversation_id=$2 and user_id not like 'visitor:%' and typing=true and seen_at>now()-interval '15 seconds' limit 1",[x.org.id,t.id])).rowCount;
-  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at}))};
+  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at,attachments:fileMap[String(m.id)]||[]}))};
  });
 }
 
@@ -369,15 +377,33 @@ export async function runChatLifecycle(pool,nowMs=Date.now()){
 const hits = new Map();
 const tooMany = (pool, key, now, max) => rateLimit(pool, 'chat:' + key, max, 60, now);
 const json = (status, body, extraHeaders = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...extraHeaders } });
-export async function chatApi(req, { pool, mailer, env = process.env, now = Date.now() }) {
+export async function chatApi(req, { pool, mailer, store, env = process.env, now = Date.now() }) {
   const u = new URL(req.url), act = u.pathname.replace(/^\/api\/chat\/?/, '').split('/')[0], ip = clientIp(req, env);
   const slug = u.searchParams.get('org') || '';
   try {
     // This endpoint exposes only public widget presentation/availability settings. The embed script calls it from the customer's site, so it must be readable cross-origin.
     if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
     if (act === 'poll' && req.method === 'GET') { if (await tooMany(pool, 'p' + ip, now, 90)) return json(429, { error: 'Slow down.' }); const r = await pollChat(pool, env, slug, u.searchParams.get('n'), u.searchParams.get('t'), u.searchParams.get('after')); return json(r.ok ? 200 : r.status, r); }
+    if (act === 'file' && req.method === 'GET') {
+      const x=await liveOrg(pool,slug),number=Number(u.searchParams.get('n'))||0,token=u.searchParams.get('t')||'',id=u.searchParams.get('id')||'';
+      if(!x||!tokenOk(env,x.org.id,number,token))return json(404,{error:'File not found.'});
+      const chat=await withOrg(pool,x.org.id,async c=>(await c.query('select id from chat_conversations where org_id=$1 and chat_number=$2',[x.org.id,number])).rows[0]);
+      const file=await readFile(pool,store,x.org.id,id);
+      if(!chat||!file||String(file.chat_conversation_id)!==String(chat.id)||!file.chat_message_id)return json(404,{error:'File not found.'});
+      return new Response(file.bytes,{status:200,headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="'+cleanName(file.filename)+'"','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'private, no-store','Content-Length':String(file.bytes.length)}});
+    }
     if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
     const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' });
+    if(act==='upload'){
+      if(await tooMany(pool,'up'+ip,now,20))return json(429,{error:'Too many files uploaded. Try again shortly.'});
+      if(Number(req.headers.get('content-length')||0)>MAX_UPLOAD+1024)return json(413,{error:'Files can be up to 5 MB each.'});
+      const x=await liveOrg(pool,slug),number=Number(u.searchParams.get('n'))||0,token=u.searchParams.get('t')||'';
+      if(!x||!tokenOk(env,x.org.id,number,token))return json(403,{error:'This chat is not yours.'});
+      const reader=req.body&&req.body.getReader?req.body.getReader():null;if(!reader)return json(400,{error:'Choose a file first.'});
+      const chunks=[];let size=0;while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>MAX_UPLOAD){await reader.cancel().catch(()=>{});return json(413,{error:'Files can be up to 5 MB each.'});}chunks.push(Buffer.from(part.value));}
+      const bytes=Buffer.concat(chunks,size),result=await saveChatUpload(pool,store,x.org.id,null,{filename:u.searchParams.get('name'),contentType:u.searchParams.get('type')||req.headers.get('content-type'),bytes,chatNumber:number});
+      return result.ok?json(200,result):json(result.status||400,{error:result.error});
+    }
     const text = await req.text(); if (text.length > 10000) return json(413, { error: 'Too long.' });
     let b; try { b = JSON.parse(text || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
     if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
