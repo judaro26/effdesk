@@ -1322,7 +1322,7 @@ html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out{background:l
 .chat-ended-banner{padding:11px 14px;border-bottom:1px solid var(--d-line);background:color-mix(in srgb,#8b929b 13%,var(--d-panel));color:var(--d-muted);font-size:11px;font-weight:700}
 .chat-agent-conversation.is-ended .thread{background:color-mix(in srgb,var(--d-bg) 88%,#8b929b 12%);filter:grayscale(.8);opacity:.76}
 .chat-agent-conversation.is-ended .thread .msg{opacity:.82}
-.chat-agent-conversation.is-ended .composer{display:none}
+.chat-agent-conversation.is-ended .compose{display:none}
 .chat-agent-workspace .chat-agent-conversation>.info{overflow-y:auto;max-height:calc(100vh - 150px)}
 .chat-agent-workspace .chat-visitor-map iframe{height:185px}
 @media(max-width:1000px){.chat-landing-layout{grid-template-columns:minmax(0,1fr) 260px}.chat-landing-grid{grid-template-columns:1fr}}
