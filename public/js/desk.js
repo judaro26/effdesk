@@ -246,7 +246,7 @@
         var a = chatLandingAgents.filter(function (x) { return x.user_id === t.assignee_id; })[0];
         return el('button', { type:'button', class:'chat-landing-conversation' + (t.visitor_ended ? ' is-ended' : ''), onclick:function(){open(t.number);} },
           el('span',{class:'chat-landing-avatar'},initial(t.requester_name || t.requester_email || 'V')),
-          el('span',{class:'chat-landing-conversation-copy'},el('strong',{},t.requester_name || t.requester_email || 'Website visitor'),el('span',{},String(t.subject || 'Live Chat').replace(/^\\s*chat\\s*:\\s*/i,'').slice(0,72)),el('small',{},'#'+t.number+' · '+(t.visitor_ended?'Visitor ended':(a?fmtName(a):'Waiting for an agent')))),
+          el('span',{class:'chat-landing-conversation-copy'},el('strong',{},t.requester_name || t.requester_email || 'Website visitor'),el('span',{},String(t.subject || 'Live Chat').replace(/^\s*chat\s*:\s*/i,'').slice(0,72)),el('small',{},'#'+t.number+' · '+(t.visitor_ended?'Visitor ended':(a?fmtName(a):'Waiting for an agent')))),
           el('span',{class:'chat-landing-status'+(t.visitor_ended?' ended':'')},t.visitor_ended?'Ended':cap(t.status)));
       };
       return el('div',{class:'chat-landing'},
