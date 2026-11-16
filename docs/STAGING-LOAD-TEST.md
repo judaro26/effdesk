@@ -1,6 +1,6 @@
 ## Staging multi-tenant load test
 
-The manual **Staging multi-tenant load test** GitHub Actions workflow offers two workload types against a dedicated Neon staging database: read-only ticket/dashboard/Live Chat inbox/report reads, or a mixed visitor-poll and agent-inbox workload. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
+The manual **Staging multi-tenant load test** GitHub Actions workflow offers two workload types against a dedicated Neon staging database: read-only ticket/dashboard/Live Chat inbox/report reads, or a mixed visitor-poll and agent-inbox workload. The read-only workload reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. The mixed workload reports visitor-poll and agent-inbox latency plus connection-pool pressure; it updates only the synthetic conversations' visitor-seen timestamp. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
 
 ### One-time setup
 
@@ -20,7 +20,7 @@ The harness refuses to connect unless the database name explicitly contains `sta
 | standard | 15 | 3 |
 | stress | 30 | 3 |
 
-The `read-only` workload runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, visitor polling, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors. The visitor poll path was separately optimized to reuse assignee details already returned by its tenant-scoped conversation query, avoiding two additional sequential user lookups per poll.
+The `read-only` workload runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors. The visitor poll path was separately optimized to reuse assignee details already returned by its tenant-scoped conversation query, avoiding two additional sequential user lookups per poll.
 
 The query diagnostics include each fingerprint's redacted SQL shape to make it easier to identify the application query without exposing bind values or customer data. String and dollar-quoted literals, numeric constants, and SQL comments are removed or masked; long shapes are truncated. Fingerprints continue to hash the original normalized SQL. Use the shape and timing distribution with Neon query insights before changing indexes or query structure.
 
