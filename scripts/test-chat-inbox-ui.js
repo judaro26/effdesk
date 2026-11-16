@@ -1,3 +1,4 @@
+// Regression expectations reflect the current accessible Live Chat inbox labels.
 import fs from 'node:fs';
 import { check, done } from './lib/check.js';
 
