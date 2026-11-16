@@ -8,7 +8,8 @@ alter table chat_conversations
 alter table tickets
   add column if not exists source_chat_conversation_id bigint;
 create unique index if not exists tickets_org_id_id_uidx on tickets(org_id,id);
-do $$begin
+do $
+begin
   if not exists (select 1 from pg_constraint where conname='tickets_source_chat_conversation_fk') then
     alter table tickets add constraint tickets_source_chat_conversation_fk
       foreign key (org_id,source_chat_conversation_id) references chat_conversations(org_id,id) on delete restrict;
