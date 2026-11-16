@@ -8,8 +8,8 @@ assert.match(source,/connectWait\.splice\(0\)/,'excludes setup and warm-up conne
 assert.match(source,/connectionLease\.splice\(0\)/,'excludes setup and warm-up connection lease samples');
 assert.match(source,/const leaseStarted=new WeakMap\(\)/,'tracks lease start per pooled client');
 assert.match(source,/function finishLease\(client\)/,'records connection hold duration exactly once per lease');
-assert.match(source,/pool\\.on\\('acquire',client=>leaseStarted\\.set\\(client,performance\\.now\\(\\)\\)\\)/,'starts lease timing from the pool acquire lifecycle event');
-assert.match(source,/pool\\.on\\('release',\\(error,client\\)=>finishLease\\(client\\)\\)/,'ends lease timing from the pool release lifecycle event');
+assert.ok(source.includes("pool.on('acquire',client=>leaseStarted.set(client,performance.now()))"),'starts lease timing from the pool acquire lifecycle event');
+assert.ok(source.includes("pool.on('release',(error,client)=>finishLease(client))"),'ends lease timing from the pool release lifecycle event');
 assert.match(source,/connection_lease_ms:sortedStats\(connectionLease\)/,'reports connection lease percentiles separately from acquisition wait');
 assert.match(source,/querySamples\.clear\(\)/,'limits SQL timing diagnostics to measured rounds');
 assert.match(source,/const measuredResults=\[\]/,'retains raw measured samples');
