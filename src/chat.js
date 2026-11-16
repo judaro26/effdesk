@@ -80,7 +80,7 @@ export async function agentInbox(pool, orgId, input = {}) {
   const query = clean(input.q, 100);
   const view = ['all', 'waiting', 'needs-reply', 'mine', 'history'].includes(input.view) ? input.view : 'all';
   const history = view === 'history';
-  const args = [orgId], where = ['t.org_id = $1', "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "(t.status in ('open','pending','on_hold') or (t.status='closed' and exists (select 1 from ticket_events ended_event where ended_event.org_id=t.org_id and ended_event.ticket_id=t.id and ended_event.kind='status' and ended_event.detail='Visitor ended the Live Chat conversation')))";
+  const args = [orgId], where = ['t.org_id = $1', "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "(t.status in ('open','pending','on_hold') or (t.status='closed' and exists (select 1 from ticket_events ended_event where ended_event.org_id=t.org_id and ended_event.ticket_id=t.id and ended_event.kind='status' and ended_event.detail='Visitor ended the Live Chat conversation')))" ];
   if (view === 'waiting') where.push('t.assignee_id is null');
   if (view === 'needs-reply') where.push("t.assignee_id is not null and latest_public.kind = 'requester'");
   if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
