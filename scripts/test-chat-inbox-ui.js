@@ -41,7 +41,10 @@ check('agent chat conversations use a dedicated layout rather than the standard 
 check('the dedicated chat view identifies the visitor and offers a direct return to all conversations', js.includes('LIVE CHAT · CUSTOMER CONVERSATION') && js.includes("'data-back-chat-inbox': '1'") && js.includes('All conversations'));
 check('the dedicated agent chat layout is responsive and uses workspace theme tokens', css.includes('.chat-agent-conversation') && css.includes('var(--d-panel)') && css.includes('@media(max-width:760px)'));
 check('Live Chat visitor overview shows device, operating system, browser and page context', js.includes('chat-visitor-context-grid') && js.includes('visitorDevice') && js.includes('visitorOs') && js.includes('visitorBrowser') && js.includes('visitorPage'));
-check('visitor context clearly labels approximate location as not collected rather than guessing', js.includes('Approximate location is not currently collected') && js.includes('Not available yet'));
+check('visitor overview never guesses a location when coordinates are absent', js.includes('No approximate location data supplied') && js.includes('No location to plot yet'));
+check('visitor maps only render from finite, bounded coordinates supplied by the visitor context source', js.includes('hasVisitorCoords') && js.includes('Math.abs(visitorLat) <= 90') && js.includes('Math.abs(visitorLon) <= 180') && js.includes('openstreetmap.org/export/embed.html'));
+check('visitor location maps include a privacy-conscious external map link', js.includes('referrerpolicy:\'no-referrer\'') && js.includes('Open larger map'));
+check('visitor identity, device, browser, map and current page are grouped in a single vertical overview', js.includes('chat-visitor-overview') && js.includes('chat-visitor-context-stack') && js.includes('chat-visitor-map') && js.includes('chat-visitor-page'));
 check('visitor technical user-agent details are tucked into an expandable section', js.includes('chat-visitor-raw-ua') && js.includes('Technical browser details'));
 check('visitor context uses theme-aware responsive styles', css.includes('.chat-visitor-context-grid') && css.includes('@media(max-width:900px)'));
 
@@ -87,3 +90,7 @@ check('supervisors get a dedicated workspace navigation entry gated by the serve
 check('the supervisor workspace shows active team conversations and a read-only transcript', js.includes("api('chat-supervision-inbox')") && js.includes("api('chat-monitor'") && js.includes('READ-ONLY SUPERVISION'));
 check('supervisors can send private coaching notes and explicitly take over a conversation', js.includes("api('chat-copilot'") && js.includes("api('chat-takeover'") && js.includes('Take over chat'));
 check('the supervisor workspace is responsive on tablets and phones', css.includes('.chat-supervisor-layout') && css.includes('@media(max-width:850px){.chat-supervisor-layout'));
+
+check('visitor overview context tiles stack vertically instead of competing side by side', css.includes('.chat-visitor-context-stack{display:grid;grid-template-columns:minmax(0,1fr)}'));
+check('Live Chat surfaces use theme-aware gradients, elevated cards and polished message bubbles', css.includes('Premium Live Chat presentation') && css.includes('linear-gradient(145deg,var(--d-out)') && css.includes('.chat-visitor-identity'));
+check('each personal Live Chat palette has a distinct workspace background and message treatment', css.includes('html[data-chat-theme="obsidian"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="royal"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="ocean"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="forest"] .chat-agent-conversation .msg.out') && css.includes('html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out'));
