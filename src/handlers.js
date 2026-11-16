@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat, agentNoteChat } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat, agentNoteChat, agentUpdateChat } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -460,6 +460,13 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (!canCustom('reply')) return json(403, { error: 'Your role does not allow internal chat notes.' });
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentNoteChat(pool, orgId, actor, b.number, b);
+      break;
+    }
+    case 'chat-update': {
+      if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow conversation updates.' });
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentUpdateChat(pool, orgId, actor, b.number, b.patch || {}, isAdmin);
       break;
     }
     case 'list': {
