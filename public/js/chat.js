@@ -84,7 +84,7 @@
         if (notice) notice.textContent = r.ok ? 'Transcript sent to the email address you provided.' : (r.body.error || 'The transcript could not be sent.');
       }).catch(function () { var notice = doc.getElementById('chat-action-notice'); if (notice) notice.textContent = 'Connection interrupted. Please try again.'; }).then(function () { transcript.disabled = false; });
     });
-    var locationShare = el('button', { type: 'button', class: 'chat-action-link', text: 'Share approximate location' });
+    var locationShare = el('button', { type: 'button', class: 'chat-action-link', text: 'Share approximate location', title: 'Share an approximate location with support. Coordinates are rounded to about 1 km.' });
     locationShare.addEventListener('click', function () {
       var notice = doc.getElementById('chat-action-notice');
       if (!root.navigator || !root.navigator.geolocation) { if (notice) notice.textContent = 'Location sharing is not available in this browser.'; return; }
