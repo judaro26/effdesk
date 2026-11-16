@@ -40,7 +40,7 @@
     var changesOpen = false, changeRows = null, changeLoading = false, changeDetail = null, changeSelected = 0, changeCreating = false, changeStatus = '', changeRisk = '', changeServices = [], changeApprovalStages = [], cabPolicyOpen = false, cabPolicy = null, cabPolicyLoading = false;
     var saveFile = function (name, text, type) { var u = root.URL.createObjectURL(new root.Blob([text], { type: type })), a = doc.createElement('a'); a.href = u; a.download = name; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(function () { root.URL.revokeObjectURL(u); }, 1000); };
     var externalIssueUi = {}, hlook = null, wst = null, statuses = [], mDetail = false, waCfg = null, waTpls = null, winClosed = false, tplSel = 0, tplVals = [], sending = false, others = [], othersSig = '', conflict = null, kbIndex = -1, helpOpen = false, pendingG = false, qSeq = 0, qItems = [], qSel = -1, routingCfg = null, myAvail = true, formsCfg = null, formEdit = null, mClosed = {}, agentOpen = '', agentInfo = {}, rolesCfg = null, auditCfg = null, exportCfg = null, auditFilter = '', auditWho = '', roleEdit = null, showTimeline = false, exportNotes = false, aiBusy = '', summaries = {}, mig = { provider: 'zendesk', sub: '', email: '', token: '', state: 'idle', log: [], tickets: 0, messages: 0, articles: 0, skipped: 0, note: '' }, hostSlug = '', myNo = '', contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '', contactTimer = 0, contactOffset = 0, contactLimit = 50, contactTotal = 0, chatCfg = null, ssoCfg = null, support = false, supportEntered = false, supportAcc = null, fields = [], hoursCfg = null, picked = {}, team = null, tokens = null, newToken = '', rules = null, rulesLoading = false, rd = null, lifecyclePolicy = null, lifecyclePolicyLoading = false, myAvatar = null, hooks = null, newSecret = '', home = true, dash = null, features = [], queues = [], clients = [], macros = [], views = [], ticketColumns = ['status', 'number', 'subject', 'requester', 'priority', 'assignee', 'updated'], columnsOpen = false, ticketPrefsSig = '', ticketPrefsTimer = 0, columnFilterTimer = 0, labels = [], isAdmin = false, theme = 'classic', chatTheme = 'classic', manage = '', profile = false, report = null, reportDays = 30, translated = {}, notify = true, sla = null, editMsg = null, mergeArmed = false, macroPatch = null, sendStatus = '', savingView = false, menuOpen = false, mEdit = null, contactProfile = null, contactRows = null, contactView = 'contacts', contactSearch = '';
-    var locale = 'en', lastComposeInputAt = 0;
+    var locale = 'en', lastComposeInputAt = 0, ticketHistoryLoading = false;
     function draftStorageKey(number) { return 'effdesk_draft:' + orgId + ':' + meId + ':' + Number(number); }
     function newReplyRequestId() { try { var bytes = new Uint8Array(16); root.crypto.getRandomValues(bytes); return Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); } catch (e) { return (Date.now().toString(16) + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)).slice(0, 32); } }
     function saveTicketDraft(number) {
@@ -123,7 +123,7 @@
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n) {
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
-      return api('get', { number: n }).then(function (r) {
+      return api('get', { number: n, messageLimit: 50 }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
         var switchingTicket = !current || current.ticket.number !== n;
         closePanes();
@@ -1572,6 +1572,20 @@
         resizeHandle.setAttribute('aria-valuemax', String(Math.round(root.innerHeight * 0.8)));
         resizeHandle.setAttribute('aria-valuenow', String(replyEditorHeight));
       }
+      var loadOlderMessages = function () {
+        if (ticketHistoryLoading || !current.messagesPage || !current.messagesPage.hasMore || !current.messagesPage.nextCursor) return;
+        var requestedNumber = t.number, cursor = current.messagesPage.nextCursor;
+        ticketHistoryLoading = true; draw();
+        api('get', { number: requestedNumber, messageLimit: current.messagesPage.limit || 50, messageCursor: cursor }).then(function (r) {
+          ticketHistoryLoading = false;
+          if (!current || !current.ticket || current.ticket.number !== requestedNumber) { draw(); return; }
+          if (!r.ok) return say(r.body.error || 'Could not load older messages.', true);
+          var seen = {}; current.messages.forEach(function (m) { seen[String(m.id)] = true; });
+          current.messages = (r.body.messages || []).filter(function (m) { return !seen[String(m.id)]; }).concat(current.messages);
+          current.messagesPage = r.body.messagesPage || { hasMore: false, nextCursor: null };
+          draw();
+        }).catch(function () { ticketHistoryLoading = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
+      };
       var after = function () { return Promise.all([open(t.number), refresh()]); };
       var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
@@ -1700,7 +1714,7 @@
           return el('div', { class: 'conflict', role: 'alert', 'data-wa-window': '1' }, kids);
         })() : null,
         conflict ? el('div', { class: 'conflict', role: 'alert', 'data-conflict': '1' }, el('strong', {}, conflict.text), conflict.duplicate ? el('p', {}, 'Your draft has been kept. Review the conversation to confirm whether it already appears before trying again.') : [' ', el('button', { type: 'button', class: 'btn sm', 'data-send-anyway': '1', onclick: function () { conflict = null; send('reply', true); } }, 'Send anyway'), ' ', el('button', { type: 'button', class: 'btn l sm', 'data-show-new': '1', onclick: function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; conflict = null; after(); } }, 'Show what is new')]) : null,
-        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, showTimeline ? timelineEl() : (msgs.length ? msgs : [el('div', { class: 'conversation-empty m', role: 'status' }, 'No messages match these search and date filters.') ])),
+        el('div', { class: 'thread', 'data-ticket-number': String(t.number) }, current.messagesPage && current.messagesPage.hasMore ? el('div', { class: 'thread-older' }, el('button', { type: 'button', class: 'btn l sm', 'data-load-older-messages': '1', disabled: ticketHistoryLoading, onclick: loadOlderMessages }, ticketHistoryLoading ? 'Loading older messages…' : '↑ Load older messages')) : null, showTimeline ? timelineEl() : (msgs.length ? msgs : [el('div', { class: 'conversation-empty m', role: 'status' }, 'No messages match these search and date filters.') ])),
         el('div', { class: 'compose' }, resizeHandle, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];

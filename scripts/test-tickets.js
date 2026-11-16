@@ -102,6 +102,12 @@ const afterLocked=(await pool.query("select count(*)::int as n from ticket_messa
 check('a permanently closed ticket rejects public replies even when no new status is supplied',r.status===409 && /permanently closed/.test(r.body.error) && beforeLocked===afterLocked);
 r=await call(ann,{orgId:acme.id,action:'note',number:1,body:'Internal review note after closure.'});
 check('internal team notes remain available on permanently closed tickets',r.status===200 && r.body.ok===true);
+for (let i = 0; i < 4; i++) await call(ann, { orgId: acme.id, action: 'note', number: 1, body: 'History pagination test ' + i });
+const historyFirst = await call(ann, { orgId: acme.id, action: 'get', number: 1, messageLimit: 2 });
+const historySecond = await call(ann, { orgId: acme.id, action: 'get', number: 1, messageLimit: 2, messageCursor: historyFirst.body.messagesPage.nextCursor });
+check('ticket history returns a bounded newest page and an older continuation page without duplicate messages', historyFirst.status === 200 && historyFirst.body.messages.length === 2 && historyFirst.body.messagesPage.hasMore === true && !!historyFirst.body.messagesPage.nextCursor && historySecond.status === 200 && historySecond.body.messages.length === 2 && historySecond.body.messagesPage.hasMore === true && historyFirst.body.messages.every(a => historySecond.body.messages.every(b => String(a.id) !== String(b.id))));
+const badHistoryCursor = await call(ann, { orgId: acme.id, action: 'get', number: 1, messageLimit: 2, messageCursor: 'invalid-cursor' });
+check('ticket history rejects malformed continuation cursors', badHistoryCursor.status === 400 && /conversation page cursor is invalid/i.test(badHistoryCursor.body.error));
 r=await call(ann,{orgId:acme.id,action:'create',subject:'Follow-up: Heater is broken',body:'Continuing the conversation.',requesterName:'Tina Tenant',requesterEmail:'tenant@example.com',firstKind:'agent',channel:'email',lifecycleParentTicketNumber:1});
 const linked=(await call(ann,{orgId:acme.id,action:'get',number:r.body.ticket.number})).body;
 check('an agent can create a follow-up ticket linked to a permanently closed parent',r.status===200 && linked.ticket.lifecycle_parent_ticket_id===t.ticket.id && linked.lifecycleLinks.parent.number===1);

@@ -93,7 +93,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
       const decoded = JSON.parse(Buffer.from(q.cursor, 'base64url').toString('utf8'));
       const date = new Date(decoded?.u), id = Number(decoded?.id);
       if (!Number.isFinite(date.getTime()) || !Number.isSafeInteger(id) || id < 1) throw new Error('invalid');
-      args.push(date.toISOString(), id);
+      args.push(String(decoded.u), id);
       where.push('(updated_at, id) < ($' + (args.length - 1) + '::timestamptz, $' + args.length + '::bigint)');
     } catch { return fail('The ticket page cursor is invalid. Refresh the list and try again.'); }
   }
@@ -106,7 +106,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
         from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
       ), ticket_page as (
-        select ${ticketCols}, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
+        select ${ticketCols}, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
         limit ${cursorMode ? limit + 1 : limit} offset ${offset}
@@ -120,17 +120,42 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     const hasMore = cursorMode && rows.length > limit;
     if (hasMore) rows.pop();
     const last = rows[rows.length - 1];
-    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.updated_at, id: Number(last.id) })).toString('base64url') : null;
-    return { ok: true, tickets: rows, counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
+    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.cursor_updated_at, id: Number(last.id) })).toString('base64url') : null;
+    return { ok: true, tickets: rows.map(({ cursor_updated_at, ...ticket }) => ticket), counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
   });
 }
 
-export async function getTicket(pool, orgId, actor, number) {
+export async function getTicket(pool, orgId, actor, number, options = {}) {
   return withOrg(pool, orgId, async c => {
     const t = (await c.query(`select ${ticketCols} from tickets where org_id = $1 and number = $2`, [orgId, Number(number) || 0])).rows[0];
     if (!t) return fail('No such ticket.', 404);
-    const messages = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
-    const files = (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, t.id])).rows;
+    const pageSize = Math.min(Math.max(Number.parseInt(options.messageLimit, 10) || 0, 0), 100);
+    let messagesPage = null, messageRows;
+    if (pageSize) {
+      const messageWhere = ['org_id = $1', 'ticket_id = $2'], messageArgs = [orgId, t.id];
+      if (options.messageCursor) {
+        try {
+          const decoded = JSON.parse(Buffer.from(String(options.messageCursor), 'base64url').toString('utf8'));
+          const date = new Date(decoded?.at), id = Number(decoded?.id);
+          if (!Number.isFinite(date.getTime()) || !Number.isSafeInteger(id) || id < 1) throw new Error('invalid');
+          messageArgs.push(String(decoded.at), id);
+          messageWhere.push('(created_at, id) < ($' + (messageArgs.length - 1) + '::timestamptz, $' + messageArgs.length + '::bigint)');
+        } catch { return fail('The conversation page cursor is invalid. Refresh the ticket and try again.'); }
+      }
+      messageArgs.push(pageSize + 1);
+      const result = await c.query('select id, kind, author_id, author_name, body, html_body, created_at, created_at::text as cursor_created_at, edited_at from ticket_messages where ' + messageWhere.join(' and ') + ' order by created_at desc, id desc limit $' + messageArgs.length, messageArgs);
+      const hasMore = result.rows.length > pageSize;
+      messageRows = result.rows.slice(0, pageSize);
+      const oldest = messageRows[messageRows.length - 1];
+      messagesPage = { limit: pageSize, hasMore, nextCursor: hasMore && oldest ? Buffer.from(JSON.stringify({ at: oldest.cursor_created_at, id: Number(oldest.id) })).toString('base64url') : null };
+      messageRows.reverse();
+      for (const message of messageRows) delete message.cursor_created_at;
+    } else {
+      messageRows = (await c.query('select id, kind, author_id, author_name, body, html_body, created_at, edited_at from ticket_messages where org_id = $1 and ticket_id = $2 order by created_at, id', [orgId, t.id])).rows;
+    }
+    const messages = messageRows;
+    const messageIds = messages.map(m => m.id);
+    const files = messageIds.length ? (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id = any($3::bigint[]) and is_inline = false order by created_at', [orgId, t.id, messageIds])).rows : [];
     const lifecycleParent = t.lifecycle_parent_ticket_id ? (await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.lifecycle_parent_ticket_id])).rows[0] || null : null;
     const lifecycleFollowUps = (await c.query('select number,subject,status from tickets where org_id=$1 and lifecycle_parent_ticket_id=$2 order by created_at',[orgId,t.id])).rows;
     // Group once rather than scanning every attachment for every message (O(messages + files)).
@@ -150,7 +175,7 @@ export async function getTicket(pool, orgId, actor, number) {
     const provenance=(await c.query('select ip_address,identity_type,page_url,page_title,referrer,user_agent,submitted_at from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,t.id])).rows[0]||null; t.provenance=provenance; t.converted_ticket=t.converted_ticket_id?(await c.query('select number,subject,status from tickets where org_id=$1 and id=$2',[orgId,t.converted_ticket_id])).rows[0]||null:null; t.source_chat=t.source_chat_ticket_id?(await c.query('select number,subject,status from tickets where org_id=$1 and id=$2',[orgId,t.source_chat_ticket_id])).rows[0]||null:null;
     const policy=(await c.query('select config from ticket_lifecycle_policies where org_id=$1',[orgId])).rows[0]?.config||{};
     t.permanently_closed = t.status==='closed' && policy.permanentCloseEnabled===true && !!t.closed_at && Date.now()-new Date(t.closed_at).getTime()>=(Number(policy.permanentCloseDays)||30)*86400000;
-    return { ok: true, ticket: t, messages, lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
+    return { ok: true, ticket: t, messages, ...(messagesPage ? { messagesPage } : {}), lifecycleLinks: { parent: lifecycleParent, followUps: lifecycleFollowUps } };
   });
 }
 
