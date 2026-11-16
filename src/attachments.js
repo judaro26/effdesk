@@ -28,15 +28,42 @@ export async function saveUpload(pool, store, orgId, actor, { filename, contentT
   await withOrg(pool, orgId, c => c.query('insert into attachments (id, org_id, ticket_id, filename, content_type, size, uploaded_by) values ($1,$2,$3,$4,$5,$6,$7)', [id, orgId, t ? t.id : null, name, type, bytes.length, actor ? actor.id : null]));
   return { ok: true, attachment: { id, filename: name, contentType: type, size: bytes.length } };
 }
+// Live Chat uploads are linked to a dedicated conversation, never to a support ticket.
+export async function saveChatUpload(pool, store, orgId, actor, { filename, contentType, bytes, chatNumber }) {
+  if (!bytes || !bytes.length) return fail('That file is empty.');
+  if (bytes.length > MAX_UPLOAD) return fail('Files can be up to 5 MB each.', 413);
+  const chat = await withOrg(pool, orgId, async c => (await c.query("select id,status,assignee_id from chat_conversations where org_id=$1 and chat_number=$2", [orgId, Number(chatNumber)||0])).rows[0]);
+  if (!chat) return fail('No such Live Chat conversation.', 404);
+  if (!['open','pending','on_hold'].includes(chat.status)) return fail('This conversation has ended.', 409);
+  if (actor && chat.assignee_id && chat.assignee_id !== actor.id) return fail('This conversation is assigned to another agent.', 403);
+  const ent = await getEntitlements(pool, orgId);
+  if ((await storageUsed(pool, orgId)) + bytes.length > limitFor(ent)) return fail('Your storage for files is full. Delete files or upgrade.', 402);
+  const id = crypto.randomUUID(), name = cleanName(filename), type = cleanType(contentType);
+  await store.set(`${orgId}/${id}`, bytes);
+  await withOrg(pool, orgId, c => c.query('insert into attachments (id,org_id,chat_conversation_id,filename,content_type,size,uploaded_by) values ($1,$2,$3,$4,$5,$6,$7)', [id,orgId,chat.id,name,type,bytes.length,actor ? actor.id : null]));
+  return { ok: true, attachment: { id, filename: name, contentType: type, size: bytes.length } };
+}
+export async function claimChatUploads(pool, orgId, actor, chatNumber, messageRowId, ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].slice(0, MAX_PER_REPLY);
+  if (!list.length) return [];
+  return withOrg(pool, orgId, async c => {
+    const chat = (await c.query('select id from chat_conversations where org_id=$1 and chat_number=$2',[orgId,Number(chatNumber)||0])).rows[0];
+    if (!chat) return [];
+    return (await c.query(`update attachments set chat_message_id=$4 where org_id=$1 and chat_conversation_id=$2 and id=any($3::text[]) and chat_message_id is null and message_id is null and uploaded_by is not distinct from $5 returning id,filename,content_type,size`,[orgId,chat.id,list,messageRowId,actor ? actor.id : null])).rows;
+  });
+}
+export async function chatFilesOfMessage(pool, orgId, messageRowId) {
+  return withOrg(pool, orgId, async c => (await c.query('select id,filename,content_type,size from attachments where org_id=$1 and chat_message_id=$2 order by created_at',[orgId,messageRowId])).rows);
+}
 // an agent's uploads become the files of a reply (only the agent's own, unclaimed uploads, on this ticket)
 export async function claimUploads(pool, orgId, actor, ticketNumber, messageRowId, ids) {
   const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].slice(0, MAX_PER_REPLY); if (!list.length) return [];
-  return withOrg(pool, orgId, async c => (await c.query(`update attachments set message_id = $3, ticket_id = (select id from tickets where org_id = $1 and number = $2) where org_id = $1 and id = any($4::text[]) and message_id is null and uploaded_by = $5 and (ticket_id is null or ticket_id = (select id from tickets where org_id = $1 and number = $2)) returning id, filename, content_type, size`, [orgId, Number(ticketNumber) || 0, messageRowId, list, actor.id])).rows);
+  return withOrg(pool, orgId, async c => (await c.query(`update attachments set message_id = $3, ticket_id = (select id from tickets where org_id = $1 and number = $2) where org_id = $1 and id = any($4::text[]) and message_id is null and chat_conversation_id is null and uploaded_by = $5 and (ticket_id is null or ticket_id = (select id from tickets where org_id = $1 and number = $2)) returning id, filename, content_type, size`, [orgId, Number(ticketNumber) || 0, messageRowId, list, actor.id])).rows);
 }
 export async function filesOfMessage(pool, orgId, messageRowId) { return withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size from attachments where org_id = $1 and message_id = $2 and is_inline = false order by created_at', [orgId, messageRowId])).rows); }
 export async function filesOfTicket(pool, orgId, ticketId) { return withOrg(pool, orgId, async c => (await c.query('select id, message_id, filename, content_type, size from attachments where org_id = $1 and ticket_id = $2 and message_id is not null and is_inline = false order by created_at', [orgId, ticketId])).rows); }
 export async function readFile(pool, store, orgId, id) {
-  const row = await withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size from attachments where org_id = $1 and id = $2', [orgId, String(id)])).rows[0]);
+  const row = await withOrg(pool, orgId, async c => (await c.query('select id, filename, content_type, size, chat_conversation_id, chat_message_id from attachments where org_id = $1 and id = $2', [orgId, String(id)])).rows[0]);
   if (!row) return null; const bytes = await store.get(`${orgId}/${row.id}`); return bytes ? { ...row, bytes } : null;
 }
 export async function deleteFile(pool, store, orgId, id) {

@@ -61,3 +61,8 @@ input:focus,textarea:focus{border-color:var(--c);box-shadow:0 0 0 3px color-mix(
 .chat-action-link{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--c);font-size:11px;font-weight:650}
 .chat-action-link.danger{color:#b3261e;border-color:color-mix(in srgb,#b3261e 30%,var(--line))}
 .chat-action-notice{padding:3px 14px;min-height:0}
+
+/* Compact attachment controls and safe downloadable chat files. */
+.chat-attach{display:inline-flex;align-items:center;justify-content:center;flex:none;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink);font-size:12px;font-weight:700;cursor:pointer}.chat-attach input{display:none}.chat-pending-files{display:flex;flex-wrap:wrap;gap:6px;padding:4px 14px}.chat-file-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:11px}.chat-file-chip button{padding:0 4px;background:transparent;color:var(--ink);font-size:16px}.chat-files{display:flex;flex-direction:column;gap:5px;margin-top:7px}.chat-file{display:inline-flex;align-items:center;gap:5px;color:inherit!important;font-size:11px;text-decoration:underline;overflow-wrap:anywhere}
+
+.chat-file-item{display:flex;align-items:center;gap:9px;min-width:0}.chat-file-thumb{display:block;width:76px;height:64px;object-fit:cover;border:1px solid var(--line);border-radius:8px;background:var(--soft);flex:none}.chat-file-item .chat-file{min-width:0;overflow-wrap:anywhere}

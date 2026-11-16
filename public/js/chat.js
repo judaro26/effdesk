@@ -66,14 +66,15 @@
     if (seen[m.id]) return null; seen[m.id] = 1;
     var b = el('div', { class: 'b ' + m.from, 'data-id': String(m.id) });
     if (m.from === 'agent') b.appendChild(el('div', { class: 'who', text: m.name || 'Support team' }));
-    if (root.EffFormat) root.EffFormat.toDom(doc, m.body, b); else b.appendChild(el('p', { text: m.body }));
+    if (m.body) { if (root.EffFormat) root.EffFormat.toDom(doc, m.body, b); else b.appendChild(el('p', { text: m.body })); }
+    if (m.attachments && m.attachments.length) { var files = el('div', { class: 'chat-files' }); m.attachments.forEach(function (file) { var href = '/api/chat/file?org=' + encodeURIComponent(org) + '&n=' + encodeURIComponent(state.number) + '&t=' + encodeURIComponent(state.token) + '&id=' + encodeURIComponent(file.id); var item=el('div',{class:'chat-file-item'}); if(/^image\/(png|jpeg|gif|webp)$/.test(file.content_type||'')) item.appendChild(el('img',{class:'chat-file-thumb',src:href+'&inline=1',alt:file.filename,loading:'lazy'})); item.appendChild(el('a', { class: 'chat-file', href: href, download: file.filename }, '📎 ' + file.filename + ' (' + Math.ceil((Number(file.size)||0)/1024) + ' KB)')); files.appendChild(item); }); b.appendChild(files); }
     if (m.at) { var d = new Date(m.at); if (!isNaN(d.getTime())) { var today = new Date(), sameDay = d.toDateString() === today.toDateString(), stamp = sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); b.appendChild(el('time', { class: 'b-time', datetime: d.toISOString(), title: d.toLocaleString() }, stamp)); } }
     return b;
   }
   function conversation() {
     clear(main);
     var assignment = el('div', { class: 'chat-assignment', id: 'chat-assignment', role: 'status', 'aria-live': 'polite' }, 'Waiting for an agent to join…'), log = el('div', { class: 'log', id: 'log', role: 'log' }), typing = el('div', { class: 'chat-typing', id: 'chat-typing', role: 'status', 'aria-live': 'polite', hidden: 'hidden' }, el('span', { class: 'chat-typing-dots', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')), el('span', { class: 'chat-typing-label' }, 'An agent is typing…')), note = el('div', { class: 'note', id: 'ended', hidden: 'hidden' });
-    var ta = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a message', rows: '1', maxlength: '2000' }), send = el('button', { type: 'submit', text: 'Send' }), form = el('form', { class: 'send' }, ta, send);
+    var ta = el('textarea', { 'aria-label': 'Message', placeholder: 'Write a message', rows: '1', maxlength: '2000' }), send = el('button', { type: 'submit', text: 'Send' }), fileInput = el('input', { type: 'file', multiple: 'multiple', 'aria-label': 'Attach files', hidden: 'hidden' }), attach = el('label', { class: 'chat-attach' }, 'Attach', fileInput), pendingBox = el('div', { class: 'chat-pending-files' }), pendingAttachments = [], form = el('form', { class: 'send' }, attach, ta, send);
     var again = el('button', { type: 'button', class: 'link', text: 'Start a new chat' }); again.addEventListener('click', function () { store.set(null); state = { number: 0, token: '', last: 0, ended: false }; start(); });
     var controls = el('div', { class: 'chat-actions' });
     var transcript = el('button', { type: 'button', class: 'chat-action-link', text: 'Email me a transcript' });
@@ -110,11 +111,16 @@
     controls.appendChild(transcript); controls.appendChild(locationShare); controls.appendChild(end);
     var actionNotice = el('div', { class: 'note chat-action-notice', id: 'chat-action-notice', role: 'status', 'aria-live': 'polite' });
     note.appendChild(doc.createTextNode('This chat has ended. ')); note.appendChild(again);
-    main.appendChild(assignment); main.appendChild(controls); main.appendChild(actionNotice); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(form);
-    var post = function () { var text = ta.value.trim(); if (!text) return; send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
-    var typingActive = false, typingRefresh = null, typingDebounce = null;
+    main.appendChild(assignment); main.appendChild(controls); main.appendChild(actionNotice); main.appendChild(log); main.appendChild(typing); main.appendChild(note); main.appendChild(pendingBox); main.appendChild(form);
+    function drawPending() { clear(pendingBox); pendingAttachments.forEach(function (file) { var chip = el('span', { class: 'chat-file-chip' }, file.filename + ' ', el('button', { type: 'button', 'aria-label': 'Remove ' + file.filename, text: '×' })); chip.lastChild.addEventListener('click', function () { pendingAttachments = pendingAttachments.filter(function (x) { return x.id !== file.id; }); drawPending(); }); pendingBox.appendChild(chip); }); }
+    function uploadVisitorFiles(files) { var selected = [].slice.call(files || []).slice(0, Math.max(0, 5 - pendingAttachments.length)), chain = Promise.resolve(); selected.forEach(function (file) { chain = chain.then(function () { if (file.size > 5 * 1024 * 1024) { log.appendChild(el('div', { class: 'note', role: 'alert', text: file.name + ' is over 5 MB.' })); return; } var url = '/api/chat/upload?org=' + encodeURIComponent(org) + '&n=' + encodeURIComponent(state.number) + '&t=' + encodeURIComponent(state.token) + '&name=' + encodeURIComponent(file.name || 'file') + '&type=' + encodeURIComponent(file.type || 'application/octet-stream'); return root.fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file }).then(function (response) { return response.json().catch(function () { return {}; }).then(function (result) { if (!response.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: result.error || 'That file could not be uploaded.' })); return; } pendingAttachments.push(result.attachment); drawPending(); }); }); }); }); return chain.catch(function () { log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted while uploading. Please try again.' })); }); }
+    fileInput.addEventListener('change', function () { uploadVisitorFiles(fileInput.files).then(function () { fileInput.value = ''; }); });
+    var post = function () { var text = ta.value.trim(), ids = pendingAttachments.map(function (file) { return file.id; }); if (!text && !ids.length) return; sendTyping(false); send.disabled = true; api('send?org=' + encodeURIComponent(org), { number: state.number, token: state.token, message: text, attachmentIds: ids }).then(function (r) { send.disabled = false; if (!r.ok) { log.appendChild(el('div', { class: 'note', role: 'alert', text: (r.body.error || 'Not sent.') + (r.requestId ? ' Reference: ' + r.requestId : '') })); if (r.status === 409) { store.set(null); } else { ta.value = text; ta.focus(); } return; } ta.value = ''; pendingAttachments.length = 0; drawPending(); poll(); }).catch(function () { send.disabled = false; ta.value = text; ta.focus(); log.appendChild(el('div', { class: 'note', role: 'alert', text: 'Connection interrupted. Your message is still here; please try sending it again.' })); }); };
+    var typingActive = false, typingRefresh = null, typingDebounce = null, typingIdle = null;
     function sendTyping(active) {
       if (state.ended || !state.number || !state.token) return;
+      if (!active) { if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; } if (typingIdle) { root.clearTimeout(typingIdle); typingIdle = null; } }
+      else if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; }
       typingActive = active === true;
       if (typingRefresh) { root.clearInterval(typingRefresh); typingRefresh = null; }
       var signal = function () { api('typing?org=' + encodeURIComponent(org), { number: state.number, token: state.token, typing: typingActive }).catch(function () {}); };
@@ -122,11 +128,13 @@
       if (typingActive) typingRefresh = root.setInterval(function () { if (typingActive && !state.ended) signal(); else { root.clearInterval(typingRefresh); typingRefresh = null; } }, 5000);
     }
     ta.addEventListener('input', function () {
-      if (typingDebounce) root.clearTimeout(typingDebounce);
+      if (typingDebounce) { root.clearTimeout(typingDebounce); typingDebounce = null; }
+      if (typingIdle) root.clearTimeout(typingIdle);
       if (!ta.value.trim()) { sendTyping(false); return; }
       if (!typingActive) typingDebounce = root.setTimeout(function () { sendTyping(true); }, 250);
+      typingIdle = root.setTimeout(function () { sendTyping(false); }, 3000);
     });
-    ta.addEventListener('blur', function () { if (typingDebounce) root.clearTimeout(typingDebounce); sendTyping(false); });
+    ta.addEventListener('blur', function () { sendTyping(false); });
     form.addEventListener('submit', function (e) { e.preventDefault(); sendTyping(false); post(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); post(); } });
     poll();

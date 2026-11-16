@@ -6,7 +6,7 @@ import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddl
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
 import { getMailSettings, saveMailSettings, enqueueTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
-import { saveUpload, claimUploads, readFile, deleteFile, storeInbound, storeInlineDataImages, prepareInlineDataImages, MAX_UPLOAD, cleanName } from './attachments.js';
+import { saveUpload, saveChatUpload, claimUploads, readFile, deleteFile, storeInbound, storeInlineDataImages, prepareInlineDataImages, MAX_UPLOAD, cleanName } from './attachments.js';
 import { effectiveHelpSettings, getHelpSettings, saveHelpSettings, saveHelpImage, readHelpImage, MAX_IMAGE } from './help.js';
 import { clean as cleanHtml, withToc } from './html-clean.js';
 import { pdfToArticle, MAX_PDF } from './pdf-import.js';
@@ -731,6 +731,14 @@ export async function attachmentUpload(req, { pool, auth, store }) {
   if (Number(req.headers.get('content-length') || 0) > MAX_UPLOAD + 1024) return json(413, { error: 'Files can be up to 5 MB each.' });
   const bytes = await readBytes(req, MAX_UPLOAD);
   if (!bytes) return json(413, { error: 'Files can be up to 5 MB each.' });
+  const chatNumber = u.searchParams.get('chat');
+  if (chatNumber) {
+    if (role === 'light') return json(403, { error: 'Light agents cannot upload Live Chat files.' });
+    const chatAccess = await getChatAvailability(pool, orgId, s.user.id);
+    if (!chatAccess.access) return json(403, { error: 'Live Chat access is required.' });
+    const r = await saveChatUpload(pool, store, orgId, { id: s.user.id }, { filename: u.searchParams.get('name'), contentType: u.searchParams.get('type') || req.headers.get('content-type'), bytes, chatNumber });
+    return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
+  }
   const r = await saveUpload(pool, store, orgId, { id: s.user.id }, { filename: u.searchParams.get('name'), contentType: u.searchParams.get('type') || req.headers.get('content-type'), bytes, ticketNumber: u.searchParams.get('ticket') });
   return r.ok ? json(200, r) : json(r.status || 400, { error: r.error });
 }
@@ -772,6 +780,11 @@ export async function attachmentDownload(req, { pool, auth, store }) {
   const u = new URL(req.url), orgId = String(u.searchParams.get('org') || ''), role = orgId && await roleIn(pool, s.user.id, orgId);
   if (!role) return json(403, { error: 'You are not part of that organization.' });
   const f = await readFile(pool, store, orgId, u.pathname.split('/').pop()); if (!f) return json(404, { error: 'No such file.' });
+  if (f.chat_conversation_id) {
+    if (role === 'light') return json(403, { error: 'Live Chat access is required.' });
+    const chatAccess = await getChatAvailability(pool, orgId, s.user.id);
+    if (!chatAccess.access) return json(403, { error: 'Live Chat access is required.' });
+  }
   const inline = u.searchParams.get('inline') === '1', type = String(f.content_type || '').toLowerCase();
   if (inline && !['image/png','image/jpeg','image/gif','image/webp'].includes(type)) return json(415, { error: 'This file type cannot be displayed inline.' });
   return new Response(f.bytes, { status: 200, headers: { 'Content-Type': inline ? type : 'application/octet-stream', 'Content-Disposition': inline ? 'inline' : `attachment; filename="${cleanName(f.filename).replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(cleanName(f.filename))}`, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, no-store', 'Content-Length': String(f.bytes.length) } });

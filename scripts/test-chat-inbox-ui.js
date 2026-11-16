@@ -1,3 +1,4 @@
+// Regression expectations reflect the current accessible Live Chat inbox labels.
 import fs from 'node:fs';
 import { check, done } from './lib/check.js';
 
@@ -7,6 +8,8 @@ const embedWidget = fs.readFileSync(new URL('../public/widget.js', import.meta.u
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
 const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
 const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
+const chatPage = fs.readFileSync(new URL('../public/chat.html', import.meta.url), 'utf8');
+const deskPage = fs.readFileSync(new URL('../public/desk.html', import.meta.url), 'utf8');
 
 check('the waiting queue is presented as New chats', js.includes("panel('New chats', 'First come, first served · oldest waiting first'"));
 check('new unassigned conversations receive a visible NEW marker', js.includes("'chat-inbox-new-label'") && js.includes("' is-new'"));
@@ -26,7 +29,7 @@ check('waiting-age and accept styling remain responsive', css.includes('.chat-in
 
 check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, cursorMode: false, offset: chatInboxPageIndex * chatInboxLimit"));
 check('background Live Chat reply alerts use a cursor feed instead of repeatedly fetching the first 100 tickets', js.includes("api('chat-reply-alerts', { after: chatReplyCursor || '0' })") && js.includes("api('chat-reply-alerts', { initialize: true })"));
-check('the chat inbox exposes customer search and queue filters', js.includes('Search customers, email or ticket') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
+check('the chat inbox exposes customer search and queue filters', js.includes('Search live chats by customer, email, subject or ticket number') && js.includes('Search customers, email or conversation #') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
 check('the chat inbox offers previous and next page navigation', js.includes('chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1)'));
 check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
 check('queue controls remain usable on mobile', css.includes('.chat-inbox-pagination') && css.includes('.chat-inbox-search') && css.includes('@media(max-width:560px)'));
@@ -126,6 +129,8 @@ check('automatic ticket conversion is exposed as an explicit admin setting and d
 check('chat conversation numbers are separate from support ticket numbers', chatRuntime.includes('cc.chat_number=$2') && fs.readFileSync(new URL('../migrations/078_live_chat_runtime_cutover.sql', import.meta.url), 'utf8').includes('chat_conversation_number_seq'));
 
 check('agent typing presence and visitor widget status are independent of ticket presence', js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'") && chatRuntime.includes('from chat_presence where org_id=$1'));
-check('chat conversations retain a chat-specific deep link and never upload into ticket attachments', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes('File attachments are not enabled for Live Chat yet.') && js.includes('if (!chatConversationOpen) uploadFiles(t, files)'));
+check('chat conversations retain a dedicated deep link and use chat-scoped attachments rather than ticket attachment links', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number") && js.includes('picker(t, permanentlyClosed') && fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('chat_message_id'));
 
 check('the Live Chat landing page opens the agent workspace directly instead of another inbox landing page', js.includes('openNextLiveChat') && js.includes('Open my next chat'));
+check('visitor and agent typing indicators are connected end-to-end and use refreshed client scripts',widget.includes("api('typing?org=")&&widget.includes('r.body.agentTyping')&&js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'")&&js.includes('is typing…')&&chatPage.includes('chat.js?v=live-chat-attachments-typing-20261117')&&deskPage.includes('desk.js?v=live-chat-attachments-typing-20261117'));
+check('visitor chat attachments upload before sending and render secure token-scoped downloads',widget.includes('/api/chat/upload?org=')&&widget.includes('attachmentIds: ids')&&widget.includes('/api/chat/file?org=')&&js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number"));
