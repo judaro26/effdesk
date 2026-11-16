@@ -53,3 +53,18 @@ where p.org_id=cc.org_id and p.ticket_id=cc.source_ticket_id
   and cc.source_ticket_id is not null
   and cc.latitude is null and cc.longitude is null
   and p.latitude is not null and p.longitude is not null;
+
+create table if not exists chat_presence (
+  org_id text not null references "organization"(id) on delete cascade,
+  conversation_id bigint not null,
+  user_id text not null,
+  name text not null default '',
+  typing boolean not null default false,
+  seen_at timestamptz not null default now(),
+  primary key(org_id,conversation_id,user_id),
+  foreign key(org_id,conversation_id) references chat_conversations(org_id,id) on delete cascade
+);
+create index if not exists chat_presence_fresh_idx on chat_presence(org_id,conversation_id,seen_at desc);
+alter table chat_presence enable row level security;
+drop policy if exists tenant_isolation on chat_presence;
+create policy tenant_isolation on chat_presence using (org_id = current_setting('app.org_id', true)) with check (org_id = current_setting('app.org_id', true));
