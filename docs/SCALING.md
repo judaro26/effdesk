@@ -38,7 +38,7 @@ The benchmark reports p50, p95 and p99 latency, maximum latency, and sampled poo
 
 ## Durable asynchronous delivery
 
-Outbound webhooks are written to the tenant-scoped `background_jobs` outbox instead of being sent during ticket requests. PostgreSQL `SKIP LOCKED` claims and worker leases prevent overlapping workers from owning the same job. Failed deliveries retry with exponential backoff (up to one hour), up to eight attempts by default; terminal failures remain available for inspection. A Netlify scheduled worker runs once per minute and processes up to five deliveries concurrently.
+Outbound webhooks are written to the tenant-scoped `background_jobs` outbox instead of being sent during ticket requests. PostgreSQL `SKIP LOCKED` claims and worker leases prevent overlapping workers from owning the same job. Failed deliveries retry with exponential backoff (up to one hour), up to eight attempts by default; terminal failures remain available for inspection. A Netlify scheduled worker runs once per minute and processes up to 10 deliveries concurrently by default (configurable with `BACKGROUND_JOB_BATCH_SIZE`, bounded from 1 to 50). Each scheduling pass takes at most one job per tenant before returning for another pass, so a single noisy workspace cannot monopolize the whole batch. Worker responses include claimed/succeeded/retried/failed counts, tenant coverage, and the maximum jobs claimed for one tenant.
 
 Webhook delivery is at-least-once: a receiver may see the same event again if the endpoint accepted it but the response was lost. JSON webhook payloads include an `eventId`, also sent in `X-EffDesk-Event-Id`, so receivers can deduplicate. Public ticket replies, agent ticket notices, and CSAT survey emails use the durable email outbox; authentication, invitations, approval workflow notices, and platform alerts remain synchronous.
 
@@ -58,3 +58,8 @@ Public ticket replies are persisted first and then placed in the tenant-scoped b
 ### Agent notices and CSAT delivery
 
 Ticket assignment, follower, and customer-reply notices are queued per recipient. The worker reloads current workspace membership, notification preferences, and ticket assignment/follower state before sending, so stale or revoked recipients are skipped. CSAT survey emails are also queued after the one-per-ticket rating record is created. Both job types use the shared tenant-scoped retry/lease system and stable Resend idempotency keys. The email payload contains references and short notice metadata rather than message bodies or attachment data.
+
+
+### Background worker fairness and throughput
+
+The scheduled worker's default batch size is 10, with an optional `BACKGROUND_JOB_BATCH_SIZE` environment setting (1–50). Each pass claims at most one job from each workspace before another pass begins. This reduces starvation when one workspace has a large queue while keeping the existing tenant-scoped row locks, lease ownership, retry policy, and concurrency cap. The invocation summary reports work outcomes and tenant distribution; it is operational telemetry, not a substitute for a production queue-latency alert or a staging load test.
