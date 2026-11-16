@@ -48,7 +48,7 @@ import { info as logInfo, annotate } from './log.js';
 import { clientIp, sameOrigin, rateLimit } from './guard.js';
 import { PERMS, permFor, customRoleOf, listRoles, saveRole, deleteRole, assignRole, clearAssignment } from './roles.js';
 import { listAudit, auditCsv, exportInfo, exportData, ticketsCsv } from './audit.js';
-import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, heartbeatChat, getChatTeam, transferChat } from './routing.js';
+import { getRouting, saveRouting, setAvailable, myAvailability, getChatAvailability, setChatAccess, setChatAvailable, claimChat, heartbeatChat, getChatTeam, transferChat, monitorChat, copilotChat, takeoverChat } from './routing.js';
 import { heartbeat, leave as leavePresence, newSince, recentDuplicate } from './presence.js';
 import { listForms, saveForm, deleteForm, publicForms, submit as submitRequest, newToken as requestToken } from './requests.js';
 import { agentDetail, listTeam, changeRole, removeMember, cancelInvite, resendInvite } from './team.js';
@@ -196,8 +196,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   // must not discover or operate on them through the general ticket endpoints.
   const targetNumbers = [b.number, b.otherNumber].concat(b.action === 'bulk' && Array.isArray(b.numbers) ? b.numbers : [])
     .map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
-  let chatAccessAllowed = support;
-  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts', 'chat-team', 'chat-heartbeat'].includes(b.action) || targetNumbers.length)) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access;
+  const supervisionAction = ['chat-monitor', 'chat-copilot', 'chat-takeover'].includes(b.action);
+  const canSuperviseChat = !support && role !== 'light' && (isAdmin || (cr && cr.permissions.includes('chat_supervise')));
+  let chatAccessAllowed = support || (supervisionAction && canSuperviseChat);
+  if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts', 'chat-team', 'chat-heartbeat'].includes(b.action) || (targetNumbers.length && !supervisionAction))) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access || (supervisionAction && canSuperviseChat);
   if (!chatAccessAllowed && !support && targetNumbers.length) {
     const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
@@ -303,6 +305,27 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
     case 'chat-heartbeat': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await heartbeatChat(pool, orgId, actor.id); break; }
+    case 'chat-monitor': {
+      if ((g = need('live_chat'))) return g;
+      if (!canSuperviseChat) return json(403, { error: 'Your role does not allow monitoring other agents’ live chats.' });
+      r = await monitorChat(pool, orgId, b.number);
+      if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.monitored', String(b.number), { assigneeId: r.ticket.assignee?.id || null });
+      break;
+    }
+    case 'chat-copilot': {
+      if ((g = need('live_chat'))) return g;
+      if (!canSuperviseChat) return json(403, { error: 'Your role does not allow coaching other agents’ live chats.' });
+      r = await copilotChat(pool, orgId, actor, b.number, b.body);
+      if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.coached', String(b.number), { messageId: r.message.id });
+      break;
+    }
+    case 'chat-takeover': {
+      if ((g = need('live_chat'))) return g;
+      if (!canSuperviseChat) return json(403, { error: 'Your role does not allow taking over other agents’ live chats.' });
+      r = await takeoverChat(pool, orgId, actor, b.number);
+      if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.taken-over', String(b.number), { previousAssigneeId: r.previousAssigneeId || null });
+      break;
+    }
     case 'chat-team': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await getChatTeam(pool, orgId); break; }
     case 'chat-transfer': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await transferChat(pool, orgId, actor, b.number, b.userId, isAdmin); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.transferred', String(b.number), { targetUserId: r.userId }); break; }
     case 'chat-claim': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await claimChat(pool, orgId, actor.id, b.number); if (r.ok) await audit(pool, orgId, actor.id, 'live-chat.claimed', String(b.number), { alreadyAssigned: r.alreadyAssigned === true }); break; }
