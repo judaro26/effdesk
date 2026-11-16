@@ -264,7 +264,7 @@ export async function convertChatToTicket(pool,orgId,actor,number){
   await c.query('update tickets set source_chat_conversation_id=$3 where org_id=$1 and id=$2',[orgId,made.ticket.id,src.id]);
   await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);
   for(const m of msgs){
-   const copied=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8) returning id',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at])).rows[0];
+   const copied=(await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8) returning id',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,(String(m.body||'').trim()?m.body:'[Attachment]'),m.html_body,m.created_at])).rows[0];
    await c.query('update attachments set ticket_id=$3,message_id=$4,chat_conversation_id=null,chat_message_id=null where org_id=$1 and chat_message_id=$2',[orgId,m.id,made.ticket.id,copied.id]);
   }
   await c.query('update chat_conversations set converted_ticket_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);
