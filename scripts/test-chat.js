@@ -276,4 +276,24 @@ const endedPollAfter = (await pool.query('select chat_seen_at::text as seen from
 check('a visitor can end their own chat and polling reports it as ended', visitorEnd.status === 200 && finalPoll.status === 200 && finalPoll.body.ended === true);
 check('polling an ended chat does not keep its visitor-presence heartbeat alive', endedPollBefore === endedPollAfter);
 check('ending a chat is idempotent and the visitor cannot send another message afterward', (await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7')).status === 200 && (await C('POST', '/api/chat/send?org=acme', { number: finalChat.body.number, token: finalChat.body.token, message: 'After ending' }, '7.7.7.7')).status === 409);
+// Exercise a burst of independent visitors and simultaneous visitor replies against the real chat API.
+const concurrentVisitors = await Promise.all(Array.from({ length: 12 }, (_, i) => {
+  const id = i + 1;
+  return C('POST', '/api/chat/start?org=acme', {
+    name: 'Load Visitor ' + id,
+    email: 'load-visitor-' + id + '@example.test',
+    message: 'Concurrent conversation ' + id,
+    visitorId: crypto.randomBytes(32).toString('hex')
+  }, '10.44.0.' + id);
+}));
+const concurrentNumbers = concurrentVisitors.map(x => x.body.number);
+check('a burst of 12 independent visitors can start chats concurrently without collisions', concurrentVisitors.every(x => x.status === 200 && x.body.token) && new Set(concurrentNumbers).size === 12);
+const concurrentReplies = await Promise.all(concurrentVisitors.map((x, i) => C('POST', '/api/chat/send?org=acme', {
+  number: x.body.number,
+  token: x.body.token,
+  message: 'Follow-up from visitor ' + (i + 1)
+}, '10.44.1.' + (i + 1))));
+check('12 visitors can post follow-up messages concurrently with their own chat tokens', concurrentReplies.every(x => x.status === 200));
+const concurrentInbox = await A(olivia, 'chat-inbox', { limit: 100, cursorMode: true, view: 'all' });
+check('the agent inbox returns every conversation from the concurrent visitor burst', concurrentInbox.status === 200 && concurrentNumbers.every(number => concurrentInbox.body.tickets.some(t => t.number === number)));
 await pool.end(); done();
