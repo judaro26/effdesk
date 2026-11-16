@@ -11,7 +11,7 @@ const client = {
     const normalized = String(sql).trim().toLowerCase();
     if (normalized.startsWith('with ticket_counts as')) {
       return { rows: [{
-        open: 4, pending: 2, on_hold: 1, unassigned: 3, mine: 2, urgent: 1,
+        open: 4, pending: 2, on_hold: 1, unassigned_count: 3, mine_count: 2, urgent: 1,
         new_today: 2, solved_today: 1, solved_week: 5, total: 8,
         mine: [{ number: 11, subject: 'Assigned', status: 'open', priority: 'high', requester_name: 'A', requester_email: 'a@example.invalid', updated_at: '2026-11-15T10:00:00Z' }],
         unassigned: [], recent: [], daily: [{ label: 'Sun', created: 2, solved: 1 }],
