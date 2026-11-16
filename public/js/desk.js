@@ -1328,7 +1328,8 @@
       rail.appendChild(el('a', { class: 'logo', href: '/desk.html' + (orgId ? '?org=' + encodeURIComponent(orgId) : ''), 'data-home': '1', 'aria-label': 'Dashboard', title: 'Dashboard', onclick: function (e) { e.preventDefault(); goHome(); } }, el('img', { src: '/brand/mark.svg', alt: '', width: 34, height: 34 })));
       rail.appendChild(item('home', 'Dashboard', 'data-dash', goHome));
       rail.appendChild(item('tickets', 'All Tickets', 'data-nav', goViews));
-      if (has('live_chat') && role !== 'light' && chatAccess) rail.appendChild(item('chat', 'Live Chat', 'data-chat-inbox', loadChatInbox));\n      if (has('live_chat') && canSuperviseChat) rail.appendChild(item('supervisor', 'Live Chat supervision', 'data-chat-supervision', loadChatSupervision));
+      if (has('live_chat') && role !== 'light' && chatAccess) rail.appendChild(item('chat', 'Live Chat', 'data-chat-inbox', loadChatInbox));
+      if (has('live_chat') && canSuperviseChat) rail.appendChild(item('supervisor', 'Live Chat supervision', 'data-chat-supervision', loadChatSupervision));
       if (has('request_forms')) rail.appendChild(item('approvals', 'Approvals', 'data-approvals', loadApprovals));
       if (role !== 'light' && has('itsm')) { rail.appendChild(item('itsm', 'Incident management', 'data-itsm', loadItsm)); rail.appendChild(item('problems', 'Problem management', 'data-problems', loadProblems)); rail.appendChild(item('changes', 'Change management', 'data-changes', loadChanges)); }
       if (role !== 'light') rail.appendChild(item('assets', 'Assets and CMDB', 'data-assets', loadConfigurationItems));
