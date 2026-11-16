@@ -124,7 +124,7 @@
     function addr(n) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (n ? '/' + n : '')); } catch (e) { /* address only */ } }
     function open(n, isChat) {
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
-      return api(isChat ? 'chat-get' : 'get', { number: n, messageLimit: 50 }).then(function (r) {
+      return api(isChat ? 'chat-get' : 'get', { number: n, messageLimit: isChat ? 500 : 50 }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n);
         var switchingTicket = !current || current.ticket.number !== n;
         closePanes();
