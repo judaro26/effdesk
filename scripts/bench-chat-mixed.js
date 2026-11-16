@@ -28,6 +28,7 @@ function validateTarget(value) {
   return { host, dbName };
 }
 const target=validateTarget(rawUrl);
+if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
 const pool=new pg.Pool({connectionString:explicitSsl(rawUrl),max:10,idleTimeoutMillis:10000,ssl:{rejectUnauthorized:true}});
 const connectWait=[], connect=pool.connect.bind(pool);
 pool.connect=async(...args)=>{const start=performance.now();const client=await connect(...args);connectWait.push(performance.now()-start);return client;};
