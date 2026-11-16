@@ -3,6 +3,7 @@ import { check, done } from './lib/check.js';
 
 const js = fs.readFileSync(new URL('../public/js/desk.js', import.meta.url), 'utf8');
 const widget = fs.readFileSync(new URL('../public/js/chat.js', import.meta.url), 'utf8');
+const embedWidget = fs.readFileSync(new URL('../public/widget.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
 const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
 const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
@@ -111,3 +112,5 @@ check('the server stores only rounded coordinates and the overview labels them a
 check('ticket detail returns opt-in visitor coordinates to the visitor overview', fs.readFileSync(new URL('../src/tickets.js', import.meta.url), 'utf8').includes('user_agent,latitude,longitude,submitted_at'));
 
 check('the active visitor overview redraws when new location coordinates arrive', js.includes('var locationChanged = priorProvenance.latitude !== nextProvenance.latitude') && js.includes('if (locationChanged) { draw(); return; }'));
+
+check('the embedded chat iframe permits browser geolocation only for the visitor-initiated sharing flow', embedWidget.includes("frame.setAttribute('allow', 'geolocation')") && widget.includes('Share approximate location'));
