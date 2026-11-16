@@ -34,6 +34,18 @@
       throw e;
     });
   };
+  var lastContext = '';
+  root.addEventListener('message', function (event) {
+    if (event.source !== root.parent || !event.data || event.data.type !== 'effdesk:visitor-page') return;
+    var pageUrl = String(event.data.url || '').slice(0, 2048), pageTitle = String(event.data.title || '').slice(0, 200), parsed;
+    try { parsed = new URL(pageUrl); } catch (e) { return; }
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) return;
+    parsed.search = ''; parsed.hash = '';
+    var key = parsed.href + '|' + pageTitle;
+    if (key === lastContext) return;
+    lastContext = key; PAGE_URL = parsed.href;
+    if (state.number && state.token && !state.ended) api('context?org=' + encodeURIComponent(org), { number: state.number, token: state.token, pageUrl: PAGE_URL, pageTitle: pageTitle }).catch(function () {});
+  });
   var clear = function (n) { while (n.firstChild) n.removeChild(n.firstChild); };
   var cfg = null;
   function start() {
@@ -43,7 +55,7 @@
     var form = el('form', {}, el('div', { class: 'note' + (cfg.accepting ? '' : ' offline'), text: cfg.accepting ? cfg.greeting : 'We’re not accepting live chats right now. Leave a message and we’ll reply here, or by email if you leave.' }), name, email, msg, err, go);
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.textContent = ''; go.disabled = true;
-      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: PAGE_URL }).then(function (r) {
+      api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: PAGE_URL, pageTitle: doc.title || '' }).then(function (r) {
         go.disabled = false; if (!r.ok) { err.textContent = (r.body.error || 'The chat could not start.') + (r.requestId ? ' Reference: ' + r.requestId : ''); return; }
         state = { number: r.body.number, token: r.body.token, last: 0, ended: false }; seen = {}; store.set({ number: state.number, token: state.token }); conversation();
       }).catch(function () { go.disabled = false; err.textContent = 'No connection. Your message was not sent. Please try again.'; });
