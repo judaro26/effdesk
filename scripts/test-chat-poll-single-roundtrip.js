@@ -23,6 +23,8 @@ assert.match(poll, /from chat_presence p[\s\S]*?agent_typing/,
   'poll query should include agent typing state');
 assert.match(liveOrg, /LIVE_ORG_CACHE_MS = 5000/,
   'public chat configuration should use a short bounded cache');
+assert.match(source, /cacheForPool\(pool\)/,
+  'cached widget configuration must be isolated per database pool instance');
 assert.match(source, /invalidateLiveOrgCache\(orgId\)/,
   'saving chat settings should invalidate the cached widget configuration');
 
