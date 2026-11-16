@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { check, done } from './lib/check.js';
 
 const js = fs.readFileSync(new URL('../public/js/desk.js', import.meta.url), 'utf8');
+const widget = fs.readFileSync(new URL('../public/js/chat.js', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../public/css/desk.css', import.meta.url), 'utf8');
 const handlers = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
 const themeRegistry = fs.readFileSync(new URL('../src/themes.js', import.meta.url), 'utf8');
@@ -103,3 +104,6 @@ check('ended chat transcripts are visually muted and the reply composer is disab
 check('the agent sees a read-only ended-chat notice with a follow-up ticket action available', js.includes('This conversation has ended. The transcript is read-only') && js.includes('Create ticket from chat'));
 check('workspace settings expose a server-enforced visitor restart cooldown with a 15-second default', js.includes('restartCooldownSeconds: Number(crc.value)') && js.includes('restart_cooldown_seconds === undefined ? 15') && js.includes('Wait after a visitor ends a chat'));
 check('the Live Chat landing dashboard uses responsive conversation-grid and roster styles', css.includes('.chat-landing-grid') && css.includes('.chat-landing-roster') && css.includes('@media(max-width:760px){.chat-landing-hero'));
+
+check('visitors explicitly opt in before sharing approximate location from their browser', widget.includes('Share approximate location') && widget.includes('navigator.geolocation.getCurrentPosition') && widget.includes('latitude: position.coords.latitude'));
+check('the server stores only rounded coordinates and the overview labels them as shared location', fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('Math.round(latitude * 100) / 100') && js.includes('Approximate shared location') && css.includes('openstreetmap.org/export/embed.html'));
