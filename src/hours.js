@@ -29,7 +29,14 @@ export function makeCalendar(cfg) {
     return startMs + minutes * 60000;
   } };
 }
-export async function getHours(pool, orgId) { return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, tz, schedule from sla_hours where org_id = $1', [orgId])).rows[0]; return { ok: true, hours: r || { enabled: false, tz: 'UTC', schedule: {} } }; }); }
+// Load business-hours settings on an existing tenant-scoped client.
+export async function loadHours(c, orgId) {
+  const r = (await c.query('select enabled, tz, schedule from sla_hours where org_id = $1', [orgId])).rows[0];
+  return r || { enabled: false, tz: 'UTC', schedule: {} };
+}
+export async function getHours(pool, orgId) {
+  return withOrg(pool, orgId, async c => ({ ok: true, hours: await loadHours(c, orgId) }));
+}
 export async function saveHours(pool, orgId, b) {
   const v = validate(b || {}); if (v.error) return { ok: false, status: 400, error: v.error };
   await withOrg(pool, orgId, c => c.query('insert into sla_hours (org_id, enabled, tz, schedule) values ($1,$2,$3,$4) on conflict (org_id) do update set enabled = $2, tz = $3, schedule = $4', [orgId, v.value.enabled, v.value.tz, JSON.stringify(v.value.schedule)]));

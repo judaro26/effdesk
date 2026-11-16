@@ -1,7 +1,7 @@
 // src/reports.js: REPORTS over the last 7, 30 or 90 days of tickets: volume per day, where tickets stand, who solved what, how fast the team answers and solves, SLA compliance, busiest labels; and the same tickets as a CSV. Read-only.
 import { withOrg } from './db.js';
-import { getSla, slaOf } from './sla.js';
-import { calendarOf } from './hours.js';
+import { loadSlaPolicies, slaOf } from './sla.js';
+import { loadHours, makeCalendar } from './hours.js';
 
 export const RANGES = [7, 30, 90];
 const ROW_CAP = 5000;
@@ -35,8 +35,10 @@ async function windowRows(c, orgId, days) {
 }
 const tally = (rows, f) => { const m = new Map(); for (const r of rows) { const k = f(r); if (k) m.set(k, (m.get(k) || 0) + 1); } return [...m].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)); };
 export async function report(pool, orgId, daysIn, now = Date.now()) {
-  const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30, sla = (await getSla(pool, orgId)).policies, cal = await calendarOf(pool, orgId);
+  const days = RANGES.includes(Number(daysIn)) ? Number(daysIn) : 30;
   return withOrg(pool, orgId, async c => {
+    // Keep SLA policy, business-hours configuration, and report data in one tenant transaction.
+    const sla = await loadSlaPolicies(c, orgId), cal = makeCalendar(await loadHours(c, orgId));
     const rows = await windowRows(c, orgId, days);
     const chatRows = (await c.query(`select t.created_at, t.first_response_at, t.solved_at
       from tickets t where t.org_id = $1 and t.channel = 'chat'

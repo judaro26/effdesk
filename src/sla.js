@@ -5,12 +5,14 @@ const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
 const MAX = 525600;                                              // a year, in minutes
 export const RISK_AT = 0.8;
+// Load policy data on an existing tenant-scoped client so compound reads can share one transaction.
+export async function loadSlaPolicies(c, orgId) {
+  const rows = (await c.query('select priority, first_response_min, resolve_min from sla_policies where org_id = $1', [orgId])).rows, out = {};
+  for (const p of PRIORITIES) { const r = rows.find(x => x.priority === p); out[p] = { firstResponseMin: r ? r.first_response_min : null, resolveMin: r ? r.resolve_min : null }; }
+  return out;
+}
 export async function getSla(pool, orgId) {
-  return withOrg(pool, orgId, async c => {
-    const rows = (await c.query('select priority, first_response_min, resolve_min from sla_policies where org_id = $1', [orgId])).rows, out = {};
-    for (const p of PRIORITIES) { const r = rows.find(x => x.priority === p); out[p] = { firstResponseMin: r ? r.first_response_min : null, resolveMin: r ? r.resolve_min : null }; }
-    return { ok: true, policies: out };
-  });
+  return withOrg(pool, orgId, async c => ({ ok: true, policies: await loadSlaPolicies(c, orgId) }));
 }
 const mins = v => { if (v === null || v === undefined || v === '') return null; const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 1 && n <= MAX ? n : NaN; };
 export async function saveSla(pool, orgId, policies) {
