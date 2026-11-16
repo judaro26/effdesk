@@ -62,7 +62,7 @@ let mail = outbox[0];
 check('the background worker sends the queued public reply', r.body.email === 'queued' && outbox.length === 1 && mail.to === 'tina@example.com' && mail.subject === '[#1] Heater broken');
 check('from is the organization\'s name on its own address, with its signature below the text', mail.from === 'Acme Support <acme@in.effdesk.test>' && /\n-- \nAcme Rentals, 1 Main St/.test(mail.text) && /Acme Rentals, 1 Main St/.test(mail.html));
 const tok = ticketToken(ENV, acme.id, 1);
-check('in "ticket" mode Reply-To is a private address for this ticket', mail.replyTo === `acme+1.${tok}@in.effdesk.test` && mail.headers['Auto-Submitted'] === 'no' && /^<m\\d+@in\\.effdesk\\.test>$/.test(mail.headers['Message-ID']));
+check('in "ticket" mode Reply-To is a private address for this ticket', mail.replyTo === `acme+1.${tok}@in.effdesk.test` && mail.headers['Auto-Submitted'] === 'no' && /^<m\d+@in\.effdesk\.test>$/.test(mail.headers['Message-ID']));
 r = await inbound({ to: [mail.replyTo], text: 'Thanks, 3pm works.\n\nOn Mon, Ann wrote:\n> We are sending someone today.' });
 tk = await ticket(1);
 check('a customer\'s reply to that address lands in the same ticket, without the quoted text, and the ticket is open again', r.action === 'replied' && r.number === 1 && tk.m.at(-1).body === 'Thanks, 3pm works.' && tk.m.at(-1).kind === 'requester' && tk.t.status === 'open');
