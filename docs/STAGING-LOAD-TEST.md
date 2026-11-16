@@ -22,7 +22,7 @@ The harness refuses to connect unless the database name explicitly contains `sta
 
 Each worker runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors.
 
-The query fingerprint section is a diagnostic starting point, not a query-name mapping: compare repeated fingerprints and their timing distribution with the corresponding application SQL and Neon query insights before changing indexes or query structure. It intentionally avoids logging SQL text and bind values.
+The query diagnostics include each fingerprint's redacted SQL shape to make it easier to identify the application query without exposing bind values or customer data. String and dollar-quoted literals, numeric constants, and SQL comments are removed or masked; long shapes are truncated. Fingerprints continue to hash the original normalized SQL. Use the shape and timing distribution with Neon query insights before changing indexes or query structure.
 
 Before raising customer or agent limits, compare results with Neon query insights, compute/connection saturation, and Netlify function latency in the same region.
 
