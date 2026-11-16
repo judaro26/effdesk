@@ -48,3 +48,8 @@ Webhook delivery is at-least-once: a receiver may see the same event again if th
 - Each instance remembers a workspace's plan for 10 seconds (`ENT_CACHE_MS`, off outside Netlify; cleared at once by admin changes, licences and Paddle events on the same instance) and the session for 60 seconds (Better Auth cookie cache).
 - Anonymous help pages are cached at the Netlify CDN for 60 seconds.
 - Database pool: 10 connections per instance. `node scripts/profile-queries.js` prints how many queries the main requests make.
+
+
+### Outbound ticket email delivery
+
+Public ticket replies are persisted first and then placed in the tenant-scoped background job outbox. The scheduled worker loads the message and attachment bytes at delivery time, sends through Resend with a stable per-message idempotency key and deterministic Message-ID, and retries transient failures with the existing lease/backoff policy. The API returns `email: queued`; the message delivery state progresses through queued, sent, skipped, or failed. Only the small ticket/message reference is stored in the job payload, not message bodies or attachment contents. Other transactional email (invites, authentication, notices, and surveys) remains synchronous for now.

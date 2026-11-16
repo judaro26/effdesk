@@ -12,6 +12,8 @@ import { grantLicense } from '../src/license.js';
 import { saveHelpImage } from '../src/help.js';
 import { memoryStore } from '../src/storage.js';
 import { listContacts } from '../src/contacts.js';
+import { runJobs } from '../src/jobs.js';
+import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_API_KEY: 're_test' };
@@ -26,7 +28,8 @@ const acme = await auth.api.createOrganization({ body: { name: 'Acme', slug: 'ac
 await auth.api.addMember({ body: { userId: ann.user.id, role: 'member', organizationId: acme.id } });
 await grantLicense(pool, { orgId: acme.id, actorEmail: 'owner@effdesk.test', note: 'test' });
 const tk = async (who, action, orgId, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId, action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
-const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); return { status: r.status, body: await r.json() }; };
+const flushEmailJobs = () => runJobs(pool, { 'ticket.email.deliver': (orgId, payload, job) => deliverTicketEmailJob(pool, mailer, null, ENV, orgId, payload, job) }, { batchSize: 50 });
+const A = async (who, action, extra = {}) => { const r = await tickets(new Request('http://x/api/tickets', { method: 'POST', headers: { 'content-type': 'application/json', cookie: who.cookie }, body: JSON.stringify({ orgId: acme.id, action, ...extra }) }), { pool, auth, mailer, env: ENV }); const body = await r.json(); if (body.email === 'queued') await flushEmailJobs(); return { status: r.status, body }; };
 const _unused = async n => (await A(olivia, 'get', { number: n })).body.messages;
 
 await A(olivia, 'mail-save', { inbox: 'acme', replyMode: 'ticket', fromName: 'Acme' });
