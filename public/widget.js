@@ -9,7 +9,7 @@
   if (!org) return;
   fetch(origin + '/api/chat/config?org=' + encodeURIComponent(org)).then(function (r) { return r.json(); }).then(function (cfg) {
     if (!cfg || !cfg.enabled) return;
-    var btn = document.createElement('button'), frame = null, open = false;
+    var btn = document.createElement('button'), frame = null, open = false, lastPage = '';
     btn.type = 'button'; btn.setAttribute('aria-label', cfg.title || 'Chat with us'); btn.setAttribute('aria-expanded', 'false'); btn.textContent = '💬';
     btn.style.cssText = 'position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;border:0;background:' + (cfg.color || '#1f73b7') + ';color:#fff;font-size:26px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:2147483646';
     // on a phone the open chat fills the screen and the button becomes a close button in the corner; otherwise it is a panel above the button
@@ -25,11 +25,35 @@
         btn.style.cssText = BTN + (small() ? ';right:16px;bottom:calc(16px + env(safe-area-inset-bottom))' : '');
       }
     }
+    function currentPage() {
+      try { var page = new URL(window.location.href); page.search = ''; page.hash = ''; return { url: page.href.slice(0, 2048), title: String(document.title || '').slice(0, 200) }; }
+      catch (e) { return { url: window.location.origin + window.location.pathname, title: String(document.title || '').slice(0, 200) }; }
+    }
+    function sendPageContext() {
+      if (!frame || !frame.contentWindow) return;
+      var page = currentPage(), key = page.url + '|' + page.title;
+      if (key === lastPage) return;
+      lastPage = key;
+      frame.contentWindow.postMessage({ type: 'effdesk:visitor-page', url: page.url, title: page.title }, origin);
+    }
+    window.addEventListener('popstate', sendPageContext);
+    window.addEventListener('hashchange', sendPageContext);
+    window.addEventListener('pageshow', sendPageContext);
+    ['pushState', 'replaceState'].forEach(function (method) {
+      var original = window.history[method];
+      if (typeof original !== 'function') return;
+      window.history[method] = function () {
+        var result = original.apply(this, arguments);
+        sendPageContext();
+        return result;
+      };
+    });
     function toggle() {
       open = !open;
       if (!frame) {
-        frame = document.createElement('iframe'); frame.title = cfg.title || 'Chat'; var pageUrl = ''; try { var page = new URL(window.location.href); page.search = ''; page.hash = ''; pageUrl = page.href.slice(0, 2000); } catch (e) { pageUrl = window.location.origin; } frame.src = origin + '/chat.html?org=' + encodeURIComponent(org) + '&page=' + encodeURIComponent(pageUrl);
+        frame = document.createElement('iframe'); frame.title = cfg.title || 'Chat'; var pageUrl = ''; try { var page = new URL(window.location.href); page.search = ''; page.hash = ''; pageUrl = page.href.slice(0, 2000); } catch (e) { pageUrl = window.location.origin; } frame.src = origin + '/chat.html?org=' + encodeURIComponent(org) + '&page=' + encodeURIComponent(pageUrl) + '&pageTitle=' + encodeURIComponent(String(document.title || '').slice(0, 200));
         frame.style.cssText = 'position:fixed;right:20px;bottom:88px;width:360px;max-width:calc(100vw - 24px);height:520px;max-height:calc(100vh - 110px);border:0;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.3);background:#fff;z-index:2147483647';
+        frame.addEventListener('load', function () { lastPage = ''; sendPageContext(); });
         document.body.appendChild(frame);
       }
       layout(); btn.setAttribute('aria-expanded', String(open)); btn.textContent = open ? '✕' : '💬';

@@ -268,6 +268,11 @@ const transcriptMail = outbox.slice(transcriptMailStart).find(m => m.to === 'ver
 check('a visitor can request a transcript by proving possession of their chat token', transcriptRequest.status === 200 && transcriptRequest.body.sent === true && !!transcriptMail);
 check('emailed chat transcripts include public messages but exclude internal notes', !!transcriptMail && transcriptMail.text.includes('Please send me a transcript.') && !transcriptMail.text.includes('private transcript note') && !transcriptMail.html.includes('private transcript note'));
 check('a visitor cannot request another conversation transcript with an invalid token', (await C('POST', '/api/chat/transcript?org=acme', { number: finalChat.body.number, token: 'wrong' }, '7.7.7.8')).status === 403);
+const contextUpdate = await C('POST', '/api/chat/context?org=acme', { number: finalChat.body.number, token: finalChat.body.token, pageUrl: 'https://shop.example/products/new?session=private#details', pageTitle: 'New product' }, '7.7.7.8');
+const contextAfter = (await pool.query('select page_url,page_title from ticket_provenance p join tickets t on t.id=p.ticket_id where p.org_id=$1 and t.number=$2',[acme.id,finalChat.body.number])).rows[0];
+check('the visitor can update the current page with their chat token and URL secrets are stripped', contextUpdate.status === 200 && contextAfter.page_url === 'https://shop.example/products/new' && contextAfter.page_title === 'New product');
+check('visitor context updates reject an invalid URL scheme', (await C('POST', '/api/chat/context?org=acme', { number: finalChat.body.number, token: finalChat.body.token, pageUrl: 'javascript:alert(1)' }, '7.7.7.8')).status === 400);
+check('visitor context updates reject an incorrect chat token', (await C('POST', '/api/chat/context?org=acme', { number: finalChat.body.number, token: 'wrong', pageUrl: 'https://shop.example/' }, '7.7.7.8')).status === 403);
 const visitorEnd = await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7');
 await pool.query("update tickets set chat_seen_at=now()-interval '2 minutes' where org_id=$1 and number=$2",[acme.id,finalChat.body.number]);
 const endedPollBefore = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,finalChat.body.number])).rows[0].seen;

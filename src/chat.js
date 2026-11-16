@@ -240,6 +240,24 @@ export async function sendChat(pool, env, slug, input, mailer) {
 }
 // The visitor heartbeat is throttled: polls can arrive every few seconds, but presence
 // only needs refreshing every 15 seconds to remain safely inside chatOpen's 45-second window.
+export async function updateChatContext(pool, env, slug, input) {
+  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
+  const number = Number(input.number) || 0;
+  if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
+  const pageUrl = clean(input.pageUrl, 2048), pageTitle = clean(input.pageTitle, 200);
+  let parsed;
+  try { parsed = new URL(pageUrl); } catch { return fail('A valid page URL is required.'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return fail('A valid page URL is required.');
+  parsed.search = ''; parsed.hash = '';
+  return withOrg(pool, x.org.id, async c => {
+    const t = (await c.query("select id,status,channel from tickets where org_id=$1 and number=$2 for update", [x.org.id, number])).rows[0];
+    if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
+    if (['closed','solved'].includes(t.status)) return fail('This chat has ended.', 409);
+    await c.query(`update ticket_provenance set page_url=$3,page_title=$4,submitted_at=now()
+      where org_id=$1 and ticket_id=$2`, [x.org.id, t.id, parsed.href.slice(0,2048), pageTitle || null]);
+    return { ok: true };
+  });
+}
 export async function pollChat(pool, env, slug, number, token, after) {
   const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
   number = Number(number) || 0; if (!tokenOk(env, x.org.id, number, token)) return fail('This chat is not yours.', 403);
@@ -314,6 +332,7 @@ export async function chatApi(req, { pool, mailer, env = process.env, now = Date
     const text = await req.text(); if (text.length > 10000) return json(413, { error: 'Too long.' });
     let b; try { b = JSON.parse(text || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
     if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
+    if (act === 'context') { if (await tooMany(pool, 'cx' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await updateChatContext(pool, env, slug, b); return json(r.ok ? 200 : r.status, r); }
     if (act === 'send') { if (await tooMany(pool, 'm' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await sendChat(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
     if (act === 'end') { if (await tooMany(pool, 'e' + ip, now, 5)) return json(429, { error: 'Please wait before ending another chat.' }); const r = await endChat(pool, env, slug, b); return json(r.ok ? 200 : r.status, r); }
     if (act === 'transcript') { if (await tooMany(pool, 'tr' + ip, now, 3)) return json(429, { error: 'Please wait before requesting another transcript.' }); const r = await requestChatTranscript(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }
