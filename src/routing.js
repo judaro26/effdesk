@@ -136,7 +136,7 @@ export async function transferChat(pool,orgId,actor,number,targetUserId,canManag
 
 export async function listSupervisedChats(pool,orgId){
  return withOrg(pool,orgId,async c=>{
-  const rows=(await c.query(`select cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+  const rows=(await c.query(`select cc.id,cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
    from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.status in ('open','pending','on_hold')
    order by (cc.assignee_id is null) desc,cc.updated_at desc limit 100`,[orgId])).rows;
   return{ok:true,chats:rows,counts:{total:rows.length,waiting:rows.filter(x=>!x.assignee_id).length,assigned:rows.filter(x=>!!x.assignee_id).length,needs_attention:0}};
