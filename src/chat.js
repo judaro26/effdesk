@@ -393,7 +393,7 @@ export async function chatApi(req, { pool, mailer, store, env = process.env, now
       const chat=await withOrg(pool,x.org.id,async c=>(await c.query('select id from chat_conversations where org_id=$1 and chat_number=$2',[x.org.id,number])).rows[0]);
       const file=await readFile(pool,store,x.org.id,id);
       if(!chat||!file||String(file.chat_conversation_id)!==String(chat.id)||!file.chat_message_id)return json(404,{error:'File not found.'});
-      return new Response(file.bytes,{status:200,headers:{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="'+cleanName(file.filename)+'"','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'private, no-store','Content-Length':String(file.bytes.length)}});
+      const imageType=String(file.content_type||'').toLowerCase(),inline=u.searchParams.get('inline')==='1'&&['image/png','image/jpeg','image/gif','image/webp'].includes(imageType); return new Response(file.bytes,{status:200,headers:{'Content-Type':inline?imageType:'application/octet-stream','Content-Disposition':(inline?'inline':'attachment')+'; filename="'+cleanName(file.filename)+'"','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Cache-Control':'private, no-store','Content-Length':String(file.bytes.length)}});
     }
     if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' });
     const o = req.headers.get('origin'); if (o && new URL(o).host !== u.host) return json(403, { error: 'Bad origin.' });
