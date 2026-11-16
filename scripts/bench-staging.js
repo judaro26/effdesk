@@ -1,6 +1,7 @@
 // Read-only multi-tenant load test against a dedicated staging Neon database.
 // No records are created, updated, or deleted. Results contain timings only.
 import pg from 'pg';
+import { createHash } from 'node:crypto';
 import { explicitSsl } from '../src/db.js';
 import { listTickets } from '../src/tickets.js';
 import { dashboard } from '../src/dashboard.js';
@@ -42,6 +43,37 @@ const pool = new pg.Pool({
   idleTimeoutMillis: 10000,
   ssl: { rejectUnauthorized: true }
 });
+// Capture query-level timings without logging SQL text, parameters, or tenant/customer data.
+const querySamples = new Map();
+const connect = pool.connect.bind(pool);
+pool.connect = async (...args) => {
+  const client = await connect(...args);
+  if (!client.__effdeskQueryTiming) {
+    client.__effdeskQueryTiming = true;
+    const originalQuery = client.query.bind(client);
+    client.query = (...queryArgs) => {
+      // Application paths use promise-based pg queries. Preserve callback semantics unchanged.
+      if (queryArgs.some(value => typeof value === 'function')) return originalQuery(...queryArgs);
+      const input = queryArgs[0];
+      const sql = typeof input === 'string' ? input : input?.text || '';
+      const fingerprint = createHash('sha256').update(sql.replace(/\\s+/g, ' ').trim()).digest('hex').slice(0, 12);
+      const startedAt = performance.now();
+      const record = error => {
+        let entry = querySamples.get(fingerprint);
+        if (!entry) { entry = { durations: [], errors: 0 }; querySamples.set(fingerprint, entry); }
+        entry.durations.push(performance.now() - startedAt);
+        if (error) entry.errors++;
+      };
+      try {
+        const result = originalQuery(...queryArgs);
+        return result && typeof result.then === 'function'
+          ? result.then(value => { record(null); return value; }, error => { record(error); throw error; })
+          : result;
+      } catch (error) { record(error); throw error; }
+    };
+  }
+  return client;
+};
 const actor = { id: process.env.STAGING_BENCH_AGENT_ID || '__effdesk_staging_load_test__' };
 const scenarios = [
   { name: 'ticket inbox', run: org => listTickets(pool, org, actor, { limit: 50, cursorMode: true }) },
@@ -95,6 +127,10 @@ const summary = scenarios.map(s => {
     max_ms: values.length ? round(values.at(-1)) : null
   };
 });
+const queryDiagnostics = [...querySamples.entries()].map(([fingerprint, entry]) => {
+  const values = entry.durations.sort((a, b) => a - b);
+  return { fingerprint, calls: values.length, errors: entry.errors, total_ms: round(values.reduce((sum, value) => sum + value, 0)), p50_ms: round(percentile(values, .50)), p95_ms: round(percentile(values, .95)), max_ms: round(values.at(-1)) };
+}).sort((a, b) => b.total_ms - a.total_ms).slice(0, 12);
 console.log(JSON.stringify({
   target: { host: target.host, database: target.dbName },
   profile,
@@ -103,7 +139,8 @@ console.log(JSON.stringify({
   elapsed_ms: round(elapsed),
   requests_per_second: round((tasks.length / Math.max(elapsed, 1)) * 1000),
   pool: { max: pool.options.max, max_total_sampled: maxTotal, max_waiting_sampled: maxWaiting },
-  scenarios: summary
+  scenarios: summary,
+  top_query_fingerprints: queryDiagnostics
 }, null, 2));
 await pool.end();
 if (summary.some(x => x.failures > 0)) process.exitCode = 1;
