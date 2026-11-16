@@ -5,7 +5,7 @@ import { signupContext } from './auth.js';
 import { getEntitlements, seatsUsed, checkoutConfig, verifySignature, applyPaddleEvent } from './billing.js';
 import { grantLicense, revokeLicense } from './license.js';
 import { withOrg } from './db.js';
-import { getMailSettings, saveMailSettings, sendTicketReply, enqueueTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
+import { getMailSettings, saveMailSettings, enqueueTicketReply, handleInbound, verifySvix, parseAddress, isReceiptEvent, applyReceipt, emailDeliveryOf } from './ticket-mail.js';
 import { saveUpload, claimUploads, filesOfMessage, readFile, deleteFile, storeInbound, storeInlineDataImages, prepareInlineDataImages, MAX_UPLOAD, cleanName } from './attachments.js';
 import { effectiveHelpSettings, getHelpSettings, saveHelpSettings, saveHelpImage, readHelpImage, MAX_IMAGE } from './help.js';
 import { clean as cleanHtml, withToc } from './html-clean.js';
