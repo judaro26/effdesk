@@ -171,10 +171,13 @@ export async function listSupervisedChats(pool,orgId){
 
 export async function monitorChat(pool,orgId,number){
  return withOrg(pool,orgId,async c=>{
-  const t=(await c.query(`select cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
+  const t=(await c.query(`select cc.id,cc.chat_number as number,cc.subject,cc.status,cc.priority,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.page_url,cc.page_title,u.name assignee_name,u.email assignee_email
    from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.chat_number=$2`,[orgId,Number(number)||0])).rows[0];
   if(!t)return fail('Live Chat conversation not found.',404);if(!['open','pending','on_hold'].includes(t.status))return fail('This conversation has ended.',409);
   const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit 100",[orgId,t.id])).rows.reverse();
+  const files=messages.length?(await c.query('select id,chat_message_id,filename,content_type,size from attachments where org_id=$1 and chat_message_id=any($2::bigint[]) order by created_at',[orgId,messages.map(m=>m.id)])).rows:[];
+  const fileMap={};for(const file of files){const key=String(file.chat_message_id);(fileMap[key]||(fileMap[key]=[])).push({id:file.id,filename:file.filename,content_type:file.content_type,size:file.size});}
+  messages.forEach(m=>{m.attachments=fileMap[String(m.id)]||[];});
   return{ok:true,ticket:{...t,number:Number(t.number),assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null},messages,provenance:{page_url:t.page_url,page_title:t.page_title},readOnly:true};
  });
 }
