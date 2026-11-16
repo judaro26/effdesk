@@ -81,6 +81,9 @@ check('supervisors monitor independent chat transcripts without a ticket',monito
 check('supervisor coaching is a private chat note',coach.status===200&&coach.body.message.kind==='note'&&coached.body.messages.some(m=>m.body==='Please confirm the delivery postcode.'&&m.kind==='note'));
 const takeover=await A(olivia,'chat-takeover',{number:n});
 check('supervisor takeover changes the independent conversation assignee',takeover.status===200&&(await pool.query('select assignee_id from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,n])).rows[0].assignee_id===olivia.user.id);
+const updatedChat=await A(olivia,'chat-update',{number:n,patch:{status:'pending',priority:'high'}});
+const updatedChatRow=(await pool.query('select status,priority from chat_conversations where org_id=$1 and chat_number=$2',[acme.id,n])).rows[0];
+check('agent workspace status and priority edits update the independent conversation record',updatedChat.status===200&&updatedChatRow.status==='pending'&&updatedChatRow.priority==='high');
 const beforeConvert=Number((await pool.query('select count(*)::int n from tickets where org_id=$1',[acme.id])).rows[0].n);
 const converted=await A(olivia,'chat-convert-to-ticket',{number:n});
 const ticket=converted.status===200?await A(olivia,'get',{number:converted.body.number}):{status:500,body:{}};
