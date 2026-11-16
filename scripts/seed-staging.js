@@ -121,7 +121,7 @@ try {
            (array['open','pending','solved','closed'])[((g-1)%4)+1],
            $2 || ' ' || g,'visitor-' || g || '@example.invalid',
            'stg-visitor-' || $1 || '-' || g,
-           case when g%3=0 then null else $3[((g-1)%array_length($3,1))+1] end,
+           case when g%3=0 then null else ($3::text[])[((g-1)%array_length($3::text[],1))+1] end,
            (array['normal','high','urgent'])[((g-1)%3)+1],
            'https://demo.example.invalid/pricing','Synthetic pricing page',
            'https://search.example.invalid/','Synthetic Browser / Staging',
