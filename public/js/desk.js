@@ -131,7 +131,7 @@
         chatConversationOpen = r.body.ticket.channel === 'chat';
         if (switchingTicket) { restoreTicketDraft(n); macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; lastComposeInputAt = 0; }
         current = r.body; if (chatConversationOpen) loadMyChatWorkspace(); if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
-        var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) hit.subject = r.body.ticket.subject; else openTabs.push({ number: n, subject: r.body.ticket.subject });
+        var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) { hit.subject = r.body.ticket.subject; hit.isChat = chatConversationOpen; } else openTabs.push({ number: n, subject: r.body.ticket.subject, isChat: chatConversationOpen });
         draw(); presenceTick();
       });
     }
@@ -288,7 +288,7 @@
       if (resetPage) { chatInboxOffset = 0; chatInboxCursorStack = ['']; chatInboxPageIndex = 0; chatInboxHasMore = false; chatInboxPageNextCursor = null; }
       var seq = chatInboxSeq, request = ++chatInboxRequest;
       if (showLoading) { chatInboxLoading = true; draw(); }
-      return api('chat-inbox', { limit: chatInboxLimit, cursorMode: true, cursor: chatInboxCursorStack[chatInboxPageIndex] || '', pageIndex: chatInboxPageIndex, q: chatInboxQuery, view: chatInboxView }).then(function (r) {
+      return api('chat-inbox', { limit: chatInboxLimit, cursorMode: false, offset: chatInboxPageIndex * chatInboxLimit, q: chatInboxQuery, view: chatInboxView }).then(function (r) {
         if (seq !== chatInboxSeq || request !== chatInboxRequest || !chatInboxOpen) return;
         chatInboxLoading = false;
         if (!r.ok) chatInboxError = r.body.error || 'Could not load live chats.';
@@ -1706,7 +1706,7 @@
         }).catch(function () { ticketHistoryLoading = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
       };
       var after = function () { return Promise.all([open(t.number, chatConversationOpen), refresh()]); };
-      var update = function (patch) { return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
+      var update = function (patch) { if (chatConversationOpen && patch.status === 'closed') return api('chat-end-agent', { number: t.number }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
       var fieldInput = function (f, v) {
         var put = function (val) { var c = {}; c[f.key] = val; update({ custom: c }); };
         if (f.type === 'dropdown') return sel(f.label, v === undefined ? '' : String(v), [['', '—']].concat(f.options.map(function (o) { return [o, o]; })), function (x) { put(x); });
