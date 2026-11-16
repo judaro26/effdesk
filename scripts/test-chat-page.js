@@ -42,6 +42,12 @@ Object.defineProperty(hw.document, 'currentScript', { value: s }); hw.eval(pub('
 const btn = hw.document.querySelector('button[aria-label="Ask Acme"]'); check('the widget adds the chat button on the host page', !!btn);
 btn.click();
 check('the widget passes the exact host page path to the frame but strips query strings and fragments', (hw.document.querySelector('iframe') || {}).src === 'https://app.effdesk.com/chat.html?org=acme&page=https%3A%2F%2Fshop.test%2Fproducts%2Fabc' && !/session=secret|private/.test((hw.document.querySelector('iframe') || {}).src || ''));
+const frame = hw.document.querySelector('iframe');
+let pageMessage = null;
+frame.contentWindow.postMessage = function (message, target) { pageMessage = { message, target }; };
+hw.document.title = 'New product page';
+hw.history.pushState({}, '', '/products/new?session=private#details');
+check('SPA navigation sends the current sanitized page and title to the isolated chat frame', pageMessage && pageMessage.message.type === 'effdesk:visitor-page' && pageMessage.message.url === 'https://shop.test/products/new' && pageMessage.message.title === 'New product page' && pageMessage.target === 'https://app.effdesk.com');
 const headers = readFileSync(new URL('../netlify.toml', import.meta.url), 'utf8');
 check('the frame page is allowed to be framed and the others are not', headers.includes('for = "/*"') && headers.includes("frame-ancestors 'none'") && headers.includes('for = "/chat.html"') && headers.includes('frame-ancestors https: http:'));
 check('the customer chat frame permits secure external brand logos while retaining its frame restrictions', headers.includes("img-src 'self' https: data:") && headers.includes('frame-ancestors https: http:'));
