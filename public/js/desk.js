@@ -1272,7 +1272,7 @@
     function presenceTick() {
       if (!current || (doc.visibilityState && doc.visibilityState === 'hidden')) return;
       var n = current.ticket.number;
-      api(chatConversationOpen ? 'chat-presence' : 'presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 10000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
+      api(chatConversationOpen ? 'chat-presence' : 'presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 6000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
     }
     root.setInterval(presenceTick, 5000);
     function chatHeartbeatTick() { if (!chatAccess || !chatAvailable || !orgId) return; api('chat-heartbeat', {}).then(function(r){ if ((!r.ok && r.status === 403) || (r.ok && r.body.accepting === false)) { chatAvailable = false; drawMenu(); } }); }
@@ -1732,6 +1732,7 @@
         if (action === 'reply' && !draftRequestId) draftRequestId = newReplyRequestId(); saveTicketDraft(t.number);
         var chatAction = chatConversationOpen && action === 'reply' ? 'chat-reply' : (chatConversationOpen && action === 'note' ? 'chat-note' : action);
         var req = api(chatAction, { number: t.number, body: body.value, html: richHtml, status: status, idempotencyKey: action === 'reply' ? draftRequestId : undefined, attachmentIds: ids, seenMessageId: action === 'reply' ? current.messages.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) : undefined, force: force === true });
+        lastComposeInputAt = 0; presenceTick();
         sending = true; paintSending();
         var done = function () { sending = false; paintSending(); };
         req.then(function (r) {
