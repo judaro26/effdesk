@@ -53,6 +53,9 @@ jobs:
       - name: Test security helpers and outbound request protections
         run: node scripts/test-guard.js
 
+      - name: Test staging load-test safety guard (no database connection)
+        run: node scripts/test-staging-load.js
+
       - name: Test SSO verification and authentication protections
         run: node scripts/test-sso.js
 
