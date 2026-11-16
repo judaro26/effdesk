@@ -20,7 +20,7 @@ function validateTarget(value) {
   if (!value) throw new Error('STAGING_DATABASE_URL is required.');
   let url; try { url = new URL(value); } catch { throw new Error('STAGING_DATABASE_URL must be a valid PostgreSQL URL.'); }
   if (!['postgres:','postgresql:'].includes(url.protocol)) throw new Error('STAGING_DATABASE_URL must use postgres:// or postgresql://.');
-  const host=url.hostname.toLowerCase(), dbName=decodeURIComponent(url.pathname.replace(/^[/]/,'')).toLowerCase();
+  const host=url.hostname.toLowerCase(), dbName=decodeURIComponent(url.pathname.slice(1)).toLowerCase();
   if (!host.endsWith('.neon.tech') || !host.includes('-pooler')) throw new Error('Refusing to run: use the dedicated Neon pooled staging connection string.');
   if (!/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) throw new Error('Refusing to run: database name must contain staging, stage, or test.');
   if (!settings) throw new Error('STAGING_BENCH_PROFILE must be smoke, standard, or stress.');
