@@ -1,6 +1,6 @@
 ## Staging multi-tenant load test
 
-The manual **Staging multi-tenant load test** GitHub Actions workflow runs the existing ticket, dashboard, Live Chat inbox, and 30-day report query paths concurrently against a dedicated Neon staging database. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, and the 12 query fingerprints with the highest cumulative execution time. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
+The manual **Staging multi-tenant load test** GitHub Actions workflow runs the existing ticket, dashboard, Live Chat inbox, and 30-day report query paths concurrently against a dedicated Neon staging database. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, connection-acquisition wait percentiles, and the 12 query fingerprints with the highest cumulative execution time. Query fingerprints are short SHA-256 identifiers, accompanied by redacted SQL shapes; bind values, tenant IDs, and customer content are never emitted.
 
 ### One-time setup
 
