@@ -75,13 +75,29 @@ export async function failJob(pool, orgId, jobId, workerId, error, { retryDelayM
 export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypto.randomUUID(), leaseMs = 120000 } = {}) {
   const take = Math.max(1, Math.min(100, Number(batchSize) || 20));
   const organizations = (await pool.query('select id from "organization" order by id')).rows;
-  const summary = { claimed: 0, succeeded: 0, retried: 0, failed: 0 };
+  const summary = { claimed: 0, succeeded: 0, retried: 0, failed: 0, organizationsVisited: 0, tenantsProcessed: 0, maxJobsPerTenant: 0 };
+  const tenantCounts = new Map();
   const startAt = organizations.length ? Math.floor(Date.now() / 60000) % organizations.length : 0;
-  for (let offset = 0; offset < organizations.length && summary.claimed < take; offset++) {
-    const organization = organizations[(startAt + offset) % organizations.length];
-    const jobs = await claimJobs(pool, String(organization.id), workerId, { limit: take - summary.claimed, leaseMs });
-    summary.claimed += jobs.length;
-    await Promise.all(jobs.map(async job => {
+  let madeProgress = true;
+  // Take at most one job per tenant per pass. Repeating passes fills the batch
+  // without allowing the first busy tenant in the rotation to consume it all.
+  while (madeProgress && summary.claimed < take) {
+    madeProgress = false;
+    const pass = [];
+    for (let offset = 0; offset < organizations.length && summary.claimed + pass.length < take; offset++) {
+      const organization = organizations[(startAt + offset) % organizations.length];
+      summary.organizationsVisited++;
+      const jobs = await claimJobs(pool, String(organization.id), workerId, { limit: 1, leaseMs });
+      if (!jobs.length) continue;
+      madeProgress = true;
+      pass.push(jobs[0]);
+      const count = (tenantCounts.get(String(organization.id)) || 0) + 1;
+      tenantCounts.set(String(organization.id), count);
+      summary.maxJobsPerTenant = Math.max(summary.maxJobsPerTenant, count);
+    }
+    summary.claimed += pass.length;
+    summary.tenantsProcessed = tenantCounts.size;
+    await Promise.all(pass.map(async job => {
       try {
         const handler = handlers && handlers[job.job_type];
         if (typeof handler !== 'function') throw new Error('No worker is registered for job type ' + job.job_type);
