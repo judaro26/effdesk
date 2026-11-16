@@ -1263,7 +1263,7 @@
     function presenceTick() {
       if (!current || (doc.visibilityState && doc.visibilityState === 'hidden')) return;
       var n = current.ticket.number;
-      api('presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 10000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
+      api(chatConversationOpen ? 'chat-presence' : 'presence', { number: n, typing: !!(lastComposeInputAt && Date.now() - lastComposeInputAt < 10000) }).then(function (r) { if (!r.ok || !current || current.ticket.number !== n) return; var o = r.body.others || [], sig = JSON.stringify(o); if (sig !== othersSig) { othersSig = sig; others = o; paintOthers(); } });
     }
     root.setInterval(presenceTick, 5000);
     function chatHeartbeatTick() { if (!chatAccess || !chatAvailable || !orgId) return; api('chat-heartbeat', {}).then(function(r){ if ((!r.ok && r.status === 403) || (r.ok && r.body.accepting === false)) { chatAvailable = false; drawMenu(); } }); }
