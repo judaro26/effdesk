@@ -15,7 +15,8 @@ export async function deliverTicketEmailJob(pool, mailer, store, env, orgId, pay
     }
   }
   const result = await sendTicketReply(pool, mailer, env, orgId, number, messageRowId, files, {
-    idempotencyKey: 'ticket-message:' + messageRowId
+    idempotencyKey: 'ticket-message:' + messageRowId,
+    previousMessageIds: Array.isArray(payload.previousMessageIds) ? payload.previousMessageIds : []
   });
   if (result.delivery === 'failed') {
     const delivery = Number(job.attempts) >= Number(job.max_attempts) ? 'failed' : 'queued';
