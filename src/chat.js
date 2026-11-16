@@ -15,6 +15,11 @@ const fail = (error, status = 400) => ({ ok: false, status, error });
 const secret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET || '');
 export const chatToken = (env, orgId, number) => crypto.createHmac('sha256', secret(env)).update(`chat:${orgId}:${number}`).digest('hex').slice(0, 24);
 const tokenOk = (env, orgId, number, tok) => { const a = Buffer.from(chatToken(env, orgId, number)), b = Buffer.from(String(tok || '')); return !!secret(env) && a.length === b.length && crypto.timingSafeEqual(a, b); };
+async function conversationForNumber(c,orgId,number,lock=false){
+ const sql=`select cc.* from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id
+  where cc.org_id=$1 and (cc.id=$2 or legacy_ticket.number=$2) order by (cc.id=$2) desc limit 1${lock?' for update of cc':''}`;
+ return (await c.query(sql,[orgId,Number(number)||0])).rows[0]||null;
+}
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
 export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7, restart_cooldown_seconds: 15, auto_convert_to_ticket: false };
 
@@ -208,7 +213,7 @@ export async function endChat(pool,env,slug,input){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
  const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
  return withOrg(pool,x.org.id,async c=>{
-  const t=(await c.query("select id,status from chat_conversations where org_id=$1 and id=$2 for update",[x.org.id,number])).rows[0];
+  const t=await conversationForNumber(c,x.org.id,number,true);
   if(!t)return fail('No such chat.',404);if(['closed','solved'].includes(t.status))return{ok:true,ended:true,alreadyEnded:true};
   await c.query("update chat_conversations set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2",[x.org.id,t.id]);
   await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Website visitor','visitor_ended','Visitor ended the Live Chat conversation')",[x.org.id,t.id]);
@@ -243,7 +248,7 @@ export async function sendChat(pool,env,slug,input,mailer){
  const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
  const body=clean(input.message,2000);if(!body)return fail('Write a message.');
  const result=await withOrg(pool,x.org.id,async c=>{
-  const t=(await c.query("select id,status,requester_name,requester_email from chat_conversations where org_id=$1 and id=$2 for update",[x.org.id,number])).rows[0];
+  const t=await conversationForNumber(c,x.org.id,number,true);
   if(!t)return fail('No such chat.',404);if(['closed','solved'].includes(t.status))return fail('This chat has ended. Start a new one.',409);
   const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4) returning id",[x.org.id,t.id,t.requester_name||t.requester_email,body])).rows[0];
   await c.query("update chat_conversations set updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,t.id]);
@@ -264,8 +269,8 @@ export async function updateChatContext(pool,env,slug,input){
  let parsed;try{parsed=new URL(pageUrl);}catch{return fail('A valid page URL is required.');}
  if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)return fail('A valid page URL is required.');parsed.search='';parsed.hash='';
  return withOrg(pool,x.org.id,async c=>{
-  const r=await c.query("update chat_conversations set page_url=$3,page_title=$4,latitude=case when $5::boolean then $6::double precision else latitude end,longitude=case when $5::boolean then $7::double precision else longitude end,last_visitor_seen_at=now(),updated_at=now() where org_id=$1 and id=$2 and status not in ('closed','solved')",[x.org.id,number,parsed.href.slice(0,2048),pageTitle||null,hasLat,lat,lon]);
-  return r.rowCount?{ok:true}:fail('This chat has ended.',409);
+  const chat=await conversationForNumber(c,x.org.id,number,true);if(!chat||['closed','solved'].includes(chat.status))return fail('This chat has ended.',409);
+  await c.query("update chat_conversations set page_url=$3,page_title=$4,latitude=case when $5::boolean then $6::double precision else latitude end,longitude=case when $5::boolean then $7::double precision else longitude end,last_visitor_seen_at=now(),updated_at=now() where org_id=$1 and id=$2",[x.org.id,chat.id,parsed.href.slice(0,2048),pageTitle||null,hasLat,lat,lon]);return{ok:true};
  });
 }
 
@@ -273,7 +278,7 @@ export async function pollChat(pool,env,slug,number,token,after){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
  number=Number(number)||0;if(!tokenOk(env,x.org.id,number,token))return fail('This chat is not yours.',403);
  return withOrg(pool,x.org.id,async c=>{
-  const t=(await c.query(`select cc.id,cc.status,cc.assignee_id,u.name as assignee_name,u.email as assignee_email from chat_conversations cc left join "user" u on u.id=cc.assignee_id where cc.org_id=$1 and cc.id=$2`,[x.org.id,number])).rows[0];
+  const base=await conversationForNumber(c,x.org.id,number);const t=base?{...base,assignee_name:(await c.query('select name,email from "user" where id=$1',[base.assignee_id])).rows[0]?.name,assignee_email:(await c.query('select email from "user" where id=$1',[base.assignee_id])).rows[0]?.email}:null;
   if(!t)return fail('No such chat.',404);
   if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
   const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
