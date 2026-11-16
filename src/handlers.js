@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat, agentNoteChat, agentUpdateChat, heartbeatChatPresence } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, enqueueChatReplyEmail, agentEndChat, agentNoteChat, agentUpdateChat, heartbeatChatPresence } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -452,7 +452,10 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (!canCustom('reply')) return json(403, { error: 'Your role does not allow customer replies.' });
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentReplyChat(pool, orgId, actor, b.number, b);
-      if (r.ok && !r.duplicate) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
+      if (r.ok && !r.duplicate) {
+        await enqueueChatReplyEmail(pool, orgId, Number(b.number), r.message.id);
+        await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
+      }
       break;
     }
     case 'chat-end-agent': {
