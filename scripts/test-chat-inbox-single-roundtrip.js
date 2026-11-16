@@ -20,7 +20,7 @@ assert.match(inbox, /select max_concurrent from chat_settings where org_id=\$1/,
   'combined metadata should include the workspace chat capacity setting');
 assert.match(inbox, /from chat_conversations cc where cc\.org_id=\$1/,
   'conversation aggregates must remain scoped to the current workspace');
-assert.match(inbox, /\[orgId,String\(input\.agentId\|\|' '\)\]/,
-assert.match(inbox, /\\[orgId,String\\(input\\.agentId\\|\\|''\\)\\]/,
+assert.ok(inbox.includes("[orgId,String(input.agentId||'')]"),
+  'metadata query should bind the workspace and agent identifiers');
 
 console.log('ok  agent inbox loads its page and combined tenant-scoped metadata in two SQL round trips');
