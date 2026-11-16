@@ -28,7 +28,7 @@ check('waiting-age and accept styling remain responsive', css.includes('.chat-in
 
 check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, cursorMode: false, offset: chatInboxPageIndex * chatInboxLimit"));
 check('background Live Chat reply alerts use a cursor feed instead of repeatedly fetching the first 100 tickets', js.includes("api('chat-reply-alerts', { after: chatReplyCursor || '0' })") && js.includes("api('chat-reply-alerts', { initialize: true })"));
-check('the chat inbox exposes customer search and queue filters', js.includes('Search customers, email or ticket') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
+check('the chat inbox exposes customer search and queue filters', js.includes('Search live chats by customer, email, subject or ticket number') && js.includes('Search customers, email or conversation #') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
 check('the chat inbox offers previous and next page navigation', js.includes('chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1)'));
 check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
 check('queue controls remain usable on mobile', css.includes('.chat-inbox-pagination') && css.includes('.chat-inbox-search') && css.includes('@media(max-width:560px)'));
