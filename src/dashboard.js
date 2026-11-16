@@ -13,8 +13,8 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
           count(*) filter (where status = 'open')::int open,
           count(*) filter (where status = 'pending')::int pending,
           count(*) filter (where status = 'on_hold')::int on_hold,
-          count(*) filter (where status in ('open','pending','on_hold') and assignee_id is null)::int unassigned,
-          count(*) filter (where status in ('open','pending','on_hold') and assignee_id = $2)::int mine,
+          count(*) filter (where status in ('open','pending','on_hold') and assignee_id is null)::int unassigned_count,
+          count(*) filter (where status in ('open','pending','on_hold') and assignee_id = $2)::int mine_count,
           count(*) filter (where status in ('open','pending','on_hold') and priority = 'urgent')::int urgent,
           count(*) filter (where created_at >= date_trunc('day', now()))::int new_today,
           count(*) filter (where solved_at >= date_trunc('day', now()))::int solved_today,
@@ -70,7 +70,7 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
     return {
       ok: true,
       portal: portalDomain && data.slug ? `https://${data.slug}.${portalDomain}` : '',
-      counts: { open: data.open || 0, pending: data.pending || 0, on_hold: data.on_hold || 0, unassigned: data.unassigned || 0, mine: data.mine || 0, urgent: data.urgent || 0, newToday: data.new_today || 0, solvedToday: data.solved_today || 0, solvedWeek: data.solved_week || 0, breached },
+      counts: { open: data.open || 0, pending: data.pending || 0, on_hold: data.on_hold || 0, unassigned: data.unassigned_count || 0, mine: data.mine_count || 0, urgent: data.urgent || 0, newToday: data.new_today || 0, solvedToday: data.solved_today || 0, solvedWeek: data.solved_week || 0, breached },
       mine: (data.mine || []).map(row), unassigned: (data.unassigned || []).map(row), recent: (data.recent || []).map(row), daily: data.daily || [],
       setup: { inbox: !!data.inbox, articles: (data.articles || 0) > 0, team: agents > 1, firstTicket: (data.total || 0) > 0 }
     };
