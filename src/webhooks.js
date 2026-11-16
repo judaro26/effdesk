@@ -43,28 +43,30 @@ export async function deleteHook(pool, orgId, id) { return withOrg(pool, orgId, 
 // Enqueue one durable delivery per subscribed endpoint. Ticket requests no longer wait on remote webhook servers.
 export async function emit(pool, orgId, event, number, extra = {}, { now = Date.now() } = {}) {
   try {
-    const data = await withOrg(pool, orgId, async c => ({
-      hooks: (await c.query('select id from webhooks where org_id = $1 and active and $2 = any(events)', [orgId, event])).rows,
-      t: (await c.query('select custom, number, subject, status, priority, channel, requester_name, requester_email, assignee_id, tags, created_at, updated_at from tickets where org_id = $1 and number = $2', [orgId, Number(number) || 0])).rows[0],
+    const recordNumber=Number(number)||0, isChat=recordNumber>2147483647;
+    const data=await withOrg(pool,orgId,async c=>({
+      hooks:(await c.query('select id from webhooks where org_id=$1 and active and $2=any(events)',[orgId,event])).rows,
+      record:isChat
+        ? (await c.query('select id,chat_number,subject,status,priority,requester_name,requester_email,assignee_id,created_at,updated_at from chat_conversations where org_id=$1 and chat_number=$2',[orgId,recordNumber])).rows[0]
+        : (await c.query('select custom,number,subject,status,priority,channel,requester_name,requester_email,assignee_id,tags,created_at,updated_at from tickets where org_id=$1 and number=$2',[orgId,recordNumber])).rows[0]
     }));
-    if (!data.hooks.length || !data.t) return { queued: 0 };
-    const eventId = crypto.randomUUID(), occurredAt = new Date(now).toISOString();
-    const body = JSON.stringify({ eventId, event, organization: orgId, occurredAt, ticket: { number: data.t.number, subject: data.t.subject, status: data.t.status, priority: data.t.priority, channel: data.t.channel, requester: { name: data.t.requester_name, email: data.t.requester_email }, assigneeId: data.t.assignee_id, tags: data.t.tags, custom: data.t.custom, createdAt: data.t.created_at, updatedAt: data.t.updated_at }, ...extra });
-    const text = chatText(event, data.t, extra);
-    const results = await Promise.allSettled(data.hooks.map(h => enqueueJob(pool, orgId, {
-      type: 'webhook.deliver',
-      payload: { webhookId: String(h.id), event, eventId, body, text },
-      idempotencyKey: eventId + ':' + String(h.id),
-      maxAttempts: 8
+    if(!data.hooks.length||!data.record)return{queued:0};
+    const eventId=crypto.randomUUID(),occurredAt=new Date(now).toISOString(),record=data.record;
+    const body=JSON.stringify(isChat
+      ? {eventId,event,organization:orgId,occurredAt,conversation:{number:Number(record.chat_number),subject:record.subject,status:record.status,priority:record.priority,requester:{name:record.requester_name,email:record.requester_email},assigneeId:record.assignee_id,createdAt:record.created_at,updatedAt:record.updated_at},...extra}
+      : {eventId,event,organization:orgId,occurredAt,ticket:{number:record.number,subject:record.subject,status:record.status,priority:record.priority,channel:record.channel,requester:{name:record.requester_name,email:record.requester_email},assigneeId:record.assignee_id,tags:record.tags,custom:record.custom,createdAt:record.created_at,updatedAt:record.updated_at},...extra});
+    const text=isChat
+      ? `${LABEL[event]||event}: Conversation #${record.chat_number} ${record.subject} (${record.priority}, ${record.status}) from ${record.requester_name||record.requester_email}`+(extra.message&&extra.message.body?`\\n> ${String(extra.message.body).replace(/\\s+/g,' ').slice(0,300)}`:'')+(extra.by?`\\nBy ${extra.by}`:'')
+      : chatText(event,record,extra);
+    const results=await Promise.allSettled(data.hooks.map(h=>enqueueJob(pool,orgId,{
+      type:'webhook.deliver',payload:{webhookId:String(h.id),event,eventId,body,text},
+      idempotencyKey:eventId+':'+String(h.id),maxAttempts:8
     })));
-    const queued = results.filter(x => x.status === 'fulfilled').length;
-    const failed = results.length - queued;
-    if (failed) logInfo('webhook_enqueue', { org: orgId, queued, failed });
-    return { queued, failed };
-  } catch (e) { console.warn('webhook enqueue error:', e.message); return { queued: 0, failed: 1 }; }
+    const queued=results.filter(x=>x.status==='fulfilled').length,failed=results.length-queued;
+    if(failed)logInfo('webhook_enqueue',{org:orgId,queued,failed});
+    return{queued,failed,eventId};
+  } catch(e) { logInfo('webhook_enqueue_error',{org:orgId,error:e.message});return{queued:0,error:true}; }
 }
-
-// Worker handler: re-read current endpoint settings, sign each attempt with a fresh timestamp, and throw on failure so the queue retries.
 export async function deliverWebhook(pool, orgId, payload, { fetchFn = guardedFetch, now = Date.now() } = {}) {
   const hook = await withOrg(pool, orgId, async c => (await c.query('select id,url,secret,kind,active from webhooks where org_id=$1 and id=$2', [orgId, Number(payload.webhookId) || 0])).rows[0] || null);
   if (!hook || !hook.active) return { skipped: true };

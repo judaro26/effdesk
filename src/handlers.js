@@ -34,7 +34,7 @@ import { recordWebVital } from './performance.js';
 import * as statusSvc from './status.js';
 import * as adminActions from './admin-actions.js';
 import { settings as platformSettings, publicBanner } from './platform-settings.js';
-import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket } from './chat.js';
+import { getSettings as chatSettings, saveSettings as saveChatSettings, chatOpen, agentInbox, agentReplyAlerts, convertChatToTicket, getChatConversation, agentReplyChat, agentEndChat, agentNoteChat, agentUpdateChat, heartbeatChatPresence } from './chat.js';
 import { listHooks, saveHook, deleteHook, emit as emitHook } from './webhooks.js';
 import { listIntegrationConnections, connectIntegration, testIntegrationConnection, disconnectIntegration } from './integration-hub.js';
 import { listIncidentProviderConnections, createIncidentProviderConnection, revokeIncidentProviderConnection } from './incident-provider-webhooks.js';
@@ -201,7 +201,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
   let chatAccessAllowed = support || (supervisionAction && canSuperviseChat);
   if (!support && role !== 'light' && planHas(ent, 'live_chat') && (['list', 'chat-inbox', 'chat-reply-alerts', 'chat-team', 'chat-heartbeat'].includes(b.action) || (targetNumbers.length && !supervisionAction))) chatAccessAllowed = (await getChatAvailability(pool, orgId, actor.id)).access || (supervisionAction && canSuperviseChat);
   if (!chatAccessAllowed && !support && targetNumbers.length) {
-    const found = await withOrg(pool, orgId, c => c.query("select number from tickets where org_id = $1 and channel = 'chat' and number = any($2)", [orgId, targetNumbers]));
+    const found = await withOrg(pool, orgId, c => c.query("select cc.chat_number from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id where cc.org_id=$1 and (cc.chat_number=any($2::bigint[]) or cc.id=any($2::bigint[]) or legacy_ticket.number=any($2::bigint[])) limit 1", [orgId, targetNumbers]));
     if (found.rowCount) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
   }
   switch (b.action) {
@@ -305,6 +305,12 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     case 'availability-set': r = await setAvailable(pool, orgId, actor.id, b.available !== false); break;
     case 'chat-availability-set': { if ((g = need('live_chat'))) return g; if (role === 'light') return json(403, { error: 'Light agents cannot accept live chats.' }); r = await setChatAvailable(pool, orgId, actor.id, b.available === true); break; }
     case 'chat-heartbeat': { if ((g = need('live_chat'))) return g; if (role === 'light' || !chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' }); r = await heartbeatChat(pool, orgId, actor.id); break; }
+    case 'chat-presence': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed || role === 'light') return json(403, { error: 'Live Chat access is required.' });
+      r = await heartbeatChatPresence(pool, orgId, actor, b.number, b.typing === true);
+      break;
+    }
     case 'chat-supervision-inbox': {
       if ((g = need('live_chat'))) return g;
       if (!canSuperviseChat) return json(403, { error: 'Your role does not allow supervising live chats.' });
@@ -435,11 +441,43 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       r = await agentInbox(pool, orgId, { ...b, agentId: actor.id });
       break;
     }
+    case 'chat-get': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await getChatConversation(pool, orgId, b.number, { messageLimit: b.messageLimit });
+      break;
+    }
+    case 'chat-reply': {
+      if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow customer replies.' });
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentReplyChat(pool, orgId, actor, b.number, b);
+      if (r.ok && !r.duplicate) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
+      break;
+    }
+    case 'chat-end-agent': {
+      if ((g = need('live_chat'))) return g;
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentEndChat(pool, orgId, actor, b.number, isAdmin);
+      break;
+    }
+    case 'chat-note': {
+      if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow internal chat notes.' });
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentNoteChat(pool, orgId, actor, b.number, b);
+      break;
+    }
+    case 'chat-update': {
+      if ((g = need('live_chat'))) return g;
+      if (!canCustom('reply')) return json(403, { error: 'Your role does not allow conversation updates.' });
+      if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
+      r = await agentUpdateChat(pool, orgId, actor, b.number, b.patch || {}, isAdmin);
+      break;
+    }
     case 'list': {
-      if (b.channel === 'chat') {
-        if ((g = need('live_chat'))) return g;
-        if (!chatAccessAllowed) return json(403, { error: 'An admin must enable Live Chat access for you first.' });
-      } else if (!chatAccessAllowed) b.excludeChat = true;
+      if (b.channel === 'chat') return json(400, { error: 'Live Chat conversations are available in the dedicated Live Chat inbox.' });
+      b.excludeChat = true;
       if (!planHas(ent, 'sla')) b.sla = undefined;
       const cal = planHas(ent, 'sla') ? await calendarOf(pool, orgId) : null;
       if (cal && cal.enabled && (b.sla === 'breached' || b.sla === 'risk')) { b.numbers = await slaNumbers(pool, orgId, b.sla, cal); }

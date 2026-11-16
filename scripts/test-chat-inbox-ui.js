@@ -24,10 +24,10 @@ check('new-chat empty state explains that accepted chats move into progress', js
 check('waiting-age and accept styling remain responsive', css.includes('.chat-inbox-waiting-age') && css.includes('@media(max-width:560px)'));
 
 
-check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, cursorMode: true, cursor: chatInboxCursorStack[chatInboxPageIndex] || ''"));
+check('the chat inbox loads a bounded server-side page instead of all conversations', js.includes("api('chat-inbox', { limit: chatInboxLimit, cursorMode: false, offset: chatInboxPageIndex * chatInboxLimit"));
 check('background Live Chat reply alerts use a cursor feed instead of repeatedly fetching the first 100 tickets', js.includes("api('chat-reply-alerts', { after: chatReplyCursor || '0' })") && js.includes("api('chat-reply-alerts', { initialize: true })"));
 check('the chat inbox exposes customer search and queue filters', js.includes('Search customers, email or ticket') && js.includes("value: 'needs-reply'") && js.includes("value: 'mine'"));
-check('the chat inbox offers previous and next page navigation', js.includes('chatInboxCursorStack[chatInboxPageIndex + 1] = chatInboxPageNextCursor') && js.includes('chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1)'));
+check('the chat inbox offers previous and next page navigation', js.includes('chatInboxPageIndex = Math.max(0, chatInboxPageIndex - 1)'));
 check('queue summary cards use server-side totals rather than the current page length', js.includes('String(chatInboxCounts.total)') && js.includes('String(chatInboxCounts.waiting)'));
 check('queue controls remain usable on mobile', css.includes('.chat-inbox-pagination') && css.includes('.chat-inbox-search') && css.includes('@media(max-width:560px)'));
 
@@ -116,3 +116,14 @@ check('the active visitor overview redraws when new location coordinates arrive'
 check('the embedded chat iframe permits browser geolocation only for the visitor-initiated sharing flow', embedWidget.includes("frame.setAttribute('allow', 'geolocation')") && widget.includes('Share approximate location'));
 
 check('an already-open agent conversation picks up visitor-ended status on its 15-second refresh', js.includes('var latestChat = chatWorkspaceRows.filter') && js.includes('current.ticket.visitor_ended = true') && js.includes('The visitor ended this conversation.'));
+
+const chatRuntime = fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8');
+const routing = fs.readFileSync(new URL('../src/routing.js', import.meta.url), 'utf8');
+check('visitor chats persist independently and the default flow does not create a ticket', chatRuntime.includes('insert into chat_conversations') && !chatRuntime.includes('createTicket(pool, x.org.id, null'));
+check('the agent UI opens dedicated chat detail and reply actions rather than ticket actions', js.includes("api(isChat ? 'chat-get' : 'get'") && js.includes("? 'chat-reply'"));
+check('Live Chat claim, transfer, supervision and takeover operate on conversation rows', routing.includes('chatForNumber(c,orgId,number,true)') && routing.includes('update chat_conversations set assignee_id'));
+check('automatic ticket conversion is exposed as an explicit admin setting and defaults off', js.includes('autoConvertToTicket: autoConvert.checked') && chatRuntime.includes('auto_convert_to_ticket: false'));
+check('chat conversation numbers are separate from support ticket numbers', chatRuntime.includes('cc.chat_number=$2') && fs.readFileSync(new URL('../migrations/078_live_chat_runtime_cutover.sql', import.meta.url), 'utf8').includes('chat_conversation_number_seq'));
+
+check('agent typing presence and visitor widget status are independent of ticket presence', js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'") && chatRuntime.includes('from chat_presence where org_id=$1'));
+check('chat conversations retain a chat-specific deep link and never upload into ticket attachments', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes('File attachments are not enabled for Live Chat yet.') && js.includes('if (!chatConversationOpen) uploadFiles(t, files)'));

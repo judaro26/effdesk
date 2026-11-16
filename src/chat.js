@@ -1,25 +1,33 @@
-// src/chat.js: LIVE CHAT. A visitor on the customer's website opens the chat widget, gives a name and email and a first message, and a ticket with the channel "chat" is created. The visitor's page polls for the agents' replies. The agents answer from the desk as with any ticket; while the visitor's chat window is open the reply appears there, and when it is closed the reply is emailed as usual.
-//   a visitor proves it is theirs chat with a token only they were given (a signature of the ticket number); nothing else is public.
+// src/chat.js: LIVE CHAT. Visitor conversations and messages live independently of support tickets. Agents can explicitly convert a conversation into a ticket, preserving its transcript.
+//   a visitor proves ownership with a signed, opaque conversation number; nothing else is public.
 import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
+import net from 'node:net';
 import { withOrg } from './db.js';
-import { createTicket, addRequesterMessage, writeTicketProvenance, logEvent } from './tickets.js';
+import { createTicket } from './tickets.js';
 import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
-import { notifyTicket } from './notify.js';
+import { autoAssignChat } from './routing.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
+const safePageUrl = value => { try { const u = new URL(clean(value,2048)); if (!['http:','https:'].includes(u.protocol) || u.username || u.password) return null; u.search=''; u.hash=''; return u.href.slice(0,2048); } catch { return null; } };
+const safeIp = value => { const ip=clean(value,64).replace(/^\[|\]$/g,'').split('%')[0]; return net.isIP(ip) ? ip : null; };
 const fail = (error, status = 400) => ({ ok: false, status, error });
 const secret = env => String(env.EMAIL_TOKEN_SECRET || env.BETTER_AUTH_SECRET || '');
 export const chatToken = (env, orgId, number) => crypto.createHmac('sha256', secret(env)).update(`chat:${orgId}:${number}`).digest('hex').slice(0, 24);
 const tokenOk = (env, orgId, number, tok) => { const a = Buffer.from(chatToken(env, orgId, number)), b = Buffer.from(String(tok || '')); return !!secret(env) && a.length === b.length && crypto.timingSafeEqual(a, b); };
+async function conversationForNumber(c,orgId,number,lock=false){
+ const sql=`select cc.*,(exists(select 1 from chat_events ended where ended.org_id=cc.org_id and ended.conversation_id=cc.id and ended.kind='visitor_ended')) as visitor_ended,u.name as assignee_name,u.email as assignee_email from chat_conversations cc left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id left join "user" u on u.id=cc.assignee_id
+  where cc.org_id=$1 and (cc.chat_number=$2 or legacy_ticket.number=$2 or cc.id=$2) order by (cc.chat_number=$2) desc,(legacy_ticket.number=$2) desc limit 1${lock?' for update of cc':''}`;
+ return (await c.query(sql,[orgId,Number(number)||0])).rows[0]||null;
+}
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
-export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7, restart_cooldown_seconds: 15 };
+export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7, restart_cooldown_seconds: 15, auto_convert_to_ticket: false };
 
 export async function getSettings(pool, orgId) {
-  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
+  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
 }
 export async function saveSettings(pool, orgId, input) {
   const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : DEFAULTS.color, title = clean(input.title, 60) || DEFAULTS.title, greeting = clean(input.greeting, 300) || DEFAULTS.greeting, enabled = input.enabled === true;
@@ -40,12 +48,13 @@ export async function saveSettings(pool, orgId, input) {
   const autoResolveHours = input.autoResolveHours === undefined ? DEFAULTS.auto_resolve_hours : Number(input.autoResolveHours);
   const reuseDays = input.reuseDays === undefined ? DEFAULTS.reuse_days : Number(input.reuseDays);
   const restartCooldownSeconds = input.restartCooldownSeconds === undefined ? DEFAULTS.restart_cooldown_seconds : Number(input.restartCooldownSeconds);
+  const autoConvertToTicket = input.autoConvertToTicket === undefined ? (await getSettings(pool, orgId)).auto_convert_to_ticket === true : input.autoConvertToTicket === true;
   if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 10) return fail('Maximum simultaneous chats must be a whole number from 1 to 10.');
   if (!Number.isInteger(autoResolveHours) || autoResolveHours < 0 || autoResolveHours > 720) return fail('Automatic chat resolution must be 0 (off) or between 1 and 720 hours.');
   if (!Number.isInteger(reuseDays) || reuseDays < 0 || reuseDays > 30) return fail('Conversation reuse must be 0 (off) or between 1 and 30 days.');
   if (!Number.isInteger(restartCooldownSeconds) || restartCooldownSeconds < 0 || restartCooldownSeconds > 3600) return fail('The visitor restart cooldown must be a whole number from 0 to 3600 seconds.');
-  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, restart_cooldown_seconds = $10, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays, restartCooldownSeconds]));
-  return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays, restart_cooldown_seconds: restartCooldownSeconds } };
+  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, restart_cooldown_seconds = $10, auto_convert_to_ticket = $11, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays, restartCooldownSeconds, autoConvertToTicket]));
+  return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays, restart_cooldown_seconds: restartCooldownSeconds, auto_convert_to_ticket: autoConvertToTicket } };
 }
 async function orgOf(pool, slug) { return (await pool.query('select id, name, slug from "organization" where slug = $1', [String(slug || '').toLowerCase().slice(0, 60)])).rows[0] || null; }
 // the widget may run only where the plan includes live chat and the agents turned it on
@@ -65,7 +74,7 @@ export async function publicConfig(pool, slug) {
       join member m on m."userId" = a.user_id and m."organizationId" = a.org_id
       where a.org_id = $1 and a.chat_access = true and a.chat_available = true
         and m.role in ('owner','admin','member') and a.chat_last_seen_at > now() - interval '3 minutes'
-        and (select count(*) from tickets t where t.org_id = a.org_id and t.channel = 'chat'
+        and (select count(*) from chat_conversations t where t.org_id = a.org_id
           and t.assignee_id = a.user_id and t.status in ('open','pending','on_hold')) < $2
     ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
     return r.rows[0]?.accepting === true;
@@ -73,266 +82,287 @@ export async function publicConfig(pool, slug) {
   return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null, restartCooldownSeconds: Number(x.settings.restart_cooldown_seconds ?? DEFAULTS.restart_cooldown_seconds) };
 }
 
-// Server-paged Live Chat inbox. Counts describe the full filtered set, not only the visible page.
+// Independent, tenant-scoped Live Chat inbox. Conversation ids are stable chat numbers.
 export async function agentInbox(pool, orgId, input = {}) {
-  const limit = Math.min(Math.max(parseInt(input.limit, 10) || 50, 1), 100);
-  const cursorMode = input.cursorMode === true || typeof input.cursor === 'string';
-  const query = clean(input.q, 100);
-  const view = ['all', 'waiting', 'needs-reply', 'mine', 'history'].includes(input.view) ? input.view : 'all';
-  const history = view === 'history';
-  const args = [orgId], where = ['t.org_id = $1', "t.channel = 'chat'", history ? "t.status in ('solved','closed')" : "(t.status in ('open','pending','on_hold') or (t.status='closed' and exists (select 1 from ticket_events ended_event where ended_event.org_id=t.org_id and ended_event.ticket_id=t.id and ended_event.kind='status' and ended_event.detail='Visitor ended the Live Chat conversation')))" ];
-  if (view === 'waiting') where.push("t.assignee_id is null and t.status <> 'closed'");
-  if (view === 'needs-reply') where.push("t.assignee_id is not null and t.status <> 'closed' and latest_public.kind = 'requester'");
-  if (view === 'mine') { args.push(String(input.agentId || '')); where.push('t.assignee_id = $' + args.length); }
-  if (query) {
-    const like = query.toLowerCase().replace(/[\\%_]/g, m => '\\' + m) + '%';
-    args.push(like); const i = args.length;
-    const number = /^#?\d{1,9}$/.test(query) ? Number(query.replace('#', '')) : null;
-    args.push(number);
-    where.push('(lower(t.subject) like $' + i + ' or lower(t.requester_name) like $' + i + ' or lower(t.requester_email) like $' + i + ' or lower(assignee.name) like $' + i + ' or lower(assignee.email) like $' + i + ' or ($' + (i + 1) + '::int is not null and t.number = $' + (i + 1) + '::int))');
-  }
-  let cursor = null, cursorWhere = '';
-  if (cursorMode && input.cursor) {
-    try {
-      cursor = JSON.parse(Buffer.from(String(input.cursor), 'base64url').toString('utf8'));
-      if (cursor.v !== 1 || cursor.h !== history || !Number.isSafeInteger(Number(cursor.id)) || Number(cursor.id) < 1 || !Number.isFinite(new Date(cursor.u).getTime())) throw new Error('invalid');
-      if (history) {
-        if (!Number.isFinite(new Date(cursor.s).getTime())) throw new Error('invalid');
-        args.push(String(cursor.s), String(cursor.u), Number(cursor.id));
-        const s = args.length - 2, u = args.length - 1, id = args.length;
-        cursorWhere = 'where (cursor_history_at < $' + s + '::timestamptz or (cursor_history_at = $' + s + '::timestamptz and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
-      } else {
-        if (![0,1].includes(Number(cursor.b)) || ![0,1].includes(Number(cursor.n)) || (cursor.w !== null && !Number.isFinite(new Date(cursor.w).getTime()))) throw new Error('invalid');
-        args.push(Number(cursor.b), cursor.w === null ? null : String(cursor.w), Number(cursor.n), String(cursor.u), Number(cursor.id));
-        const b=args.length-4,w=args.length-3,n=args.length-2,u=args.length-1,id=args.length;
-        cursorWhere = 'where (cursor_bucket > $' + b + ' or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) > coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz)) or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply > $' + n + ') or (cursor_bucket = $' + b + ' and coalesce(cursor_waiting_at, \'infinity\'::timestamptz) = coalesce($' + w + '::timestamptz, \'infinity\'::timestamptz) and cursor_needs_reply = $' + n + ' and (updated_at < $' + u + '::timestamptz or (updated_at = $' + u + '::timestamptz and id < $' + id + '::bigint))))';
-      }
-    } catch { return fail('The Live Chat inbox cursor is invalid. Refresh the inbox and try again.'); }
-  }
-  return withOrg(pool, orgId, async db => {
-    const limitArg = args.length + 1; args.push(cursorMode ? limit + 1 : limit);
-    let offsetSql = '';
-    if (!cursorMode) { args.push(Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000)); offsetSql = ' offset $' + args.length; }
-    const order = history ? 'cursor_history_at desc, updated_at desc, id desc' : 'cursor_bucket asc, cursor_waiting_at asc nulls last, cursor_needs_reply asc, updated_at desc, id desc';
-    const sql = [
-      'with chat_rows as (',
-      ' select t.id, t.number, t.subject, t.status, t.assignee_id, t.requester_name, t.requester_email, t.created_at, t.updated_at, t.solved_at, t.closed_at, (t.status=\'closed\' and exists (select 1 from ticket_events ended_event where ended_event.org_id=t.org_id and ended_event.ticket_id=t.id and ended_event.kind=\'status\' and ended_event.detail=\'Visitor ended the Live Chat conversation\')) as visitor_ended, latest_public.kind as chat_last_public_message_kind, assignee.name as assignee_name, assignee.email as assignee_email, case when t.assignee_id is null then 0 else 1 end as cursor_bucket, case when t.assignee_id is null then t.created_at end as cursor_waiting_at, case when t.assignee_id is null then t.created_at::text end as cursor_waiting_at_cursor, t.updated_at::text as cursor_updated_at, case when t.assignee_id is not null and latest_public.kind = \'requester\' then 0 else 1 end as cursor_needs_reply, coalesce(t.closed_at,t.solved_at,t.updated_at) as cursor_history_at, coalesce(t.closed_at,t.solved_at,t.updated_at)::text as cursor_history_at_cursor',
-      ' from tickets t left join lateral (select tm.kind from ticket_messages tm where tm.org_id=t.org_id and tm.ticket_id=t.id and tm.kind in (\'requester\',\'agent\') order by tm.created_at desc, tm.id desc limit 1) latest_public on true left join "user" assignee on assignee.id=t.assignee_id',
-      ' where ' + where.join(' and '),
-      '), totals as (select count(*)::int total, count(*) filter(where assignee_id is null and status <> \'closed\')::int waiting, count(*) filter(where assignee_id is not null and status <> \'closed\')::int assigned, count(*) filter(where assignee_id is not null and status <> \'closed\' and chat_last_public_message_kind=\'requester\')::int needs_reply, count(*) filter(where status=\'solved\')::int solved, count(*) filter(where status=\'closed\')::int closed from chat_rows),',
-      'page as (select * from chat_rows ' + cursorWhere + ' order by ' + order + ' limit $' + limitArg + offsetSql + ')',
-      'select page.*, totals.total as total_count, totals.waiting as waiting_count, totals.assigned as assigned_count, totals.needs_reply as needs_reply_count, totals.solved as solved_count, totals.closed as closed_count from totals left join page on true'
-    ].join(' ');
-    const result = await db.query(sql, args), first = result.rows[0] || {};
-    const agentId = String(input.agentId || '');
-    const maxConcurrent = Math.max(1, Math.min(10, Number((await db.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent) || 3));
-    const activeChats = agentId ? Number((await db.query("select count(*)::int n from tickets where org_id=$1 and channel='chat' and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,agentId])).rows[0]?.n || 0) : 0;
-    let rows = result.rows.filter(row => row.id != null);
-    const hasMore = cursorMode && rows.length > limit;
-    if (hasMore) rows.pop();
-    const last = rows[rows.length - 1];
-    const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify(history ? { v:1, h:true, s:last.cursor_history_at_cursor, u:last.cursor_updated_at, id:Number(last.id) } : { v:1, h:false, b:Number(last.cursor_bucket), w:last.cursor_waiting_at_cursor || null, n:Number(last.cursor_needs_reply), u:last.cursor_updated_at, id:Number(last.id) })).toString('base64url') : null;
-    return {
-      ok: true,
-      tickets: rows.map(({ total_count, waiting_count, assigned_count, needs_reply_count, solved_count, closed_count, cursor_bucket, cursor_waiting_at, cursor_needs_reply, cursor_history_at, cursor_waiting_at_cursor, cursor_updated_at, cursor_history_at_cursor, ...ticket }) => ticket),
-      counts: { total: Number(first.total_count || 0), waiting: Number(first.waiting_count || 0), assigned: Number(first.assigned_count || 0), needsReply: Number(first.needs_reply_count || 0), solved: Number(first.solved_count || 0), closed: Number(first.closed_count || 0) },
-      capacity: { active: activeChats, max: maxConcurrent, remaining: Math.max(0,maxConcurrent-activeChats) },
-      page: { limit, offset: cursorMode ? (Number(input.pageIndex) || 0) * limit : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000), hasMore: cursorMode ? hasMore : Math.min(Math.max(parseInt(input.offset, 10) || 0, 0), 1000000) + limit < Number(first.total_count || 0), ...(cursorMode ? { nextCursor } : {}) }
-    };
+  const limit=Math.min(Math.max(parseInt(input.limit,10)||40,1),100),view=['all','waiting','needs-reply','mine','history'].includes(input.view)?input.view:'all',q=clean(input.q,100).toLowerCase();
+  return withOrg(pool,orgId,async c=>{
+    const args=[orgId],where=['cc.org_id=$1'];
+    where.push(view==='history'?"cc.status in ('solved','closed')":"(cc.status in ('open','pending','on_hold') or (cc.status='closed' and exists(select 1 from chat_events ended where ended.org_id=cc.org_id and ended.conversation_id=cc.id and ended.kind='visitor_ended')))");
+    if(view==='waiting')where.push("cc.assignee_id is null and cc.status <> 'closed'");
+    if(view==='mine'){args.push(String(input.agentId||''));where.push('cc.assignee_id=$'+args.length);}
+    if(q){args.push('%'+q.replace(/[\\%_]/g,'\\$&')+'%');where.push('(lower(cc.requester_name) like $'+args.length+' or lower(cc.requester_email) like $'+args.length+' or lower(cc.subject) like $'+args.length+')');}
+    const latest="select cm.kind from chat_messages cm where cm.org_id=cc.org_id and cm.conversation_id=cc.id and cm.kind in ('requester','agent') order by cm.created_at desc,cm.id desc limit 1";
+    if(view==='needs-reply')where.push("cc.status <> 'closed' and ("+latest+")='requester'");
+    const offset=Math.max(0,Math.min(parseInt(input.offset,10)||0,1000000));
+    const rows=(await c.query(`select cc.chat_number as number,cc.id,cc.subject,cc.status,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.solved_at,cc.closed_at,
+      exists(select 1 from chat_events e where e.org_id=cc.org_id and e.conversation_id=cc.id and e.kind='visitor_ended') as visitor_ended,
+      (${latest}) as chat_last_public_message_kind,u.name as assignee_name,u.email as assignee_email
+      from chat_conversations cc left join "user" u on u.id=cc.assignee_id where ${where.join(' and ')}
+      order by case when cc.assignee_id is null then 0 else 1 end,cc.updated_at desc,cc.id desc limit $${args.length+1} offset $${args.length+2}`,[...args,limit+1,offset])).rows;
+    const hasMore=rows.length>limit;if(hasMore)rows.pop();
+    const counts=(await c.query(`select count(*) filter(where status in ('open','pending','on_hold'))::int total,count(*) filter(where status in ('open','pending','on_hold') and assignee_id is null)::int waiting,
+      count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null)::int assigned,
+      count(*) filter(where status in ('open','pending','on_hold') and assignee_id is not null and (${latest})='requester')::int needs_reply,
+      count(*) filter(where status='solved')::int solved,count(*) filter(where status='closed')::int closed from chat_conversations cc where cc.org_id=$1`,[orgId])).rows[0]||{};
+    const max=Math.max(1,Math.min(10,Number((await c.query('select max_concurrent from chat_settings where org_id=$1',[orgId])).rows[0]?.max_concurrent)||3));
+    const active=input.agentId?Number((await c.query("select count(*)::int n from chat_conversations where org_id=$1 and assignee_id=$2 and status in ('open','pending','on_hold')",[orgId,String(input.agentId)])).rows[0]?.n||0):0;
+    return{ok:true,tickets:rows.map(r=>({...r,number:Number(r.number),id:Number(r.id)})),counts:{total:Number(counts.total||0),waiting:Number(counts.waiting||0),assigned:Number(counts.assigned||0),needsReply:Number(counts.needs_reply||0),solved:Number(counts.solved||0),closed:Number(counts.closed||0)},capacity:{active,max,remaining:Math.max(0,max-active)},page:{limit,offset,hasMore,nextCursor:null}};
   });
 }
-// Lightweight cursor-based notification feed so each agent does not repeatedly download the full chat queue.
-export async function agentReplyAlerts(pool, orgId, input = {}) {
-  return withOrg(pool, orgId, async db => {
-    if (input.initialize === true) {
-      const row = (await db.query("select coalesce(max(tm.id),0)::text as cursor from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.kind='requester' and t.channel='chat'", [orgId])).rows[0];
-      return { ok: true, cursor: String(row?.cursor || '0'), replies: [], hasMore: false };
-    }
-    const after = /^\d{1,18}$/.test(String(input.after || '')) ? String(input.after) : '0';
-    const rows = (await db.query("select tm.id,t.number,t.requester_name,t.requester_email,t.updated_at,t.status from ticket_messages tm join tickets t on t.org_id=tm.org_id and t.id=tm.ticket_id where tm.org_id=$1 and tm.id>$2::bigint and tm.kind='requester' and t.channel='chat' order by tm.id asc limit 101", [orgId, after])).rows;
-    const hasMore = rows.length > 100, page = rows.slice(0, 100), cursor = page.length ? String(page[page.length - 1].id) : after;
-    return { ok: true, cursor, hasMore, replies: page.filter(t => ['open','pending','on_hold'].includes(t.status)).map(t => ({ number: Number(t.number), requester_name: t.requester_name, requester_email: t.requester_email, updated_at: t.updated_at })) };
-  });
-}
-export async function startChat(pool, env, slug, input, mailer, provenance = {}) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const name = clean(input.name, 100), email = clean(input.email, 254).toLowerCase(), body = clean(input.message, 2000);
-  if (!isEmail(email)) return fail('Enter your email address so we can reach you if you leave.');
-  if (!body) return fail('Write your message.');
-  const visitorId = clean(input.visitorId, 64), visitorKey = /^[a-f0-9]{64}$/i.test(visitorId) ? crypto.createHash('sha256').update(x.org.id + ':' + visitorId.toLowerCase()).digest('hex') : null;
-  const reuseDays = Number(x.settings.reuse_days ?? DEFAULTS.reuse_days);
-  const result = await withOrg(pool, x.org.id, async c => {
-    // Serialize starts from the same browser so two tabs cannot create duplicate conversations.
-    if (visitorKey) await c.query('select pg_advisory_xact_lock(hashtext($1), hashtext($2))', [x.org.id, visitorKey]);
-    const cooldownSeconds = Math.max(0, Math.min(3600, Number(x.settings.restart_cooldown_seconds ?? DEFAULTS.restart_cooldown_seconds)));
-    if (cooldownSeconds > 0) {
-      const recentEnd = (await c.query("select greatest(1,ceil(extract(epoch from (t.closed_at + ($4::int * interval '1 second') - now())))::int) as retry_after from tickets t where t.org_id=$1 and t.channel='chat' and lower(t.requester_email)=lower($3) and t.status='closed' and t.closed_at > now() - ($4::int * interval '1 second') and ($2::text is null or t.chat_visitor_key=$2) and exists (select 1 from ticket_events e where e.org_id=t.org_id and e.ticket_id=t.id and e.kind='status' and e.detail='Visitor ended the Live Chat conversation') order by t.closed_at desc limit 1", [x.org.id, visitorKey, email, cooldownSeconds])).rows[0];
-      if (recentEnd) return { ok:false, status:429, error:'Please wait ' + recentEnd.retry_after + ' seconds before starting another chat.', retryAfterSeconds:Number(recentEnd.retry_after) };
-    }
-    let existing = null;
-    if (visitorKey && reuseDays > 0) {
-      const lifecycle = (await c.query('select config from ticket_lifecycle_policies where org_id=$1', [x.org.id])).rows[0]?.config || {};
-      const permanentDays = Number(lifecycle.permanentCloseDays) || 30;
-      existing = (await c.query(`select id, number, status from tickets
-        where org_id=$1 and channel='chat' and chat_visitor_key=$2 and lower(requester_email)=lower($3)
-          and updated_at >= now() - ($4::int * interval '1 day')
-          and (status <> 'closed' or $5::boolean = false or closed_at is null or closed_at > now() - ($6::int * interval '1 day'))
-        order by updated_at desc, id desc limit 1 for update`, [x.org.id, visitorKey, email, reuseDays, lifecycle.permanentCloseEnabled === true, permanentDays])).rows[0] || null;
-    }
-    if (existing) {
-      const mid = (await c.query("insert into ticket_messages (org_id,ticket_id,kind,author_name,body) values ($1,$2,'requester',$3,$4) returning id", [x.org.id, existing.id, name || email, body])).rows[0].id;
-      await c.query("update tickets set status='open', solved_at=null, closed_at=null, updated_at=now() where org_id=$1 and id=$2", [x.org.id, existing.id]);
-      await writeTicketProvenance(c,x.org.id,existing.id,{...provenance,identityType:'visitor'});
-      await c.query('insert into ticket_events (org_id,ticket_id,actor_name,kind,detail) values ($1,$2,$3,$4,$5)', [x.org.id, existing.id, name || email, 'reopened', 'Visitor returned and continued this Live Chat conversation']);
-      return { ok: true, number: existing.number, reused: true };
-    }
-    const created = await createTicket(pool, x.org.id, null, { subject: 'Chat: ' + body.replace(/\s+/g, ' ').slice(0, 60), body, requesterEmail: email, requesterName: name, channel: 'chat', provenance:{...provenance,identityType:'visitor'} }, c);
-    if (!created.ok) return created;
-    if (visitorKey) await c.query('update tickets set chat_visitor_key=$3 where org_id=$1 and id=$2', [x.org.id, created.ticket.id, visitorKey]);
-    return { ok: true, number: created.ticket.number, reused: false };
-  });
-  if (!result.ok) return result;
-  await emit(pool, x.org.id, result.reused ? 'message.customer' : 'ticket.created', result.number, result.reused ? { message: { body } } : {});
-  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, result.number, { kind: 'reply', summary: body }); } catch (e) { logWarn('live_chat.notification_failed', { error: e, org: x.org.id, ticket: result.number, operation: 'start' }); } }
-  return { ok: true, number: result.number, token: chatToken(env, x.org.id, result.number), reused: result.reused === true, orgId: x.org.id };
-}
-// Convert a chat into a regular ticket while keeping the source conversation and preserving every transcript entry.
-export async function convertChatToTicket(pool,orgId,actor,number){return withOrg(pool,orgId,async c=>{const src=(await c.query("select id,number,subject,requester_name,requester_email,priority,tags,converted_ticket_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];if(!src)return fail('Live Chat conversation not found.',404);if(src.converted_ticket_id){const old=(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,src.converted_ticket_id])).rows[0];return old?{ok:true,number:old.number,subject:old.subject,alreadyConverted:true}:fail('The linked ticket could not be found.',409);}const msgs=(await c.query("select kind,author_id,author_name,body,html_body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;if(!msgs.length)return fail('This conversation has no transcript to copy.');const p=(await c.query('select ip_address,identity_type,page_url,page_title,referrer,user_agent from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,src.id])).rows[0]||{};const made=await createTicket(pool,orgId,actor,{subject:('Follow-up: '+String(src.subject||'Live Chat').replace(/^\\s*chat\\s*:\\s*/i,'')).slice(0,200),body:'Transcript imported from Live Chat conversation #'+src.number+'.',requesterName:src.requester_name,requesterEmail:src.requester_email,priority:src.priority,tags:src.tags,channel:'web',firstKind:'note',sourceChatTicketId:src.id,provenance:{ip:p.ip_address,identityType:p.identity_type,pageUrl:p.page_url,pageTitle:p.page_title,referrer:p.referrer,userAgent:p.user_agent}},c);if(!made.ok)return made;await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);for(const m of msgs)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at]);await c.query('update tickets set converted_ticket_id=$3 where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);await logEvent(c,orgId,src.id,actor?.name||actor?.email||'Agent','converted','Converted to support ticket #'+made.ticket.number);await logEvent(c,orgId,made.ticket.id,actor?.name||actor?.email||'Agent','created','Created from Live Chat conversation #'+src.number+'; transcript preserved');return{ok:true,number:made.ticket.number,subject:made.ticket.subject,alreadyConverted:false};});}
 
-export async function endChat(pool, env, slug, input) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
-  return withOrg(pool, x.org.id, async db => {
-    const t = (await db.query("select id,status,channel from tickets where org_id=$1 and number=$2 for update", [x.org.id, number])).rows[0];
-    if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
-    if (['closed','solved'].includes(t.status)) return { ok: true, ended: true, alreadyEnded: true };
-    await db.query("update tickets set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2", [x.org.id, t.id]);
-    await logEvent(db, x.org.id, t.id, 'Website visitor', 'status', 'Visitor ended the Live Chat conversation');
-    return { ok: true, ended: true };
-  });
+// Lightweight notification feed over independent chat messages.
+export async function heartbeatChatPresence(pool,orgId,actor,number,typing=false){
+ return withOrg(pool,orgId,async c=>{
+  const chat=await conversationForNumber(c,orgId,number);if(!chat)return fail('Live Chat conversation not found.',404);
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  await c.query(`insert into chat_presence(org_id,conversation_id,user_id,name,typing,seen_at) values($1,$2,$3,$4,$5,now())
+   on conflict(org_id,conversation_id,user_id) do update set name=excluded.name,typing=excluded.typing,seen_at=now()`,[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,typing===true]);
+  const others=(await c.query("select user_id as id,name,typing,seen_at from chat_presence where org_id=$1 and conversation_id=$2 and user_id<>$3 and seen_at>now()-interval '30 seconds' order by seen_at desc",[orgId,chat.id,actor.id])).rows;
+  return{ok:true,others};
+ });
 }
+export async function agentReplyAlerts(pool,orgId,input={}){
+ return withOrg(pool,orgId,async c=>{
+  if(input.initialize===true){const row=(await c.query("select coalesce(max(id),0)::text cursor from chat_messages where org_id=$1 and kind='requester'",[orgId])).rows[0];return{ok:true,cursor:String(row?.cursor||'0'),replies:[],hasMore:false};}
+  const after=/^\\d{1,18}$/.test(String(input.after||''))?String(input.after):'0';
+  const rows=(await c.query("select cm.id,cc.chat_number as number,cc.requester_name,cc.requester_email,cc.updated_at,cc.status from chat_messages cm join chat_conversations cc on cc.org_id=cm.org_id and cc.id=cm.conversation_id where cm.org_id=$1 and cm.id>$2::bigint and cm.kind='requester' order by cm.id asc limit 101",[orgId,after])).rows;
+  const more=rows.length>100,page=rows.slice(0,100),cursor=page.length?String(page[page.length-1].id):after;
+  return{ok:true,cursor,hasMore:more,replies:page.filter(x=>['open','pending','on_hold'].includes(x.status)).map(x=>({number:Number(x.number),requester_name:x.requester_name,requester_email:x.requester_email,updated_at:x.updated_at}))};
+ });
+}
+
+// Agent detail for the dedicated conversation store; shaped for the existing Live Chat view.
+export async function getChatConversation(pool,orgId,number,options={}){
+ return withOrg(pool,orgId,async c=>{
+  const t=await conversationForNumber(c,orgId,number);
+  if(!t)return fail('Live Chat conversation not found.',404);
+  const messageLimit=Math.max(1,Math.min(500,Number(options.messageLimit)||50));
+  const messages=(await c.query("select id,kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 order by created_at desc,id desc limit $3",[orgId,t.id,messageLimit])).rows.reverse();
+  const converted=t.converted_ticket_id?(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,t.converted_ticket_id])).rows[0]||null:null;
+  return{ok:true,ticket:{id:t.id,number:Number(t.chat_number),subject:t.subject,status:t.status,channel:'chat',requester_name:t.requester_name,requester_email:t.requester_email,assignee_id:t.assignee_id,assignee:t.assignee_id?{id:t.assignee_id,name:t.assignee_name,email:t.assignee_email}:null,assignee_name:t.assignee_name,assignee_email:t.assignee_email,priority:t.priority,created_at:t.created_at,updated_at:t.updated_at,solved_at:t.solved_at,closed_at:t.closed_at,visitor_ended:t.visitor_ended,provenance:{page_url:t.page_url,page_title:t.page_title,referrer:t.referrer,user_agent:t.user_agent,ip_address:t.ip_address,latitude:t.latitude,longitude:t.longitude},converted_ticket:converted},messages,messagesPage:{limit:500,hasMore:false,nextCursor:null},extras:{followers:[],events:[],sides:[],incidents:[],merged:[],following:false}};
+ });
+}
+export async function agentNoteChat(pool,orgId,actor,number,input={}){
+ const body=clean(input.body,2000);if(!body)return fail('Write an internal note first.');
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2',[orgId,actor.id])).rows[0];
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!member||member.role==='light'||!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  const chat=await conversationForNumber(c,orgId,number,true);
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body])).rows[0];
+  return{ok:true,message:m};
+ });
+}
+export async function agentUpdateChat(pool,orgId,actor,number,patch={},canManage=false){
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select m.role,mc.role_id,r.permissions from member m left join member_custom_role mc on mc.org_id=$1 and mc.user_id=m."userId" left join custom_roles r on r.org_id=$1 and r.id=mc.role_id where m."organizationId"=$1 and m."userId"=$2',[orgId,actor.id])).rows[0];
+  const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2',[orgId,actor.id])).rows[0];
+  if(!member||member.role==='light'||!access||access.chat_access!==true)return fail('Live Chat access is required.',403);
+  if(member.role==='member'&&Array.isArray(member.permissions)&&!member.permissions.includes('reply'))return fail('Your role does not allow you to update live conversations.',403);
+  const chat=await conversationForNumber(c,orgId,number,true);
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  if(chat.status==='closed')return fail('This conversation has ended and cannot be changed.',409);
+  if(!canManage&&chat.assignee_id!==actor.id)return fail('Only the assigned agent or an administrator can update this conversation.',403);
+  const sets=[],args=[orgId,chat.id];
+  const status=String(patch.status||'');
+  if(status){
+   if(!['open','pending','on_hold','solved'].includes(status))return fail('Choose a valid Live Chat status.');
+   if(status==='solved'&&!['solved','closed'].includes(chat.status))sets.push("solved_at=coalesce(solved_at,now())");
+   if(status!=='solved')sets.push("solved_at=null");
+   args.push(status);sets.push('status=$'+args.length);
+  }
+  const priority=String(patch.priority||'');
+  if(priority){
+   if(!['low','normal','high','urgent'].includes(priority))return fail('Choose a valid priority.');
+   args.push(priority);sets.push('priority=$'+args.length);
+  }
+  if(!sets.length)return{ok:true,unchanged:true};
+  sets.push('updated_at=now()');
+  await c.query('update chat_conversations set '+sets.join(',')+' where org_id=$1 and id=$2',args);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'updated',$5)",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,'Conversation updated'+(status?' · '+status:'')+(priority?' · '+priority:'')]);
+  return{ok:true,updated:true};
+ });
+}
+export async function agentEndChat(pool,orgId,actor,number,canManage=false){
+ return withOrg(pool,orgId,async c=>{
+  const chat=await conversationForNumber(c,orgId,number,true);
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  if(['closed','solved'].includes(chat.status))return{ok:true,ended:true,alreadyEnded:true};
+  if(!canManage&&chat.assignee_id!==actor.id)return fail('Only the assigned agent or an administrator can end this conversation.',403);
+  await c.query("update chat_conversations set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'agent_ended','Agent ended the Live Chat conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
+  return{ok:true,ended:true};
+ });
+}
+export async function agentReplyChat(pool,orgId,actor,number,input={}){
+ const body=clean(input.body,20000);if(!body)return fail('Write a reply first.');
+ return withOrg(pool,orgId,async c=>{
+  const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2 for update',[orgId,actor.id])).rows[0];
+  if(!member||member.role==='light')return fail('You are not allowed to reply to live chats.',403);
+  const access=(await c.query('select chat_access,chat_available from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
+  if(!access||access.chat_access!==true)return fail('An admin must enable Live Chat access for you first.',403);
+  const chat=await conversationForNumber(c,orgId,number,true);
+  if(!chat)return fail('Live Chat conversation not found.',404);
+  if(!['open','pending','on_hold'].includes(chat.status))return fail('This conversation has ended.',409);
+  if(chat.assignee_id&&chat.assignee_id!==actor.id)return fail('This live chat is assigned to another agent.',409);
+  if(!chat.assignee_id){
+    if(access.chat_available!==true)return fail('Switch on Accept live chats before replying.',409);
+    await c.query('update chat_conversations set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,chat.id,actor.id]);
+    await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'assigned','Agent accepted the conversation')",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email]);
+  }
+  const key=clean(input.idempotencyKey,80)||null;
+  if(key){const old=(await c.query('select id,kind,author_id,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and author_id=$3 and idempotency_key=$4',[orgId,chat.id,actor.id,key])).rows[0];if(old)return{ok:true,duplicate:true,message:old};}
+  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_id,author_name,body,idempotency_key) values($1,$2,'agent',$3,$4,$5,$6) returning id,kind,author_id,author_name,body,created_at",[orgId,chat.id,actor.id,clean(actor.name,100)||actor.email,body,key])).rows[0];
+  await c.query("update chat_conversations set updated_at=now() where org_id=$1 and id=$2",[orgId,chat.id]);
+  return{ok:true,message:m};
+ });
+}
+export async function startChat(pool,env,slug,input,mailer,provenance={}){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const name=clean(input.name,100),email=clean(input.email,254).toLowerCase(),body=clean(input.message,2000);
+ if(!isEmail(email))return fail('Enter your email address so we can reach you if you leave.');if(!body)return fail('Write your message.');
+ const visitorId=clean(input.visitorId,64),visitorKey=/^[a-f0-9]{64}$/i.test(visitorId)?crypto.createHash('sha256').update(x.org.id+':'+visitorId.toLowerCase()).digest('hex'):null;
+ const reuseDays=Number(x.settings.reuse_days??DEFAULTS.reuse_days),cooldown=Math.max(0,Math.min(3600,Number(x.settings.restart_cooldown_seconds??15)));
+ const result=await withOrg(pool,x.org.id,async c=>{
+  if(visitorKey)await c.query('select pg_advisory_xact_lock(hashtext($1),hashtext($2))',[x.org.id,visitorKey]);
+  if(cooldown>0){const ended=(await c.query("select greatest(1,ceil(extract(epoch from (e.created_at+($4::int*interval '1 second')-now())))::int) retry_after from chat_events e join chat_conversations cc on cc.org_id=e.org_id and cc.id=e.conversation_id where e.org_id=$1 and e.kind='visitor_ended' and lower(cc.requester_email)=lower($3) and e.created_at>now()-($4::int*interval '1 second') and ($2::text is null or cc.visitor_key=$2) order by e.created_at desc limit 1",[x.org.id,visitorKey,email,cooldown])).rows[0];if(ended)return{ok:false,status:429,error:'Please wait '+ended.retry_after+' seconds before starting another chat.',retryAfterSeconds:Number(ended.retry_after)};}
+  let existing=null;if(visitorKey&&reuseDays>0)existing=(await c.query("select id,chat_number from chat_conversations where org_id=$1 and visitor_key=$2 and lower(requester_email)=lower($3) and updated_at>=now()-($4::int*interval '1 day') and status in ('open','pending','on_hold') order by updated_at desc,id desc limit 1 for update",[x.org.id,visitorKey,email,reuseDays])).rows[0]||null;
+  let id,chatNumber;if(existing){id=existing.id;chatNumber=existing.chat_number;await c.query("update chat_conversations set status='open',closed_at=null,solved_at=null,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id]);}
+  else{const created=(await c.query(`insert into chat_conversations(org_id,subject,requester_name,requester_email,visitor_key,priority,page_url,page_title,referrer,user_agent,ip_address,source,last_visitor_seen_at)
+    values($1,$2,$3,$4,$5,'normal',$6,$7,$8,$9,$10,'widget',now()) returning id,chat_number`,
+    [x.org.id,'Chat: '+body.replace(/\s+/g,' ').slice(0,60),name,email,visitorKey,safePageUrl(provenance.pageUrl),clean(provenance.pageTitle,200)||null,safePageUrl(provenance.referrer),clean(provenance.userAgent,500)||null,safeIp(provenance.ip)])).rows[0];id=created.id;chatNumber=created.chat_number;}
+  await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4)",[x.org.id,id,name||email,body]);
+  await c.query("update chat_conversations set visitor_token_hash=$3,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id,crypto.createHash('sha256').update(chatToken(env,x.org.id,chatNumber)).digest('hex')]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)",[x.org.id,id,name||email,existing?'visitor_returned':'visitor_started',existing?'Visitor returned to the conversation':'Visitor started a Live Chat conversation']);
+  const current=(await c.query('select assignee_id from chat_conversations where org_id=$1 and id=$2',[x.org.id,id])).rows[0];
+  if(!current?.assignee_id)await autoAssignChat(c,x.org.id,id);
+  return{ok:true,number:Number(chatNumber),reused:!!existing};
+ });
+ if(!result.ok)return result;
+ await emit(pool,x.org.id,'message.customer',result.number,{message:{body}});
+ if(x.settings.auto_convert_to_ticket===true){try{const converted=await convertChatToTicket(pool,x.org.id,null,result.number);if(converted.ok)result.ticketNumber=converted.number;else logWarn('live_chat.auto_conversion_failed',{org:x.org.id,conversation:result.number,error:converted.error});}catch(error){logError('live_chat.auto_conversion_exception',{org:x.org.id,conversation:result.number,error});}}
+ return{ok:true,number:result.number,token:chatToken(env,x.org.id,result.number),reused:result.reused===true,orgId:x.org.id,...(result.ticketNumber?{ticketNumber:result.ticketNumber}:{})};
+}
+
+// Convert a dedicated conversation to a ticket only when an agent chooses or an admin enables automation.
+export async function convertChatToTicket(pool,orgId,actor,number){
+ return withOrg(pool,orgId,async c=>{
+  const src=await conversationForNumber(c,orgId,number,true);
+  if(!src)return fail('Live Chat conversation not found.',404);
+  if(src.converted_ticket_id){const old=(await c.query('select number,subject from tickets where org_id=$1 and id=$2',[orgId,src.converted_ticket_id])).rows[0];return old?{ok:true,number:old.number,subject:old.subject,alreadyConverted:true}:fail('The linked ticket could not be found.',409);}
+  const msgs=(await c.query("select kind,author_id,author_name,body,html_body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent','note') order by created_at,id limit 10000",[orgId,src.id])).rows;
+  if(!msgs.length)return fail('This conversation has no transcript to copy.');
+  const made=await createTicket(pool,orgId,actor,{subject:('Follow-up: '+String(src.subject||'Live Chat').replace(/^\s*chat\s*:\s*/i,'')).slice(0,200),body:'Transcript imported from Live Chat conversation #'+number+'.',requesterName:src.requester_name,requesterEmail:src.requester_email,priority:src.priority,channel:'web',firstKind:'note'},c);
+  if(!made.ok)return made;
+  await c.query('update tickets set source_chat_conversation_id=$3 where org_id=$1 and id=$2',[orgId,made.ticket.id,src.id]);
+  await c.query('delete from ticket_messages where org_id=$1 and id=$2',[orgId,made.messageRowId]);
+  for(const m of msgs)await c.query('insert into ticket_messages(org_id,ticket_id,kind,author_id,author_name,body,html_body,created_at) values($1,$2,$3,$4,$5,$6,$7,$8)',[orgId,made.ticket.id,m.kind,m.author_id,m.author_name,m.body,m.html_body,m.created_at]);
+  await c.query('update chat_conversations set converted_ticket_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,src.id,made.ticket.id]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_id,actor_name,kind,detail) values($1,$2,$3,$4,'converted',$5)",[orgId,src.id,actor?.id||null,actor?.name||actor?.email||'Automation','Converted to support ticket #'+made.ticket.number]);
+  return{ok:true,number:made.ticket.number,subject:made.ticket.subject,alreadyConverted:false};
+ });
+}
+
+export async function endChat(pool,env,slug,input){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
+ return withOrg(pool,x.org.id,async c=>{
+  const t=await conversationForNumber(c,x.org.id,number,true);
+  if(!t)return fail('No such chat.',404);if(['closed','solved'].includes(t.status))return{ok:true,ended:true,alreadyEnded:true};
+  await c.query("update chat_conversations set status='closed',closed_at=coalesce(closed_at,now()),updated_at=now() where org_id=$1 and id=$2",[x.org.id,t.id]);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Website visitor','visitor_ended','Visitor ended the Live Chat conversation')",[x.org.id,t.id]);
+  return{ok:true,ended:true};
+ });
+}
+
 const transcriptEscape = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-export async function requestChatTranscript(pool, env, slug, input, mailer) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
-  if (!mailer || typeof mailer.ticketMail !== 'function') return fail('Transcript email is temporarily unavailable. Please try again later.', 503);
-  const data = await withOrg(pool, x.org.id, async db => {
-    const t = (await db.query("select id,subject,requester_name,requester_email,status from tickets where org_id=$1 and number=$2 and channel='chat'", [x.org.id, number])).rows[0];
-    if (!t) return null;
-    const messages = (await db.query("select kind,author_name,body,created_at from ticket_messages where org_id=$1 and ticket_id=$2 and kind in ('requester','agent') order by created_at asc,id asc limit 501", [x.org.id, t.id])).rows;
-    return { ticket:t, messages };
-  });
-  if (!data) return fail('No such chat.', 404);
-  if (!isEmail(String(data.ticket.requester_email || ''))) return fail('There is no valid email address on this conversation. Please contact the support team.', 400);
-  const truncated = data.messages.length > 500, messages = data.messages.slice(0,500);
-  const lines = messages.map(m => '[' + (m.created_at ? new Date(m.created_at).toISOString() : '') + '] ' + (m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + ':\n' + String(m.body || ''));
-  if (truncated) lines.push('[Transcript shortened to the most recent 500 messages.]');
-  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202a33;line-height:1.5"><h1>Your support conversation</h1><p>' + transcriptEscape(x.org.name) + ' · Conversation #' + number + '</p>' + messages.map(m => '<section style="padding:12px 0;border-bottom:1px solid #e5e9ed"><strong>' + transcriptEscape(m.kind === 'agent' ? (m.author_name || 'Support agent') : (data.ticket.requester_name || 'You')) + '</strong><small style="display:block;color:#66737d">' + transcriptEscape(m.created_at ? new Date(m.created_at).toISOString() : '') + '</small><p style="white-space:pre-wrap">' + transcriptEscape(m.body) + '</p></section>').join('') + (truncated ? '<p>Transcript limited to the most recent 500 messages.</p>' : '') + '<p style="color:#66737d;font-size:12px">Internal notes and private agent-only content are excluded.</p></body></html>';
-  await mailer.ticketMail({ to:data.ticket.requester_email, subject:'Your support conversation transcript · #' + number, text:'Your support conversation with ' + x.org.name + ' · #' + number + '\n\n' + lines.join('\n\n') + '\n\nInternal notes are excluded.', html });
-  await withOrg(pool, x.org.id, db => logEvent(db, x.org.id, data.ticket.id, 'Website visitor', 'transcript_requested', 'Visitor requested an emailed transcript'));
-  return { ok:true, sent:true };
+export async function requestChatTranscript(pool,env,slug,input,mailer){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
+ if(!mailer||typeof mailer.ticketMail!=='function')return fail('Transcript email is temporarily unavailable. Please try again later.',503);
+ const data=await withOrg(pool,x.org.id,async c=>{
+  const t=await conversationForNumber(c,x.org.id,number);if(!t)return null;
+  const messages=(await c.query("select kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') order by created_at asc,id asc limit 501",[x.org.id,t.id])).rows;
+  return{ticket:t,messages};
+ });
+ if(!data)return fail('No such chat.',404);
+ if(!isEmail(String(data.ticket.requester_email||'')))return fail('There is no valid email address on this conversation. Please contact the support team.',400);
+ const truncated=data.messages.length>500,messages=data.messages.slice(0,500);
+ const lines=messages.map(m=>'['+(m.created_at?new Date(m.created_at).toISOString():'')+'] '+(m.kind==='agent'?(m.author_name||'Support agent'):(data.ticket.requester_name||'You'))+':\\n'+String(m.body||''));
+ if(truncated)lines.push('[Transcript shortened to the most recent 500 messages.]');
+ const html='<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202a33;line-height:1.5"><h1>Your support conversation</h1><p>'+transcriptEscape(x.org.name)+' · Conversation #'+number+'</p>'+messages.map(m=>'<section style="padding:12px 0;border-bottom:1px solid #e5e9ed"><strong>'+transcriptEscape(m.kind==='agent'?(m.author_name||'Support agent'):(data.ticket.requester_name||'You'))+'</strong><small style="display:block;color:#66737d">'+transcriptEscape(m.created_at?new Date(m.created_at).toISOString():'')+'</small><p style="white-space:pre-wrap">'+transcriptEscape(m.body)+'</p></section>').join('')+(truncated?'<p>Transcript limited to the most recent 500 messages.</p>':'')+'<p style="color:#66737d;font-size:12px">Internal notes and private agent-only content are excluded.</p></body></html>';
+ await mailer.ticketMail({to:data.ticket.requester_email,subject:'Your support conversation transcript · #'+number,text:'Your support conversation with '+x.org.name+' · #'+number+'\\n\\n'+lines.join('\\n\\n')+'\\n\\nInternal notes are excluded.',html});
+ await withOrg(pool,x.org.id,c=>c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Website visitor','transcript_requested','Visitor requested an emailed transcript')",[x.org.id,data.ticket.id]));
+ return{ok:true,sent:true};
 }
 
-export async function sendChat(pool, env, slug, input, mailer) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const number = Number(input.number) || 0; if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
-  const t = await withOrg(pool, x.org.id, async c => (await c.query('select id, channel, status, requester_name, requester_email from tickets where org_id = $1 and number = $2', [x.org.id, number])).rows[0]);
-  if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
-  if (t.status === 'closed' || t.status === 'solved') return fail('This chat has ended. Start a new one.', 409);
-  const r = await addRequesterMessage(pool, x.org.id, number, { body: clean(input.message, 2000), authorName: t.requester_name || t.requester_email });
-  if (!r.ok) return r.closed ? { ok: false, status: 409, error: 'This chat has ended. Start a new one.' } : r;
-  await emit(pool, x.org.id, 'message.customer', number, { message: { body: clean(input.message, 2000).slice(0, 2000) } });
-  if (mailer) { try { await notifyTicket(pool, mailer, x.org.id, number, { kind: 'reply', summary: clean(input.message, 300) }); } catch (e) { logWarn('live_chat.notification_failed', { error: e, org: x.org.id, ticket: number, operation: 'visitor_reply' }); } }
-  return { ok: true, id: r.messageRowId };
+export async function sendChat(pool,env,slug,input,mailer){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
+ const body=clean(input.message,2000);if(!body)return fail('Write a message.');
+ const result=await withOrg(pool,x.org.id,async c=>{
+  const t=await conversationForNumber(c,x.org.id,number,true);
+  if(!t)return fail('No such chat.',404);if(['closed','solved'].includes(t.status))return fail('This chat has ended. Start a new one.',409);
+  const m=(await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4) returning id",[x.org.id,t.id,t.requester_name||t.requester_email,body])).rows[0];
+  await c.query("update chat_conversations set updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,t.id]);
+  return{ok:true,id:Number(m.id)};
+ });
+ if(result.ok)await emit(pool,x.org.id,'message.customer',number,{message:{body}});
+ return result;
 }
+
 // The visitor heartbeat is throttled: polls can arrive every few seconds, but presence
 // only needs refreshing every 15 seconds to remain safely inside chatOpen's 45-second window.
-export async function updateChatContext(pool, env, slug, input) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  const number = Number(input.number) || 0;
-  if (!tokenOk(env, x.org.id, number, input.token)) return fail('This chat is not yours.', 403);
-  const pageUrl = clean(input.pageUrl, 2048), pageTitle = clean(input.pageTitle, 200);
-  const hasLatitude = input.latitude !== undefined && input.latitude !== null && input.latitude !== '';
-  const hasLongitude = input.longitude !== undefined && input.longitude !== null && input.longitude !== '';
-  if (hasLatitude !== hasLongitude) return fail('Share both location coordinates together.');
-  let latitude = null, longitude = null;
-  if (hasLatitude) {
-    latitude = Number(input.latitude); longitude = Number(input.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return fail('The shared location is not valid.');
-    // Store a coarse position (~1 km), not the browser's full-precision coordinates.
-    latitude = Math.round(latitude * 100) / 100; longitude = Math.round(longitude * 100) / 100;
-  }
-  let parsed;
-  try { parsed = new URL(pageUrl); } catch { return fail('A valid page URL is required.'); }
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return fail('A valid page URL is required.');
-  parsed.search = ''; parsed.hash = '';
-  return withOrg(pool, x.org.id, async c => {
-    const t = (await c.query("select id,status,channel from tickets where org_id=$1 and number=$2 for update", [x.org.id, number])).rows[0];
-    if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
-    if (['closed','solved'].includes(t.status)) return fail('This chat has ended.', 409);
-    await c.query(`update ticket_provenance set page_url=$3,page_title=$4,
-      latitude=case when $5::boolean then $6::double precision else latitude end,
-      longitude=case when $5::boolean then $7::double precision else longitude end,
-      submitted_at=now() where org_id=$1 and ticket_id=$2`, [x.org.id, t.id, parsed.href.slice(0,2048), pageTitle || null, hasLatitude, latitude, longitude]);
-    return { ok: true };
-  });
+export async function updateChatContext(pool,env,slug,input){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const number=Number(input.number)||0;if(!tokenOk(env,x.org.id,number,input.token))return fail('This chat is not yours.',403);
+ const pageUrl=clean(input.pageUrl,2048),pageTitle=clean(input.pageTitle,200),hasLat=input.latitude!==undefined&&input.latitude!==null&&input.latitude!=='',hasLon=input.longitude!==undefined&&input.longitude!==null&&input.longitude!=='';
+ if(hasLat!==hasLon)return fail('Share both location coordinates together.');
+ let lat=null,lon=null;if(hasLat){lat=Number(input.latitude);lon=Number(input.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return fail('The shared location is not valid.');lat=Math.round(lat*100)/100;lon=Math.round(lon*100)/100;}
+ let parsed;try{parsed=new URL(pageUrl);}catch{return fail('A valid page URL is required.');}
+ if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)return fail('A valid page URL is required.');parsed.search='';parsed.hash='';
+ return withOrg(pool,x.org.id,async c=>{
+  const chat=await conversationForNumber(c,x.org.id,number,true);if(!chat||['closed','solved'].includes(chat.status))return fail('This chat has ended.',409);
+  await c.query("update chat_conversations set page_url=$3,page_title=$4,latitude=case when $5::boolean then $6::double precision else latitude end,longitude=case when $5::boolean then $7::double precision else longitude end,last_visitor_seen_at=now(),updated_at=now() where org_id=$1 and id=$2",[x.org.id,chat.id,parsed.href.slice(0,2048),pageTitle||null,hasLat,lat,lon]);return{ok:true};
+ });
 }
-export async function pollChat(pool, env, slug, number, token, after) {
-  const x = await liveOrg(pool, slug); if (!x) return fail('Chat is not available.', 404);
-  number = Number(number) || 0; if (!tokenOk(env, x.org.id, number, token)) return fail('This chat is not yours.', 403);
-  return withOrg(pool, x.org.id, async c => {
-    const t = (await c.query(`select t.id, t.status, t.channel, t.assignee_id,
-      u.name as assignee_name, u.email as assignee_email,
-      exists (select 1 from ticket_presence p where p.org_id=t.org_id and p.ticket_id=t.id
-        and p.user_id=t.assignee_id and p.typing=true and p.seen_at > now() - interval '12 seconds') as agent_typing
-      from tickets t left join "user" u on u.id = t.assignee_id
-      where t.org_id = $1 and t.number = $2`, [x.org.id, number])).rows[0];
-    if (!t || t.channel !== 'chat') return fail('No such chat.', 404);
-    // Ended conversations no longer need to advertise visitor presence. For active
-    // conversations, avoid a write/WAL/index update on every otherwise-idle poll.
-    if (t.status !== 'closed' && t.status !== 'solved') {
-      await c.query(`update tickets set chat_seen_at = now()
-        where id = $1 and (chat_seen_at is null or chat_seen_at < now() - interval '15 seconds')`, [t.id]);
-    }
-    const rows = (await c.query("select id, kind, author_name, body, created_at from ticket_messages where org_id = $1 and ticket_id = $2 and kind in ('requester','agent') and id > $3 order by id limit 100", [x.org.id, t.id, Number(after) || 0])).rows;
-    return { ok: true, ended: t.status === 'closed' || t.status === 'solved', assigned: !!t.assignee_id, agentName: t.assignee_name || t.assignee_email || '', agentTyping: t.agent_typing === true, messages: rows.map(m => ({ id: Number(m.id), from: m.kind === 'agent' ? 'agent' : 'you', name: m.kind === 'agent' ? m.author_name : '', body: m.body, at: m.created_at })) };
-  });
+
+export async function pollChat(pool,env,slug,number,token,after){
+ const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ number=Number(number)||0;if(!tokenOk(env,x.org.id,number,token))return fail('This chat is not yours.',403);
+ return withOrg(pool,x.org.id,async c=>{
+  const base=await conversationForNumber(c,x.org.id,number);const t=base?{...base,assignee_name:(await c.query('select name,email from "user" where id=$1',[base.assignee_id])).rows[0]?.name,assignee_email:(await c.query('select email from "user" where id=$1',[base.assignee_id])).rows[0]?.email}:null;
+  if(!t)return fail('No such chat.',404);
+  if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
+  const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
+  const agentTyping=!!(await c.query("select 1 from chat_presence where org_id=$1 and conversation_id=$2 and typing=true and seen_at>now()-interval '15 seconds' limit 1",[x.org.id,t.id])).rowCount;
+  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at}))};
+ });
 }
-// is the visitor's chat window open right now? (then an agent's reply is not emailed as well)
-export async function chatOpen(pool, orgId, number) {
-  return withOrg(pool, orgId, async c => !!(await c.query("select 1 from tickets where org_id = $1 and number = $2 and channel = 'chat' and chat_seen_at > now() - interval '45 seconds'", [orgId, Number(number) || 0])).rowCount);
+
+// Whether the visitor's widget is actively polling a dedicated conversation.
+export async function chatOpen(pool,orgId,number){
+ return withOrg(pool,orgId,async c=>{const chat=await conversationForNumber(c,orgId,number);return !!(chat&&chat.last_visitor_seen_at&&new Date(chat.last_visitor_seen_at).getTime()>Date.now()-45000);});
 }
 
 // Resolve inactive chats hourly. A visitor whose chat window is still polling is
 // considered present; fresh ticket activity also protects conversations being handled.
-export async function runChatLifecycle(pool, nowMs = Date.now()) {
-  let actions = 0, errors = 0;
-  const now = new Date(nowMs).toISOString();
-  const orgs = (await pool.query('select id from "organization"')).rows;
-  for (const { id: orgId } of orgs) {
-    try {
-      const settings = await getSettings(pool, orgId);
-      const hours = Number(settings.auto_resolve_hours ?? DEFAULTS.auto_resolve_hours);
-      if (!hours) continue;
-      const count = await withOrg(pool, orgId, async c => {
-        const stale = await c.query(`update tickets
-          set status='solved', solved_at=coalesce(solved_at,$2::timestamptz), updated_at=$2::timestamptz
-          where org_id=$1 and channel='chat' and status in ('open','pending','on_hold')
-            and updated_at <= $2::timestamptz - ($3::int * interval '1 hour')
-            and (chat_seen_at is null or chat_seen_at <= $2::timestamptz - interval '45 seconds')
-          returning id, number`, [orgId, now, hours]);
-        for (const t of stale.rows) {
-          await c.query('insert into ticket_events (org_id,ticket_id,actor_name,kind,detail) values ($1,$2,$3,$4,$5)', [orgId, t.id, 'Live Chat automation', 'status', 'Automatically resolved after ' + hours + ' hours without activity']);
-        }
-        return stale.rowCount;
-      });
-      actions += count;
-    } catch (e) {
-      errors++;
-      console.warn('Live Chat lifecycle failed', orgId, e.message);
-    }
-  }
-  return { actions, errors };
+export async function runChatLifecycle(pool,nowMs=Date.now()){
+ let actions=0,errors=0;const now=new Date(nowMs).toISOString();
+ const orgs=(await pool.query('select id from "organization"')).rows;
+ for(const {id:orgId} of orgs){try{
+  const settings=await getSettings(pool,orgId),hours=Number(settings.auto_resolve_hours??DEFAULTS.auto_resolve_hours);if(!hours)continue;
+  const count=await withOrg(pool,orgId,async c=>{
+   const stale=await c.query(`update chat_conversations set status='solved',solved_at=coalesce(solved_at,$2::timestamptz),updated_at=$2::timestamptz
+    where org_id=$1 and status in ('open','pending','on_hold') and updated_at<=$2::timestamptz-($3::int*interval '1 hour')
+    and (last_visitor_seen_at is null or last_visitor_seen_at<=$2::timestamptz-interval '45 seconds') returning id`,[orgId,now,hours]);
+   for(const row of stale.rows)await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,'Live Chat automation','auto_resolved',$3)",[orgId,row.id,'Automatically resolved after '+hours+' hours without activity']);
+   return stale.rowCount;
+  });actions+=count;
+ }catch(e){errors++;console.warn('Live Chat lifecycle failed',orgId,e.message);}}
+ return{actions,errors};
 }
 
 // ---- the public endpoints: /api/chat/config, /start, /send, /poll (same origin as the chat page, so no cross-site access is given) ----
