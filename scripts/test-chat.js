@@ -305,6 +305,9 @@ const endedPollBefore = (await pool.query('select chat_seen_at::text as seen fro
 const finalPoll = await C('GET', '/api/chat/poll?org=acme&n=' + finalChat.body.number + '&t=' + encodeURIComponent(finalChat.body.token) + '&after=0');
 const endedPollAfter = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,finalChat.body.number])).rows[0].seen;
 check('a visitor can end their own chat and polling reports it as ended', visitorEnd.status === 200 && finalPoll.status === 200 && finalPoll.body.ended === true);
+const endedDetail = await A(olivia,'get',{number:finalChat.body.number});
+const endedInbox = await A(olivia,'chat-inbox',{limit:100,cursorMode:true,view:'all'});
+check('agent ticket detail and Live Chat inbox identify a visitor-ended conversation',endedDetail.status===200 && endedDetail.body.ticket.visitor_ended===true && endedInbox.body.tickets.some(x=>x.number===finalChat.body.number && x.visitor_ended===true));
 check('polling an ended chat does not keep its visitor-presence heartbeat alive', endedPollBefore === endedPollAfter);
 check('ending a chat is idempotent and the visitor cannot send another message afterward', (await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7')).status === 200 && (await C('POST', '/api/chat/send?org=acme', { number: finalChat.body.number, token: finalChat.body.token, message: 'After ending' }, '7.7.7.7')).status === 409);
 
