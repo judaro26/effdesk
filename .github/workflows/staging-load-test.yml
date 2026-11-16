@@ -1,0 +1,58 @@
+name: Staging multi-tenant load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Load profile (runs read-only queries against synthetic staging workspaces)
+        required: true
+        type: choice
+        options:
+          - smoke
+          - standard
+          - stress
+        default: smoke
+      confirm_staging:
+        description: Confirm the target is the dedicated staging database, never production
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effdesk-staging-load-test
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    if: ${{ inputs.confirm_staging == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate staging target before connecting
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-staging.js --check
+
+      - name: Run read-only multi-tenant workload
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-staging.js
+
