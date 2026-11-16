@@ -85,11 +85,11 @@ export async function agentInbox(pool, orgId, input = {}) {
   return withOrg(pool,orgId,async c=>{
     const args=[orgId],where=['cc.org_id=$1'];
     where.push(view==='history'?"cc.status in ('solved','closed')":"(cc.status in ('open','pending','on_hold') or (cc.status='closed' and exists(select 1 from chat_events ended where ended.org_id=cc.org_id and ended.conversation_id=cc.id and ended.kind='visitor_ended')))");
-    if(view==='waiting')where.push('cc.assignee_id is null');
+    if(view==='waiting')where.push("cc.assignee_id is null and cc.status <> 'closed'");
     if(view==='mine'){args.push(String(input.agentId||''));where.push('cc.assignee_id=$'+args.length);}
     if(q){args.push('%'+q.replace(/[\\%_]/g,'\\$&')+'%');where.push('(lower(cc.requester_name) like $'+args.length+' or lower(cc.requester_email) like $'+args.length+' or lower(cc.subject) like $'+args.length+')');}
     const latest="select cm.kind from chat_messages cm where cm.org_id=cc.org_id and cm.conversation_id=cc.id and cm.kind in ('requester','agent') order by cm.created_at desc,cm.id desc limit 1";
-    if(view==='needs-reply')where.push('('+latest+")='requester'");
+    if(view==='needs-reply')where.push("cc.status <> 'closed' and ("+latest+")='requester'");
     const offset=Math.max(0,Math.min(parseInt(input.offset,10)||0,1000000));
     const rows=(await c.query(`select cc.chat_number as number,cc.id,cc.subject,cc.status,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.solved_at,cc.closed_at,
       exists(select 1 from chat_events e where e.org_id=cc.org_id and e.conversation_id=cc.id and e.kind='visitor_ended') as visitor_ended,
