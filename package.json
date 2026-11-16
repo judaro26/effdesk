@@ -8,7 +8,8 @@
     "test": "node scripts/run-tests.js",
     "migrate": "node scripts/migrate.js",
     "auth:sql": "node scripts/auth-sql.js",
-    "audit:tenant-rls": "node scripts/audit-tenant-rls.js"
+    "audit:tenant-rls": "node scripts/audit-tenant-rls.js",
+    "test:email-jobs": "node scripts/test-email-jobs.js"
   },
   "engines": {
     "node": ">=20"
