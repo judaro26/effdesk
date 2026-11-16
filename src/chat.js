@@ -1,13 +1,12 @@
-// src/chat.js: LIVE CHAT. A visitor on the customer's website opens the chat widget, gives a name and email and a first message, and a ticket with the channel "chat" is created. The visitor's page polls for the agents' replies. The agents answer from the desk as with any ticket; while the visitor's chat window is open the reply appears there, and when it is closed the reply is emailed as usual.
+// src/chat.js: LIVE CHAT. Visitor conversations and messages live independently of support tickets. Agents can explicitly convert a conversation into a ticket, preserving its transcript.
 //   a visitor proves it is theirs chat with a token only they were given (a signature of the ticket number); nothing else is public.
 import { clientIp, rateLimit } from './guard.js';
 import crypto from 'crypto';
 import { withOrg } from './db.js';
-import { createTicket, addRequesterMessage, writeTicketProvenance, logEvent } from './tickets.js';
+import { createTicket } from './tickets.js';
 import { getEntitlements } from './billing.js';
 import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
-import { notifyTicket } from './notify.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
