@@ -15,7 +15,7 @@ const client = {
         new_today: 2, solved_today: 1, solved_week: 5, total: 8,
         mine: [{ number: 11, subject: 'Assigned', status: 'open', priority: 'high', requester_name: 'A', requester_email: 'a@example.invalid', updated_at: '2026-11-15T10:00:00Z' }],
         unassigned: [], recent: [], daily: [{ label: 'Sun', created: 2, solved: 1 }],
-        articles: 1, inbox: true, slug: 'example'
+        articles: 1, inbox: 'enabled', slug: 'example'
       }] };
     }
     return { rows: [] };

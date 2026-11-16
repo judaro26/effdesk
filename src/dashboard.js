@@ -61,7 +61,7 @@ export async function dashboard(pool, orgId, actor, { sla = false, agents = 1, p
         coalesce((select jsonb_agg(to_jsonb(recent_page)) from recent_page), '[]'::jsonb) as recent,
         coalesce((select jsonb_agg(jsonb_build_object('label', label, 'created', created, 'solved', solved) order by day) from daily_rows), '[]'::jsonb) as daily,
         (select count(*)::int from help_articles where org_id = $1) as articles,
-        coalesce((select inbox from inbox_directory where org_id = $1), false) as inbox,
+        coalesce((select inbox is not null and inbox <> '' from inbox_directory where org_id = $1), false) as inbox,
         (select slug from "organization" where id = $1) as slug
       from ticket_counts
     `, [orgId, actor.id]);
