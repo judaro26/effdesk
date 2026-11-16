@@ -35,6 +35,11 @@ check('accepted Live Chat conversations stay in the dedicated Live Chat navigati
 check('agent chat conversations use a dedicated layout rather than the standard ticket sidebars', js.includes("'chat-agent-conversation'") && css.includes('.chat-agent-conversation>.props') && css.includes('.chat-agent-conversation>.info'));
 check('the dedicated chat view identifies the visitor and offers a direct return to all conversations', js.includes('LIVE CHAT · CUSTOMER CONVERSATION') && js.includes("'data-back-chat-inbox': '1'") && js.includes('All conversations'));
 check('the dedicated agent chat layout is responsive and uses workspace theme tokens', css.includes('.chat-agent-conversation') && css.includes('var(--d-panel)') && css.includes('@media(max-width:760px)'));
+check('Live Chat visitor overview shows device, operating system, browser and page context', js.includes('chat-visitor-context-grid') && js.includes('visitorDevice') && js.includes('visitorOs') && js.includes('visitorBrowser') && js.includes('visitorPage'));
+check('visitor context clearly labels approximate location as not collected rather than guessing', js.includes('Approximate location is not currently collected') && js.includes('Not available yet'));
+check('visitor technical user-agent details are tucked into an expandable section', js.includes('chat-visitor-raw-ua') && js.includes('Technical browser details'));
+check('visitor context uses theme-aware responsive styles', css.includes('.chat-visitor-context-grid') && css.includes('@media(max-width:900px)'));
+
 
 check('dedicated Live Chat mode hides ticket tabs and resets cleanly when leaving a conversation', js.includes('tabsEl.hidden = chatConversationOpen') && js.includes('chatInboxOpen = false; chatConversationOpen = false;'));
 check('agents can convert chats into linked regular tickets',js.includes("api('chat-convert-to-ticket'")&&js.includes('Create ticket from chat')&&js.includes('Open ticket #'));

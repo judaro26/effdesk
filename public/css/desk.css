@@ -1131,3 +1131,20 @@ html[data-chat-theme="forest"] .chat-agent-workspace .chat-agent-head{background
 html[data-chat-theme="champagne"] .chat-agent-workspace .chat-agent-head{background:linear-gradient(120deg,#fffdf9,#f3e9d3)}
 
 html[data-chat-theme="classic"] .chat-inbox,html[data-chat-theme="classic"] .chat-agent-workspace,html[data-chat-theme="classic"] .chat-theme-preview{--accent:#1f73b7;--accent-d:#185a92;--accent-ink:#fff;--d-bg:#f4f5f7;--d-panel:#fff;--d-line:#e3e6ea;--d-ink:#1d2428;--d-muted:#66737c;--d-rail:#03363d;--d-rail-ink:#b4cfd2;--d-hover:#eef0f2;--d-in:#f0f2f4;--d-out:#e3effa;--d-badge:#e6e9ec;--d-note:#fff4c2;--d-note-line:#e8c766;color-scheme:light}
+
+/* SnapEngage-inspired visitor context in the dedicated Live Chat workspace. */
+.deskapp .chat-visitor-context{display:grid;gap:12px;padding:14px}
+.deskapp .chat-visitor-context-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.deskapp .chat-visitor-context-item{display:flex;align-items:flex-start;gap:9px;min-width:0;padding:11px;border:1px solid var(--d-line);border-radius:12px;background:color-mix(in srgb,var(--d-panel) 84%,var(--d-hover))}
+.deskapp .chat-visitor-context-icon{display:grid;place-items:center;flex:none;width:29px;height:29px;border-radius:9px;background:color-mix(in srgb,var(--accent) 12%,var(--d-panel));color:var(--accent);font-size:17px}
+.deskapp .chat-visitor-context-item>span:last-child{display:grid;gap:3px;min-width:0}
+.deskapp .chat-visitor-context-item small,.deskapp .chat-visitor-page small{color:var(--d-muted);font-size:10px;font-weight:750;letter-spacing:.07em;text-transform:uppercase}
+.deskapp .chat-visitor-context-item strong{color:var(--d-ink);font-size:12px;overflow-wrap:anywhere}
+.deskapp .chat-visitor-context-item em{color:var(--d-muted);font-size:10px;font-style:normal;line-height:1.4}
+.deskapp .chat-visitor-page{display:grid;gap:5px;padding-top:10px;border-top:1px solid var(--d-line);min-width:0}
+.deskapp .chat-visitor-page a{font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.deskapp .chat-visitor-page>span{font-size:11px;overflow-wrap:anywhere}
+.deskapp .chat-visitor-raw-ua{padding-top:8px;border-top:1px solid var(--d-line);font-size:11px}
+.deskapp .chat-visitor-raw-ua summary{color:var(--d-muted);cursor:pointer;font-weight:650}
+.deskapp .chat-visitor-raw-ua .ticket-provenance-agent{margin-top:7px;overflow-wrap:anywhere}
+@media(max-width:900px){.deskapp .chat-visitor-context-grid{grid-template-columns:1fr}}
