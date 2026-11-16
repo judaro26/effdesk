@@ -56,14 +56,43 @@ export async function saveSettings(pool, orgId, input) {
   if (!Number.isInteger(reuseDays) || reuseDays < 0 || reuseDays > 30) return fail('Conversation reuse must be 0 (off) or between 1 and 30 days.');
   if (!Number.isInteger(restartCooldownSeconds) || restartCooldownSeconds < 0 || restartCooldownSeconds > 3600) return fail('The visitor restart cooldown must be a whole number from 0 to 3600 seconds.');
   await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, restart_cooldown_seconds = $10, auto_convert_to_ticket = $11, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays, restartCooldownSeconds, autoConvertToTicket]));
+  invalidateLiveOrgCache(orgId);
   return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays, restart_cooldown_seconds: restartCooldownSeconds, auto_convert_to_ticket: autoConvertToTicket } };
 }
 async function orgOf(pool, slug) { return (await pool.query('select id, name, slug from "organization" where slug = $1', [String(slug || '').toLowerCase().slice(0, 60)])).rows[0] || null; }
+// Public widget configuration changes infrequently. A short per-instance cache avoids
+// repeating organization, entitlement, and settings reads on every visitor poll. Settings
+// writes invalidate it immediately; entitlement changes converge within five seconds.
+const LIVE_ORG_CACHE_MS = 5000;
+// Keep entries scoped to their pool instance so tests or multiple runtime pools can
+// never reuse another pool's workspace/configuration result.
+const liveOrgCache = new Map();
+function cacheForPool(pool) {
+  let cache = liveOrgCache.get(pool);
+  if (!cache) { cache = new Map(); liveOrgCache.set(pool, cache); }
+  return cache;
+}
+function invalidateLiveOrgCache(orgId) {
+  for (const cache of liveOrgCache.values()) {
+    for (const [key, entry] of cache) if (entry.orgId === orgId) cache.delete(key);
+  }
+}
 // the widget may run only where the plan includes live chat and the agents turned it on
 async function liveOrg(pool, slug) {
-  const org = await orgOf(pool, slug); if (!org) return null;
-  if (!planHas(await getEntitlements(pool, org.id), 'live_chat')) return null;
-  const s = await getSettings(pool, org.id); return s.enabled ? { org, settings: s } : null;
+  const cache = cacheForPool(pool), key = String(slug || '').toLowerCase().slice(0, 60), hit = cache.get(key);
+  if (hit && Date.now() - hit.at < LIVE_ORG_CACHE_MS) return hit.value;
+  const remember = entry => {
+    if (cache.size > 2000) cache.clear();
+    cache.set(key, entry);
+  };
+  const org = await orgOf(pool, key);
+  if (!org) { remember({ at: Date.now(), orgId: null, value: null }); return null; }
+  if (!planHas(await getEntitlements(pool, org.id), 'live_chat')) {
+    remember({ at: Date.now(), orgId: org.id, value: null }); return null;
+  }
+  const settings = await getSettings(pool, org.id), value = settings.enabled ? { org, settings } : null;
+  remember({ at: Date.now(), orgId: org.id, value });
+  return value;
 }
 export async function publicConfig(pool, slug) {
   const x = await liveOrg(pool, slug);
@@ -370,18 +399,52 @@ export async function updateChatContext(pool,env,slug,input){
 }
 
 export async function pollChat(pool,env,slug,number,token,after){
- const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
- number=Number(number)||0;if(!tokenOk(env,x.org.id,number,token))return fail('This chat is not yours.',403);
- return withOrg(pool,x.org.id,async c=>{
-  const t=await conversationForNumber(c,x.org.id,number);
-  if(!t)return fail('No such chat.',404);
-  if(!['closed','solved'].includes(t.status))await c.query("update chat_conversations set last_visitor_seen_at=case when last_visitor_seen_at is null or last_visitor_seen_at<now()-interval '15 seconds' then now() else last_visitor_seen_at end where org_id=$1 and id=$2",[x.org.id,t.id]);
-  const rows=(await c.query("select id,kind,author_name,body,created_at from chat_messages where org_id=$1 and conversation_id=$2 and kind in ('requester','agent') and id>$3 order by id limit 100",[x.org.id,t.id,Number(after)||0])).rows;
-  const files=rows.length?(await c.query('select id,chat_message_id,filename,content_type,size from attachments where org_id=$1 and chat_message_id=any($2::bigint[]) order by created_at',[x.org.id,rows.map(m=>m.id)])).rows:[];
-  const fileMap={};for(const file of files){const k=String(file.chat_message_id);(fileMap[k]||(fileMap[k]=[])).push({id:file.id,filename:file.filename,content_type:file.content_type,size:file.size});}
-  const agentTyping=!!(await c.query("select 1 from chat_presence where org_id=$1 and conversation_id=$2 and user_id not like 'visitor:%' and typing=true and seen_at>now()-interval '15 seconds' limit 1",[x.org.id,t.id])).rowCount;
-  return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,agentName:t.assignee_name||t.assignee_email||'',agentTyping,messages:rows.map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at,attachments:fileMap[String(m.id)]||[]}))};
- });
+  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+  number=Number(number)||0;if(!tokenOk(env,x.org.id,number,token))return fail('This chat is not yours.',403);
+  return withOrg(pool,x.org.id,async c=>{
+    // One tenant-scoped SQL round trip now resolves the conversation, refreshes visitor
+    // presence, fetches recent messages + attachments, and checks agent typing.
+    const t=(await c.query(`
+      with target as materialized (
+        select cc.id,cc.status,cc.assignee_id,u.name as assignee_name,u.email as assignee_email
+        from chat_conversations cc
+        left join tickets legacy_ticket on legacy_ticket.org_id=cc.org_id and legacy_ticket.id=cc.source_ticket_id
+        left join "user" u on u.id=cc.assignee_id
+        where cc.org_id=$1 and (cc.chat_number=$2 or legacy_ticket.number=$2 or cc.id=$2)
+        order by (cc.chat_number=$2) desc,(legacy_ticket.number=$2) desc
+        limit 1
+      ), heartbeat as (
+        update chat_conversations cc
+        set last_visitor_seen_at=case
+          when cc.last_visitor_seen_at is null or cc.last_visitor_seen_at<now()-interval '15 seconds' then now()
+          else cc.last_visitor_seen_at end
+        from target t
+        where cc.org_id=$1 and cc.id=t.id and t.status not in ('closed','solved')
+        returning cc.id
+      ), recent_messages as materialized (
+        select cm.id,cm.kind,cm.author_name,cm.body,cm.created_at
+        from chat_messages cm join target t on t.id=cm.conversation_id
+        where cm.org_id=$1 and cm.kind in ('requester','agent') and cm.id>$3
+        order by cm.id limit 100
+      )
+      select t.id,t.status,t.assignee_id,t.assignee_name,t.assignee_email,
+        exists(select 1 from chat_presence p where p.org_id=$1 and p.conversation_id=t.id
+          and p.user_id not like 'visitor:%' and p.typing=true and p.seen_at>now()-interval '15 seconds') as agent_typing,
+        coalesce((select jsonb_agg(jsonb_build_object(
+          'id',rm.id,'kind',rm.kind,'author_name',rm.author_name,'body',rm.body,'created_at',rm.created_at,
+          'attachments',coalesce((select jsonb_agg(jsonb_build_object(
+            'id',a.id,'filename',a.filename,'content_type',a.content_type,'size',a.size
+          ) order by a.created_at) from attachments a where a.org_id=$1 and a.chat_message_id=rm.id),'[]'::jsonb)
+        ) order by rm.id) from recent_messages rm),'[]'::jsonb) as messages,
+        hb.updated_count
+      from target t cross join (select count(*)::int as updated_count from heartbeat) hb
+    `,[x.org.id,number,Number(after)||0])).rows[0];
+    if(!t)return fail('No such chat.',404);
+    return{ok:true,ended:['closed','solved'].includes(t.status),assigned:!!t.assignee_id,
+      agentName:t.assignee_name||t.assignee_email||'',agentTyping:t.agent_typing===true,
+      messages:(t.messages||[]).map(m=>({id:Number(m.id),from:m.kind==='agent'?'agent':'you',
+        name:m.kind==='agent'?m.author_name:'',body:m.body,at:m.created_at,attachments:m.attachments||[]}))};
+  });
 }
 
 // Whether the visitor's widget is actively polling a dedicated conversation.
