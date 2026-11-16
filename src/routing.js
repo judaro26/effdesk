@@ -134,6 +134,59 @@ export async function transferChat(pool, orgId, actor, number, targetUserId, can
   });
 }
 
+
+/**
+ * Supervisors can inspect a live conversation without changing its assignee.
+ * Keep the payload intentionally narrow: conversation metadata, transcript and
+ * visitor page context only; no attachment bytes or unrelated ticket extras.
+ */
+export async function monitorChat(pool, orgId, number) {
+  return withOrg(pool, orgId, async c => {
+    const ticket = (await c.query(`select id, number, subject, status, priority, assignee_id, requester_name,
+      requester_email, created_at, updated_at, channel
+      from tickets where org_id=$1 and number=$2 and channel='chat'`, [orgId, Number(number)||0])).rows[0];
+    if (!ticket) return fail('Live Chat conversation not found.', 404);
+    if (!['open','pending','on_hold'].includes(ticket.status)) return fail('This conversation has ended.', 409);
+    const messages = (await c.query(`select id, kind, author_id, author_name, body, html_body, created_at
+      from ticket_messages where org_id=$1 and ticket_id=$2 order by created_at desc,id desc limit 100`, [orgId,ticket.id])).rows.reverse();
+    const provenance = (await c.query('select page_url,page_title,submitted_at from ticket_provenance where org_id=$1 and ticket_id=$2',[orgId,ticket.id])).rows[0] || null;
+    const assignee = ticket.assignee_id ? (await c.query('select u.id,u.name,u.email from member m join "user" u on u.id=m."userId" where m."organizationId"=$1 and m."userId"=$2',[orgId,ticket.assignee_id])).rows[0] || null : null;
+    return {ok:true, ticket:{...ticket,assignee},messages,provenance,readOnly:true};
+  });
+}
+
+/** Add a private coaching note to the conversation. It is never sent to the visitor. */
+export async function copilotChat(pool, orgId, actor, number, body) {
+  const note=clean(body,2000);
+  if(!note)return fail('Write a coaching note first.');
+  return withOrg(pool, orgId, async c => {
+    const ticket=(await c.query("select id,status from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];
+    if(!ticket)return fail('Live Chat conversation not found.',404);
+    if(!['open','pending','on_hold'].includes(ticket.status))return fail('This conversation has ended.',409);
+    const message=(await c.query("insert into ticket_messages (org_id,ticket_id,kind,author_id,author_name,body) values($1,$2,'note',$3,$4,$5) returning id,kind,author_id,author_name,body,created_at",[orgId,ticket.id,actor.id,clean(actor.name,100)||actor.email,note])).rows[0];
+    await c.query("insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,'note','Private supervisor coaching added')",[orgId,ticket.id,clean(actor.name,100)||actor.email]);
+    return {ok:true,message};
+  });
+}
+
+/** A supervisor can take ownership immediately; no visitor transcript is rewritten. */
+export async function takeoverChat(pool, orgId, actor, number) {
+  return withOrg(pool, orgId, async c => {
+    const member=(await c.query('select role from member where "organizationId"=$1 and "userId"=$2 for update',[orgId,actor.id])).rows[0];
+    if(!member || member.role==='light')return fail('You are not allowed to take over live chats.',403);
+    const access=(await c.query('select chat_access from agent_status where org_id=$1 and user_id=$2 for update',[orgId,actor.id])).rows[0];
+    if(!access || access.chat_access!==true)return fail('An admin must enable Live Chat access for you before taking over a conversation.',403);
+    const ticket=(await c.query("select id,status,assignee_id from tickets where org_id=$1 and number=$2 and channel='chat' for update",[orgId,Number(number)||0])).rows[0];
+    if(!ticket)return fail('Live Chat conversation not found.',404);
+    if(!['open','pending','on_hold'].includes(ticket.status))return fail('This conversation has ended.',409);
+    if(ticket.assignee_id===actor.id)return {ok:true,alreadyAssigned:true};
+    await c.query('update tickets set assignee_id=$3,updated_at=now() where org_id=$1 and id=$2',[orgId,ticket.id,actor.id]);
+    const actorName=clean(actor.name,100)||actor.email||'Supervisor';
+    await c.query("insert into ticket_events(org_id,ticket_id,actor_name,kind,detail) values($1,$2,$3,'assigned',$4)",[orgId,ticket.id,actorName,'Supervisor took over the live conversation']);
+    return {ok:true,previousAssigneeId:ticket.assignee_id||null,assigneeId:actor.id};
+  });
+}
+
 // Atomically claim an unassigned chat. The membership and agent-status row locks serialize
 // concurrent claims by the same agent; the ticket row lock makes competing claims single-winner.
 export async function claimChat(pool, orgId, userId, number) {

@@ -273,6 +273,23 @@ const contextAfter = (await pool.query('select page_url,page_title from ticket_p
 check('the visitor can update the current page with their chat token and URL secrets are stripped', contextUpdate.status === 200 && contextAfter.page_url === 'https://shop.example/products/new' && contextAfter.page_title === 'New product');
 check('visitor context updates reject an invalid URL scheme', (await C('POST', '/api/chat/context?org=acme', { number: finalChat.body.number, token: finalChat.body.token, pageUrl: 'javascript:alert(1)' }, '7.7.7.8')).status === 400);
 check('visitor context updates reject an incorrect chat token', (await C('POST', '/api/chat/context?org=acme', { number: finalChat.body.number, token: 'wrong', pageUrl: 'https://shop.example/' }, '7.7.7.8')).status === 403);
+
+const supervisorAccess = await A(olivia, 'chat-access-set', { userId: ann.user.id, enabled: true });
+const managerMonitor = await A(olivia, 'chat-monitor', { number: finalChat.body.number });
+check('workspace admins can monitor an active live chat without changing its assignment', supervisorAccess.status === 200 && managerMonitor.status === 200 && managerMonitor.body.readOnly === true && managerMonitor.body.ticket.number === finalChat.body.number);
+check('monitoring returns the transcript and visitor page context but no write capability', managerMonitor.body.messages.some(m => m.body === 'Please send me a transcript.') && managerMonitor.body.provenance.page_url === 'https://shop.example/products/new' && managerMonitor.body.readOnly === true);
+check('ordinary agents cannot monitor another agent chat without the supervision permission', (await A(ann, 'chat-monitor', { number: finalChat.body.number })).status === 403);
+const supervisorRole = await A(olivia, 'role-save', { name: 'Chat Supervisor', permissions: ['chat_supervise'] });
+await A(olivia, 'role-assign', { userId: ann.user.id, roleId: supervisorRole.body.id });
+const privateCoach = await A(ann, 'chat-copilot', { number: finalChat.body.number, body: 'Try confirming the visitor’s delivery postcode before proceeding.' });
+const coachedMessages = (await A(olivia, 'get', { number: finalChat.body.number })).body.messages;
+check('a custom role with Live Chat supervision can add private coaching notes', privateCoach.status === 200 && privateCoach.body.message.kind === 'note' && coachedMessages.some(m => m.kind === 'note' && m.body.includes('delivery postcode')));
+check('supervisory coaching is stored as an internal note and never as a visitor-facing reply', privateCoach.body.message.kind === 'note' && !outbox.slice(transcriptMailStart).some(m => String(m.text || '').includes('delivery postcode')));
+const takeover = await A(ann, 'chat-takeover', { number: finalChat.body.number });
+const afterTakeover = await pool.query('select assignee_id from tickets where org_id=$1 and number=$2', [acme.id, finalChat.body.number]);
+check('a permitted supervisor can take over an active chat while preserving its ticket and transcript', takeover.status === 200 && afterTakeover.rows[0].assignee_id === ann.user.id);
+check('a takeover creates an assignment event and audit entry', (await pool.query("select 1 from ticket_events e join tickets t on t.id=e.ticket_id where e.org_id=$1 and t.number=$2 and e.detail='Supervisor took over the live conversation'", [acme.id, finalChat.body.number])).rowCount === 1 && (await A(olivia, 'audit-list', { filter: 'live-chat.taken-over' })).body.entries.some(e => e.target === String(finalChat.body.number)));
+check('an unprivileged agent cannot take over a chat by calling the endpoint directly', (await A(olivia, 'role-assign', { userId: ann.user.id, roleId: null })).status === 200 && (await A(ann, 'chat-takeover', { number: finalChat.body.number })).status === 403);
 const visitorEnd = await C('POST', '/api/chat/end?org=acme', { number: finalChat.body.number, token: finalChat.body.token }, '7.7.7.7');
 await pool.query("update tickets set chat_seen_at=now()-interval '2 minutes' where org_id=$1 and number=$2",[acme.id,finalChat.body.number]);
 const endedPollBefore = (await pool.query('select chat_seen_at::text as seen from tickets where org_id=$1 and number=$2',[acme.id,finalChat.body.number])).rows[0].seen;
