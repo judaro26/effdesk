@@ -1,6 +1,6 @@
 ## Staging multi-tenant load test
 
-The manual **Staging multi-tenant load test** GitHub Actions workflow runs the existing ticket, dashboard, Live Chat inbox, and 30-day report query paths concurrently against a dedicated Neon staging database. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, and sampled Node PostgreSQL pool pressure. It does not print ticket, requester, message, or other customer content.
+The manual **Staging multi-tenant load test** GitHub Actions workflow runs the existing ticket, dashboard, Live Chat inbox, and 30-day report query paths concurrently against a dedicated Neon staging database. It performs read-only requests and reports p50/p95/p99 latency, failures, throughput, sampled Node PostgreSQL pool pressure, and the 12 query fingerprints with the highest cumulative execution time. Query fingerprints are short SHA-256 identifiers; SQL text, parameters, tenant IDs, and customer content are never emitted.
 
 ### One-time setup
 
@@ -21,6 +21,8 @@ The harness refuses to connect unless the database name explicitly contains `sta
 | stress | 30 | 3 |
 
 Each worker runs ticket inbox, agent dashboard, Live Chat inbox, and report reads across the configured workspaces. Results are directional staging measurements, not a production capacity guarantee. The harness does not yet simulate authenticated browser sessions, chat writes/claims, or scheduled job delivery; those require a separate end-to-end scenario with dedicated synthetic agents and visitors.
+
+The query fingerprint section is a diagnostic starting point, not a query-name mapping: compare repeated fingerprints and their timing distribution with the corresponding application SQL and Neon query insights before changing indexes or query structure. It intentionally avoids logging SQL text and bind values.
 
 Before raising customer or agent limits, compare results with Neon query insights, compute/connection saturation, and Netlify function latency in the same region.
 
