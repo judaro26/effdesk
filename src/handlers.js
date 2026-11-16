@@ -452,10 +452,8 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
       if (!canCustom('reply')) return json(403, { error: 'Your role does not allow customer replies.' });
       if (!chatAccessAllowed) return json(403, { error: 'Live Chat access is required.' });
       r = await agentReplyChat(pool, orgId, actor, b.number, b);
-      if (r.ok && !r.duplicate) {
-        await enqueueChatReplyEmail(pool, orgId, Number(b.number), r.message.id);
-        await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
-      }
+      if (r.ok) await enqueueChatReplyEmail(pool, orgId, Number(b.number), r.message.id);
+      if (r.ok && !r.duplicate) await emitHook(pool, orgId, 'message.agent', Number(b.number), { message: { author: actor.name || actor.email, body: String(b.body || '').slice(0, 2000) } });
       break;
     }
     case 'chat-end-agent': {
