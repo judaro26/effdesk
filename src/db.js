@@ -42,15 +42,24 @@ function instrumentClient(client, pool) {
   };
 }
 
+// Bound time spent waiting for a pool connection so saturation fails promptly
+// instead of allowing requests to hang until the function/runtime deadline.
+export const databasePoolOptions = (url, max = 10) => ({
+  connectionString: explicitSsl(url),
+  max,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,
+  ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true }
+});
+
 export function getPool(url = process.env.DATABASE_URL) {
   if (pool) return pool;
   if (!url) throw new Error('DATABASE_URL is not set');
-  url = explicitSsl(url);
-  pool = new pg.Pool({ connectionString: url, max: 10, idleTimeoutMillis: 10000, ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: true } });
+  pool = new pg.Pool(databasePoolOptions(url, 10));
   instrumentPool(pool);
   return pool;
 }
-export const makePool = url => new pg.Pool({ connectionString: explicitSsl(url), max: 5 });
+export const makePool = url => new pg.Pool(databasePoolOptions(url, 5));
 // run fn(client) in one transaction scoped to one organization: row level security then shows that organization's rows only
 export async function withOrg(pool, orgId, fn) {
   if (!orgId || typeof orgId !== 'string') throw new Error('An organization id is required');
