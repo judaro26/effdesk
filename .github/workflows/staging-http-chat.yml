@@ -51,7 +51,6 @@ jobs:
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging-http-chat.js --check
 
-
       - name: Run benchmark safety tests
         run: node --test scripts/test-bench-staging-http-chat.js
 
@@ -63,6 +62,3 @@ jobs:
           STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging-http-chat.js
-
-      - name: Run benchmark safety tests
-        run: node --test scripts/test-bench-staging-http-chat.js
