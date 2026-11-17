@@ -1,0 +1,64 @@
+name: Staging HTTP Live Chat benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: HTTP load profile
+        required: true
+        type: choice
+        options:
+          - smoke
+          - standard
+          - stress
+        default: smoke
+      confirm_staging:
+        description: Confirm this runs only against the dedicated staging Netlify site and Neon staging database
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effdesk-staging-http-chat
+  cancel-in-progress: false
+
+jobs:
+  http-chat:
+    if: ${{ inputs.confirm_staging == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate isolated HTTP and database targets
+        env:
+          STAGING_HTTP_BASE_URL: https://dummy-site-recovery.netlify.app
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_CHAT_TOKEN_SECRET: ${{ secrets.STAGING_CHAT_TOKEN_SECRET }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-staging-http-chat.js --check
+
+      - name: Run read-only HTTP Live Chat benchmark
+        env:
+          STAGING_HTTP_BASE_URL: https://dummy-site-recovery.netlify.app
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_CHAT_TOKEN_SECRET: ${{ secrets.STAGING_CHAT_TOKEN_SECRET }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-staging-http-chat.js
+
+      - name: Run benchmark safety tests
+        run: node --test scripts/test-bench-staging-http-chat.js
