@@ -94,6 +94,7 @@ async function main() {
     const warmup = await Promise.all(targets.map(target => request('poll', target).catch(error => ({ error: String(error?.message || error) }))));
     const warmupFailures = warmup.filter(x => typeof x !== 'number').length;
     const samples = [], failures = [];
+    let measuredElapsedMs = 0;
     for (let round = 0; round < settings.rounds; round++) {
       let cursor = 0;
       const roundSamples = [];
@@ -107,8 +108,10 @@ async function main() {
       });
       const started = performance.now();
       await Promise.all(workers);
+      const roundElapsedMs = performance.now() - started;
+      measuredElapsedMs += roundElapsedMs;
       samples.push(...roundSamples);
-      console.log(JSON.stringify({ round: round + 1, requests: targets.length, elapsed_ms: Number((performance.now() - started).toFixed(1)), successful: roundSamples.length, failures: targets.length - roundSamples.length }));
+      console.log(JSON.stringify({ round: round + 1, requests: targets.length, elapsed_ms: Number(roundElapsedMs.toFixed(1)), successful: roundSamples.length, failures: targets.length - roundSamples.length }));
     }
     console.log(JSON.stringify({
       target: { host: new URL(base).hostname, database: dbName },
@@ -117,7 +120,7 @@ async function main() {
       profile, workspaces: targets.length, concurrency: settings.concurrency,
       config: { requests: configSamples.length, ...percentileStats(configSamples) },
       warmup: { requests: warmup.length, failures: warmupFailures },
-      measured: { rounds: settings.rounds, requests: samples.length + failures.length, failures: failures.length, requests_per_second: Number(((samples.length + failures.length) / (samples.reduce((a,b)=>a+b,0) / 1000 || 1)).toFixed(1)), ...percentileStats(samples) },
+      measured: { rounds: settings.rounds, requests: samples.length + failures.length, failures: failures.length, elapsed_ms: Number(measuredElapsedMs.toFixed(1)), requests_per_second: Number(((samples.length + failures.length) / (measuredElapsedMs / 1000 || 1)).toFixed(1)), ...percentileStats(samples) },
       failure_samples: failures.slice(0, 5)
     }, null, 2));
     if (warmupFailures || failures.length) process.exitCode = 1;
