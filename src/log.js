@@ -75,7 +75,7 @@ export function logged(name, handler) {
       catch (e) { const retryable = isRetryableDatabaseError(e); log(retryable ? 'warn' : 'error', retryable ? 'temporary_database_unavailable' : 'exception', { error: e }); res = new Response(JSON.stringify({ error: retryable ? 'The service is temporarily busy. Please retry shortly.' : 'Something went wrong on our side. Try again in a moment.', requestId: id }), { status: retryable ? 503 : 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(retryable ? { 'Retry-After': '2' } : {}) } }); }
       res = res || new Response(null, { status: 200 });
       const status = res.status;
-      log(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'request', { method: req.method, path: url.pathname, status, ms: sinks.now() - t0, ...s.meta, ref: (() => { try { return new URL(req.headers.get('referer') || '').host || undefined; } catch { return undefined; } })(), country: req.headers.get('x-country') || undefined });
+      log(status >= 500 && status !== 503 ? 'error' : status >= 400 ? 'warn' : 'info', 'request', { method: req.method, path: url.pathname, status, ms: sinks.now() - t0, ...s.meta, ref: (() => { try { return new URL(req.headers.get('referer') || '').host || undefined; } catch { return undefined; } })(), country: req.headers.get('x-country') || undefined });
     });
     try { res.headers.set('x-request-id', id); } catch { /* an immutable response keeps its headers */ }
     const metricHook = sinks.onRequest;
