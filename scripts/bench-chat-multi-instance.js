@@ -47,9 +47,7 @@ for (let index = 0; index < instances; index++) {
   child.stderr.on('data', chunk => { workers[index].stderr += chunk; });
 }
 
-let releaseWorkers;
 const allReady = new Promise((resolve, reject) => {
-  releaseWorkers = resolve;
   for (const worker of workers) {
     worker.child.on('message', message => {
       if (message?.type !== 'warmup-complete' || worker.ready) return;
@@ -58,11 +56,14 @@ const allReady = new Promise((resolve, reject) => {
     });
     worker.child.on('error', reject);
     worker.child.on('exit', code => {
-      if (!worker.ready && code !== 0) reject(new Error(`Benchmark instance ${worker.index} exited before warm-up barrier (code ${code}). ${worker.stderr.slice(-1200)}`));
+      if (!workers.every(item => item.ready)) reject(new Error(`Benchmark instance ${worker.index} exited before all workers reached the warm-up barrier (code ${code}). ${worker.stderr.slice(-1200)}`));
     });
   }
 });
-void releaseWorkers;
+const exitPromises = workers.map(worker => new Promise((resolve, reject) => {
+  worker.child.once('error', reject);
+  worker.child.once('exit', code => resolve({ worker, code }));
+}));
 
 try {
   await allReady;
@@ -70,10 +71,7 @@ try {
   // Release the measured phase together to make aggregate throughput meaningful.
   for (const worker of workers) worker.child.send({ type: 'start-measured' });
 
-  const exits = await Promise.all(workers.map(worker => new Promise((resolve, reject) => {
-    worker.child.once('error', reject);
-    worker.child.once('exit', code => resolve({ worker, code }));
-  })));
+  const exits = await Promise.all(exitPromises);
   const results = exits.map(({ worker, code }) => {
     if (code !== 0) throw new Error(`Benchmark instance ${worker.index} failed with exit code ${code}: ${worker.stderr.slice(-1600)}`);
     let result;
