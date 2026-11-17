@@ -17,16 +17,16 @@ assert.match(source,/measuredResults\.flatMap\(r=>r\.samples\[s\.name\]\)/,'comp
 assert.match(source,/rounds:measuredRounds/,'reports independent per-round results');
 assert.match(source,/max_waiting_sampled:maxSamples\.waiting/,'reports measured pool waiting pressure');
 assert.match(source,/if\(warmupFailures\|\|totalFailures\)process\.exitCode=1/,'fails the benchmark when warm-up or measured requests fail');
-// The merged #207 instrumentation must retain callback and promise connect() overloads.
 assert.match(source,/pool\.connect=function\(\.\.\.args\)/,'does not force pool.connect into an async function');
 assert.match(source,/if\(typeof args\[0\]==='function'\)/,'preserves the callback overload');
 assert.match(source,/return connect\(\.\.\.args\)\.then\(client=>/,'preserves the promise overload');
-
 assert.match(source,/import \{ getPool, withOrg \} from '\.\.\/src\/db\.js'/,'uses the same instrumented pool factory as the deployed application');
 assert.match(source,/const pool=getPool\(rawUrl\)/,'uses the production pool configuration rather than a benchmark-only raw pool');
 assert.match(source,/const telemetry=\/performance_\(\?:minute\|query_minute\|vitals_minute\)\/i\.test\(sql\)/,'separates telemetry SQL writes from application query fingerprints');
 assert.match(source,/telemetryWrites\.push\(elapsed\)/,'measures the cost of performance telemetry writes');
 assert.match(source,/performance_sql_telemetry:/,'reports the sampled telemetry-write rate and latency');
 assert.match(source,/const callbackIndex=queryArgs\.findIndex/,'instruments callback and promise SQL query overloads');
-
-console.log('✓ mixed chat benchmark reliability, app pool, and telemetry checks passed');
+assert.match(source,/STAGING_BENCH_CONCURRENCY/,'supports a per-instance concurrency override');
+assert.match(source,/STAGING_BENCH_START_AT_MS/,'supports a shared measurement start time for parallel instances');
+assert.match(source,/settings\.concurrency < 1 \|\| settings\.concurrency > 30/,'bounds the per-process concurrency override');
+console.log('✓ mixed chat benchmark reliability, app pool, telemetry, and multi-instance checks passed');
