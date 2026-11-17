@@ -122,18 +122,25 @@ export async function agentInbox(pool, orgId, input = {}) {
     if(view==='waiting')where.push("cc.assignee_id is null and cc.status <> 'closed'");
     if(view==='mine'){args.push(String(input.agentId||''));where.push('cc.assignee_id=$'+args.length);}
     if(q){args.push('%'+q.replace(/[\\%_]/g,'\\$&')+'%');where.push('(lower(cc.requester_name) like $'+args.length+' or lower(cc.requester_email) like $'+args.length+' or lower(cc.subject) like $'+args.length+')');}
-    const latest="select cm.kind from chat_messages cm where cm.org_id=cc.org_id and cm.conversation_id=cc.id and cm.kind in ('requester','agent') order by cm.created_at desc,cm.id desc limit 1";
-    if(view==='needs-reply')where.push("cc.status <> 'closed' and ("+latest+")='requester'");
+    if(view==='needs-reply')where.push("cc.status <> 'closed' and latest_message.kind='requester'");
     const offset=Math.max(0,Math.min(parseInt(input.offset,10)||0,1000000));
     const rows=(await c.query(`select cc.chat_number as number,cc.id,cc.subject,cc.status,cc.assignee_id,cc.requester_name,cc.requester_email,cc.created_at,cc.updated_at,cc.solved_at,cc.closed_at,
       exists(select 1 from chat_events e where e.org_id=cc.org_id and e.conversation_id=cc.id and e.kind='visitor_ended') as visitor_ended,
-      (${latest}) as chat_last_public_message_kind,u.name as assignee_name,u.email as assignee_email
-      from chat_conversations cc left join "user" u on u.id=cc.assignee_id where ${where.join(' and ')}
+      latest_message.kind as chat_last_public_message_kind,u.name as assignee_name,u.email as assignee_email
+      from chat_conversations cc
+      left join lateral (
+        select cm.kind from chat_messages cm
+        where cm.org_id=cc.org_id and cm.conversation_id=cc.id and cm.kind in ('requester','agent')
+        order by cm.created_at desc,cm.id desc limit 1
+      ) latest_message on true
+      left join "user" u on u.id=cc.assignee_id
+      where ${where.join(' and ')}
       order by case when cc.status in ('open','pending','on_hold') and cc.assignee_id is null then 0 else 1 end,
         case when cc.status in ('open','pending','on_hold') and cc.assignee_id is null then cc.created_at end asc nulls last,
-        case when cc.status in ('open','pending','on_hold') and cc.assignee_id is not null and (${latest})='requester' then 0 else 1 end,
+        case when cc.status in ('open','pending','on_hold') and cc.assignee_id is not null and latest_message.kind='requester' then 0 else 1 end,
         cc.updated_at desc,cc.id desc limit $${args.length+1} offset $${args.length+2}`,[...args,limit+1,offset])).rows;
     const hasMore=rows.length>limit;if(hasMore)rows.pop();
+    const latest="select cm.kind from chat_messages cm where cm.org_id=cc.org_id and cm.conversation_id=cc.id and cm.kind in ('requester','agent') order by cm.created_at desc,cm.id desc limit 1";
     const metadata=(await c.query(`with conversation_counts as (
       select count(*) filter(where cc.status in ('open','pending','on_hold'))::int total,
         count(*) filter(where cc.status in ('open','pending','on_hold') and cc.assignee_id is null)::int waiting,
