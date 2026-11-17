@@ -91,8 +91,12 @@ async function main() {
       const started = performance.now();
       const response = await fetch(url, { method: 'GET', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(12000), headers: { accept: 'application/json' } });
       const elapsed = performance.now() - started;
-      if (!response.ok) throw new Error(`${kind} returned HTTP ${response.status}`);
-      const body = await response.json();
+      let body;
+      try { body = await response.json(); } catch { body = null; }
+      if (!response.ok) {
+        const detail = typeof body?.error === 'string' ? `: ${body.error.slice(0, 120)}` : '';
+        throw new Error(`${kind} returned HTTP ${response.status}${detail}`);
+      }
       if (body?.ok === false || (kind === 'poll' && body?.ok !== true)) throw new Error(`${kind} returned an unsuccessful response`);
       if (kind === 'config') assertWidgetConfigEnabled(body, target.slug);
       return elapsed;
