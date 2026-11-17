@@ -56,6 +56,9 @@ jobs:
       - name: Test staging load-test safety guard (no database connection)
         run: node scripts/test-staging-load.js
 
+      - name: Test coordinated multi-instance Live Chat benchmark
+        run: node scripts/test-bench-chat-multi-instance.js
+
       - name: Test SSO verification and authentication protections
         run: node scripts/test-sso.js
 
