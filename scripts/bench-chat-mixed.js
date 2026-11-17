@@ -10,7 +10,12 @@ const rawUrl = process.env.STAGING_DATABASE_URL;
 const orgIds = [...new Set(String(process.env.STAGING_ORG_IDS || '').split(',').map(x => x.trim()).filter(Boolean))];
 const profile = String(process.env.STAGING_BENCH_PROFILE || 'smoke').toLowerCase();
 const profiles = { smoke: { concurrency: 5, rounds: 2 }, standard: { concurrency: 15, rounds: 3 }, stress: { concurrency: 30, rounds: 3 } };
-const settings = profiles[profile];
+const baseSettings = profiles[profile];
+const concurrencyOverride = process.env.STAGING_BENCH_CONCURRENCY == null ? null : Number(process.env.STAGING_BENCH_CONCURRENCY);
+const settings = baseSettings && {
+  ...baseSettings,
+  concurrency: concurrencyOverride == null ? baseSettings.concurrency : concurrencyOverride
+};
 const percentile = (values, p) => values[Math.min(values.length - 1, Math.ceil(values.length * p) - 1)];
 const round = n => Number(n.toFixed(1));
 const sortedStats = values => {
@@ -25,7 +30,7 @@ function validateTarget(value) {
   const host=url.hostname.toLowerCase(), dbName=decodeURIComponent(url.pathname.slice(1)).toLowerCase();
   if (!host.endsWith('.neon.tech') || !host.includes('-pooler')) throw new Error('Refusing to run: use the dedicated Neon pooled staging connection string.');
   if (!/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) throw new Error('Refusing to run: database name must contain staging, stage, or test.');
-  if (!settings) throw new Error('STAGING_BENCH_PROFILE must be smoke, standard, or stress.');
+  if (!settings || !Number.isInteger(settings.concurrency) || settings.concurrency < 1 || settings.concurrency > 30) throw new Error('STAGING_BENCH_PROFILE must be smoke, standard, or stress; concurrency override must be an integer from 1 to 30.');
   if (orgIds.length<2 || orgIds.length>30) throw new Error('STAGING_ORG_IDS must contain 2–30 synthetic staging workspace IDs.');
   return { host, dbName };
 }
@@ -98,7 +103,6 @@ const maxSamples={total:0,waiting:0};
 const syntheticEnv={EMAIL_TOKEN_SECRET:'effdesk-staging-mixed-chat-benchmark-only-secret-v1'};
 const targets=[];
 try {
-  // Resolve one seeded, active visitor conversation per tenant under that tenant's RLS context.
   for (const orgId of orgIds) {
     const org=(await pool.query('select slug from "organization" where id=$1',[orgId])).rows[0];
     if(!org?.slug) throw new Error('Missing seeded staging workspace slug for '+orgId);
@@ -143,14 +147,12 @@ try {
     return scenarios.map(s=>({scenario:s.name,requests:samples[s.name].length+failures[s.name],failures:failures[s.name],...sortedStats(samples[s.name])}));
   }
 
-  // Warm the same application paths and tenant data before timing. Warm-up failures are still fatal.
   const warmupTasks=buildTasks(1);
   const warmupStarted=performance.now();
   const warmup=await executeTasks(warmupTasks,settings.concurrency,'warmup');
   const warmupElapsed=performance.now()-warmupStarted;
   const warmupFailures=Object.values(warmup.failures).reduce((a,b)=>a+b,0);
 
-  // Exclude setup and warm-up connection waits from measured acquisition percentiles.
   connectWait.splice(0);
   connectionLease.splice(0);
   querySamples.clear();
@@ -160,6 +162,8 @@ try {
   const measuredRounds=[];
   const measuredResults=[];
   const sampler=setInterval(()=>{maxSamples.total=Math.max(maxSamples.total,pool.totalCount);maxSamples.waiting=Math.max(maxSamples.waiting,pool.waitingCount);},5);
+  const startAt=Number(process.env.STAGING_BENCH_START_AT_MS||0);
+  if(startAt>Date.now()) await new Promise(resolve=>setTimeout(resolve,startAt-Date.now()));
   const started=performance.now();
   try {
     for(let index=0;index<settings.rounds;index++) {
