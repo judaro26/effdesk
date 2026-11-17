@@ -35,6 +35,7 @@ check('transient pool acquisition timeouts return 503 with Retry-After and no dr
 res = await logged('tickets', async () => { const e = new Error('too many connections'); e.code = '53300'; throw e; })(req('/api/tickets'));
 const retryBody = await res.json();
 check('retryable database responses include a short retry hint and safe message', res.status === 503 && res.headers.get('Retry-After') === '2' && /retry shortly/i.test(retryBody.error) && retryBody.requestId === res.headers.get('x-request-id') && !/53300|connections/.test(JSON.stringify(retryBody)));
+{ const alerts = []; sinks.onError = e => alerts.push(e); await logged('tickets', async () => { const e = new Error('timeout exceeded when trying to connect'); throw e; })(req('/api/tickets')); check('retryable database 503 responses do not create error-tracker incidents', alerts.length === 0); await logged('tickets', async () => new Response('busy', { status: 503 }))(req('/api/tickets')); check('unmarked service-unavailable responses remain visible to error tracking', alerts.length === 1 && alerts[0].status === 503); sinks.onError = null; }
 res = await logged('tickets', async () => { const e = new Error('duplicate key value violates unique constraint'); e.code = '23505'; throw e; })(req('/api/tickets'));
 check('ordinary database constraint errors remain server errors, not retryable overload responses', res.status === 500 && !res.headers.has('Retry-After'));
 // console.warn from existing code, and extra events
