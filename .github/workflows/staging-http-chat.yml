@@ -51,6 +51,10 @@ jobs:
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging-http-chat.js --check
 
+
+      - name: Run benchmark safety tests
+        run: node --test scripts/test-bench-staging-http-chat.js
+
       - name: Run read-only HTTP Live Chat benchmark
         env:
           STAGING_HTTP_BASE_URL: https://dummy-site-recovery.netlify.app
