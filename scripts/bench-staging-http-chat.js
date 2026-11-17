@@ -28,6 +28,12 @@ export function parseOrgIds(value) {
   }
   return ids;
 }
+export function assertWidgetConfigEnabled(body, slug) {
+  if (body?.enabled !== true) {
+    throw new Error(`Deployed staging site reports Live Chat disabled for workspace ${slug}. Check that its runtime DATABASE_URL points to the same effdesk_staging database used by STAGING_DATABASE_URL, and that the workspace has the staging Live Chat entitlement and enabled chat settings.`);
+  }
+  return body;
+}
 export function percentileStats(values) {
   const sorted = [...values].sort((a,b) => a-b);
   const at = p => sorted.length ? Number(sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)].toFixed(1)) : null;
@@ -88,6 +94,7 @@ async function main() {
       if (!response.ok) throw new Error(`${kind} returned HTTP ${response.status}`);
       const body = await response.json();
       if (body?.ok === false || (kind === 'poll' && body?.ok !== true)) throw new Error(`${kind} returned an unsuccessful response`);
+      if (kind === 'config') assertWidgetConfigEnabled(body, target.slug);
       return elapsed;
     }
 
