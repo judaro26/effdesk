@@ -23,7 +23,7 @@ export function validateHttpTarget(value) {
 }
 export function parseOrgIds(value) {
   const ids = [...new Set(String(value || '').split(',').map(x => x.trim()).filter(Boolean))];
-  if (ids.length < 2 || ids.length > 30 || ids.some(id => !/^stg_effdesk_org_\\d{2}$/.test(id))) {
+  if (ids.length < 2 || ids.length > 30 || ids.some(id => !/^stg_effdesk_org_\d{2}$/.test(id))) {
     throw new Error('STAGING_ORG_IDS must contain 2–30 synthetic stg_effdesk_org_NN workspace IDs.');
   }
   return ids;
@@ -46,7 +46,7 @@ async function main() {
   if (!rawDatabaseUrl) throw new Error('STAGING_DATABASE_URL is required for synthetic chat discovery.');
   if (!tokenSecret || tokenSecret.length < 24) throw new Error('STAGING_CHAT_TOKEN_SECRET is required (the staging EMAIL_TOKEN_SECRET or BETTER_AUTH_SECRET value).');
   const db = new URL(rawDatabaseUrl);
-  const dbName = decodeURIComponent(db.pathname.replace(/^\\//, '')).toLowerCase();
+  const dbName = decodeURIComponent(db.pathname.replace(/^\//, '')).toLowerCase();
   if (!['postgres:', 'postgresql:'].includes(db.protocol) || !db.hostname.toLowerCase().endsWith('.neon.tech') || !db.hostname.toLowerCase().includes('-pooler') || !/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) {
     throw new Error('Refusing benchmark: STAGING_DATABASE_URL must target the dedicated pooled Neon staging database.');
   }
@@ -60,7 +60,7 @@ async function main() {
   try {
     for (const orgId of orgIds) {
       const org = (await pool.query('select slug from "organization" where id=$1', [orgId])).rows[0];
-      if (!org?.slug || !/^effdesk-staging-\\d{2}$/.test(org.slug)) throw new Error('Missing expected synthetic staging workspace.');
+      if (!org?.slug || !/^effdesk-staging-\d{2}$/.test(org.slug)) throw new Error('Missing expected synthetic staging workspace.');
       const chat = await withOrg(pool, orgId, async c => (await c.query(
         "select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') order by id limit 1",
         [orgId]
