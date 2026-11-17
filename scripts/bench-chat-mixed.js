@@ -1,10 +1,9 @@
 // Mixed visitor/agent Live Chat load test. Runs only against guarded synthetic staging data.
 // Includes an unmeasured warm-up phase and independent measured rounds to reduce cold-start/cache bias.
 // Visitor polls refresh last_visitor_seen_at (a deliberate presence heartbeat); no messages or tickets are created.
-import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { normalizeSqlForFingerprint, sanitizeSqlTemplate } from './staging-sql-diagnostics.js';
-import { explicitSsl, withOrg } from '../src/db.js';
+import { getPool, withOrg } from '../src/db.js';
 import { pollChat, chatToken, agentInbox } from '../src/chat.js';
 
 const rawUrl = process.env.STAGING_DATABASE_URL;
@@ -32,8 +31,9 @@ function validateTarget(value) {
 }
 const target=validateTarget(rawUrl);
 if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
-const pool=new pg.Pool({connectionString:explicitSsl(rawUrl),max:10,idleTimeoutMillis:10000,ssl:{rejectUnauthorized:true}});
-const connectWait=[], connectionLease=[], leaseStarted=new WeakMap(), querySamples=new Map(), connect=pool.connect.bind(pool);
+// Use the same singleton pool factory and SQL instrumentation as deployed application requests.
+const pool=getPool(rawUrl);
+const connectWait=[], connectionLease=[], leaseStarted=new WeakMap(), querySamples=new Map(), telemetryWrites=[], connect=pool.connect.bind(pool);
 function finishLease(client) {
   const started=leaseStarted.get(client);
   if(started===undefined)return;
@@ -48,16 +48,24 @@ function instrumentClient(client) {
   client.__effdeskMixedQueryTiming=true;
   const originalQuery=client.query.bind(client);
   client.query=(...queryArgs)=>{
-    if(queryArgs.some(value=>typeof value==='function'))return originalQuery(...queryArgs);
     const input=queryArgs[0],sql=typeof input==='string'?input:input?.text||'';
-    const fingerprint=createHash('sha256').update(normalizeSqlForFingerprint(sql)).digest('hex').slice(0,12);
-    const sqlTemplate=sanitizeSqlTemplate(sql),started=performance.now();
+    const telemetry=/performance_(?:minute|query_minute|vitals_minute)/i.test(sql);
+    const fingerprint=telemetry?'':createHash('sha256').update(normalizeSqlForFingerprint(sql)).digest('hex').slice(0,12);
+    const sqlTemplate=telemetry?'':sanitizeSqlTemplate(sql),started=performance.now();
     const record=error=>{
+      const elapsed=performance.now()-started;
+      if(telemetry){telemetryWrites.push(elapsed);return;}
       let entry=querySamples.get(fingerprint);
       if(!entry){entry={durations:[],errors:0,sql_template:sqlTemplate};querySamples.set(fingerprint,entry);}
-      entry.durations.push(performance.now()-started);
+      entry.durations.push(elapsed);
       if(error)entry.errors++;
     };
+    const callbackIndex=queryArgs.findIndex(value=>typeof value==='function');
+    if(callbackIndex>=0){
+      const callback=queryArgs[callbackIndex];
+      queryArgs[callbackIndex]=function(error,...values){record(error);return callback(error,...values);};
+      return originalQuery(...queryArgs);
+    }
     try{
       const result=originalQuery(...queryArgs);
       return result&&typeof result.then==='function'
@@ -146,6 +154,7 @@ try {
   connectWait.splice(0);
   connectionLease.splice(0);
   querySamples.clear();
+  telemetryWrites.splice(0);
   maxSamples.total=0; maxSamples.waiting=0;
   const measuredTasks=buildTasks(settings.rounds);
   const measuredRounds=[];
@@ -188,6 +197,7 @@ try {
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait),connection_lease_ms:sortedStats(connectionLease)},
     scenarios:aggregateScenarios,
     rounds:measuredRounds,
+    performance_sql_telemetry:{sample_rate:Number(process.env.PERFORMANCE_SQL_SAMPLE_RATE??0.03),writes:telemetryWrites.length,...sortedStats(telemetryWrites)},
     top_query_fingerprints:queryDiagnostics
   },null,2));
   if(warmupFailures||totalFailures)process.exitCode=1;
