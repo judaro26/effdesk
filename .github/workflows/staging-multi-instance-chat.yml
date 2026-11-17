@@ -1,0 +1,67 @@
+name: Staging multi-instance chat load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging:
+        description: Confirm this targets only the dedicated synthetic staging database
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+# Three independent GitHub-hosted runners = three Node processes and three independent
+# application pools, all sharing the isolated staging database.
+concurrency:
+  group: effdesk-staging-multi-instance-chat
+  cancel-in-progress: false
+
+jobs:
+  multi-instance-chat:
+    if: ${{ inputs.confirm_staging == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        instance: [1, 2, 3]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate dedicated staging target
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: smoke
+        run: node scripts/bench-chat-mixed.js --check
+
+      - name: Run this independent application instance
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: smoke
+          BENCH_INSTANCE_ID: ${{ matrix.instance }}
+        run: |
+          set -o pipefail
+          node scripts/bench-chat-mixed.js 2>&1 | tee "multi-instance-chat-${BENCH_INSTANCE_ID}.log"
+
+      - name: Preserve per-instance benchmark output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-instance-chat-instance-${{ matrix.instance }}
+          path: multi-instance-chat-${{ matrix.instance }}.log
+          if-no-files-found: warn
+          retention-days: 14
