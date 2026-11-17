@@ -21,4 +21,12 @@ assert.match(source,/if\(warmupFailures\|\|totalFailures\)process\.exitCode=1/,'
 assert.match(source,/pool\.connect=function\(\.\.\.args\)/,'does not force pool.connect into an async function');
 assert.match(source,/if\(typeof args\[0\]==='function'\)/,'preserves the callback overload');
 assert.match(source,/return connect\(\.\.\.args\)\.then\(client=>/,'preserves the promise overload');
-console.log('✓ mixed chat benchmark reliability and connection-overload checks passed');
+
+assert.match(source,/import \{ getPool, withOrg \} from '\.\.\/src\/db\.js'/,'uses the same instrumented pool factory as the deployed application');
+assert.match(source,/const pool=getPool\(rawUrl\)/,'uses the production pool configuration rather than a benchmark-only raw pool');
+assert.match(source,/const telemetry=\/performance_\(\?:minute\|query_minute\|vitals_minute\)\/i\.test\(sql\)/,'separates telemetry SQL writes from application query fingerprints');
+assert.match(source,/telemetryWrites\.push\(elapsed\)/,'measures the cost of performance telemetry writes');
+assert.match(source,/performance_sql_telemetry:/,'reports the sampled telemetry-write rate and latency');
+assert.match(source,/const callbackIndex=queryArgs\.findIndex/,'instruments callback and promise SQL query overloads');
+
+console.log('✓ mixed chat benchmark reliability, app pool, and telemetry checks passed');
