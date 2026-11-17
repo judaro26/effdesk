@@ -45,7 +45,7 @@ function fixture({ queryErrorAt = null, rollbackError = null } = {}) {
   const f = fixture();
   const original = new Error('business operation failed');
   await assert.rejects(withOrg(f.pool, 'tenant-a', async () => { throw original; }), error => error === original);
-  assert.deepEqual(f.calls.slice(-3), ['rollback', 'release'].slice(-3));
+  assert.deepEqual(f.calls.slice(-2), ['rollback', 'release']);
   assert.equal(f.releaseError, undefined, 'a successfully rolled-back client can be reused');
 }
 
@@ -61,7 +61,7 @@ function fixture({ queryErrorAt = null, rollbackError = null } = {}) {
   const f = fixture({ queryErrorAt: 'commit' });
   await assert.rejects(withOrg(f.pool, 'tenant-a', async () => 'ok'), /query failed: commit/);
   assert.equal(f.releaseError?.message, 'query failed: commit', 'ambiguous commit must destroy the client');
-  assert.ok(f.calls.includes('rollback'), 'attempt rollback after a failed commit');
+  assert.ok(!f.calls.includes('rollback'), 'discard an ambiguously committed client without reusing it');
 }
 
 {
