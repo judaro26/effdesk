@@ -19,6 +19,7 @@ on:
         options:
           - read-only
           - mixed-chat
+          - multi-instance-chat
         default: read-only
       confirm_staging:
         description: Confirm the target is the dedicated staging database, never production
@@ -34,7 +35,7 @@ concurrency:
 
 jobs:
   load-test:
-    if: ${{ inputs.confirm_staging == true }}
+    if: ${{ inputs.confirm_staging == true && inputs.workload != 'multi-instance-chat' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -81,3 +82,51 @@ jobs:
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-chat-mixed.js
 
+  multi-instance-chat:
+    if: ${{ inputs.confirm_staging == true && inputs.workload == 'multi-instance-chat' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        instance: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate isolated instance workload target
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+          STAGING_BENCH_CONCURRENCY: 10
+        run: node scripts/bench-chat-mixed.js --check
+
+      - name: Align independent app instances on a shared start window
+        id: start-window
+        shell: bash
+        run: |
+          now=$(date +%s)
+          start_at_ms=$(( (now / 60 + 2) * 60000 ))
+          echo "start_at_ms=$start_at_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Run this independent app instance against shared staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+          STAGING_BENCH_CONCURRENCY: 10
+          STAGING_BENCH_START_AT_MS: ${{ steps.start-window.outputs.start_at_ms }}
+          BENCH_INSTANCE: ${{ matrix.instance }}
+        run: |
+          echo "Starting independent benchmark instance $BENCH_INSTANCE with concurrency 10"
+          node scripts/bench-chat-mixed.js
