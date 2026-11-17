@@ -132,7 +132,7 @@ export async function agentInbox(pool, orgId, input = {}) {
       order by case when cc.status in ('open','pending','on_hold') and cc.assignee_id is null then 0 else 1 end,
         case when cc.status in ('open','pending','on_hold') and cc.assignee_id is null then cc.created_at end asc nulls last,
         case when cc.status in ('open','pending','on_hold') and cc.assignee_id is not null and (${latest})='requester' then 0 else 1 end,
-        cc.updated_at desc,cc.id desc limit ${args.length+1} offset ${args.length+2}`,[...args,limit+1,offset])).rows;
+        cc.updated_at desc,cc.id desc limit $${args.length+1} offset $${args.length+2}`,[...args,limit+1,offset])).rows;
     const hasMore=rows.length>limit;if(hasMore)rows.pop();
     const metadata=(await c.query(`with conversation_counts as (
       select count(*) filter(where cc.status in ('open','pending','on_hold'))::int total,
