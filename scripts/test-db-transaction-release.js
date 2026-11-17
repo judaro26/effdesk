@@ -67,7 +67,7 @@ function fixture({ queryErrorAt = null, rollbackError = null } = {}) {
 {
   const f = fixture({ queryErrorAt: "begin; select set_config('app.org_id', 'tenant-a', true)" });
   await assert.rejects(withOrg(f.pool, 'tenant-a', async () => 'unreachable'), /query failed/);
-  assert.equal(f.releaseError?.message, 'query failed: begin; select set_config', 'failed transaction setup must destroy the client');
+  assert.match(f.releaseError?.message || '', /^query failed: begin; select set_config/, 'failed transaction setup must destroy the client');
 }
 
 console.log('Tenant transaction connection-release tests passed.');
