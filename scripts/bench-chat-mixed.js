@@ -10,7 +10,9 @@ const rawUrl = process.env.STAGING_DATABASE_URL;
 const orgIds = [...new Set(String(process.env.STAGING_ORG_IDS || '').split(',').map(x => x.trim()).filter(Boolean))];
 const profile = String(process.env.STAGING_BENCH_PROFILE || 'smoke').toLowerCase();
 const profiles = { smoke: { concurrency: 5, rounds: 2 }, standard: { concurrency: 15, rounds: 3 }, stress: { concurrency: 30, rounds: 3 } };
-const settings = profiles[profile];
+const baseSettings = profiles[profile];
+const requestedConcurrency = Number(process.env.STAGING_BENCH_CONCURRENCY || baseSettings?.concurrency);
+const settings = baseSettings ? { ...baseSettings, concurrency: requestedConcurrency } : null;
 const percentile = (values, p) => values[Math.min(values.length - 1, Math.ceil(values.length * p) - 1)];
 const round = n => Number(n.toFixed(1));
 const sortedStats = values => {
@@ -26,6 +28,7 @@ function validateTarget(value) {
   if (!host.endsWith('.neon.tech') || !host.includes('-pooler')) throw new Error('Refusing to run: use the dedicated Neon pooled staging connection string.');
   if (!/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) throw new Error('Refusing to run: database name must contain staging, stage, or test.');
   if (!settings) throw new Error('STAGING_BENCH_PROFILE must be smoke, standard, or stress.');
+  if (!Number.isInteger(settings.concurrency) || settings.concurrency < 1 || settings.concurrency > 30) throw new Error('STAGING_BENCH_CONCURRENCY must be an integer from 1 to 30.');
   if (orgIds.length<2 || orgIds.length>30) throw new Error('STAGING_ORG_IDS must contain 2–30 synthetic staging workspace IDs.');
   return { host, dbName };
 }
@@ -149,6 +152,14 @@ try {
   const warmup=await executeTasks(warmupTasks,settings.concurrency,'warmup');
   const warmupElapsed=performance.now()-warmupStarted;
   const warmupFailures=Object.values(warmup.failures).reduce((a,b)=>a+b,0);
+
+  // Multi-process runs wait until every independent pool has completed warm-up,
+  // then the parent releases all workers together for comparable measurements.
+  if(process.env.STAGING_BENCH_COORDINATED==='1') {
+    if(typeof process.send!=='function') throw new Error('Coordinated benchmark workers require an IPC parent.');
+    process.send({type:'warmup-complete'});
+    await new Promise(resolve=>process.once('message',message=>resolve(message)));
+  }
 
   // Exclude setup and warm-up connection waits from measured acquisition percentiles.
   connectWait.splice(0);
