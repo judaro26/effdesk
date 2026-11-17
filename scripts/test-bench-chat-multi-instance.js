@@ -26,6 +26,7 @@ assert.match(worker, /STAGING_BENCH_CONCURRENCY/, 'supports per-process concurre
 
 assert.match(workflow, /multi-instance-chat/, 'exposes multi-instance chat workload in manual workflow');
 assert.match(workflow, /node scripts\/bench-chat-multi-instance\.js --check/, 'validates the multi-instance target before running');
-assert.match(workflow, /node scripts\/bench-chat-multi-instance\.js$/, 'runs the multi-instance orchestrator');
+// Permit the normal final newline in YAML files; the command must still be the last workflow step.
+assert.match(workflow, /node scripts\/bench-chat-multi-instance\.js\s*$/, 'runs the multi-instance orchestrator');
 
 console.log('✓ multi-instance chat benchmark safety, process isolation, and coordination checks passed');
