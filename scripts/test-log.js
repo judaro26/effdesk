@@ -31,6 +31,12 @@ res = await logged('tickets', async () => { throw new Error('database is down fo
 const body = await res.json();
 check('an exception becomes a clean 500 with a request id, and the page never sees the error text', res.status === 500 && /Something went wrong/.test(body.error) && body.requestId === res.headers.get('x-request-id') && !/database/.test(JSON.stringify(body)));
 check('the exception is logged with its stack, plus the request line as an error', sent[0].lines.some(l => l.event === 'exception' && /Error/.test(l.error.stack)) && sent[0].lines.some(l => l.event === 'request' && l.level === 'error' && l.status === 500));
+check('transient pool acquisition timeouts return 503 with Retry-After and no driver details', (await logged('tickets', async () => { const e = new Error('timeout exceeded when trying to connect'); throw e; })(req('/api/tickets'))).status === 503);
+res = await logged('tickets', async () => { const e = new Error('too many connections'); e.code = '53300'; throw e; })(req('/api/tickets'));
+const retryBody = await res.json();
+check('retryable database responses include a short retry hint and safe message', res.status === 503 && res.headers.get('Retry-After') === '2' && /retry shortly/i.test(retryBody.error) && retryBody.requestId === res.headers.get('x-request-id') && !/53300|connections/.test(JSON.stringify(retryBody)));
+res = await logged('tickets', async () => { const e = new Error('duplicate key value violates unique constraint'); e.code = '23505'; throw e; })(req('/api/tickets'));
+check('ordinary database constraint errors remain server errors, not retryable overload responses', res.status === 500 && !res.headers.has('Retry-After'));
 // console.warn from existing code, and extra events
 sent.length = 0; await logged('x', async () => { console.warn('csat error: boom'); log('info', 'email', { ok: true, to_domain: 'example.com' }); return new Response('ok'); })(req('/c'));
 check('console warnings and extra events join the same request', sent[0].lines.some(l => l.event === 'console' && /csat error/.test(l.message_text)) && sent[0].lines.some(l => l.event === 'email' && l.to_domain === 'example.com') && new Set(sent[0].lines.map(l => l.request_id)).size === 1);

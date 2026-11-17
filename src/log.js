@@ -56,6 +56,15 @@ async function reportErrors(s, req, url, res) {
   if (!entries.length && res && res.status >= 500) entries.push({ fn: s.fn, name: 'HTTP ' + res.status, message: `${req.method} ${url.pathname} answered ${res.status}`, stack: '', path: url.pathname, status: res.status, request_id: s.id, deploy, org: s.meta.org });
   for (const e of entries) { try { await hook(e); } catch { } }
 }
+// Pool acquisition and database availability failures are temporary service-capacity
+// conditions. Return a retryable response without exposing driver/server details.
+export function isRetryableDatabaseError(error) {
+  const code = String(error && error.code || '').toUpperCase();
+  const message = String(error && error.message || '').toLowerCase();
+  return /^(?:08000|08001|08003|08004|08006|08007|08P01|53300|57P03)$/.test(code)
+    || /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)$/.test(code)
+    || /timeout exceeded when trying to connect|connection terminated unexpectedly|the database system is starting up|remaining connection slots are reserved/.test(message);
+}
 // wrap a function handler: one request line, errors become a clean 500 with a request id, shipping happens after the answer
 export function logged(name, handler) {
   return async (req, nctx) => {
@@ -63,10 +72,10 @@ export function logged(name, handler) {
     let res;
     await store.run(s, async () => {
       try { res = await handler(req, nctx); }
-      catch (e) { log('error', 'exception', { error: e }); res = new Response(JSON.stringify({ error: 'Something went wrong on our side. Try again in a moment.', requestId: id }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
+      catch (e) { const retryable = isRetryableDatabaseError(e); log(retryable ? 'warn' : 'error', retryable ? 'temporary_database_unavailable' : 'exception', { error: e }); res = new Response(JSON.stringify({ error: retryable ? 'The service is temporarily busy. Please retry shortly.' : 'Something went wrong on our side. Try again in a moment.', requestId: id }), { status: retryable ? 503 : 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(retryable ? { 'Retry-After': '2' } : {}) } }); }
       res = res || new Response(null, { status: 200 });
       const status = res.status;
-      log(status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info', 'request', { method: req.method, path: url.pathname, status, ms: sinks.now() - t0, ...s.meta, ref: (() => { try { return new URL(req.headers.get('referer') || '').host || undefined; } catch { return undefined; } })(), country: req.headers.get('x-country') || undefined });
+      log(status >= 500 && status !== 503 ? 'error' : status >= 400 ? 'warn' : 'info', 'request', { method: req.method, path: url.pathname, status, ms: sinks.now() - t0, ...s.meta, ref: (() => { try { return new URL(req.headers.get('referer') || '').host || undefined; } catch { return undefined; } })(), country: req.headers.get('x-country') || undefined });
     });
     try { res.headers.set('x-request-id', id); } catch { /* an immutable response keeps its headers */ }
     const metricHook = sinks.onRequest;
