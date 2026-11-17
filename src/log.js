@@ -53,7 +53,8 @@ async function reportErrors(s, req, url, res) {
   const hook = sinks.onError; if (typeof hook !== 'function') return;
   const env = sinks.env(), deploy = String(env.DEPLOY_ID || env.COMMIT_REF || '').slice(0, 12), seen = new Set(), entries = [];
   for (const l of s.errs) { const e = l.error || {}, message = e.message || l.message_text || l.event, k = (e.name || '') + message; if (seen.has(k)) continue; seen.add(k); entries.push({ fn: s.fn, name: e.name || (l.event === 'console' ? 'ConsoleError' : 'Error'), message, stack: e.stack || '', path: url.pathname, status: res && res.status, request_id: s.id, deploy, org: s.meta.org }); if (entries.length >= 3) break; }
-  if (!entries.length && res && res.status >= 500) entries.push({ fn: s.fn, name: 'HTTP ' + res.status, message: `${req.method} ${url.pathname} answered ${res.status}`, stack: '', path: url.pathname, status: res.status, request_id: s.id, deploy, org: s.meta.org });
+  // Retryable 503 responses (marked with Retry-After) are expected overload signals, not error-tracker incidents.
+  if (!entries.length && res && res.status >= 500 && !(res.status === 503 && res.headers.has('Retry-After'))) entries.push({ fn: s.fn, name: 'HTTP ' + res.status, message: `${req.method} ${url.pathname} answered ${res.status}`, stack: '', path: url.pathname, status: res.status, request_id: s.id, deploy, org: s.meta.org });
   for (const e of entries) { try { await hook(e); } catch { } }
 }
 // Pool acquisition and database availability failures are temporary service-capacity
