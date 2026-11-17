@@ -196,7 +196,8 @@ try {
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait),connection_lease_ms:sortedStats(connectionLease)},
     scenarios:aggregateScenarios,
     rounds:measuredRounds,
-    performance_sql_telemetry:{sample_rate:Number(process.env.PERFORMANCE_SQL_SAMPLE_RATE??0.03),writes:telemetryWrites.length,...sortedStats(telemetryWrites)},\n    top_query_fingerprints:queryDiagnostics
+    performance_sql_telemetry:{sample_rate:Number(process.env.PERFORMANCE_SQL_SAMPLE_RATE??0.03),writes:telemetryWrites.length,...sortedStats(telemetryWrites)},
+    top_query_fingerprints:queryDiagnostics
   },null,2));
   if(warmupFailures||totalFailures)process.exitCode=1;
 } finally { await pool.end(); }
