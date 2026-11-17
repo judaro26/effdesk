@@ -85,7 +85,7 @@ async function main() {
       const elapsed = performance.now() - started;
       if (!response.ok) throw new Error(`${kind} returned HTTP ${response.status}`);
       const body = await response.json();
-      if (body?.ok === false || (kind === 'poll' && !body?.conversation)) throw new Error(`${kind} returned an unsuccessful response`);
+      if (body?.ok === false || (kind === 'poll' && body?.ok !== true)) throw new Error(`${kind} returned an unsuccessful response`);
       return elapsed;
     }
 
