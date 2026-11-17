@@ -19,6 +19,7 @@ on:
         options:
           - read-only
           - mixed-chat
+          - multi-instance-chat
         default: read-only
       confirm_staging:
         description: Confirm the target is the dedicated staging database, never production
@@ -58,7 +59,7 @@ jobs:
         run: node scripts/bench-staging.js --check
 
       - name: Validate mixed chat workload target
-        if: ${{ inputs.workload == 'mixed-chat' }}
+        if: ${{ inputs.workload == 'mixed-chat' || inputs.workload == 'multi-instance-chat' }}
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
@@ -81,3 +82,12 @@ jobs:
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-chat-mixed.js
 
+
+      - name: Run multi-instance mixed visitor and agent chat workload
+        if: ${{ inputs.workload == 'multi-instance-chat' }}
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+          STAGING_BENCH_INSTANCES: 3
+        run: node scripts/bench-chat-multi-instance.js
