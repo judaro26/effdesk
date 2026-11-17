@@ -22,5 +22,10 @@ assert.match(inbox, /from chat_conversations cc where cc\.org_id=\$1/,
   'conversation aggregates must remain scoped to the current workspace');
 assert.ok(inbox.includes("[orgId,String(input.agentId||'')]"),
   'metadata query should bind the workspace and agent identifiers');
+assert.match(inbox, /case when cc\.status in \('open','pending','on_hold'\) and cc\.assignee_id is null then cc\.created_at end asc nulls last/,
+  'oldest unassigned waiting conversations should be selected before newer ones, even across pages');
+assert.match(inbox, /cc\.assignee_id is not null and \(\$\{latest\}\)='requester' then 0 else 1 end/,
+  'assigned conversations needing a reply should rank ahead of other assigned conversations before pagination');
+
 
 console.log('ok  agent inbox loads its page and combined tenant-scoped metadata in two SQL round trips');
