@@ -55,10 +55,37 @@ export const makePool = url => new pg.Pool({ connectionString: explicitSsl(url),
 export async function withOrg(pool, orgId, fn) {
   if (!orgId || typeof orgId !== 'string') throw new Error('An organization id is required');
   const c = await pool.connect();
+  let transactionStarted = false;
+  let destroyConnection = null;
   try {
-    await c.query("begin; select set_config('app.org_id', " + c.escapeLiteral(orgId) + ", true)");     // one round trip, not two
-    const r = await fn(c);
-    await c.query('commit');
-    return r;
-  } catch (e) { try { await c.query('rollback'); } catch { /* the connection is gone */ } throw e; } finally { c.release(); }
+    // Keep BEGIN + tenant context in one network round trip. If this combined
+    // command fails, its transaction state is uncertain, so discard the client.
+    await c.query("begin; select set_config('app.org_id', " + c.escapeLiteral(orgId) + ", true)");
+    transactionStarted = true;
+    const result = await fn(c);
+    try {
+      await c.query('commit');
+    } catch (error) {
+      // A failed COMMIT has an ambiguous server-side outcome. Never return this
+      // client to the pool, even if a subsequent rollback appears to succeed.
+      destroyConnection = error;
+      throw error;
+    }
+    return result;
+  } catch (error) {
+    if (!transactionStarted) {
+      destroyConnection = error;
+    } else if (!destroyConnection) {
+      try {
+        await c.query('rollback');
+      } catch (rollbackError) {
+        // pg's release(error) destroys the client instead of pooling a possibly
+        // aborted or protocol-desynchronized connection.
+        destroyConnection = rollbackError;
+      }
+    }
+    throw error;
+  } finally {
+    c.release(destroyConnection || undefined);
+  }
 }
