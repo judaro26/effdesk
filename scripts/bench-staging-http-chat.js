@@ -61,13 +61,15 @@ async function main() {
     for (const orgId of orgIds) {
       const org = (await pool.query('select slug from "organization" where id=$1', [orgId])).rows[0];
       if (!org?.slug || !/^effdesk-staging-\d{2}$/.test(org.slug)) throw new Error('Missing expected synthetic staging workspace.');
-      const chat = await withOrg(pool, orgId, async c => (await c.query(
-        "select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') order by id limit 1",
+      const chats = await withOrg(pool, orgId, async c => (await c.query(
+        "select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') order by id limit 10",
         [orgId]
-      )).rows[0] || null);
-      if (!chat?.chat_number) throw new Error('No active synthetic visitor chat found; rerun the staging seeder.');
-      const number = Number(chat.chat_number);
-      targets.push({ orgId, slug: org.slug, number, token: chatToken({ EMAIL_TOKEN_SECRET: tokenSecret }, orgId, number) });
+      )).rows);
+      if (!chats.length) throw new Error('No active synthetic visitor chats found; rerun the staging seeder.');
+      for (const chat of chats) {
+        const number = Number(chat.chat_number);
+        targets.push({ orgId, slug: org.slug, number, token: chatToken({ EMAIL_TOKEN_SECRET: tokenSecret }, orgId, number) });
+      }
     }
 
     async function request(kind, target) {
@@ -91,19 +93,34 @@ async function main() {
 
     const configSamples = [];
     for (const target of targets) configSamples.push(await request('config', target));
-    const warmup = await Promise.all(targets.map(target => request('poll', target).catch(error => ({ error: String(error?.message || error) }))));
+    async function runBatch(items, concurrency) {
+      let cursor = 0;
+      const results = [];
+      const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (true) {
+          const index = cursor++;
+          if (index >= items.length) return;
+          try { results.push(await request('poll', items[index])); }
+          catch (error) { results.push({ error: String(error?.message || error) }); }
+        }
+      });
+      await Promise.all(workers);
+      return results;
+    }
+    const warmup = await runBatch(targets, settings.concurrency);
     const warmupFailures = warmup.filter(x => typeof x !== 'number').length;
     const samples = [], failures = [];
     let measuredElapsedMs = 0;
     for (let round = 0; round < settings.rounds; round++) {
-      let cursor = 0;
+      const roundFailures = [];
       const roundSamples = [];
-      const workers = Array.from({ length: settings.concurrency }, async () => {
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(settings.concurrency, targets.length) }, async () => {
         while (true) {
           const index = cursor++;
           if (index >= targets.length) return;
           try { roundSamples.push(await request('poll', targets[index])); }
-          catch (error) { failures.push(String(error?.message || error).slice(0, 180)); }
+          catch (error) { roundFailures.push(String(error?.message || error).slice(0, 180)); }
         }
       });
       const started = performance.now();
@@ -111,13 +128,14 @@ async function main() {
       const roundElapsedMs = performance.now() - started;
       measuredElapsedMs += roundElapsedMs;
       samples.push(...roundSamples);
-      console.log(JSON.stringify({ round: round + 1, requests: targets.length, elapsed_ms: Number(roundElapsedMs.toFixed(1)), successful: roundSamples.length, failures: targets.length - roundSamples.length }));
+      failures.push(...roundFailures);
+      console.log(JSON.stringify({ round: round + 1, requests: targets.length, elapsed_ms: Number(roundElapsedMs.toFixed(1)), successful: roundSamples.length, failures: roundFailures.length }));
     }
     console.log(JSON.stringify({
       target: { host: new URL(base).hostname, database: dbName },
       workload: 'public widget config preflight and read-only visitor polling over seeded synthetic chats',
       note: 'Visitor polls refresh last_visitor_seen_at subject to the 15-second heartbeat throttle. No messages or tickets are created.',
-      profile, workspaces: targets.length, concurrency: settings.concurrency,
+      profile, workspaces: orgIds.length, synthetic_conversations: targets.length, concurrency: settings.concurrency,
       config: { requests: configSamples.length, ...percentileStats(configSamples) },
       warmup: { requests: warmup.length, failures: warmupFailures },
       measured: { rounds: settings.rounds, requests: samples.length + failures.length, failures: failures.length, elapsed_ms: Number(measuredElapsedMs.toFixed(1)), requests_per_second: Number(((samples.length + failures.length) / (measuredElapsedMs / 1000 || 1)).toFixed(1)), ...percentileStats(samples) },
