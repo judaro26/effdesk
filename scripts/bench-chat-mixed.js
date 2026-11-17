@@ -153,7 +153,8 @@ try {
   // Exclude setup and warm-up connection waits from measured acquisition percentiles.
   connectWait.splice(0);
   connectionLease.splice(0);
-  querySamples.clear();\n  telemetryWrites.splice(0);
+  querySamples.clear();
+  telemetryWrites.splice(0);
   maxSamples.total=0; maxSamples.waiting=0;
   const measuredTasks=buildTasks(settings.rounds);
   const measuredRounds=[];
