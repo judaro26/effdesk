@@ -73,6 +73,10 @@ const fetchFn = async (url, opts) => {
 const dom = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), w = dom.window; w.__EFFDESK_TEST__ = true;
 Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return this.classList && this.classList.contains('thread') ? 2000 : 0; } });
 Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.classList && this.classList.contains('thread') ? 500 : 0; } }); w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/i18n.js')); w.eval(pub('js/desk.js'));
+const originalFormatToDom = w.EffFormat.toDom;
+w.EffFormat.toDom = function () { console.log('[desk-test-trace] EffFormat.toDom: enter'); const result = originalFormatToDom.apply(this, arguments); console.log('[desk-test-trace] EffFormat.toDom: exit'); return result; };
+const originalEditorCreate = w.EffArticleEditor.create;
+w.EffArticleEditor.create = function () { console.log('[desk-test-trace] EffArticleEditor.create: enter'); const result = originalEditorCreate.apply(this, arguments); console.log('[desk-test-trace] EffArticleEditor.create: exit'); return result; };
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
@@ -87,7 +91,7 @@ $('[data-home-tab]').click(); await tick(); $('a.logo').click(); await tick(); $
 check('the desk lists the organization\'s tickets with the signed-in email shown', $('tr.row').length === 1 && /#7/.test($('.row').textContent) && /Heater/.test($('.row').textContent) && w.document.getElementById('who').textContent === 'ann@acme.test');
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
 { const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && $$('tr.row').length === 0 && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $$('tr.row').length === 1); }
-$('.row').click(); await tick();
+console.log('[desk-test-trace] first ticket click: before'); $('.row').click(); console.log('[desk-test-trace] first ticket click: after'); await tick(); console.log('[desk-test-trace] first ticket click: settled');
 check('opening a ticket shows its messages in order, with the note marked', $('.msg-b').length === 4 && $('.msg-b')[1].dataset.kind === 'note' && /Internal note/.test($('.msg-b')[1].textContent));
 check('conversation search and date-range controls appear beside refresh and history', !!$('.conversation-search') && $('input.conversation-date').length === 2 && $('[data-refresh][title]') && $('[data-timeline][title]'));
 { const q = $('.conversation-search'); q.value = 'old boiler'; q.dispatchEvent(new w.Event('input', { bubbles: true })); check('conversation search filters loaded messages by their text', $('.msg-b').length === 1 && /old boiler/.test($('.msg-b').textContent)); q.value = ''; q.dispatchEvent(new w.Event('input', { bubbles: true })); }
