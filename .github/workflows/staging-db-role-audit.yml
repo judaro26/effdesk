@@ -1,0 +1,39 @@
+name: Staging database role security audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging:
+        description: Confirm this read-only audit targets the isolated staging database
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-db-role-security-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Verify staging runtime role cannot bypass RLS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ inputs.confirm_staging == true }}
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Inspect effective PostgreSQL connection role
+        run: node scripts/audit-staging-db-role.js
