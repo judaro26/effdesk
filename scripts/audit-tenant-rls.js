@@ -1,7 +1,8 @@
-// Audit tenant-owned PostgreSQL tables for row-level security coverage.
-// Run against the target database with DATABASE_URL set:
+// Audit tenant-owned PostgreSQL tables for effective row-level security coverage.
+// Run against the same database role used by the application:
 //   npm run audit:tenant-rls
 import { getPool } from '../src/db.js';
+import { auditTenantPolicies, isTenantPredicate } from './lib/tenant-rls-audit.js';
 
 const INTENTIONAL_EXEMPTIONS = {
   inbox_directory: 'Inbound email routing must resolve the organization from the inbox address before an app.org_id context exists; the table stores only the routing mapping.',
@@ -22,7 +23,7 @@ const INTENTIONAL_EXEMPTIONS = {
   performance_query_minute: 'Sampled SQL performance aggregates are platform observability data, not customer-facing tenant records.',
   performance_vitals_minute: 'Aggregated real-user performance vitals are platform observability data; no user identifiers or page content are stored.',
   status_components: 'Public status-page content supports both the platform page and workspace pages; status APIs explicitly filter by the requested workspace or the platform null scope.',
-  status_incidents: 'Public incident and maintenance timelines support both the platform page and workspace pages; status APIs explicitly filter by the requested workspace or the platform null scope.'
+  status_incidents: 'Public incident and maintenance timelines support both platform and workspace pages; status APIs explicitly filter by the requested workspace or the platform null scope.'
 };
 
 const pool = getPool();
@@ -33,15 +34,17 @@ try {
       c.relname as table_name,
       c.relrowsecurity as rls_enabled,
       c.relforcerowsecurity as rls_forced,
-      count(p.policyname)::int as policy_count,
-      coalesce(bool_or(
-        coalesce(p.qual, '') ilike '%org_id%'
-        and coalesce(p.qual, '') ilike '%app.org_id%'
-      ), false) as has_tenant_using,
-      coalesce(bool_or(
-        coalesce(p.with_check, '') ilike '%org_id%'
-        and coalesce(p.with_check, '') ilike '%app.org_id%'
-      ), false) as has_tenant_check
+      coalesce(
+        jsonb_agg(jsonb_build_object(
+          'policyname', p.policyname,
+          'permissive', p.permissive,
+          'cmd', p.cmd,
+          'roles', p.roles,
+          'qual', p.qual,
+          'with_check', p.with_check
+        )) filter (where p.policyname is not null),
+        '[]'::jsonb
+      ) as policies
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     join pg_attribute a on a.attrelid = c.oid
@@ -55,13 +58,25 @@ try {
   `);
 
   const findings = result.rows.map(row => {
+    const policies = row.policies || [];
     const problems = [];
     if (!row.rls_enabled) problems.push('RLS is not enabled');
     if (!row.rls_forced) problems.push('RLS is not forced');
-    if (!row.policy_count) problems.push('No RLS policy exists');
-    if (!row.has_tenant_using) problems.push('No policy USING clause references org_id and app.org_id');
-    if (!row.has_tenant_check) problems.push('No policy WITH CHECK clause references org_id and app.org_id');
-    return { ...row, problems };
+    if (!policies.length) problems.push('No RLS policy exists');
+    // A permissive policy is an OR branch. Check every one, not merely whether
+    // at least one tenant policy exists; a broad second policy defeats isolation.
+    problems.push(...auditTenantPolicies(policies));
+    return {
+      schema_name: row.schema_name,
+      table_name: row.table_name,
+      rls_enabled: row.rls_enabled,
+      rls_forced: row.rls_forced,
+      policy_count: policies.length,
+      has_tenant_using: policies.some(p => isTenantPredicate(p.qual)),
+      has_tenant_check: policies.some(p => isTenantPredicate(p.with_check)),
+      policies,
+      problems
+    };
   });
   const exempted = findings.filter(row => row.problems.length && INTENTIONAL_EXEMPTIONS[row.table_name]);
   const failed = findings.filter(row => row.problems.length && !INTENTIONAL_EXEMPTIONS[row.table_name]);
