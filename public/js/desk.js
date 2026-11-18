@@ -1897,16 +1897,16 @@
 
       // External project issues: search/link existing work or create a provider-native issue without leaving this ticket.
       function externalIssuePanel() {
-        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:t.priority==='urgent'?'1':t.priority==='high'?'2':t.priority==='low'?'4':'3',assigneeId:'',projectId2:'',stateId:'',labelIds:[],fields:{},templates:[],templatesLoadedProvider:'',templateId:'',template:null,busy:false,error:''});
+        var ui=externalIssueUi[t.number]||(externalIssueUi[t.number]={provider:'linear',mode:'idle',connections:[],links:[],loaded:false,loading:false,loadFailed:false,query:'',results:[],catalog:null,options:null,projectId:'',issueTypeId:'',title:'[EffDesk #'+t.number+'] '+t.subject,description:'EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email)+'\\n\\n'+((current.messages||[]).filter(function(m){return m.kind==='requester';}).slice(-1)[0]?.body||''),priority:t.priority==='urgent'?'1':t.priority==='high'?'2':t.priority==='low'?'4':'3',assigneeId:'',projectId2:'',stateId:'',labelIds:[],fields:{},templates:[],templatesLoadedProvider:'',templateId:'',template:null,busy:false,error:''});
         var request=function(method,route,data){
           var parts=String(route).split('&'),routePath=parts.shift(),query=parts.join('&'),url='/api/integrations/'+routePath+'?org='+encodeURIComponent(orgId)+(query?'&'+query:'');
           return fetchFn(url,{method:method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(Object.assign({orgId:orgId},data||{}))}).then(function(r){return r.json().catch(function(){return{};}).then(function(body){if(!r.ok)throw new Error(body.error||'External issue request failed.');return body;});});
         };
         var redraw=function(){if(current&&current.ticket.number===t.number)draw();};
         var loadContext=function(){
-          if(ui.loaded||ui.loading)return;
+          if(ui.loaded||ui.loading||ui.loadFailed)return;
           ui.loading=true;
-          request('GET','ticket-context&ticketNumber='+t.number).then(function(d){ui.connections=d.connections||[];ui.links=d.links||[];ui.loaded=true;ui.loading=false;if(!ui.connections.some(function(x){return x.provider===ui.provider;}))ui.provider=ui.connections[0]?.provider||'linear';redraw();}).catch(function(e){ui.loading=false;ui.error=e.message;redraw();});
+          request('GET','ticket-context&ticketNumber='+t.number).then(function(d){ui.connections=d.connections||[];ui.links=d.links||[];ui.loaded=true;ui.loading=false;ui.loadFailed=false;if(!ui.connections.some(function(x){return x.provider===ui.provider;}))ui.provider=ui.connections[0]?.provider||'linear';redraw();}).catch(function(e){ui.loading=false;ui.loadFailed=true;ui.error=e.message;redraw();});
         };
         var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
         var loadTemplates=function(){
@@ -1966,7 +1966,7 @@
         };
         loadContext();
         var box=el('div',{class:'pcard external-issues'});
-        if(!ui.loaded){box.appendChild(el('p',{class:'m'},ui.loading?'Loading external connections…':ui.error||'Loading…'));return box;}
+        if(!ui.loaded){box.appendChild(el('p',{class:ui.error?'external-issue-error':'m',role:ui.error?'alert':null},ui.loading?'Loading external connections…':ui.error||'Loading…'));if(ui.loadFailed)box.appendChild(el('button',{type:'button',class:'btn l sm',onclick:function(){ui.error='';ui.loadFailed=false;ui.loading=false;redraw();}},'Retry connection'));return box;}
         var connectedProviders=['linear','jira','github','gitlab'].filter(connected);
         var providerLabel=function(p){return p==='linear'?'Linear':p==='jira'?'Jira':p==='github'?'GitHub':'GitLab';};
         var providerIcon=function(p){
