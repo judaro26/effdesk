@@ -26,13 +26,13 @@ try {
     select
       session_user,
       current_user,
-      session_role.rolsuper as session_is_superuser,
-      session_role.rolbypassrls as session_bypasses_rls,
-      current_role.rolsuper as current_is_superuser,
-      current_role.rolbypassrls as current_bypasses_rls
-    from pg_roles session_role
-    join pg_roles current_role on current_role.rolname = current_user
-    where session_role.rolname = session_user
+      sr.rolsuper as session_is_superuser,
+      sr.rolbypassrls as session_bypasses_rls,
+      cr.rolsuper as current_is_superuser,
+      cr.rolbypassrls as current_bypasses_rls
+    from pg_roles sr
+    join pg_roles cr on cr.rolname = current_user
+    where sr.rolname = session_user
   `);
   const role = result.rows[0];
   if (!role) throw new Error('Could not resolve the connected PostgreSQL role.');
