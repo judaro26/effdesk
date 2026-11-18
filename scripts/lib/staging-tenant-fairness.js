@@ -17,9 +17,12 @@ export function buildFairnessTasks(orgIds, rounds = 1, hotShare = 0.7) {
   const perRound = orgIds.length * 4;
   const hotCount = Math.ceil(perRound * hotShare);
   for (let round = 0; round < rounds; round++) {
+    let controlIndex = 0;
     for (let i = 0; i < perRound; i++) {
-      const hot = i < hotCount;
-      const orgId = hot ? orgIds[0] : orgIds[1 + ((i - hotCount) % (orgIds.length - 1))];
+      // Interleave the hot tenant with peer tenants so both classes experience
+      // the same time window instead of running in separate sequential bursts.
+      const hot = i % 10 < 7;
+      const orgId = hot ? orgIds[0] : orgIds[1 + (controlIndex++ % (orgIds.length - 1))];
       tasks.push({ orgId, tenantClass: hot ? 'hot' : 'control', scenario: scenarios[(round * perRound + i) % scenarios.length], round: round + 1 });
     }
   }
