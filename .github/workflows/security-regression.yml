@@ -53,6 +53,9 @@ jobs:
       - name: Test security helpers and outbound request protections
         run: node scripts/test-guard.js
 
+      - name: Test effective tenant RLS policy evaluation
+        run: node scripts/test-tenant-rls-audit.js
+
       - name: Test staging load-test safety guard (no database connection)
         run: node scripts/test-staging-load.js
 

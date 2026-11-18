@@ -34,6 +34,10 @@ The audit distinguishes three outcomes:
 
 These exceptions are not equivalent to tenant-RLS protection. They rely on narrowly scoped server-side resolver/control-plane paths and must never be exposed through general tenant CRUD APIs. Token registries contain hashes, not raw bearer secrets. Operational tables related to incident and monitoring integrations remain forced-RLS.
 
+## Policy-level resolver exception
+
+`cmdb_discovery_oauth_states` remains RLS-enabled and forced. Its one permissive policy has a narrowly scoped alternative `USING` branch for the exact SHA-256 OAuth state hash set by the Microsoft callback in a transaction. The callback consumes that single row with a `DELETE`, then clears the transaction-local setting on commit. Inserts and updates still require the normal tenant predicate. The RLS audit allowlists the exact policy name, command, and expression; any additional permissive policy or broader expression fails the audit. This is not a general tenant CRUD exception.
+
 ## Adding a new table
 
 Do not add a table to the exception list merely to make CI pass. First decide whether it is tenant-owned data or a genuine pre-tenant resolver/platform table. Prefer a tenant-RLS policy whenever the organization is already known. If a global resolver is unavoidable, keep its contents minimal (opaque hashes or routing keys), document the callback that needs it, and keep the corresponding operational data in a separate forced-RLS table.
