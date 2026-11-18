@@ -17,3 +17,12 @@ Workload behavior:
 - Reports HTTP latency percentiles, successful requests, failures, and approximate throughput.
 
 This measures the deployed Netlify HTTP path for the public visitor experience. It does not yet measure authenticated agent inbox HTTP traffic; that requires a dedicated staging agent identity/session with Live Chat access. It is also not a production capacity guarantee: results depend on Netlify function placement, Neon Free staging, and current network conditions.
+
+
+## Hot-tenant fairness benchmark
+
+The **Staging multi-tenant load test** workflow also offers the `tenant-fairness` workload. It is read-only and sends 70% of its requests to the first ID in `STAGING_ORG_IDS`, while spreading the remaining 30% over the other synthetic workspaces. It runs ticket inbox, dashboard, Live Chat inbox, and 30-day report reads, then reports latency and failures separately for the hot tenant and control tenants.
+
+Use at least 10 synthetic workspaces for a useful comparison. The existing staging seeder supports up to 30 workspaces; seed 30 and update the `STAGING_ORG_IDS` repository variable to list `stg_effdesk_org_01` through `stg_effdesk_org_30` before selecting this workload. The workload performs no writes and does not create tickets, messages, or chats.
+
+This is an application/database fairness benchmark, not a deployed HTTP/browser test. It measures whether ordinary tenants remain responsive while one tenant receives disproportionate read traffic. It does not by itself establish production capacity or test write-heavy abuse scenarios.
