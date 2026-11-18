@@ -4,11 +4,31 @@
 // are combined with AND and cannot broaden access.
 const TENANT_PREDICATE = /^\(*\s*org_id\s*=\s*current_setting\(\s*'app\.org_id'\s*(?:::text)?\s*,\s*true\s*\)\s*\)*$/i;
 
+// This one policy supports the single-use Microsoft OAuth callback: the callback
+// sets the SHA-256 state hash in a transaction, then consumes exactly that row.
+// Keep the policy name, command, and complete expression allowlisted; any extra
+// permissive policy or broader expression still fails the audit.
+const POLICY_USING_EXCEPTIONS = {
+  cmdb_discovery_oauth_states: {
+    policyname: 'cmdb_discovery_oauth_states_state',
+    cmd: 'ALL',
+    qual: "(org_id = current_setting('app.org_id'::text, true) OR state_hash = current_setting('app.discovery_state_hash'::text, true))"
+  }
+};
+
 export function isTenantPredicate(expression) {
   return typeof expression === 'string' && TENANT_PREDICATE.test(expression.trim());
 }
 
-export function auditTenantPolicies(policies = []) {
+function allowedUsingException(tableName, policy) {
+  const exception = POLICY_USING_EXCEPTIONS[tableName];
+  return !!exception
+    && policy.policyname === exception.policyname
+    && String(policy.cmd || '').toUpperCase() === exception.cmd
+    && String(policy.qual || '').trim() === exception.qual;
+}
+
+export function auditTenantPolicies(policies = [], tableName = '') {
   const problems = [];
   const permissive = policies.filter(policy => String(policy.permissive || '').toUpperCase() !== 'RESTRICTIVE');
   const commands = [
@@ -29,7 +49,7 @@ export function auditTenantPolicies(policies = []) {
     }
     for (const policy of covering) {
       const name = String(policy.policyname || 'unnamed');
-      if (command.using && !isTenantPredicate(policy.qual)) {
+      if (command.using && !isTenantPredicate(policy.qual) && !allowedUsingException(tableName, policy)) {
         problems.push(`Permissive policy "${name}" does not enforce tenant scope in USING for ${command.name}`);
       }
       if (command.check && !isTenantPredicate(policy.with_check)) {
