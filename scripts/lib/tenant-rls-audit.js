@@ -12,7 +12,7 @@ const POLICY_USING_EXCEPTIONS = {
   cmdb_discovery_oauth_states: {
     policyname: 'cmdb_discovery_oauth_states_state',
     cmd: 'ALL',
-    qual: "(org_id = current_setting('app.org_id'::text, true) OR state_hash = current_setting('app.discovery_state_hash'::text, true))"
+    qual: "((org_id = current_setting('app.org_id'::text, true)) OR (state_hash = current_setting('app.discovery_state_hash'::text, true)))"
   }
 };
 
