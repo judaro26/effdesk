@@ -65,6 +65,27 @@ try {
           'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
           [orgId, `Chat with EffDesk Staging Workspace ${String(n).padStart(2, '0')}`, 'Hello! This is a synthetic staging conversation.']
         );
+        // Older seeded databases may have no active visitor chats left. Reconcile
+        // one deterministic active synthetic conversation without touching history.
+        const activeChats = await client.query(
+          "select count(*)::int as count from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold')",
+          [orgId]
+        );
+        if (Number(activeChats.rows[0]?.count || 0) === 0) {
+          const agent = await client.query(
+            'select m."userId" as id from "member" m where m."organizationId"=$1 order by m."createdAt" asc limit 1',
+            [orgId]
+          );
+          await client.query(
+            `insert into chat_conversations
+              (org_id,subject,status,requester_name,requester_email,visitor_key,assignee_id,priority,page_url,page_title,referrer,user_agent,source,created_at,updated_at)
+             values ($1,'Synthetic HTTP benchmark visitor','open','Staging HTTP Visitor','http-benchmark@example.invalid',
+               $2,$3,'normal','https://demo.example.invalid/','Synthetic benchmark page',
+               'https://search.example.invalid/','Synthetic Browser / Staging','widget',now(),now())`,
+            [orgId, `stg-visitor-${orgId}-http-benchmark`, agent.rows[0]?.id || null]
+          );
+          console.log(`Reconciled one active synthetic visitor chat for ${orgId}.`);
+        }
         await client.query('commit');
         console.log(`Skipping ${orgId}: existing synthetic data retained; Live Chat entitlement and enabled settings ensured.`);
         continue;
