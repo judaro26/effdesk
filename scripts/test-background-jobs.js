@@ -7,7 +7,7 @@ import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { withOrg } from '../src/db.js';
-import { enqueueJob, claimJobs, completeJob, failJob, runJobs } from '../src/jobs.js';
+import { enqueueJob, claimJobs, completeJob, failJob, renewJobLease, runJobs } from '../src/jobs.js';
 import { deliverWebhook } from '../src/webhooks.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
@@ -44,8 +44,11 @@ check('failed jobs are rescheduled and become terminal after the configured atte
 const leased = await enqueueJob(pool, acme.id, { type: 'test.lease', payload: {}, idempotencyKey: 'lease-recovery' });
 const leaseStart = Date.now();
 const oldLease = await claimJobs(pool, acme.id, workerA, { limit: 1, now: leaseStart, leaseMs: 1000 });
-const recovered = await claimJobs(pool, acme.id, workerB, { limit: 1, now: leaseStart + 2500, leaseMs: 1000 });
-check('an expired worker lease can be recovered safely by another worker', oldLease.some(x => x.id === leased.id) && recovered.some(x => x.id === leased.id) && !(await completeJob(pool, acme.id, leased.id, workerA)) && await completeJob(pool, acme.id, leased.id, workerB));
+const renewed = await renewJobLease(pool, acme.id, leased.id, workerA, { now: leaseStart + 500 });
+const prematureRecovery = await claimJobs(pool, acme.id, workerB, { limit: 1, now: leaseStart + 1400, leaseMs: 1000 });
+const recovered = await claimJobs(pool, acme.id, workerB, { limit: 1, now: leaseStart + 1600, leaseMs: 1000 });
+check('a live worker can extend its lease and prevent premature reclamation', oldLease.some(x => x.id === leased.id) && renewed && !prematureRecovery.some(x => x.id === leased.id));
+check('a stale worker cannot renew a reclaimed lease and cannot complete its job', recovered.some(x => x.id === leased.id) && !(await renewJobLease(pool, acme.id, leased.id, workerA)) && !(await completeJob(pool, acme.id, leased.id, workerA)) && await completeJob(pool, acme.id, leased.id, workerB));
 
 const tenantJob = await enqueueJob(pool, acme.id, { type: 'test.tenant', payload: {}, idempotencyKey: 'tenant-only' });
 check('a different organization cannot claim another tenant\'s jobs', (await claimJobs(pool, beta.id, workerB, { limit: 10 })).length === 0);
