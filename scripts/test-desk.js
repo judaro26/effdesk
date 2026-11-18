@@ -75,8 +75,8 @@ Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: t
 Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.classList && this.classList.contains('thread') ? 500 : 0; } }); w.eval(pub('js/format.js')); w.eval(pub('js/article-editor.js')); w.eval(pub('js/i18n.js')); w.eval(pub('js/desk.js'));
 const originalFormatToDom = w.EffFormat.toDom;
 w.EffFormat.toDom = function () { console.log('[desk-test-trace] EffFormat.toDom: enter'); const result = originalFormatToDom.apply(this, arguments); console.log('[desk-test-trace] EffFormat.toDom: exit'); return result; };
-const originalEditorCreate = w.EffArticleEditor.create;
-w.EffArticleEditor.create = function () { console.log('[desk-test-trace] EffArticleEditor.create: enter'); const result = originalEditorCreate.apply(this, arguments); console.log('[desk-test-trace] EffArticleEditor.create: exit'); return result; };
+const originalEditorCreate = w.EffArticleEditor.create; let editorCreateTraces = 0;
+w.EffArticleEditor.create = function () { if (editorCreateTraces++ < 8) console.log('[desk-test-trace] EffArticleEditor.create stack:', new Error().stack); const result = originalEditorCreate.apply(this, arguments); return result; };
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
