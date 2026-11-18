@@ -63,6 +63,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'webhook-delete') return ok({ ok: true });
   if (b.action === 'note') return ok({ ok: true, message: { id: 99 }, mentioned: 0 });
   if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|mint|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
+  if (b.action === 'global-search') return ok({ tickets: [{ number: 7, subject: 'Heater', status: 'open', requester_name: 'Tina', requester_email: 't@x.co' }], contacts: [], companies: [], agents: [] });
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
   if (b.action === 'list') return ok({ tickets: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? [] : [T], counts: { open: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? 0 : 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
@@ -147,7 +148,7 @@ $('[data-mode=reply]').click(); await tick(); $('textarea').value = ''; $('[data
 check('an empty message is not sent', /Write a message first/.test($('.msg').textContent));
 const st = $('select[aria-label=Status]'); st.value = 'pending'; st.dispatchEvent(new w.Event('change')); await tick();
 check('changing the status sends an update patch', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.status === 'pending'));
-check('the status menu has the workspace\u2019s own statuses after the built-in ones', [...st.options].map(o => o.textContent).join() === 'Open,Pending,Solved,Closed,Waiting on vendor');
+check('the status menu has the workspace\u2019s own statuses after the built-in ones', [...st.options].map(o => o.textContent).join() === 'Open,Pending,On hold,Solved,Closed,Waiting on vendor');
 { const st2 = $('select[aria-label=Status]'); st2.value = 'c:5'; st2.dispatchEvent(new w.Event('change')); await tick(); }
 check('choosing a custom status sends its id, not a made-up built-in status', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.customStatusId === 5 && c[1].patch.status === undefined));
 $('[data-views]').click(); await tick();
@@ -159,11 +160,11 @@ check('a status tab reloads the list with that filter, and "Mine" filters by ass
 const q = $('input[type=search]'); q.value = 'heat'; q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' })); await tick();
 check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat'));
 { const before = calls.length; q.value = 'heat'; q.dispatchEvent(new w.Event('input')); await new Promise(r => setTimeout(r, 300)); await tick();
-  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat' && c[1].limit === 6) && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
+  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'global-search' && c[1].q === 'heat') && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown' })); await tick(); check('arrow keys choose a result', $('.qi[aria-selected=true]') !== null);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true })); await tick(); await tick();
   check('Enter on a chosen result opens that ticket and closes the preview', !!$('.conv') && $('.qpop').hidden && calls.some(c => c[1] && c[1].action === 'get'));
-  check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /replying/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
+  check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /typing/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
 $('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
 check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
 $('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
