@@ -60,7 +60,7 @@ try {
       // Reconcile existing seed records; public widget availability requires both
       // the staging entitlement override and an enabled workspace settings row.
       if (seeded.rows[0]?.metadata?.includes('effdesk-staging-seed-v1')) {
-        await enableStagingLiveChatOverride(client, orgId);
+        await enableStagingLiveChatOverride(client, orgId, agentsPerWorkspace);
         await client.query(
           'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
           [orgId, `Chat with EffDesk Staging Workspace ${String(n).padStart(2, '0')}`, 'Hello! This is a synthetic staging conversation.']
@@ -74,7 +74,7 @@ try {
         'insert into "organization" (id,name,slug,"createdAt",metadata) values ($1,$2,$3,now(),$4) on conflict (id) do update set name=excluded.name, slug=excluded.slug, metadata=excluded.metadata',
         [orgId, orgName, orgSlug, 'effdesk-staging-seed-v1']
       );
-      await enableStagingLiveChatOverride(client, orgId);
+      await enableStagingLiveChatOverride(client, orgId, agentsPerWorkspace);
       await client.query(
         'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
         [orgId, `Chat with ${orgName}`, 'Hello! This is a synthetic staging conversation.']
