@@ -51,6 +51,17 @@ export async function claimJobs(pool, orgId, workerId = crypto.randomUUID(), { l
   });
 }
 
+// Extend a running job's lease while its handler is still executing.
+// The owner predicate prevents an expired worker from reviving a lease already reclaimed by another worker.
+export async function renewJobLease(pool, orgId, jobId, workerId, { now = new Date() } = {}) {
+  const timestamp = new Date(now);
+  if (!Number.isFinite(timestamp.getTime())) throw new Error('Background job lease timestamp is invalid.');
+  return withOrg(pool, orgId, async db => (await db.query(
+    "update background_jobs set locked_at=$4, updated_at=$4 where org_id=$1 and id=$2 and status='running' and locked_by=$3",
+    [orgId, jobId, String(workerId), timestamp.toISOString()]
+  )).rowCount === 1);
+}
+
 export async function completeJob(pool, orgId, jobId, workerId) {
   return withOrg(pool, orgId, async db => (await db.query(
     "update background_jobs set status='succeeded', locked_at=null, locked_by=null, last_error=null, updated_at=now() where org_id=$1 and id=$2 and status='running' and locked_by=$3",
@@ -98,16 +109,33 @@ export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypt
     summary.claimed += pass.length;
     summary.tenantsProcessed = tenantCounts.size;
     await Promise.all(pass.map(async job => {
+      let heartbeatStopped = false;
+      let heartbeatInFlight = Promise.resolve();
+      const heartbeatMs = Math.max(250, Math.floor(Math.max(1000, Number(leaseMs) || 120000) / 3));
+      const heartbeat = setInterval(() => {
+        if (heartbeatStopped) return;
+        heartbeatInFlight = heartbeatInFlight.then(async () => {
+          if (!heartbeatStopped) await renewJobLease(pool, String(job.org_id), job.id, workerId);
+        }).catch(() => {});
+      }, heartbeatMs);
+      heartbeat.unref?.();
       try {
         const handler = handlers && handlers[job.job_type];
         if (typeof handler !== 'function') throw new Error('No worker is registered for job type ' + job.job_type);
         await handler(String(job.org_id), job.payload, job);
-        if (await completeJob(pool, String(job.org_id), job.id, workerId)) summary.succeeded++;
       } catch (error) {
+        heartbeatStopped = true;
+        clearInterval(heartbeat);
+        await heartbeatInFlight;
         const result = await failJob(pool, String(job.org_id), job.id, workerId, error);
         if (result.status === 'queued') summary.retried++;
         else if (result.status === 'failed') summary.failed++;
+        return;
       }
+      heartbeatStopped = true;
+      clearInterval(heartbeat);
+      await heartbeatInFlight;
+      if (await completeJob(pool, String(job.org_id), job.id, workerId)) summary.succeeded++;
     }));
   }
   return summary;
