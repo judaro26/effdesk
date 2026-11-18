@@ -57,15 +57,14 @@ try {
       const orgName = `EffDesk Staging Workspace ${String(n).padStart(2, '0')}`;
       const orgSlug = `effdesk-staging-${String(n).padStart(2, '0')}`;
       const seeded = await client.query('select metadata from "organization" where id=$1', [orgId]);
-      // Reconcile both halves of Live Chat availability even for existing seed data.
-      // A prior seed may have granted the feature override while its settings row was
-      // missing or disabled; the public widget requires both entitlement and enabled=true.
-      await enableStagingLiveChatOverride(client, orgId);
-      await client.query(
-        'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
-        [orgId, `Chat with EffDesk Staging Workspace ${String(n).padStart(2, '0')}`, 'Hello! This is a synthetic staging conversation.']
-      );
+      // Reconcile existing seed records; public widget availability requires both
+      // the staging entitlement override and an enabled workspace settings row.
       if (seeded.rows[0]?.metadata?.includes('effdesk-staging-seed-v1')) {
+        await enableStagingLiveChatOverride(client, orgId);
+        await client.query(
+          'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
+          [orgId, `Chat with EffDesk Staging Workspace ${String(n).padStart(2, '0')}`, 'Hello! This is a synthetic staging conversation.']
+        );
         await client.query('commit');
         console.log(`Skipping ${orgId}: existing synthetic data retained; Live Chat entitlement and enabled settings ensured.`);
         continue;
@@ -74,6 +73,11 @@ try {
       await client.query(
         'insert into "organization" (id,name,slug,"createdAt",metadata) values ($1,$2,$3,now(),$4) on conflict (id) do update set name=excluded.name, slug=excluded.slug, metadata=excluded.metadata',
         [orgId, orgName, orgSlug, 'effdesk-staging-seed-v1']
+      );
+      await enableStagingLiveChatOverride(client, orgId);
+      await client.query(
+        'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
+        [orgId, `Chat with ${orgName}`, 'Hello! This is a synthetic staging conversation.']
       );
       const agentIds = [];
       for (let a = 1; a <= agentsPerWorkspace; a++) {
