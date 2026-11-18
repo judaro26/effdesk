@@ -19,6 +19,7 @@ on:
         options:
           - read-only
           - mixed-chat
+          - tenant-fairness
           - multi-instance-chat
         default: read-only
       confirm_staging:
@@ -73,6 +74,22 @@ jobs:
           STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
         run: node scripts/bench-staging.js
+
+      - name: Validate tenant fairness workload target
+        if: ${{ inputs.workload == 'tenant-fairness' }}
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-tenant-fairness.js --check
+
+      - name: Run hot-tenant fairness workload
+        if: ${{ inputs.workload == 'tenant-fairness' }}
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
+          STAGING_BENCH_PROFILE: ${{ inputs.profile }}
+        run: node scripts/bench-tenant-fairness.js
 
       - name: Run mixed visitor and agent chat workload
         if: ${{ inputs.workload == 'mixed-chat' }}
