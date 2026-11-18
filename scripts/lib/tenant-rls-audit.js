@@ -2,7 +2,7 @@
 // PostgreSQL ORs permissive policies together, so every permissive policy that
 // applies to a command must enforce the tenant predicate. Restrictive policies
 // are combined with AND and cannot broaden access.
-const TENANT_PREDICATE = /^\\(*\\s*org_id\\s*=\\s*current_setting\\(\\s*'app\\.org_id'\\s*(?:::text)?\\s*,\\s*true\\s*\\)\\s*\\)*$/i;
+const TENANT_PREDICATE = /^\(*\s*org_id\s*=\s*current_setting\(\s*'app\.org_id'\s*(?:::text)?\s*,\s*true\s*\)\s*\)*$/i;
 
 export function isTenantPredicate(expression) {
   return typeof expression === 'string' && TENANT_PREDICATE.test(expression.trim());
