@@ -2091,7 +2091,7 @@
       cards.push(el('h3', {}, 'Service request approval'));
       if (ticketApprovals[t.number] === undefined) {
         ticketApprovals[t.number] = null;
-        api('approval-get', { number: t.number }).then(function (r) { ticketApprovals[t.number] = r.ok ? r.body.approval : null; if (current && current.ticket.number === t.number) draw(); });
+        api('approval-get', { number: t.number }).then(function (r) { ticketApprovals[t.number] = r.ok && r.body && r.body.approval ? r.body.approval : null; if (current && current.ticket.number === t.number) draw(); });
       }
       var ticketApproval = ticketApprovals[t.number];
       if (ticketApproval === null) cards.push(el('div', { class: 'pcard m' }, 'Checking approval status…'));
