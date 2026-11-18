@@ -57,10 +57,16 @@ try {
       const orgName = `EffDesk Staging Workspace ${String(n).padStart(2, '0')}`;
       const orgSlug = `effdesk-staging-${String(n).padStart(2, '0')}`;
       const seeded = await client.query('select metadata from "organization" where id=$1', [orgId]);
+      // Reconcile existing seed records; public widget availability requires both
+      // the staging entitlement override and an enabled workspace settings row.
       if (seeded.rows[0]?.metadata?.includes('effdesk-staging-seed-v1')) {
         await enableStagingLiveChatOverride(client, orgId);
+        await client.query(
+          'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
+          [orgId, `Chat with EffDesk Staging Workspace ${String(n).padStart(2, '0')}`, 'Hello! This is a synthetic staging conversation.']
+        );
         await client.query('commit');
-        console.log(`Skipping ${orgId}: already seeded; staging Live Chat entitlement ensured.`);
+        console.log(`Skipping ${orgId}: existing synthetic data retained; Live Chat entitlement and enabled settings ensured.`);
         continue;
       }
 
@@ -69,7 +75,10 @@ try {
         [orgId, orgName, orgSlug, 'effdesk-staging-seed-v1']
       );
       await enableStagingLiveChatOverride(client, orgId);
-
+      await client.query(
+        'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
+        [orgId, `Chat with ${orgName}`, 'Hello! This is a synthetic staging conversation.']
+      );
       const agentIds = [];
       for (let a = 1; a <= agentsPerWorkspace; a++) {
         const agentId = `stg_agent_${String(n).padStart(2,'0')}_${String(a).padStart(2,'0')}`;
@@ -84,11 +93,6 @@ try {
           [`stg_member_${String(n).padStart(2,'0')}_${String(a).padStart(2,'0')}`, orgId, agentId, a === 1 ? 'admin' : 'member']
         );
       }
-
-      await client.query(
-        'insert into chat_settings (org_id,enabled,title,greeting) values ($1,true,$2,$3) on conflict (org_id) do update set enabled=true',
-        [orgId, `Chat with ${orgName}`, 'Hello! This is a synthetic staging conversation.']
-      );
 
       await client.query(
         `insert into tickets (org_id,number,subject,status,priority,channel,requester_name,requester_email,assignee_id,tags,created_at,updated_at)
