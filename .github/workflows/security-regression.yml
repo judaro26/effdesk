@@ -90,7 +90,7 @@ jobs:
         run: node scripts/test-chat-inbox-ui.js && node scripts/test-contact-pagination.js
 
       - name: Test ticket desk draft recovery and reply safety
-        run: node scripts/test-desk.js
+        run: timeout --signal=TERM --kill-after=10s 180s node scripts/test-desk.js
 
 
       - name: Test custom-role authorization
