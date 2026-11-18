@@ -65,7 +65,7 @@ try {
     if (!policies.length) problems.push('No RLS policy exists');
     // A permissive policy is an OR branch. Check every one, not merely whether
     // at least one tenant policy exists; a broad second policy defeats isolation.
-    problems.push(...auditTenantPolicies(policies));
+    problems.push(...auditTenantPolicies(policies, row.table_name));
     return {
       schema_name: row.schema_name,
       table_name: row.table_name,
