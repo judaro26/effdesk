@@ -63,6 +63,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'webhook-delete') return ok({ ok: true });
   if (b.action === 'note') return ok({ ok: true, message: { id: 99 }, mentioned: 0 });
   if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|mint|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
+  if (b.action === 'global-search') return ok({ tickets: [{ number: 7, subject: 'Heater', status: 'open', requester_name: 'Tina', requester_email: 't@x.co' }], contacts: [], companies: [], agents: [] });
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
   if (b.action === 'list') return ok({ tickets: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? [] : [T], counts: { open: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? 0 : 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
@@ -123,31 +124,31 @@ check('a sanitized HTML email is rendered as formatted content rather than liter
 check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b').textContent) && /<b>broken<\/b>/.test($('h2').textContent));
 check('a message shows its files as download links for this organization', $$('.msg-b')[0].querySelector('a[data-file=f1]').getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\.jpg \(2 KB\)/.test($('a[data-file=f1]').textContent));
 check('the opened ticket has its own tab beside Views, three columns, and the rail marks Tickets', !!$('[data-tab="7"]') && /#7 Heater/.test($('[data-tab="7"]').textContent) && !!$('.ticket .props') && !!$('.ticket .conv') && !!$('.ticket .info') && $('[data-nav]').getAttribute('aria-current') === 'true');
-$('textarea').value = 'half a thought'; $('[data-mode=note]').click(); await tick(); $('[data-mode=reply]').click(); await tick();
-check('switching between Public reply and Internal note keeps what was typed', $('textarea').value === 'half a thought'); $('textarea').value = '';
+$('.ed-area').textContent = 'half a thought'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-mode=note]').click(); await tick(); $('[data-mode=reply]').click(); await tick();
+check('switching between Public reply and Internal note keeps what was typed', $('.ed-area').textContent === 'half a thought'); $('.ed-area').textContent = ''; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true }));
 $('[data-escalate]').click(); await tick();
 check('"Escalate to high" sends the priority change', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.priority === 'high'));
 const att = $('input[data-attach]'); Object.defineProperty(att, 'files', { value: [new w.File(['abc'], 'pic.png', { type: 'image/png' })], configurable: true }); att.dispatchEvent(new w.Event('change')); await tick(40);
 check('choosing a file uploads it to this ticket and shows it waiting to be sent', calls.some(c => /^\/api\/attachments\?org=o1&ticket=7&name=pic\.png&type=image%2Fpng/.test(c[0])) && !!$('[data-pending=up1]'));
-$('textarea').value = 'reject and keep this draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
-check('a rejected reply keeps its draft and pending attachment available', $('textarea').value === 'reject and keep this draft' && !!$('[data-pending=up1]') && /permanently closed/.test($('.msg').textContent));
-$('textarea').value = 'On our way'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
+$('.ed-area').textContent = 'reject and keep this draft'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
+check('a rejected reply keeps its draft and pending attachment available', $('.ed-area').textContent === 'reject and keep this draft' && !!$('[data-pending=up1]') && /permanently closed/.test($('.msg').textContent));
+$('.ed-area').textContent = 'On our way'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
 check('the reply sends the waiting files\' ids, and the list is cleared afterwards', calls.some(c => c[1] && c[1].action === 'reply' && c[1].attachmentIds && c[1].attachmentIds.join() === 'up1') && !$('[data-pending]'));
 check('Reply posts the text to the reply action', calls.some(c => c[1] && c[1].action === 'reply' && c[1].number === 7 && c[1].body === 'On our way' && !c[1].status));
-$('[data-mode=reply]').click(); await tick(); { const ss = $('select[aria-label="Choose the status to submit as"]'); ss.value = 'solved'; ss.dispatchEvent(new w.Event('change')); } await tick(); $('textarea').value = 'Done'; check('the submit button says which status it will set', /Submit as Solved/.test($('[data-reply]').textContent)); $('[data-reply]').click(); await tick();
+$('[data-mode=reply]').click(); await tick(); { const ss = $('select[aria-label="Choose the status to submit as"]'); ss.value = 'solved'; ss.dispatchEvent(new w.Event('change')); } await tick(); $('.ed-area').textContent = 'Done'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); check('the submit button says which status it will set', /Submit as Solved/.test($('[data-reply]').textContent)); $('[data-reply]').click(); await tick();
 $('[data-refresh]').click(); await tick(); await tick();
 check('a confirmation appears as a toast', !!$('.msg.toast') && /Up to date/.test($('.msg.toast').textContent));
 await new Promise(r => setTimeout(r, 3700));
 check('and goes away by itself after a few seconds', !$('.msg.toast'));
 check('Refresh and History sit together in the ticket header', !!$('.ch .chtools [data-refresh]') && !!$('.ch .chtools [data-timeline]'));
 check('choosing "Submit as Solved" sends the status with the reply', calls.some(c => c[1] && c[1].action === 'reply' && c[1].status === 'solved'));
-$('[data-mode=note]').click(); await tick(); $('textarea').value = 'internal'; $('[data-note]').click(); await tick();
+$('[data-mode=note]').click(); await tick(); $('.ed-area').textContent = 'internal'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-note]').click(); await tick();
 check('Add internal note uses the note action', calls.some(c => c[1] && c[1].action === 'note' && c[1].body === 'internal'));
-$('[data-mode=reply]').click(); await tick(); $('textarea').value = ''; $('[data-reply]').click(); await tick();
+$('[data-mode=reply]').click(); await tick(); $('.ed-area').textContent = ''; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-reply]').click(); await tick();
 check('an empty message is not sent', /Write a message first/.test($('.msg').textContent));
 const st = $('select[aria-label=Status]'); st.value = 'pending'; st.dispatchEvent(new w.Event('change')); await tick();
 check('changing the status sends an update patch', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.status === 'pending'));
-check('the status menu has the workspace\u2019s own statuses after the built-in ones', [...st.options].map(o => o.textContent).join() === 'Open,Pending,Solved,Closed,Waiting on vendor');
+check('the status menu has the workspace\u2019s own statuses after the built-in ones', [...st.options].map(o => o.textContent).join() === 'Open,Pending,On hold,Solved,Closed,Waiting on vendor');
 { const st2 = $('select[aria-label=Status]'); st2.value = 'c:5'; st2.dispatchEvent(new w.Event('change')); await tick(); }
 check('choosing a custom status sends its id, not a made-up built-in status', calls.some(c => c[1] && c[1].action === 'update' && c[1].patch.customStatusId === 5 && c[1].patch.status === undefined));
 $('[data-views]').click(); await tick();
@@ -159,11 +160,11 @@ check('a status tab reloads the list with that filter, and "Mine" filters by ass
 const q = $('input[type=search]'); q.value = 'heat'; q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' })); await tick();
 check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat'));
 { const before = calls.length; q.value = 'heat'; q.dispatchEvent(new w.Event('input')); await new Promise(r => setTimeout(r, 300)); await tick();
-  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat' && c[1].limit === 6) && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
+  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'global-search' && c[1].q === 'heat') && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown' })); await tick(); check('arrow keys choose a result', $('.qi[aria-selected=true]') !== null);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true })); await tick(); await tick();
   check('Enter on a chosen result opens that ticket and closes the preview', !!$('.conv') && $('.qpop').hidden && calls.some(c => c[1] && c[1].action === 'get'));
-  check('the ticket tells you who else is looking, and that they are replying', /Bo/.test($('[data-collide]').textContent) && /replying/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
+  check('the ticket tells you who else is looking and typing', /Bo/.test($('[data-collide]').textContent) && /typing/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
 $('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
 check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
 $('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
