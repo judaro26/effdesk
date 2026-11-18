@@ -1,6 +1,6 @@
 // Read-only hot-tenant fairness test against the dedicated synthetic staging database.
 // 70% of requests target one busy tenant; the remaining 30% are distributed across peers.
-import { getPool } from '../src/db.js';
+import { getPool, withOrg } from '../src/db.js';
 import { listTickets } from '../src/tickets.js';
 import { dashboard } from '../src/dashboard.js';
 import { report } from '../src/reports.js';
@@ -33,6 +33,15 @@ if (process.argv.includes('--check')) {
 }
 
 const pool = getPool(rawUrl);
+for (const orgId of orgIds) {
+  const seeded = await withOrg(pool, orgId, async client =>
+    (await client.query('select metadata from "organization" where id=$1', [orgId])).rows[0]?.metadata
+  );
+  if (seeded !== 'effdesk-staging-seed-v1') {
+    await pool.end();
+    throw new Error('Refusing to benchmark a workspace that is not marked as synthetic staging seed data.');
+  }
+}
 const actor = { id: process.env.STAGING_BENCH_AGENT_ID || '__effdesk_staging_load_test__' };
 const scenarios = {
   'ticket inbox': org => listTickets(pool, org, actor, { limit: 50, cursorMode: true }),
