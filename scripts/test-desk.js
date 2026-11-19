@@ -81,6 +81,8 @@ w.EffArticleEditor.create = function () { if (editorCreateTraces++ < 8) console.
 const nav = { search: '?org=o1', went: [], go(u) { this.went.push(u); } };
 await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
 const $ = s => w.document.querySelector(s), \u0024\u0024 = s => [...w.document.querySelectorAll(s)];
+const composer = () => $('.compose .ed-area');
+const writeComposer = value => { const e = composer(); e.textContent = value; e.dispatchEvent(new w.Event('input', { bubbles: true })); return e; };
 $('#userbtn').click(); await tick(); check('the agent profile menu includes an English/Spanish language selector', !!$('select[aria-label="Language"]')); $('select[aria-label="Language"]').value = 'es'; $('select[aria-label="Language"]').dispatchEvent(new w.Event('change')); await tick(420); check('the agent language choice updates the document and is saved with tenant-scoped preferences', w.document.documentElement.lang === 'es' && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].locale === 'es')); $('select[aria-label="Idioma"]').value = 'en'; $('select[aria-label="Idioma"]').dispatchEvent(new w.Event('change')); await tick(420);
 check('the desk lands on its dashboard with ticket metrics and setup guidance', !!$('[data-stat-open] .dash-metric-value') && /Connect your support inbox/.test($('[data-setup]').textContent) && !!$('.dash-content-grid'));
 check('the dashboard shows the organization\'s own portal address', $('[data-portal] a').getAttribute('href') === 'https://acme.effdesk.com');
@@ -160,21 +162,21 @@ check('a status tab reloads the list with that filter, and "Mine" filters by ass
 const q = $('input[type=search]'); q.value = 'heat'; q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' })); await tick();
 check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat'));
 { const before = calls.length; q.value = 'heat'; q.dispatchEvent(new w.Event('input')); await new Promise(r => setTimeout(r, 300)); await tick();
-  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'global-search' && c[1].q === 'heat') && !!$('.qpop [data-qresult]') && !$('.qpop').hidden);
+  check('typing in the search box shows a preview of matching tickets before Enter', calls.slice(before).some(c => c[1] && c[1].action === 'global-search' && c[1].q === 'heat') && !!$('.qpop .qresult') && !$('.qpop').hidden);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown' })); await tick(); check('arrow keys choose a result', $('.qi[aria-selected=true]') !== null);
   q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', cancelable: true })); await tick(); await tick();
   check('Enter on a chosen result opens that ticket and closes the preview', !!$('.conv') && $('.qpop').hidden && calls.some(c => c[1] && c[1].action === 'get'));
   check('the ticket tells you who else is looking and typing', /Bo/.test($('[data-collide]').textContent) && /typing/.test($('[data-collide]').textContent) && !$('[data-collide]').hidden); }
-$('[data-mode=reply]').click(); await tick(); $('textarea').value = 'conflict please'; $('[data-reply]').click(); await tick(); await tick();
+$('[data-mode=reply]').click(); await tick(); writeComposer('conflict please'); $('[data-reply]').click(); await tick(); await tick();
 check('a reply that collides asks before sending, and "Send anyway" sends it', !!$('[data-conflict]') && /Sam wrote/.test($('[data-conflict]').textContent) && ($('[data-send-anyway]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'reply' && /conflict/.test(c[1].body) && c[1].force === true)));
-$('textarea').value = 'duplicate confirmation'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+writeComposer('duplicate confirmation');
 check('reply drafts are saved in browser storage while typing', /duplicate confirmation/.test(w.localStorage.getItem('effdesk_draft:o1:u1:7') || ''));
 $('[data-reply]').click(); await tick();
-check('a duplicate-send warning keeps the draft and does not offer a blind resend', $('textarea').value === 'duplicate confirmation' && /draft has been kept/i.test($('[data-conflict]').textContent) && !$('[data-send-anyway]'));
-$('textarea').value = 'network recovery draft'; $('textarea').dispatchEvent(new w.Event('input', { bubbles: true }));
+check('a duplicate-send warning keeps the draft and does not offer a blind resend', composer().textContent === 'duplicate confirmation' && /draft has been kept/i.test($('[data-conflict]').textContent) && !$('[data-send-anyway]'));
+writeComposer('network recovery draft');
 $('[data-reply]').click(); await tick(); await tick();
 const recovery = JSON.parse(w.localStorage.getItem('effdesk_draft:o1:u1:7') || '{}');
-check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && $('textarea').value === 'network recovery draft');
+check('a network failure keeps the full draft and its retry idempotency key in browser storage', recovery.body === 'network recovery draft' && /^[a-f0-9]{32}$/.test(recovery.requestId || '') && composer().textContent === 'network recovery draft');
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '?', bubbles: true })); await tick();
 check('? opens the list of keyboard shortcuts and Escape closes it', !!$('[data-khelp]') && /Search tickets/.test($('[data-khelp]').textContent) && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), !$('[data-khelp]')));
 w.document.body.dispatchEvent(new w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })); check('/ jumps to the search box', w.document.activeElement === q);
@@ -184,13 +186,13 @@ check('new ticket forms offer the On hold status', Array.from($('select[aria-lab
 $('[data-create]').click(); await tick();
 check('a server error is shown to the person', /requester/.test($('.msg').textContent));
 const inp = $$('.desk input[aria-label]'); const by = n => inp.find(i => i.getAttribute('aria-label') === n);
-by('subject').value = 'Leak'; by('requesterEmail').value = 'a@b.co'; $('textarea').value = 'It drips'; $('[data-create]').click(); await tick();
+by('subject').value = 'Leak'; by('requesterEmail').value = 'a@b.co'; writeComposer('It drips'); $('[data-create]').click(); await tick();
 check('a created ticket opens straight away', calls.some(c => c[1] && c[1].action === 'create' && c[1].subject === 'Leak') && /#8/.test($('h2').textContent));
 $('#newbtn').click(); await tick();
 { const na = $('input[data-attach]'); Object.defineProperty(na, 'files', { value: [new w.File(['abc'], 'shot.png', { type: 'image/png' })], configurable: true }); na.dispatchEvent(new w.Event('change')); await tick(40); }
 check('a new ticket can have a file attached before the ticket exists (the upload names no ticket)', calls.some(c => /^\/api\/attachments\?org=o1&name=shot\.png/.test(c[0])) && $$('[data-pending]').length === 1);
-{ const ta = $('textarea'), ev = new w.Event('paste', { bubbles: true, cancelable: true }); Object.defineProperty(ev, 'clipboardData', { value: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => new w.File(['x'], 'image.png', { type: 'image/png' }) }] } }); ta.dispatchEvent(ev); await tick(40); check('pasting a picture into the message attaches it, and the browser does not also paste it', ev.defaultPrevented === true && calls.some(c => /name=pasted-image-\d+\.png/.test(c[0])) && $$('[data-pending]').length === 2); }
-{ const i2 = $$('.desk input[aria-label]'), by2 = n => i2.find(i => i.getAttribute('aria-label') === n); by2('subject').value = 'Pic'; by2('subject').dispatchEvent(new w.Event('input')); by2('requesterEmail').value = 'p@q.co'; by2('requesterEmail').dispatchEvent(new w.Event('input')); $('textarea').value = 'see picture'; $('textarea').dispatchEvent(new w.Event('input')); $('[data-create]').click(); await tick(); }
+{ const ta = $('textarea[aria-label="First message"]'), ev = new w.Event('paste', { bubbles: true, cancelable: true }); Object.defineProperty(ev, 'clipboardData', { value: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => new w.File(['x'], 'image.png', { type: 'image/png' }) }] } }); ta.dispatchEvent(ev); await tick(40); check('pasting a picture into the message attaches it, and the browser does not also paste it', ev.defaultPrevented === true && calls.some(c => /name=pasted-image-\d+\.png/.test(c[0])) && $$('[data-pending]').length === 2); }
+{ const i2 = $$('.desk input[aria-label]'), by2 = n => i2.find(i => i.getAttribute('aria-label') === n); by2('subject').value = 'Pic'; by2('subject').dispatchEvent(new w.Event('input')); by2('requesterEmail').value = 'p@q.co'; by2('requesterEmail').dispatchEvent(new w.Event('input')); writeComposer('see picture'); $('[data-create]').click(); await tick(); }
 check('creating sends the waiting files with the ticket', calls.some(c => c[1] && c[1].action === 'create' && c[1].subject === 'Pic' && c[1].attachmentIds && c[1].attachmentIds.length === 2));
 $('[data-mail]').click(); await tick();
 check('Email settings shows the address to give customers, with the suggestion from the organization name', !!$('[data-mail-save]') && /acme@in\.effdesk\.test/.test($('.desk').textContent) && $('input[aria-label="Support address"]').value === 'acme');
@@ -200,16 +202,16 @@ $('input[aria-label="Reply-to address"]').value = 'help@acme.com'; $('input[aria
 check('saving sends every setting and confirms', calls.some(c => c[1] && c[1].action === 'mail-save' && c[1].replyMode === 'custom' && c[1].replyTo === 'help@acme.com' && c[1].fromName === 'Acme Support' && c[1].inbox === 'acme') && /saved/.test($('.msg').textContent));
 $('input[aria-label="Support address"]').value = 'taken'; $('[data-mail-save]').click(); await tick();
 check('a taken address shows the server\'s reason', /already taken/.test($('.msg').textContent));
-$('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('textarea').value = 'fail now'; $('[data-reply]').click(); await tick();
+$('[data-views]').click(); await tick(); $('.row').click(); await tick(); writeComposer('fail now'); $('[data-reply]').click(); await tick();
 check('if the email could not be sent the agent is told, and the reply is kept', /email could not be sent/.test($('.msg').textContent));
-$('textarea').value = 'limit now'; $('[data-reply]').click(); await tick();
+writeComposer('limit now'); $('[data-reply]').click(); await tick();
 check('if the daily email limit is reached the agent is told why', /email limit/.test($('.msg').textContent));
-$('textarea').value = 'window closed'; $('[data-reply]').click(); await tick(); await tick();
-check('when the WhatsApp window has closed the agent is offered the approved templates and keeps the text', !!$('[data-wa-window]') && !!$('[data-wa-tpl]') && $('textarea').value === 'window closed' && /your visit is/.test($('[data-wa-tpl-body]').textContent) && $$('[data-wa-var]').length === 2);
+writeComposer('window closed'); $('[data-reply]').click(); await tick(); await tick();
+check('when the WhatsApp window has closed the agent is offered the approved templates and keeps the text', !!$('[data-wa-window]') && !!$('[data-wa-tpl]') && composer().textContent === 'window closed' && /your visit is/.test($('[data-wa-tpl-body]').textContent) && $$('[data-wa-var]').length === 2);
 $('[data-wa-var="1"]').value = 'Carla'; $('[data-wa-var="1"]').dispatchEvent(new w.Event('input')); $('[data-wa-var="2"]').value = 'at 9'; $('[data-wa-var="2"]').dispatchEvent(new w.Event('input')); $('[data-wa-tpl-send]').click(); await tick(); await tick();
 check('sending the template posts its name, language and variables and closes the bar', calls.some(c => c[1] && c[1].action === 'whatsapp-template-send' && c[1].name === 'order_update' && c[1].language === 'en_US' && JSON.stringify(c[1].params) === '["Carla","at 9"]') && !$('[data-wa-window]'));
 { const n0 = calls.filter(c => c[1] && c[1].action === 'reply').length;
-  $('[data-views]').click(); await tick(); $('.row').click(); await tick(); $('textarea').value = 'double click'; const rb = $('[data-reply]'); rb.click(); rb.click(); w.document.querySelector('textarea') && w.document.querySelector('textarea').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+  $('[data-views]').click(); await tick(); $('.row').click(); await tick(); writeComposer('double click'); const rb = $('[data-reply]'); rb.click(); rb.click(); composer() && composer().dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
   const locked = $('[data-reply]') && $('[data-reply]').hasAttribute('disabled'); await tick();
   check('a message that is still sending cannot be sent twice, and the button is locked meanwhile', calls.filter(c => c[1] && c[1].action === 'reply').length - n0 === 1 && locked); }
 $('[data-help]').click(); await tick();
@@ -240,7 +242,7 @@ check('merge asks to confirm first, saying what will happen, and sends nothing y
 $('[data-merge-confirm]').click(); await tick();
 check('confirming sends the merge', calls.some(c => c[1] && c[1].action === 'merge' && c[1].number === 7 && c[1].into === 12));
 const mac = $('select[aria-label="Insert a macro"]'); mac.value = '3'; mac.dispatchEvent(new w.Event('change')); await tick();
-check('a macro fills the reply with the requester\'s first name and the agent\'s name', $('.compose textarea').value === 'Thanks, Tina. -ann@acme.test' || /^Thanks, Tina\. -/.test($('.compose textarea').value));
+check('a macro fills the reply with the requester\'s first name and the agent\'s name', composer().textContent === 'Thanks, Tina. -ann@acme.test' || /^Thanks, Tina\. -/.test(composer().textContent));
 const before = calls.length; $('[data-reply]').click(); await tick(40);
 check('sending a macro reply also sets its status, priority and labels', calls.slice(before).some(c => c[1] && c[1].action === 'reply' && c[1].status === 'solved') && calls.slice(before).some(c => c[1] && c[1].action === 'update' && c[1].patch.priority === 'low' && c[1].patch.tags.includes('thanks')));
 check('the right column shows the client with notes and people, the side conversation, and the timeline', /Initech/.test($('.info').textContent) && $('[data-client] textarea').value === 'Pays late' && /Bill/.test($('[data-client]').textContent) && $$('[data-side] .sm-msg').length === 2 && $$('[data-event]').length === 1);
