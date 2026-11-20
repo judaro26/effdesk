@@ -1678,7 +1678,7 @@
         resizeHandle.addEventListener('pointerdown', function (e) {
           if (e.button !== 0) return;
           e.preventDefault();
-          var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height;
+          var startY = e.clientY, startHeight = richEditor.area.getBoundingClientRect().height || replyEditorHeight;
           var move = function (ev) { resizeTo(startHeight - (ev.clientY - startY)); };
           var up = function () {
             doc.removeEventListener('pointermove', move);
@@ -1818,7 +1818,7 @@
       });
       var modeBtn = function (m, label) { return el('button', Object.assign({ type: 'button', role: 'tab', 'data-mode': m, 'aria-selected': String(mode === m), onclick: function () { var ta = main.querySelector('.compose textarea'); if (richEditor) { draft = htmlPlain(richEditor.getHtml()); draftHtml = richEditor.getHtml(); body.value = draft; } else if (ta) draft = ta.value; mode = m; saveTicketDraft(t.number); draw(); } }, permanentlyClosed && m === 'reply' ? { disabled: 'disabled' } : {}), label); };
       var macroSel = macros.length && mode === 'reply' ? sel('Insert a macro', '', [['', 'Insert a macro…']].concat(macros.map(function (m) { return [String(m.id), m.name]; })), function (v) { var m = macros.filter(function (y) { return String(y.id) === v; })[0]; if (!m) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; var first = String(t.requester_name || '').split(' ')[0] || 'there'; draft = (draft ? draft + '\n\n' : '') + m.body.replace(/\{\{\s*name\s*\}\}/g, first).replace(/\{\{\s*agent\s*\}\}/g, meName); macroPatch = { status: m.status, priority: m.priority, add_tags: m.add_tags }; draw(); }) : null;
-      var mentionSel = mode === 'note' && agents.length > 1 ? sel('Mention a teammate', '', [['', '@ Mention a teammate…']].concat(agents.filter(function (a) { return a.id !== meId; }).map(function (a) { return [String(a.email).split('@')[0], a.name || a.email]; })), function (v) { if (!v) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; draft = (draft ? draft + ' ' : '') + '@' + v + ' '; draw(); }) : null;
+      var mentionSel = mode === 'note' && agents.length > 1 ? sel('Mention a teammate', '', [['', '@ Mention a teammate…']].concat(agents.filter(function (a) { return a.id !== meId; }).map(function (a) { return [String(a.email).split('@')[0], a.name || a.email]; })), function (v) { if (!v) return; var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; draft = (draft ? draft + ' ' : '') + '@' + v + ' '; draftHtml = ''; draw(); }) : null;
       var chosen = sendStatus || t.status, statusSel = sel('Choose the status to submit as', chosen, [['open', 'Submit as Open'], ['pending', 'Submit as Pending'], ['on_hold', 'Submit as On hold'], ['solved', 'Submit as Solved']], function (v) { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; sendStatus = v === t.status ? '' : v; draw(); });
       var aiBar = has('ai_assist') ? el('div', { class: 'aibar', role: 'group', 'aria-label': 'AI assist' },
         mode === 'reply' ? aiBtn('✦ Suggest a reply', 'suggest', function () { var ta = main.querySelector('.compose textarea'); if (ta) draft = ta.value; aiRun('suggest', 'ai-suggest', {}, function (b) { draft = (draft ? draft + '\n\n' : '') + b.text; }); }) : null,
@@ -2165,7 +2165,7 @@
       if (!dash) return el('div', { class: 'page wide dash-page' }, el('h2', {}, 'Workspace overview'), el('p', { class: 'm' }, 'Loading your workspace…'));
       var c = dash.counts || {}, first = (meName || '').split(' ')[0] || 'there', hr = new Date().getHours();
       var hello = (hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening') + ', ' + first;
-      var go = function (f) { return function () { closePanes(); filter = f; refresh(); }; };
+      var go = function (f) { return function () { closePanes(); var next = Object.assign({}, f); if (!next.columnFilters) next.columnFilters = Object.assign({}, filter.columnFilters || {}); filter = next; refresh(); }; };
       var metric = function (label, value, sub, f, tone, data) {
         var node = f ? el('button', { type: 'button', class: 'dash-metric ' + (tone || ''), onclick: go(f) },
           el('span', { class: 'dash-metric-label' }, label),
