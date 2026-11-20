@@ -301,7 +301,7 @@ $('[data-manage-tab=queues]').click(); await tick();
 check('Manage lists the queues and lets an admin add one', !!$('[data-queue-item="5"]') && ($('input[aria-label="Queue name"]').value = 'Billing', $('[data-queue-save]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'queue-save' && c[1].name === 'Billing')));
 $('[data-manage-tab=macros]').click(); await tick(); $('input[aria-label="Macro name"]').value = 'Hello'; $('textarea[aria-label="Macro text"]').value = 'Hi {{name}}'; $('[data-macro-save]').click(); await tick();
 check('a macro is saved with its text, status, priority and labels', calls.some(c => c[1] && c[1].action === 'macro-save' && c[1].name === 'Hello' && c[1].body === 'Hi {{name}}' && 'status' in c[1] && 'addTags' in c[1]));
-$('[data-manage-tab=clients]').click(); await tick(); $('input[aria-label="Client name"]').value = 'Hooli'; $('input[aria-label="Client domain"]').value = 'hooli.com'; $('[data-client-save]').click(); await tick();
+$('[data-manage-tab=clients]').click(); await tick(); $('input[aria-label="Company name"]').value = 'Hooli'; $('input[aria-label="Company email domain"]').value = 'hooli.com'; $('[data-client-save]').click(); await tick();
 check('a client is saved with its domain', calls.some(c => c[1] && c[1].action === 'client-save' && c[1].name === 'Hooli' && c[1].domain === 'hooli.com'));
 
 // profile menu and themes
