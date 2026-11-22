@@ -618,8 +618,8 @@ html{-webkit-text-size-adjust:100%}
 .ticket-column-head select:focus,.ticket-column-head input:focus,.ticket-column-head .updated-date-filter button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:1px;border-color:var(--accent)}
 .ticket-column-head .updated-date-filter button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .ticket-table tbody tr:first-child td{border-top:0}
-.ticket-table tbody tr.ticket-unopened td{font-weight:750}
-.ticket-table tbody tr.ticket-unopened td .m{font-weight:650}
+.ticket-table tbody tr.ticket-unopened td,.ticket-table tbody tr.ticket-unopened td *{font-weight:800!important}
+.ticket-table tbody tr.ticket-unopened td .m{font-weight:700!important}
 .ticket-viewers{display:grid;gap:10px}
 .ticket-viewer-row{display:flex;align-items:center;gap:9px;min-width:0}
 .ticket-viewer-copy{display:grid;gap:2px;min-width:0}
