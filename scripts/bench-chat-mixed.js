@@ -106,7 +106,7 @@ try {
   for (const orgId of orgIds) {
     const org=(await pool.query('select slug from "organization" where id=$1',[orgId])).rows[0];
     if(!org?.slug) throw new Error('Missing seeded staging workspace slug for '+orgId);
-    const chat=await withOrg(pool,orgId,async c=>(await c.query("select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') order by id limit 1",[orgId])).rows[0]||null);
+    const chat=await withOrg(pool,orgId,async c=>(await c.query("select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') and chat_number is not null order by id limit 1",[orgId])).rows[0]||null);
     if(!chat?.chat_number) throw new Error('No active synthetic visitor conversation found for '+orgId+'; rerun the staging seeder.');
     targets.push({orgId,slug:org.slug,number:Number(chat.chat_number),token:chatToken(syntheticEnv,orgId,chat.chat_number)});
   }
