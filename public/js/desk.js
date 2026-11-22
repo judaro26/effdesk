@@ -1563,7 +1563,7 @@
       };
       var shownColumns = ticketColumns.filter(function (k) { return columnDefs[k] && (k !== 'sla' || has('sla')); });
       var rows = list.map(function (t) {
-        var unopened = t.has_been_viewed !== true;
+        var unopened = t.has_been_viewed === false;
         var tr = el('tr', { class: 'row' + (unopened ? ' ticket-unopened' : ''), tabindex: '0', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number), title: unopened ? 'Not yet opened by an agent' : '' });
         if (has('bulk_actions')) tr.appendChild(el('td', { class: 'pick' }, pickBox(t.number)));
         shownColumns.forEach(function (k) { var d = columnDefs[k]; tr.appendChild(el('td', { class: d.cls }, d.cell(t))); });
