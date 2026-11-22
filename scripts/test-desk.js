@@ -29,6 +29,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'sla-save') return ok({ ok: true });
   if (b.action === 'sla-hours-get') return ok({ ok: true, hours: { enabled: false, tz: 'UTC', schedule: {} } });
   if (b.action === 'sla-hours-save') return b.schedule && Object.keys(b.schedule).length ? ok({ ok: true, hours: { enabled: b.enabled, tz: b.tz, schedule: b.schedule } }) : { ok: false, status: 400, json: async () => ({ error: 'Choose at least one working day' }) };
+  if (b.action === 'lifecycle-get') return ok({ ok: true, policy: { autoCloseEnabled: false, autoCloseDays: 4, customerReminderEnabled: false, customerReminderHours: 48, customerReminderRepeatHours: 72, agentReminderEnabled: false, agentReminderHours: 24, agentReminderRepeatHours: 48, reopenEnabled: false, reopenAfterDays: 14, permanentCloseEnabled: false, permanentCloseDays: 30 } });
   if (b.action === 'rules-list') return ok({ ok: true, rules: [{ id: 8, name: 'Refunds are urgent', event: 'created', conditions: [{ field: 'subject', op: 'contains', value: 'refund' }], actions: [{ type: 'set_priority', value: 'urgent' }], once: true, active: true }] });
   if (b.action === 'rule-save') return b.name ? ok({ ok: true, id: 9 }) : { ok: false, status: 400, json: async () => ({ error: 'Give the rule a name.' }) };
   if (b.action === 'agent-detail') return ok({ ok: true, person: { userId: b.userId, name: 'Ann', email: 'ann@acme.test', role: 'member' }, can: { level: 'custom', text: 'Custom role: Tier 1', perms: ['reply'] }, counts: { open: 2, pending: 1, solved30: 9 }, week: { replies: 4, notes: 1 }, tickets: [{ number: 7, subject: 'Leak', status: 'open' }], activity: [{ number: 7, kind: 'agent', at: new Date().toISOString(), snippet: 'On our way' }], changes: [] });
@@ -307,6 +308,7 @@ check('a client is saved with its domain', calls.some(c => c[1] && c[1].action =
 // profile menu and themes
 check('the profile chip is a button that opens a menu, and Escape closes it', $('#userbtn').tagName === 'BUTTON' && $('#usermenu').hidden === true && ($('#userbtn').click(), $('#usermenu').hidden === false && $('#userbtn').getAttribute('aria-expanded') === 'true' && !!$('[data-signout]') && $('[data-account]').getAttribute('href') === '/app.html' && (w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' })), $('#usermenu').hidden === true)));
 $('#userbtn').click(); $('[data-profile]').click(); await tick();
+console.log('[desk-test-trace] theme picker snapshot:', JSON.stringify({ count: $$('[data-theme-id]').length, classicPressed: $('[data-theme-id=classic]') && $('[data-theme-id=classic]').getAttribute('aria-pressed'), menuHidden: $('#usermenu').hidden, proCount: $$('.theme .pro').length, themeIds: $$('[data-theme-id]').map(x => x.getAttribute('data-theme-id')) }));
 check('"Profile and themes" shows all ten themes with the current one marked, and the menu closes', $('[data-theme-id]').length === 10 && $('[data-theme-id=classic]').getAttribute('aria-pressed') === 'true' && $('#usermenu').hidden === true && $$('.theme .pro').length === 7);
 $('[data-theme-id=aurora]').click(); await tick();
 check('choosing a theme applies it at once, saves it, and remembers it for the next visit', w.document.documentElement.getAttribute('data-theme') === 'aurora' && calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].theme === 'aurora') && w.localStorage.getItem('eff_theme') === 'aurora');
@@ -366,7 +368,7 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   X('[data-avatar-remove]').click(); await tick(); check('a picture can be removed', calls.some(c => c[1] && c[1].action === 'prefs-save' && c[1].avatar === null));
   X('[data-nav]').click(); await tick();
   check('with bulk actions each ticket has a checkbox, and nothing shows until one is ticked', !!X('[data-pick="7"]') && !!X('[data-pick-all]') && !X('[data-bulk]'));
-  X('[data-pick="7"]').click(); await tick(); check('ticking a ticket shows the bulk bar with the count', /1 ticket selected/.test(X('[data-bulk]').textContent));
+  X('[data-pick="7"]').click(); await tick(); check('ticking a ticket shows the bulk bar with the count', X('[data-bulk]') !== null && X('[data-bulk] .bulk-count')?.textContent === '1' && /ticket selected/.test(X('[data-bulk] .bulk-summary').textContent));
   const bs = X('select[aria-label="Set priority for the selected tickets"]'); bs.value = 'urgent'; bs.dispatchEvent(new xw.Event('change')); await tick(20);
   check('a bulk change sends the chosen tickets and the change, then clears the choice', calls.some(c => c[1] && c[1].action === 'bulk' && c[1].numbers[0] === 7 && c[1].patch.priority === 'urgent') && !X('[data-bulk]') && /1 ticket\(s\) updated/.test(X('.msg').textContent));
   X('.row').click(); await tick(); X('[data-mode=note]').click(); await tick();
