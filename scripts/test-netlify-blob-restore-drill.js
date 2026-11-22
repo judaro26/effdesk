@@ -40,10 +40,27 @@ try {
     async set(key, bytes) { values.set(key, Buffer.from(bytes)); },
     async delete(key) { values.delete(key); }
   };
-  const result = await restoreAndVerifySnapshot(store, root);
+  let appVerificationCalled = false;
+  const result = await restoreAndVerifySnapshot(store, root, {
+    verifyApplication: async ({ manifest: restoredManifest, verified, totalBytes }) => {
+      assert.equal(values.size, 2, 'application verification must run while restored objects are present');
+      assert.equal(restoredManifest.count, 2);
+      assert.equal(verified, 2);
+      assert.equal(totalBytes, manifest.totalBytes);
+      appVerificationCalled = true;
+      return { ok: true };
+    }
+  });
   assert.equal(result.restored, 2);
   assert.equal(result.totalBytes, manifest.totalBytes);
+  assert.deepEqual(result.application, { ok: true });
+  assert.equal(appVerificationCalled, true, 'application verification callback must run after blob read-back');
   assert.equal(values.size, 0, 'successful drill must clean up test objects');
+
+  await assert.rejects(() => restoreAndVerifySnapshot(store, root, {
+    verifyApplication: async () => { throw new Error('application route verification failed'); }
+  }), /application route verification failed/);
+  assert.equal(values.size, 0, 'application verification failure must still clean up restored objects');
 
   const corruptingStore = {
     async get(key) { return values.has(key) ? values.get(key) : null; },
