@@ -507,7 +507,7 @@ export async function chatApi(req, { pool, mailer, store, env = process.env, now
   const slug = u.searchParams.get('org') || '';
   try {
     // This endpoint exposes only public widget presentation/availability settings. The embed script calls it from the customer's site, so it must be readable cross-origin.
-    if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
+    if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug, now); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
     if (act === 'poll' && req.method === 'GET') { const tokenKey=crypto.createHash('sha256').update(String(u.searchParams.get('t')||'')).digest('hex').slice(0,32); if (await tooMany(pool, 'p' + tokenKey, now, 60) || await tooMany(pool, 'pip' + ip, now, 1200)) return json(429, { error: 'Slow down.' }); const r = await pollChat(pool, env, slug, u.searchParams.get('n'), u.searchParams.get('t'), u.searchParams.get('after')); return json(r.ok ? 200 : r.status, r); }
     if (act === 'file' && req.method === 'GET') {
       const x=await liveOrg(pool,slug),number=Number(u.searchParams.get('n'))||0,token=u.searchParams.get('t')||'',id=u.searchParams.get('id')||'';
