@@ -106,7 +106,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
         from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
       ), ticket_page as (
-        select ${ticketCols}, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
+        select ${ticketCols}, exists(select 1 from ticket_views tv where tv.org_id=tickets.org_id and tv.ticket_id=tickets.id) as has_been_viewed, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
         limit ${cursorMode ? limit + 1 : limit} offset ${offset}
@@ -122,6 +122,29 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     const last = rows[rows.length - 1];
     const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.cursor_updated_at, id: Number(last.id) })).toString('base64url') : null;
     return { ok: true, tickets: rows.map(({ cursor_updated_at, ...ticket }) => ticket), counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
+  });
+}
+
+// Record one agent's ticket-view summary. Repeated opens update the last-viewed time
+// and count while retaining the first-viewed timestamp for the audit trail.
+export async function recordTicketView(pool, orgId, ticketNumber, actor) {
+  if (!actor || !actor.id) return fail('An agent identity is required to record a ticket view.', 400);
+  return withOrg(pool, orgId, async c => {
+    const ticket = (await c.query('select id from tickets where org_id=$1 and number=$2', [orgId, Number(ticketNumber) || 0])).rows[0];
+    if (!ticket) return fail('No such ticket.', 404);
+    await c.query(`
+      insert into ticket_views (org_id,ticket_id,user_id,agent_name,agent_email)
+      values ($1,$2,$3,$4,$5)
+      on conflict (org_id,ticket_id,user_id) do update
+      set agent_name=excluded.agent_name, agent_email=excluded.agent_email,
+          last_viewed_at=now(), view_count=ticket_views.view_count+1
+    `, [orgId, ticket.id, String(actor.id), clean(actor.name, 100), clean(actor.email, 254)]);
+    const viewers = (await c.query(`
+      select user_id,agent_name,agent_email,first_viewed_at,last_viewed_at,view_count
+      from ticket_views where org_id=$1 and ticket_id=$2
+      order by last_viewed_at desc, first_viewed_at asc
+    `, [orgId, ticket.id])).rows;
+    return { ok: true, viewers };
   });
 }
 
