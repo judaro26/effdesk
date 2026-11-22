@@ -44,7 +44,7 @@ export async function saveSettings(pool, orgId, input) {
     const slug = (await pool.query('select slug from "organization" where id=$1', [orgId])).rows[0]?.slug;
     if (!slug) return fail('Workspace not found.', 404);
     logoUrl = '/help/' + slug + '/img/' + logoAssetId;
-  } else if (logoUrl) {
+  } else if (logoUrl && !/^\\/help\\/[a-z0-9-]+\\/img\\/[a-f0-9-]{36}$/.test(logoUrl)) {
     try { const u = new URL(logoUrl); if (u.protocol !== 'https:' || u.username || u.password) return fail('Logo URL must be a secure HTTPS image address.'); }
     catch { return fail('Enter a valid HTTPS logo address, or upload a logo image.'); }
   }
