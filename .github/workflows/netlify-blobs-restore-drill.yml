@@ -32,6 +32,9 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
+      - name: Test isolated restore safety and cleanup
+        run: node scripts/test-netlify-blob-restore-drill.js
+
   restore:
     if: github.event_name == 'workflow_dispatch'
     needs: test
@@ -49,9 +52,6 @@ jobs:
 
       - name: Install application dependencies
         run: npm ci
-
-      - name: Test isolated restore safety and cleanup
-        run: node scripts/test-netlify-blob-restore-drill.js
 
       - name: Install restore utilities
         run: |
