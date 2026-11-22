@@ -68,7 +68,7 @@ try {
         // Older seeded databases may have no active visitor chats left. Reconcile
         // one deterministic active synthetic conversation without touching history.
         const activeChats = await client.query(
-          "select count(*)::int as count from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold')",
+          "select count(*)::int as count from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') and chat_number is not null",
           [orgId]
         );
         if (Number(activeChats.rows[0]?.count || 0) === 0) {
