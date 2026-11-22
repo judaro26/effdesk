@@ -1854,6 +1854,17 @@
         el('div', { class: 'compose' }, resizeHandle, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed || (chatConversationOpen && ['closed','solved'].indexOf(t.status) >= 0)), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
+      if (!chatConversationOpen) {
+        var ticketViewers = Array.isArray(t.viewers) ? t.viewers : [];
+        cards.push(el('h3', {}, 'Viewed by'));
+        cards.push(el('div', { class: 'pcard ticket-viewers' }, ticketViewers.length ? ticketViewers.map(function (v) {
+          return el('div', { class: 'ticket-viewer-row' },
+            el('span', { class: 'av sm' }, initial(v.agent_name || v.agent_email || 'A')),
+            el('span', { class: 'ticket-viewer-copy' },
+              el('strong', {}, v.agent_name || v.agent_email || 'Agent'),
+              el('small', {}, 'Last opened ' + when(v.last_viewed_at) + ' · ' + Number(v.view_count || 1) + (Number(v.view_count || 1) === 1 ? ' view' : ' views'))));
+        }) : [el('span', { class: 'm' }, 'No agent views recorded yet.')]));
+      }
       var provenance=t.provenance||{}, visitorUa=String(provenance.user_agent||''), visitorBrowser=/Edg\//.test(visitorUa)?'Microsoft Edge':/Firefox\//.test(visitorUa)?'Firefox':/Chrome\//.test(visitorUa)?'Google Chrome':/Safari\//.test(visitorUa)&&!/Chrome\//.test(visitorUa)?'Safari':'Unknown browser', visitorOs=/iPhone|iPad|iPod/.test(visitorUa)?'iOS':/Android/.test(visitorUa)?'Android':/Windows NT/.test(visitorUa)?'Windows':/Mac OS X/.test(visitorUa)?'macOS':/Linux/.test(visitorUa)?'Linux':'Unknown operating system', visitorDevice=/iPad|Tablet/.test(visitorUa)?'Tablet':/Mobi|iPhone|Android/.test(visitorUa)?'Mobile':'Desktop', visitorPage='Not provided', visitorSite='Not available'; try{if(provenance.page_url){var visitorUrl=new URL(provenance.page_url);visitorPage=visitorUrl.pathname+visitorUrl.search;visitorSite=visitorUrl.hostname;}}catch(e){} var visitorLatRaw = provenance.latitude ?? provenance.lat, visitorLonRaw = provenance.longitude ?? provenance.lon ?? provenance.lng;
       var visitorLat = Number(visitorLatRaw), visitorLon = Number(visitorLonRaw);
       var hasVisitorCoords = visitorLatRaw !== undefined && visitorLatRaw !== null && visitorLatRaw !== '' && visitorLonRaw !== undefined && visitorLonRaw !== null && visitorLonRaw !== '' && Number.isFinite(visitorLat) && Number.isFinite(visitorLon) && Math.abs(visitorLat) <= 90 && Math.abs(visitorLon) <= 180;
