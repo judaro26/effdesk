@@ -22,7 +22,7 @@ function validate() {
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname.toLowerCase().endsWith('.neon.tech') || !url.hostname.toLowerCase().includes('-pooler')) {
     throw new Error('Refusing to seed: use a pooled Neon connection string.');
   }
-  const migrationDbName = decodeURIComponent(migrationUrl.pathname.replace(/^\\//, '')).toLowerCase();
+  const migrationDbName = decodeURIComponent(migrationUrl.pathname.replace(/^\//, '')).toLowerCase();
   const normalizedHost = host => host.toLowerCase().replace('-pooler.', '.');
   if (!['postgres:', 'postgresql:'].includes(migrationUrl.protocol) || !migrationUrl.hostname.toLowerCase().endsWith('.neon.tech')) throw new Error('Refusing to migrate: STAGING_MIGRATION_DATABASE_URL must be a Neon PostgreSQL URL.');
   if (migrationDbName !== dbName || normalizedHost(migrationUrl.hostname) !== normalizedHost(url.hostname)) throw new Error('Refusing to seed: runtime and migration URLs must target the same Neon staging project and database.');
