@@ -69,7 +69,7 @@ export async function verifyRestoredAttachmentThroughApp(store, manifest) {
       'http://localhost/api/attachments/' + attachmentId + '?org=not-a-member'
     ), deps);
     assert.equal(wrongTenant.status, 403, 'application download must still enforce tenant membership');
-    return { bytes: downloaded.length, sourceKey: source.key };
+    return { bytes: downloaded.length };
   } finally {
     if (canaryKey) await store.delete(canaryKey).catch(() => {});
     await pool.end();
