@@ -27,6 +27,9 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
+      - name: Test isolated restore safety and cleanup
+        run: node scripts/test-netlify-blob-restore-drill.js
+
       - name: Install restore utilities
         run: |
           set -euo pipefail
