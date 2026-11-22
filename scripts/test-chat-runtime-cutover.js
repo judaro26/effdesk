@@ -43,10 +43,10 @@ const contactRow=contact.body.number?(await pool.query('select status,source,ass
 check('admins can save weekly hours, a holiday calendar, time zone and after-hours message',scheduleSaved.status===200&&scheduleSaved.body.settings.availability_holidays[0].label==='Workspace holiday');
 check('the public config switches to contact-form mode during a holiday closure',closedConfig.body.enabled===true&&closedConfig.body.scheduleOpen===false&&closedConfig.body.afterHoursMessage==='We are closed for the holiday.');
 check('after-hours contact submissions enter the pending queue without automatic assignment',contact.status===200&&contactRow?.status==='pending'&&contactRow?.source==='widget_contact'&&!contactRow?.assignee_id&&/^Contact request:/.test(contactRow?.subject||''));
-await A(olivia,'chat-save',{availabilityEnabled:true,availabilityTimezone:'America/Los_Angeles',weeklyHours:closedHours,availabilityHolidays:[{date:'2026-11-22',label:'Workspace holiday'}],afterHoursMode:'hide'});
+const hideSaved=await A(olivia,'chat-save',{availabilityEnabled:true,availabilityTimezone:'America/Los_Angeles',weeklyHours:closedHours,availabilityHolidays:[{date:'2026-11-22',label:'Workspace holiday'}],afterHoursMode:'hide'});
 const hiddenConfig=await C('GET','/api/chat/config?org=acme',null,'8.8.4.4',Date.parse('2026-11-22T20:00:00Z'));
 const hiddenStart=await C('POST','/api/chat/start?org=acme',{name:'Blocked',email:'blocked@example.test',message:'Should not be accepted'},'9.9.4.4',Date.parse('2026-11-22T20:00:00Z'));
-check('hide mode removes the widget and the server rejects after-hours starts',hiddenConfig.body.enabled===false&&hiddenStart.status===403);
+check('partial schedule updates preserve the enabled widget while hide mode blocks after-hours starts',hideSaved.body.settings.enabled===true&&hiddenConfig.body.enabled===false&&hiddenStart.status===403);
 await A(olivia,'chat-save',{availabilityEnabled:false,afterHoursMode:'contact_form'});
 check('a visitor must supply a valid email and first message',(await C('POST','/api/chat/start?org=acme',{email:'bad',message:'Hi'})).status===400&&(await C('POST','/api/chat/start?org=acme',{email:'v@x.co',message:''})).status===400);
 const ticketCountBefore=Number((await pool.query("select count(*)::int n from tickets where org_id=$1",[acme.id])).rows[0].n);
