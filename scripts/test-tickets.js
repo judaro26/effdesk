@@ -35,6 +35,9 @@ const betaTicketId = (await pool.query('select id from tickets where org_id = $1
 let crossMessageRejected = false;
 try { await withOrg(pool, acme.id, c => c.query("insert into ticket_messages (org_id,ticket_id,kind,body) values ($1,$2,'note','cross-tenant')", [acme.id, betaTicketId])); } catch { crossMessageRejected = true; }
 check('the database rejects a message in one tenant that references another tenant ticket', crossMessageRejected);
+let crossViewRejected = false;
+try { await withOrg(pool, acme.id, c => c.query("insert into ticket_views (org_id,ticket_id,user_id) values ($1,$2,$3)", [acme.id, betaTicketId, 'cross-tenant-agent'])); } catch { crossViewRejected = true; }
+check('the database rejects a ticket-view record that points across organizations', crossViewRejected);
 const unopenedBefore = (await call(olivia, { orgId: acme.id, action: 'list' })).body.tickets.find(x => x.number === 1);
 check('new tickets are marked unopened until an agent views them', unopenedBefore && unopenedBefore.has_been_viewed === false);
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
