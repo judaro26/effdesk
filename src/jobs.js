@@ -69,17 +69,21 @@ export async function completeJob(pool, orgId, jobId, workerId) {
   )).rowCount === 1);
 }
 
-export async function failJob(pool, orgId, jobId, workerId, error, { retryDelayMs } = {}) {
+export async function failJob(pool, orgId, jobId, workerId, error, { retryDelayMs, randomFn = Math.random } = {}) {
   return withOrg(pool, orgId, async db => {
     const prior = (await db.query("select attempts,max_attempts from background_jobs where org_id=$1 and id=$2 and status='running' and locked_by=$3 for update", [orgId, jobId, String(workerId)])).rows[0];
     if (!prior) return { updated: false, status: 'stale' };
     const terminal = Number(prior.attempts) >= Number(prior.max_attempts);
-    const delay = Number.isFinite(Number(retryDelayMs)) ? Math.max(0, Number(retryDelayMs)) : Math.min(3600000, 5000 * (2 ** Math.max(0, Number(prior.attempts) - 1)));
+    const baseDelay = Math.min(3600000, 5000 * (2 ** Math.max(0, Number(prior.attempts) - 1)));
+    // Full jitter in the upper half of the exponential window spreads retries
+    // from many tenants/providers instead of creating synchronized retry waves.
+    const sample = Math.max(0, Math.min(1, Number(randomFn()) || 0));
+    const delay = Number.isFinite(Number(retryDelayMs)) ? Math.max(0, Number(retryDelayMs)) : Math.floor(baseDelay * (0.5 + sample * 0.5));
     const result = await db.query(
       "update background_jobs set status=$4, run_at=case when $4='queued' then now()+($5::int * interval '1 millisecond') else run_at end, locked_at=null, locked_by=null, last_error=$6, updated_at=now() where org_id=$1 and id=$2 and status='running' and locked_by=$3 returning status,attempts",
       [orgId, jobId, String(workerId), terminal ? 'failed' : 'queued', Math.min(3600000, delay), String(error && error.message || error || 'Unknown background job error').slice(0, 2000)]
     );
-    return result.rows[0] ? { updated: true, status: result.rows[0].status, attempts: result.rows[0].attempts } : { updated: false, status: 'stale' };
+    return result.rows[0] ? { updated: true, status: result.rows[0].status, attempts: result.rows[0].attempts, retryDelayMs: result.rows[0].status === 'queued' ? delay : null } : { updated: false, status: 'stale' };
   });
 }
 

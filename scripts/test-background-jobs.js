@@ -41,6 +41,13 @@ const retryTwo = (await claimJobs(pool, acme.id, workerB, { limit: 5 })).find(x 
 const failedFinal = await failJob(pool, acme.id, retry.id, workerB, new Error('provider still unavailable'), { retryDelayMs: 0 });
 check('failed jobs are rescheduled and become terminal after the configured attempt limit', !!retryOne && failedOnce.status === 'queued' && !!retryTwo && retryTwo.attempts === 2 && failedFinal.status === 'failed');
 
+const jitterLow = await enqueueJob(pool, acme.id, { type: 'test.jitter', payload: {}, idempotencyKey: 'jitter-low' });
+const jitterHigh = await enqueueJob(pool, acme.id, { type: 'test.jitter', payload: {}, idempotencyKey: 'jitter-high' });
+const jitterClaims = await claimJobs(pool, acme.id, workerA, { limit: 2 });
+const lowRetry = await failJob(pool, acme.id, jitterLow.id, workerA, new Error('temporary'), { randomFn: () => 0 });
+const highRetry = await failJob(pool, acme.id, jitterHigh.id, workerA, new Error('temporary'), { randomFn: () => 1 });
+check('automatic retry delays use bounded jitter to disperse synchronized retry waves', jitterClaims.length === 2 && lowRetry.retryDelayMs === 2500 && highRetry.retryDelayMs === 5000 && lowRetry.retryDelayMs < highRetry.retryDelayMs);
+
 const leased = await enqueueJob(pool, acme.id, { type: 'test.lease', payload: {}, idempotencyKey: 'lease-recovery' });
 const leaseStart = Date.now();
 const oldLease = await claimJobs(pool, acme.id, workerA, { limit: 1, now: leaseStart, leaseMs: 1000 });
