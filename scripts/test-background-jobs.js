@@ -84,5 +84,6 @@ const fairnessTenants = [];
 const fairness = await runJobs(pool, { 'test.fairness': async orgId => { fairnessTenants.push(orgId); } }, { batchSize: 2, workerId: 'fair-worker' });
 check('the worker gives separate tenants a turn before taking a second job from a busy tenant', fairness.claimed === 2 && new Set(fairnessTenants).size === 2 && fairness.tenantsProcessed === 2 && fairness.maxJobsPerTenant === 1);
 check('worker run summaries expose tenant coverage and per-tenant batch concentration', fairness.organizationsVisited >= 2 && fairness.succeeded === 2);
+check('worker run summaries include elapsed execution time for operational telemetry', Number.isFinite(fairness.durationMs) && fairness.durationMs >= 0);
 
 await pool.end(); done();
