@@ -338,7 +338,7 @@ $('[data-translate]').click(); await tick(40);
 check('Translate uses the browser\'s on-device translator and shows the result under the message, saying so', /^\[es>en\] /.test($('[data-translated]').textContent.replace(/^Translated[^\[]*/, '')) && /on this device/.test($('[data-translated]').textContent));
 { const nt = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), nw = nt.window; nw.__EFFDESK_TEST__ = true; nw.eval(pub('js/desk.js'));
   await nw.EffDeskDesk.start(nw.document, fetchFn, { search: '?org=o1&ticket=7', go() {} }); await tick(40); const n0 = calls.length; nw.document.querySelector('[data-translate]').click(); await tick();
-  check('without a translator in the browser the agent is told why, and nothing is sent anywhere', /cannot translate on the device/.test(nw.document.querySelector('.msg').textContent) && calls.length === n0); }
+  check('without a translator in the browser the agent is told why, and nothing is sent anywhere', /cannot translate on the device/.test(nw.document.querySelector('.msg.toast')?.textContent || '') && calls.length === n0); }
 $('[data-reports]').click(); await tick();
 check('Reports shows the headline numbers, the daily chart and the breakdowns', $$('.stat').length === 5 && /12/.test($('.stat').textContent) && /2 h 5 min|2.1 h/.test($$('.stat')[2].textContent) && /80%/.test($$('.stat')[4].textContent) && $$('.chart .day').length === 2 && $$('.hbar').length >= 6 && /Maintenance/.test($('.rgrid').textContent));
 const rng = $('select[aria-label="Report range"]'); rng.value = '90'; rng.dispatchEvent(new w.Event('change')); await tick();
