@@ -33,8 +33,9 @@ export async function getSettings(pool, orgId) {
   return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket, availability_enabled, availability_timezone, weekly_hours, availability_holidays, after_hours_mode, after_hours_message from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
 }
 export async function saveSettings(pool, orgId, input) {
-  const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : DEFAULTS.color, title = clean(input.title, 60) || DEFAULTS.title, greeting = clean(input.greeting, 300) || DEFAULTS.greeting, enabled = input.enabled === true;
-  let logoUrl = clean(input.logoUrl, 500);
+  const priorSettings = await getSettings(pool, orgId);
+  const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : (priorSettings.color || DEFAULTS.color), title = clean(input.title, 60) || priorSettings.title || DEFAULTS.title, greeting = clean(input.greeting, 300) || priorSettings.greeting || DEFAULTS.greeting, enabled = input.enabled === undefined ? priorSettings.enabled === true : input.enabled === true;
+  let logoUrl = input.logoUrl === undefined ? (priorSettings.logo_url || '') : clean(input.logoUrl, 500);
   const logoAssetId = clean(input.logoAssetId, 64);
   if (logoAssetId) {
     if (!/^[a-f0-9-]{36}$/i.test(logoAssetId)) return fail('Choose a valid uploaded logo.');
@@ -43,16 +44,15 @@ export async function saveSettings(pool, orgId, input) {
     const slug = (await pool.query('select slug from "organization" where id=$1', [orgId])).rows[0]?.slug;
     if (!slug) return fail('Workspace not found.', 404);
     logoUrl = '/help/' + slug + '/img/' + logoAssetId;
-  } else if (logoUrl) {
+  } else if (logoUrl && !/^\/help\/[a-z0-9-]+\/img\/[a-f0-9-]{36}$/.test(logoUrl)) {
     try { const u = new URL(logoUrl); if (u.protocol !== 'https:' || u.username || u.password) return fail('Logo URL must be a secure HTTPS image address.'); }
     catch { return fail('Enter a valid HTTPS logo address, or upload a logo image.'); }
   }
-  const maxConcurrent = input.maxConcurrent === undefined ? DEFAULTS.max_concurrent : Number(input.maxConcurrent);
-  const autoResolveHours = input.autoResolveHours === undefined ? DEFAULTS.auto_resolve_hours : Number(input.autoResolveHours);
-  const reuseDays = input.reuseDays === undefined ? DEFAULTS.reuse_days : Number(input.reuseDays);
-  const restartCooldownSeconds = input.restartCooldownSeconds === undefined ? DEFAULTS.restart_cooldown_seconds : Number(input.restartCooldownSeconds);
-  const autoConvertToTicket = input.autoConvertToTicket === undefined ? (await getSettings(pool, orgId)).auto_convert_to_ticket === true : input.autoConvertToTicket === true;
-  const priorSettings = await getSettings(pool, orgId);
+  const maxConcurrent = input.maxConcurrent === undefined ? Number(priorSettings.max_concurrent ?? DEFAULTS.max_concurrent) : Number(input.maxConcurrent);
+  const autoResolveHours = input.autoResolveHours === undefined ? Number(priorSettings.auto_resolve_hours ?? DEFAULTS.auto_resolve_hours) : Number(input.autoResolveHours);
+  const reuseDays = input.reuseDays === undefined ? Number(priorSettings.reuse_days ?? DEFAULTS.reuse_days) : Number(input.reuseDays);
+  const restartCooldownSeconds = input.restartCooldownSeconds === undefined ? Number(priorSettings.restart_cooldown_seconds ?? DEFAULTS.restart_cooldown_seconds) : Number(input.restartCooldownSeconds);
+  const autoConvertToTicket = input.autoConvertToTicket === undefined ? priorSettings.auto_convert_to_ticket === true : input.autoConvertToTicket === true;
   const checkedHours = validateChatHours({ availabilityEnabled: input.availabilityEnabled === undefined ? priorSettings.availability_enabled : input.availabilityEnabled, availabilityTimezone: input.availabilityTimezone === undefined ? priorSettings.availability_timezone : input.availabilityTimezone, weeklyHours: input.weeklyHours === undefined ? priorSettings.weekly_hours : input.weeklyHours, availabilityHolidays: input.availabilityHolidays === undefined ? priorSettings.availability_holidays : input.availabilityHolidays, afterHoursMode: input.afterHoursMode === undefined ? priorSettings.after_hours_mode : input.afterHoursMode, afterHoursMessage: input.afterHoursMessage === undefined ? priorSettings.after_hours_message : input.afterHoursMessage });
   if (!checkedHours.ok) return fail(checkedHours.error);
   if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 10) return fail('Maximum simultaneous chats must be a whole number from 1 to 10.');
