@@ -7,6 +7,7 @@ import { verifySnapshot, restoreSnapshot } from './restore-blobs.js';
 
 export async function restoreAndVerifySnapshot(store, directory) {
   const { manifest, verified, totalBytes } = await verifySnapshot(directory);
+  if (verified < 1) throw new Error('Blob restore drill requires at least one object to prove live write/read-back.');
   // Require an empty destination so cleanup cannot erase pre-existing data.
   for (const entry of manifest.entries) {
     const existing = await store.get(entry.key, { type: 'arrayBuffer' });
