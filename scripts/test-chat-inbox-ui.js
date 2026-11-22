@@ -47,6 +47,7 @@ check('agent conversation headers show local conversation start and last-update 
 check('agent message bubbles and conversation timeline show local send timestamps',js.includes("(m.kind === 'note' ? ' · Internal note · ' : ' · ') + chatWhen(m.created_at)")&&js.includes("' · ' + chatWhen(e.created_at)"));
 check('each chat attachment displays the local timestamp of the message that sent it',js.includes("class:'file-sent-at',title:chatWhenTitle(m.created_at)")&&js.includes("'Sent '+chatWhen(m.created_at)"));
 check('supervisor and operations landing views show local conversation activity timestamps',js.includes('chat-supervisor-timestamp')&&js.includes('chat-landing-timestamp')&&js.includes("var fmt = function(v) { return chatWhen(v); }"));
+check('the multi-chat My chats switcher shows each conversation latest activity in local time',js.includes('chat-workspace-time')&&js.includes('chatWhen(t.updated_at || t.created_at)'));
 
 done();
 
