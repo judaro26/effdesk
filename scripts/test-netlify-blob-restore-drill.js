@@ -45,6 +45,14 @@ try {
   assert.equal(result.totalBytes, manifest.totalBytes);
   assert.equal(values.size, 0, 'successful drill must clean up test objects');
 
+  const corruptingStore = {
+    async get(key) { return values.has(key) ? values.get(key) : null; },
+    async set(key, bytes) { values.set(key, Buffer.from(bytes).map((byte, index) => index === 0 ? byte ^ 1 : byte)); },
+    async delete(key) { values.delete(key); }
+  };
+  await assert.rejects(() => restoreAndVerifySnapshot(corruptingStore, root), /read-back verification/);
+  assert.equal(values.size, 0, 'failed read-back must clean up partial test objects');
+
   values.set(entries[0].key, Buffer.from('pre-existing'));
   await assert.rejects(() => restoreAndVerifySnapshot(store, root), /not empty/);
   assert.equal(values.get(entries[0].key).toString(), 'pre-existing',
