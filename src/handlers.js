@@ -19,7 +19,7 @@ import { suggestReply, summarize as aiSummarize, rewrite as aiRewrite, usage as 
 import { source as migrationSource, Wait, Bad, PROVIDERS } from './migration-sources.js';
 import { ownerWorkspaces, slugStatus, holdSlug, pendingOf, createWorkspace, changePending, cleanCompany, normalizeSlug } from './onboarding.js';
 import { validAvatar } from './avatar.js';
-import { createTicket, listTickets, getTicket, addMessage, updateTicket, listAgents } from './tickets.js';
+import { createTicket, listTickets, getTicket, recordTicketView, addMessage, updateTicket, listAgents } from './tickets.js';
 import * as desk from './desk.js';
 import { globalSearch, listContacts, contactForEmail, saveContact } from './contacts.js';
 import { syncTicketUpdate, syncTicketComment } from './project-integrations.js';
@@ -488,6 +488,7 @@ export async function tickets(req, { pool, auth, mailer, store, env = process.en
     }
     case 'get': {
       r = await getTicket(pool, orgId, actor, b.number, { messageLimit: b.messageLimit, messageCursor: b.messageCursor });
+      if (r.ok && !support) { const viewed = await recordTicketView(pool, orgId, b.number, actor); if (viewed.ok) r.ticket.viewers = viewed.viewers; }
       if (r.ok) Object.assign(r, { extras: await desk.extras(pool, orgId, actor, r.ticket) });
       if (r.ok) r.ticket = { ...r.ticket, csat: await ratingOf(pool, orgId, b.number) };
       if (r.ok) r.delivery = r.ticket.channel === 'whatsapp' ? await wa.deliveryOf(pool, orgId, b.number) : await emailDeliveryOf(pool, orgId, b.number);

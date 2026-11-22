@@ -7,6 +7,7 @@ import { makePool } from '../src/db.js';
 import { makeAuth } from '../src/auth.js';
 import { makeMailer } from '../src/email.js';
 import { tickets } from '../src/handlers.js';
+import { recordTicketView } from '../src/tickets.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery';
 const { url } = await freshDb('tickets'); await migrate(url);
@@ -34,9 +35,21 @@ const betaTicketId = (await pool.query('select id from tickets where org_id = $1
 let crossMessageRejected = false;
 try { await withOrg(pool, acme.id, c => c.query("insert into ticket_messages (org_id,ticket_id,kind,body) values ($1,$2,'note','cross-tenant')", [acme.id, betaTicketId])); } catch { crossMessageRejected = true; }
 check('the database rejects a message in one tenant that references another tenant ticket', crossMessageRejected);
+let crossViewRejected = false;
+try { await withOrg(pool, acme.id, c => c.query("insert into ticket_views (org_id,ticket_id,user_id) values ($1,$2,$3)", [acme.id, betaTicketId, 'cross-tenant-agent'])); } catch { crossViewRejected = true; }
+check('the database rejects a ticket-view record that points across organizations', crossViewRejected);
+const unopenedBefore = (await call(olivia, { orgId: acme.id, action: 'list' })).body.tickets.find(x => x.number === 1);
+check('new tickets are marked unopened until an agent views them', unopenedBefore && unopenedBefore.has_been_viewed === false);
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
-check('opening a ticket returns it with its messages', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant');
+check('opening a ticket returns it with its messages and records the first agent view', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant' && r.body.ticket.viewers.length === 1 && r.body.ticket.viewers[0].user_id === olivia.user.id && r.body.ticket.viewers[0].view_count === 1);
 check('rich HTML on a newly created ticket is sanitized server-side before storage', String(r.body.messages[0].html_body || '').indexOf('<strong>It is cold.</strong>') >= 0 && !/<script|onerror/i.test(r.body.messages[0].html_body || ''));
+r = await call(ann, { orgId: acme.id, action: 'get', number: 1 });
+check('the view log tracks additional agents and repeated opens without losing the first-view timestamp', r.status === 200 && r.body.ticket.viewers.length === 2 && r.body.ticket.viewers.some(v => v.user_id === ann.user.id && v.view_count === 1) && r.body.ticket.viewers.some(v => v.user_id === olivia.user.id && v.view_count === 1));
+await recordTicketView(pool, acme.id, 1, olivia.user);
+const repeatedViews = await recordTicketView(pool, acme.id, 1, olivia.user);
+check('reopening a ticket increments only that agent view count', repeatedViews.ok && repeatedViews.viewers.find(v => v.user_id === olivia.user.id).view_count === 3);
+const viewedList = (await call(olivia, { orgId: acme.id, action: 'list' })).body.tickets.find(x => x.number === 1);
+check('the inbox stops marking a ticket as unopened after its first agent view', viewedList && viewedList.has_been_viewed === true);
 check('a ticket of another organization is a 404, not a leak', (await call(otto, { orgId: beta.id, action: 'get', number: 2 })).status === 404 && (await call(otto, { orgId: beta.id, action: 'get', number: 1 })).body.ticket.subject === 'Beta first');
 r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'We are sending someone.', html: '<p><strong>We are sending someone.</strong></p>' });
 let t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;

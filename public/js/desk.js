@@ -133,7 +133,7 @@
         closePanes();
         chatConversationOpen = r.body.ticket.channel === 'chat';
         if (switchingTicket) { restoreTicketDraft(n); if (chatConversationOpen) pending = []; macroPatch = null; sendStatus = ''; conflict = null; others = []; othersSig = ''; lastComposeInputAt = 0; }
-        current = r.body; if (chatConversationOpen) loadMyChatWorkspace(); if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
+        current = r.body; if (!chatConversationOpen) list.forEach(function (ticket) { if (Number(ticket.number) === Number(n)) ticket.has_been_viewed = true; }); if (chatConversationOpen) loadMyChatWorkspace(); if (externalIssueUi[n]) { externalIssueUi[n].loaded = false; externalIssueUi[n].error = ''; }
         var hit = openTabs.filter(function (x) { return x.number === n; })[0]; if (hit) { hit.subject = r.body.ticket.subject; hit.isChat = chatConversationOpen; } else openTabs.push({ number: n, subject: r.body.ticket.subject, isChat: chatConversationOpen });
         draw(); presenceTick();
       });
@@ -1563,7 +1563,8 @@
       };
       var shownColumns = ticketColumns.filter(function (k) { return columnDefs[k] && (k !== 'sla' || has('sla')); });
       var rows = list.map(function (t) {
-        var tr = el('tr', { class: 'row', tabindex: '0', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number) });
+        var unopened = t.has_been_viewed !== true;
+        var tr = el('tr', { class: 'row' + (unopened ? ' ticket-unopened' : ''), tabindex: '0', 'data-number': String(t.number), 'aria-current': String(!!current && current.ticket.number === t.number), title: unopened ? 'Not yet opened by an agent' : '' });
         if (has('bulk_actions')) tr.appendChild(el('td', { class: 'pick' }, pickBox(t.number)));
         shownColumns.forEach(function (k) { var d = columnDefs[k]; tr.appendChild(el('td', { class: d.cls }, d.cell(t))); });
         tr.addEventListener('click', function () { open(t.number); }); tr.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(t.number); });
@@ -1853,6 +1854,17 @@
         el('div', { class: 'compose' }, resizeHandle, el('div', { class: 'modes', role: 'tablist' }, modeBtn('reply', 'Public reply'), modeBtn('note', 'Internal note'), macroSel, mentionSel), aiBar, bodyBox, el('div', { class: 'cbar' }, picker(t, permanentlyClosed || (chatConversationOpen && ['closed','solved'].indexOf(t.status) >= 0)), el('span', { class: 'hint m' }, 'Ctrl or ⌘ + Enter to send'), actions)));
       // right column: requester, client, linked tickets, side conversations, followers, timeline
       var cards = [el('h3', {}, 'Requester'), el('div', { class: 'pcard requester-card' }, el('button', { type:'button',class:'requester-profile-link',onclick:function(){openContact(t.requester_email);}},el('span',{class:'av in','aria-hidden':'true'},initial(who)),el('span',{},el('strong',{},who),el('span',{class:'m'},t.requester_email),el('small',{},'View contact profile →'))),el('div', { class: 'm' }, 'Channel: ' + (t.channel || 'web')))];
+      if (!chatConversationOpen) {
+        var ticketViewers = Array.isArray(t.viewers) ? t.viewers : [];
+        cards.push(el('h3', {}, 'Viewed by'));
+        cards.push(el('div', { class: 'pcard ticket-viewers' }, ticketViewers.length ? ticketViewers.map(function (v) {
+          return el('div', { class: 'ticket-viewer-row' },
+            el('span', { class: 'av sm' }, initial(v.agent_name || v.agent_email || 'A')),
+            el('span', { class: 'ticket-viewer-copy' },
+              el('strong', {}, v.agent_name || v.agent_email || 'Agent'),
+              el('small', {}, 'Last opened ' + when(v.last_viewed_at) + ' · ' + Number(v.view_count || 1) + (Number(v.view_count || 1) === 1 ? ' view' : ' views'))));
+        }) : [el('span', { class: 'm' }, t.agent_viewed_at ? 'This ticket predates view tracking; earlier agent views are unavailable.' : 'No agent views recorded yet.')]));
+      }
       var provenance=t.provenance||{}, visitorUa=String(provenance.user_agent||''), visitorBrowser=/Edg\//.test(visitorUa)?'Microsoft Edge':/Firefox\//.test(visitorUa)?'Firefox':/Chrome\//.test(visitorUa)?'Google Chrome':/Safari\//.test(visitorUa)&&!/Chrome\//.test(visitorUa)?'Safari':'Unknown browser', visitorOs=/iPhone|iPad|iPod/.test(visitorUa)?'iOS':/Android/.test(visitorUa)?'Android':/Windows NT/.test(visitorUa)?'Windows':/Mac OS X/.test(visitorUa)?'macOS':/Linux/.test(visitorUa)?'Linux':'Unknown operating system', visitorDevice=/iPad|Tablet/.test(visitorUa)?'Tablet':/Mobi|iPhone|Android/.test(visitorUa)?'Mobile':'Desktop', visitorPage='Not provided', visitorSite='Not available'; try{if(provenance.page_url){var visitorUrl=new URL(provenance.page_url);visitorPage=visitorUrl.pathname+visitorUrl.search;visitorSite=visitorUrl.hostname;}}catch(e){} var visitorLatRaw = provenance.latitude ?? provenance.lat, visitorLonRaw = provenance.longitude ?? provenance.lon ?? provenance.lng;
       var visitorLat = Number(visitorLatRaw), visitorLon = Number(visitorLonRaw);
       var hasVisitorCoords = visitorLatRaw !== undefined && visitorLatRaw !== null && visitorLatRaw !== '' && visitorLonRaw !== undefined && visitorLonRaw !== null && visitorLonRaw !== '' && Number.isFinite(visitorLat) && Number.isFinite(visitorLon) && Math.abs(visitorLat) <= 90 && Math.abs(visitorLon) <= 180;

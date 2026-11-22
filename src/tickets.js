@@ -14,7 +14,7 @@ const validDateOnly = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && !Number.isNa
 const isEmail = s => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
 const cleanTags = t => [...new Set((Array.isArray(t) ? t : String(t || '').split(',')).map(x => clean(x, 30).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '')).filter(Boolean))].slice(0, 20);
 const fail = (error, status = 400) => ({ ok: false, status, error });
-const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, chat_seen_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id, source_chat_ticket_id, source_chat_conversation_id, converted_ticket_id';
+const ticketCols = 'custom, id, number, subject, status, closed_at, custom_status_id, priority, channel, requester_name, requester_email, assignee_id, tags, first_response_at, solved_at, created_at, updated_at, chat_seen_at, type, queue_id, client_id, cc, merged_into, problem_number, lifecycle_parent_ticket_id, source_chat_ticket_id, source_chat_conversation_id, converted_ticket_id, agent_viewed_at';
 const safeUrl = v => { try { const u=new URL(String(v||'').slice(0,4096)); if(!['http:','https:'].includes(u.protocol)||u.username||u.password)return null;u.search='';u.hash='';return u.href.slice(0,2048); } catch{return null;} };
 export async function writeTicketProvenance(c,orgId,ticketId,v={}) { const raw=clean(v.ip,64).replace(/^\\[|\\]$/g,'').split('%')[0],ip=net.isIP(raw)?raw:null,page=safeUrl(v.pageUrl),ref=safeUrl(v.referrer),kind=['visitor','api','email','whatsapp','portal','agent','chat'].includes(v.identityType)?v.identityType:'unknown'; await c.query(`insert into ticket_provenance(org_id,ticket_id,ip_address,identity_type,page_url,page_title,referrer,user_agent,submitted_at) values($1,$2,$3,$4,$5,$6,$7,$8,now()) on conflict(ticket_id) do update set ip_address=coalesce(excluded.ip_address,ticket_provenance.ip_address),identity_type=excluded.identity_type,page_url=coalesce(excluded.page_url,ticket_provenance.page_url),page_title=coalesce(excluded.page_title,ticket_provenance.page_title),referrer=coalesce(excluded.referrer,ticket_provenance.referrer),user_agent=coalesce(excluded.user_agent,ticket_provenance.user_agent),submitted_at=excluded.submitted_at`,[orgId,ticketId,ip,kind,page,clean(v.pageTitle,200)||null,ref,clean(v.userAgent,500)||null]); }
 export const TYPES = ['question', 'incident', 'problem', 'task'];
@@ -106,7 +106,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
         from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
       ), ticket_page as (
-        select ${ticketCols}, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
+        select ${ticketCols}, (tickets.agent_viewed_at is not null or exists(select 1 from ticket_views tv where tv.org_id=tickets.org_id and tv.ticket_id=tickets.id)) as has_been_viewed, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
         limit ${cursorMode ? limit + 1 : limit} offset ${offset}
@@ -122,6 +122,30 @@ export async function listTickets(pool, orgId, actor, q = {}) {
     const last = rows[rows.length - 1];
     const nextCursor = cursorMode && hasMore && last ? Buffer.from(JSON.stringify({ u: last.cursor_updated_at, id: Number(last.id) })).toString('base64url') : null;
     return { ok: true, tickets: rows.map(({ cursor_updated_at, ...ticket }) => ticket), counts: { open: 0, pending: 0, on_hold: 0, solved: 0, closed: 0, ...counts }, ...(cursorMode ? { hasMore, nextCursor } : {}) };
+  });
+}
+
+// Record one agent's ticket-view summary. Repeated opens update the last-viewed time
+// and count while retaining the first-viewed timestamp for the audit trail.
+export async function recordTicketView(pool, orgId, ticketNumber, actor) {
+  if (!actor || !actor.id) return fail('An agent identity is required to record a ticket view.', 400);
+  return withOrg(pool, orgId, async c => {
+    const ticket = (await c.query('select id from tickets where org_id=$1 and number=$2', [orgId, Number(ticketNumber) || 0])).rows[0];
+    if (!ticket) return fail('No such ticket.', 404);
+    await c.query('update tickets set agent_viewed_at=coalesce(agent_viewed_at,now()) where org_id=$1 and id=$2', [orgId, ticket.id]);
+    await c.query(`
+      insert into ticket_views (org_id,ticket_id,user_id,agent_name,agent_email)
+      values ($1,$2,$3,$4,$5)
+      on conflict (org_id,ticket_id,user_id) do update
+      set agent_name=excluded.agent_name, agent_email=excluded.agent_email,
+          last_viewed_at=now(), view_count=ticket_views.view_count+1
+    `, [orgId, ticket.id, String(actor.id), clean(actor.name, 100), clean(actor.email, 254)]);
+    const viewers = (await c.query(`
+      select user_id,agent_name,agent_email,first_viewed_at,last_viewed_at,view_count
+      from ticket_views where org_id=$1 and ticket_id=$2
+      order by last_viewed_at desc, first_viewed_at asc
+    `, [orgId, ticket.id])).rows;
+    return { ok: true, viewers };
   });
 }
 

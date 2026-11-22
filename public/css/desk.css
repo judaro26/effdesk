@@ -618,6 +618,13 @@ html{-webkit-text-size-adjust:100%}
 .ticket-column-head select:focus,.ticket-column-head input:focus,.ticket-column-head .updated-date-filter button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:1px;border-color:var(--accent)}
 .ticket-column-head .updated-date-filter button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .ticket-table tbody tr:first-child td{border-top:0}
+.ticket-table tbody tr.ticket-unopened td{font-weight:750}
+.ticket-table tbody tr.ticket-unopened td .m{font-weight:650}
+.ticket-viewers{display:grid;gap:10px}
+.ticket-viewer-row{display:flex;align-items:center;gap:9px;min-width:0}
+.ticket-viewer-copy{display:grid;gap:2px;min-width:0}
+.ticket-viewer-copy strong{font-size:12px;overflow-wrap:anywhere}
+.ticket-viewer-copy small{font-size:10px;color:var(--d-muted)}
 @media(max-width:800px){.contact-form-grid{grid-template-columns:1fr}.contact-notes{grid-column:auto}.contact-page-head{align-items:flex-start;flex-direction:column}.contact-toolbar{flex-direction:column}.ticket-table thead th.ticket-column-head{padding:9px 8px;min-width:100px}.ticket-column-head .column-head-label{font-size:9px}}
 
 .company-item .t{display:grid;gap:3px;min-width:0}
