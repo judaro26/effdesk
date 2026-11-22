@@ -47,7 +47,7 @@ jobs:
           # A plain tenant-scoped role can silently omit rows protected by RLS.
           # Require a dedicated backup role that can read every tenant before dumping.
           backup_rls_bypass="$(psql "$BACKUP_DATABASE_URL" -v ON_ERROR_STOP=1 -Atc \
-            "SELECT CASE WHEN r.rolsuper OR r.rolbypassrls THEN 'ok' ELSE 'missing' END FROM pg_roles r WHERE r.rolname = session_user")"
+            "SELECT CASE WHEN r.rolbypassrls AND NOT r.rolsuper THEN 'ok' ELSE 'missing' END FROM pg_roles r WHERE r.rolname = session_user")"
           if [ "$backup_rls_bypass" != "ok" ]; then
             echo "Backup database role must be a dedicated superuser-free role with BYPASSRLS to produce a complete cross-tenant backup."
             exit 1
