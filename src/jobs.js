@@ -84,6 +84,7 @@ export async function failJob(pool, orgId, jobId, workerId, error, { retryDelayM
 }
 
 export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypto.randomUUID(), leaseMs = 120000 } = {}) {
+  const startedAt = Date.now();
   const take = Math.max(1, Math.min(100, Number(batchSize) || 20));
   const organizations = (await pool.query('select id from "organization" order by id')).rows;
   const summary = { claimed: 0, succeeded: 0, retried: 0, failed: 0, organizationsVisited: 0, tenantsProcessed: 0, maxJobsPerTenant: 0 };
@@ -138,5 +139,6 @@ export async function runJobs(pool, handlers, { batchSize = 20, workerId = crypt
       if (await completeJob(pool, String(job.org_id), job.id, workerId)) summary.succeeded++;
     }));
   }
+  summary.durationMs = Math.max(0, Date.now() - startedAt);
   return summary;
 }
