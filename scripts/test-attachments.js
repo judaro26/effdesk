@@ -10,6 +10,7 @@ import { memoryStore } from '../src/storage.js';
 import { tickets, inboundEmail, attachmentUpload, attachmentDownload } from '../src/handlers.js';
 import { saveMailSettings } from '../src/ticket-mail.js';
 import { cleanName } from '../src/attachments.js';
+import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
 
 const SECRET = crypto.randomBytes(32).toString('base64'), PW = 'correct horse battery', WH = 'whsec_' + crypto.randomBytes(24).toString('base64');
 const ENV = { INBOUND_DOMAIN: 'in.effdesk.test', BETTER_AUTH_SECRET: SECRET, RESEND_WEBHOOK_SECRET: WH, RESEND_API_KEY: 're_test' };
@@ -49,14 +50,34 @@ check('file names are cleaned of paths and control characters', cleanName('../..
 let up = await upload(ann, acme.id, jpg, 'leak photo.jpg', '&ticket=1');
 check('an upload is stored and indexed', up.status === 200 && up.body.attachment.filename === 'leak photo.jpg' && up.body.attachment.size === jpg.length && store._keys().length === 1);
 check('a colleague cannot attach someone else\'s upload to a reply', (await (async () => { const r = await call(olivia, { orgId: acme.id, action: 'reply', number: 1, body: 'trying', attachmentIds: [up.body.attachment.id] }); const t = await call(olivia, { orgId: acme.id, action: 'get', number: 1 }); return r.status === 200 && t.body.messages.every(m => m.attachments.length === 0); })()));
+// Reply email is deliberately asynchronous: the API queues a durable job, and the worker
+// loads the claimed attachment immediately before sending. Exercise that real worker handler.
+const deliverReply = async body => {
+  const message = await withOrg(pool, acme.id, async c => (await c.query(
+    "select id from ticket_messages where org_id=$1 and ticket_id=(select id from tickets where org_id=$1 and number=1) and kind='agent' and body=$2 order by id desc limit 1",
+    [acme.id, body]
+  )).rows[0]);
+  if (!message) throw new Error('Expected agent reply message was not created.');
+  const job = await withOrg(pool, acme.id, async c => (await c.query(
+    "select payload,attempts,max_attempts from background_jobs where org_id=$1 and job_type='ticket.email.deliver' and idempotency_key=$2",
+    [acme.id, 'ticket-message:' + message.id]
+  )).rows[0]);
+  if (!job) throw new Error('Expected queued ticket email job was not created.');
+  return deliverTicketEmailJob(pool, mailer, store, ENV, acme.id, job.payload, job);
+};
 outbox.length = 0;
 let r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'Here is the photo back.', attachmentIds: [up.body.attachment.id] });
-check('a reply claims the agent\'s own upload, and the email carries it as a base64 attachment', r.body.email === 'sent' && outbox[0].attachments.length === 1 && outbox[0].attachments[0].filename === 'leak photo.jpg' && Buffer.from(outbox[0].attachments[0].content, 'base64').equals(jpg));
+check('a reply queues delivery after claiming the agent\\'s own upload', r.body.email === 'queued');
+await deliverReply('Here is the photo back.');
+check('the background email worker sends the claimed file as a base64 attachment', outbox.length === 1 && outbox[0].attachments.length === 1 && outbox[0].attachments[0].filename === 'leak photo.jpg' && Buffer.from(outbox[0].attachments[0].content, 'base64').equals(jpg));
 let t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
 const mine = t.messages.find(m => m.attachments.length);
 check('the ticket lists the file under that message', mine.kind === 'agent' && mine.attachments[0].id === up.body.attachment.id);
-outbox.length = 0; await call(olivia, { orgId: acme.id, action: 'reply', number: 1, body: 'again', attachmentIds: [up.body.attachment.id] });
-check('a file already sent cannot be claimed twice', outbox[0].attachments === undefined);
+outbox.length = 0;
+r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'again', attachmentIds: [up.body.attachment.id] });
+check('a previously claimed upload is not attached to a second reply', r.body.email === 'queued');
+await deliverReply('again');
+check('a file already sent cannot be claimed twice', outbox.length === 1 && (!outbox[0].attachments || outbox[0].attachments.length === 0));
 const d = await download(olivia, acme.id, up.body.attachment.id);
 check('a member can download it, always as an attachment the browser may not sniff or run', d.status === 200 && Buffer.from(await d.arrayBuffer()).equals(jpg) && /^attachment; filename="leak photo\.jpg"/.test(d.headers.get('content-disposition')) && d.headers.get('x-content-type-options') === 'nosniff' && d.headers.get('content-type') === 'application/octet-stream' && /sandbox/.test(d.headers.get('content-security-policy')));
 check('downloads need a sign-in and membership, and another organization cannot reach the file even by guessing its id', (await download(null, acme.id, up.body.attachment.id)).status === 401 && (await download(otto, acme.id, up.body.attachment.id)).status === 403 && (await download(otto, beta.id, up.body.attachment.id)).status === 404);
