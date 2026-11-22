@@ -6,6 +6,7 @@ import { migrate } from './migrate.js';
 import { enableStagingLiveChatOverride } from './staging-seed-entitlement.js';
 
 const databaseUrl = process.env.STAGING_DATABASE_URL;
+const migrationDatabaseUrl = process.env.STAGING_MIGRATION_DATABASE_URL;
 const workspaceCount = Number(process.env.STAGING_SEED_WORKSPACES || 10);
 const ticketsPerWorkspace = Number(process.env.STAGING_SEED_TICKETS || 100);
 const chatsPerWorkspace = Number(process.env.STAGING_SEED_CHATS || 20);
@@ -13,12 +14,18 @@ const agentsPerWorkspace = Number(process.env.STAGING_SEED_AGENTS || 3);
 
 function validate() {
   if (!databaseUrl) throw new Error('STAGING_DATABASE_URL is required. DATABASE_URL is deliberately not supported.');
-  let url;
+  if (!migrationDatabaseUrl) throw new Error('STAGING_MIGRATION_DATABASE_URL is required for schema migrations. Keep it separate from the restricted STAGING_DATABASE_URL runtime role.');
+  let url, migrationUrl;
   try { url = new URL(databaseUrl); } catch { throw new Error('STAGING_DATABASE_URL must be a valid PostgreSQL URL.'); }
+  try { migrationUrl = new URL(migrationDatabaseUrl); } catch { throw new Error('STAGING_MIGRATION_DATABASE_URL must be a valid PostgreSQL URL.'); }
   const dbName = decodeURIComponent(url.pathname.replace(/^\//, '')).toLowerCase();
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname.toLowerCase().endsWith('.neon.tech') || !url.hostname.toLowerCase().includes('-pooler')) {
     throw new Error('Refusing to seed: use a pooled Neon connection string.');
   }
+  const migrationDbName = decodeURIComponent(migrationUrl.pathname.replace(/^\\//, '')).toLowerCase();
+  const normalizedHost = host => host.toLowerCase().replace('-pooler.', '.');
+  if (!['postgres:', 'postgresql:'].includes(migrationUrl.protocol) || !migrationUrl.hostname.toLowerCase().endsWith('.neon.tech')) throw new Error('Refusing to migrate: STAGING_MIGRATION_DATABASE_URL must be a Neon PostgreSQL URL.');
+  if (migrationDbName !== dbName || normalizedHost(migrationUrl.hostname) !== normalizedHost(url.hostname)) throw new Error('Refusing to seed: runtime and migration URLs must target the same Neon staging project and database.');
   if (!/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) throw new Error('Refusing to seed: database name must contain staging, stage, or test.');
   if (!Number.isInteger(workspaceCount) || workspaceCount < 2 || workspaceCount > 30) throw new Error('STAGING_SEED_WORKSPACES must be 2–30.');
   if (!Number.isInteger(ticketsPerWorkspace) || ticketsPerWorkspace < 10 || ticketsPerWorkspace > 2000) throw new Error('STAGING_SEED_TICKETS must be 10–2000.');
@@ -29,7 +36,7 @@ function validate() {
 
 const target = validate();
 console.log(`Preparing schema on dedicated staging database ${target.dbName} (${target.host})...`);
-await migrate(databaseUrl);
+await migrate(migrationDatabaseUrl);
 
 const pool = new pg.Pool({
   connectionString: explicitSsl(databaseUrl),

@@ -67,6 +67,7 @@ jobs:
       - name: Seed synthetic workspaces
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_MIGRATION_DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
           STAGING_SEED_WORKSPACES: ${{ inputs.workspaces }}
           STAGING_SEED_TICKETS: ${{ inputs.tickets_per_workspace }}
           STAGING_SEED_CHATS: ${{ inputs.chats_per_workspace }}

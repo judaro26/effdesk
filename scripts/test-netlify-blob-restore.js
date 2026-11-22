@@ -66,7 +66,8 @@ export async function verifyRestoredAttachmentThroughApp(store, manifest) {
     ), deps);
     assert.equal(anonymous.status, 401, 'application download must still enforce sign-in');
     const wrongTenant = await attachmentDownload(new Request(
-      'http://localhost/api/attachments/' + attachmentId + '?org=not-a-member'
+      'http://localhost/api/attachments/' + attachmentId + '?org=not-a-member',
+      { headers: { cookie } }
     ), deps);
     assert.equal(wrongTenant.status, 403, 'application download must still enforce tenant membership');
     return { bytes: downloaded.length };
