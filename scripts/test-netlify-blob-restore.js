@@ -119,8 +119,6 @@ export async function restoreAndVerifySnapshot(store, directory, { verifyApplica
   }
 }
 
-async function manifestFor(directory) { return (await verifySnapshot(directory)).manifest; }
-
 async function main() {
   const directory = process.argv[2];
   if (!directory) throw new Error('Usage: BLOB_RESTORE_TEST_CONFIRM=RESTORE_TO_DISPOSABLE_SITE node scripts/test-netlify-blob-restore.js <snapshot-directory>');
@@ -132,7 +130,7 @@ async function main() {
   if (!siteID || !token) throw new Error('BLOB_RESTORE_TEST_SITE_ID and BLOB_RESTORE_TEST_AUTH_TOKEN are required.');
   const store = getStore({ name: 'attachments', siteID, token, consistency: 'strong' });
   const result = await restoreAndVerifySnapshot(store, directory, {
-    verifyApplication: () => verifyRestoredAttachmentThroughApp(store, manifestFor(directory))
+    verifyApplication: ({ manifest }) => verifyRestoredAttachmentThroughApp(store, manifest)
   });
   console.log('Isolated Netlify Blobs restore/read-back passed: ' + result.restored +
     ' objects, ' + result.totalBytes + ' bytes.');
