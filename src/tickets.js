@@ -133,13 +133,16 @@ export async function recordTicketView(pool, orgId, ticketNumber, actor) {
     const ticket = (await c.query('select id from tickets where org_id=$1 and number=$2', [orgId, Number(ticketNumber) || 0])).rows[0];
     if (!ticket) return fail('No such ticket.', 404);
     await c.query('update tickets set agent_viewed_at=coalesce(agent_viewed_at,now()) where org_id=$1 and id=$2', [orgId, ticket.id]);
-    await c.query(`
+    const recorded = (await c.query(`
       insert into ticket_views (org_id,ticket_id,user_id,agent_name,agent_email)
       values ($1,$2,$3,$4,$5)
       on conflict (org_id,ticket_id,user_id) do update
       set agent_name=excluded.agent_name, agent_email=excluded.agent_email,
           last_viewed_at=now(), view_count=ticket_views.view_count+1
-    `, [orgId, ticket.id, String(actor.id), clean(actor.name, 100), clean(actor.email, 254)]);
+      returning view_count
+    `, [orgId, ticket.id, String(actor.id), clean(actor.name, 100), clean(actor.email, 254)])).rows[0];
+    // A view is both a per-agent aggregate and a first-class ticket timeline event.
+    await logEvent(c, orgId, ticket.id, who(actor), 'viewed', 'Opened ticket · view ' + Number(recorded?.view_count || 1));
     const viewers = (await c.query(`
       select user_id,agent_name,agent_email,first_viewed_at,last_viewed_at,view_count
       from ticket_views where org_id=$1 and ticket_id=$2
