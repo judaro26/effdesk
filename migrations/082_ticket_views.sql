@@ -1,5 +1,8 @@
 -- 082_ticket_views.sql
 -- Per-agent ticket viewing history, kept separate from ticket status and reply/unread state.
+-- Treat pre-existing tickets as historical rather than falsely highlighting them as new.
+alter table tickets add column if not exists agent_viewed_at timestamptz;
+update tickets set agent_viewed_at=now() where agent_viewed_at is null;
 create table if not exists ticket_views (
   id bigserial primary key,
   org_id text not null references "organization"(id) on delete cascade,
