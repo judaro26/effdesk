@@ -45,7 +45,7 @@ In the repository, open **Settings → Secrets and variables → Actions → New
 
 Use the production Netlify Project ID. Netlify Blobs access requires both the site ID and a token when the workflow runs outside Netlify. Do not put any of these secrets in source files or workflow logs.
 
-**Important database-role check:** a PostgreSQL dump only contains rows the connected role can read. Before relying on this backup, verify that the chosen direct Neon role can read every tenant's rows under the platform's RLS policies. Prefer a dedicated, least-privilege backup role explicitly granted the necessary read access, rather than assuming an ordinary tenant-scoped application role can dump all customer data.
+**Important database-role requirement:** the backup workflow now fails before `pg_dump` unless the connected role is a PostgreSQL superuser or has `BYPASSRLS`. Configure a dedicated, non-superuser backup role with `BYPASSRLS`, `CONNECT`, schema `USAGE`, and read-only `SELECT` access to the application tables. Do not reuse the application runtime role, do not grant this role write privileges, and restrict its credentials to the backup workflow. The `BYPASSRLS` attribute is necessary because a tenant-scoped role cannot produce a complete cross-tenant snapshot under forced row-level security. The workflow checks the role attribute explicitly and stops rather than risk uploading an incomplete backup.
 
 ## Run and verify
 
