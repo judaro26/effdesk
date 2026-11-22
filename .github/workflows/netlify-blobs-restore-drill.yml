@@ -1,6 +1,12 @@
 name: Isolated Netlify Blobs restore drill
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/netlify-blobs-restore-drill.yml'
+      - 'scripts/restore-blobs.js'
+      - 'scripts/test-netlify-blob-restore.js'
+      - 'scripts/test-netlify-blob-restore-drill.js'
   workflow_dispatch:
 
 permissions:
@@ -11,7 +17,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
   restore:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
