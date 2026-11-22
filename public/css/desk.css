@@ -1462,5 +1462,5 @@ html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out{background:l
 /* Chat activity timestamps are always rendered in the signed-in agent's local zone. */
 .deskapp .chat-agent-time-meta{display:block;color:var(--d-muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere}
 .deskapp .file-sent-at{font-size:10px;line-height:1.35;color:var(--d-muted);overflow-wrap:anywhere}
-.deskapp .chat-landing-timestamp,.deskapp .chat-supervisor-timestamp{font-size:10px;color:var(--d-muted);font-variant-numeric:tabular-nums}
+.deskapp .chat-landing-timestamp,.deskapp .chat-supervisor-timestamp,.deskapp .chat-workspace-time{font-size:10px;color:var(--d-muted);font-variant-numeric:tabular-nums}
 .deskapp .chat-inbox-time,.deskapp .chat-inbox-waiting-age{font-variant-numeric:tabular-nums}
