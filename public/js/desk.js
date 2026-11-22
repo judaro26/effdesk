@@ -1863,7 +1863,7 @@
             el('span', { class: 'ticket-viewer-copy' },
               el('strong', {}, v.agent_name || v.agent_email || 'Agent'),
               el('small', {}, 'Last opened ' + when(v.last_viewed_at) + ' · ' + Number(v.view_count || 1) + (Number(v.view_count || 1) === 1 ? ' view' : ' views'))));
-        }) : [el('span', { class: 'm' }, 'No agent views recorded yet.')]));
+        }) : [el('span', { class: 'm' }, t.agent_viewed_at ? 'This ticket predates view tracking; earlier agent views are unavailable.' : 'No agent views recorded yet.')]));
       }
       var provenance=t.provenance||{}, visitorUa=String(provenance.user_agent||''), visitorBrowser=/Edg\//.test(visitorUa)?'Microsoft Edge':/Firefox\//.test(visitorUa)?'Firefox':/Chrome\//.test(visitorUa)?'Google Chrome':/Safari\//.test(visitorUa)&&!/Chrome\//.test(visitorUa)?'Safari':'Unknown browser', visitorOs=/iPhone|iPad|iPod/.test(visitorUa)?'iOS':/Android/.test(visitorUa)?'Android':/Windows NT/.test(visitorUa)?'Windows':/Mac OS X/.test(visitorUa)?'macOS':/Linux/.test(visitorUa)?'Linux':'Unknown operating system', visitorDevice=/iPad|Tablet/.test(visitorUa)?'Tablet':/Mobi|iPhone|Android/.test(visitorUa)?'Mobile':'Desktop', visitorPage='Not provided', visitorSite='Not available'; try{if(provenance.page_url){var visitorUrl=new URL(provenance.page_url);visitorPage=visitorUrl.pathname+visitorUrl.search;visitorSite=visitorUrl.hostname;}}catch(e){} var visitorLatRaw = provenance.latitude ?? provenance.lat, visitorLonRaw = provenance.longitude ?? provenance.lon ?? provenance.lng;
       var visitorLat = Number(visitorLatRaw), visitorLon = Number(visitorLonRaw);
