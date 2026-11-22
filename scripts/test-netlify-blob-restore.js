@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getStore } from '@netlify/blobs';
@@ -8,6 +7,13 @@ import { verifySnapshot, restoreSnapshot } from './restore-blobs.js';
 
 export async function restoreAndVerifySnapshot(store, directory) {
   const { manifest, verified, totalBytes } = await verifySnapshot(directory);
+  // Require an empty destination so cleanup cannot erase pre-existing data.
+  for (const entry of manifest.entries) {
+    const existing = await store.get(entry.key, { type: 'arrayBuffer' });
+    if (existing != null) {
+      throw new Error('Disposable test store is not empty for snapshot key: ' + entry.key);
+    }
+  }
   const restoredKeys = [];
   try {
     const result = await restoreSnapshot(store, directory);
@@ -27,7 +33,7 @@ export async function restoreAndVerifySnapshot(store, directory) {
     // The destination must be a disposable, dedicated test site. Remove only keys
     // represented by this snapshot, including after a partial restore failure.
     const cleanupErrors = [];
-    for (const key of [...new Set(manifest.entries.map(entry => entry.key))]) {
+    for (const key of restoredKeys) {
       try { await store.delete(key); }
       catch (error) { cleanupErrors.push(error); }
     }
