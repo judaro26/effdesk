@@ -67,7 +67,7 @@ const deliverReply = async body => {
 };
 outbox.length = 0;
 let r = await call(ann, { orgId: acme.id, action: 'reply', number: 1, body: 'Here is the photo back.', attachmentIds: [up.body.attachment.id] });
-check('a reply queues delivery after claiming the agent\\'s own upload', r.body.email === 'queued');
+check('a reply queues delivery after claiming the agent-owned upload', r.body.email === 'queued');
 await deliverReply('Here is the photo back.');
 check('the background email worker sends the claimed file as a base64 attachment', outbox.length === 1 && outbox[0].attachments.length === 1 && outbox[0].attachments[0].filename === 'leak photo.jpg' && Buffer.from(outbox[0].attachments[0].content, 'base64').equals(jpg));
 let t = (await call(ann, { orgId: acme.id, action: 'get', number: 1 })).body;
