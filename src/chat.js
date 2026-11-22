@@ -11,6 +11,7 @@ import { has as planHas } from './plans.js';
 import { emit } from './webhooks.js';
 import { autoAssignChat } from './routing.js';
 import { enqueueJob } from './jobs.js';
+import { DEFAULT_CHAT_HOURS, validateChatHours, chatHoursStatus } from './chat-hours.js';
 import { warn as logWarn, error as logError } from './log.js';
 
 const clean = (v, max) => String(v == null ? '' : v).replace(/\u0000/g, '').trim().slice(0, max);
@@ -26,10 +27,10 @@ async function conversationForNumber(c,orgId,number,lock=false){
  return (await c.query(sql,[orgId,Number(number)||0])).rows[0]||null;
 }
 const isEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
-export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7, restart_cooldown_seconds: 15, auto_convert_to_ticket: false };
+export const DEFAULTS = { enabled: false, title: 'Chat with us', greeting: 'Hi! Ask us anything. We reply here, and by email if you leave.', color: '#1f73b7', logo_url: null, max_concurrent: 3, auto_resolve_hours: 24, reuse_days: 7, restart_cooldown_seconds: 15, auto_convert_to_ticket: false, ...DEFAULT_CHAT_HOURS };
 
 export async function getSettings(pool, orgId) {
-  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
+  return withOrg(pool, orgId, async c => { const r = (await c.query('select enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket, availability_enabled, availability_timezone, weekly_hours, availability_holidays, after_hours_mode, after_hours_message from chat_settings where org_id = $1', [orgId])).rows[0]; return { ...DEFAULTS, ...(r || {}) }; });
 }
 export async function saveSettings(pool, orgId, input) {
   const color = /^#[0-9a-fA-F]{6}$/.test(String(input.color || '')) ? input.color : DEFAULTS.color, title = clean(input.title, 60) || DEFAULTS.title, greeting = clean(input.greeting, 300) || DEFAULTS.greeting, enabled = input.enabled === true;
@@ -51,13 +52,16 @@ export async function saveSettings(pool, orgId, input) {
   const reuseDays = input.reuseDays === undefined ? DEFAULTS.reuse_days : Number(input.reuseDays);
   const restartCooldownSeconds = input.restartCooldownSeconds === undefined ? DEFAULTS.restart_cooldown_seconds : Number(input.restartCooldownSeconds);
   const autoConvertToTicket = input.autoConvertToTicket === undefined ? (await getSettings(pool, orgId)).auto_convert_to_ticket === true : input.autoConvertToTicket === true;
+  const priorSettings = await getSettings(pool, orgId);
+  const checkedHours = validateChatHours({ availabilityEnabled: input.availabilityEnabled === undefined ? priorSettings.availability_enabled : input.availabilityEnabled, availabilityTimezone: input.availabilityTimezone === undefined ? priorSettings.availability_timezone : input.availabilityTimezone, weeklyHours: input.weeklyHours === undefined ? priorSettings.weekly_hours : input.weeklyHours, availabilityHolidays: input.availabilityHolidays === undefined ? priorSettings.availability_holidays : input.availabilityHolidays, afterHoursMode: input.afterHoursMode === undefined ? priorSettings.after_hours_mode : input.afterHoursMode, afterHoursMessage: input.afterHoursMessage === undefined ? priorSettings.after_hours_message : input.afterHoursMessage });
+  if (!checkedHours.ok) return fail(checkedHours.error);
   if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 10) return fail('Maximum simultaneous chats must be a whole number from 1 to 10.');
   if (!Number.isInteger(autoResolveHours) || autoResolveHours < 0 || autoResolveHours > 720) return fail('Automatic chat resolution must be 0 (off) or between 1 and 720 hours.');
   if (!Number.isInteger(reuseDays) || reuseDays < 0 || reuseDays > 30) return fail('Conversation reuse must be 0 (off) or between 1 and 30 days.');
   if (!Number.isInteger(restartCooldownSeconds) || restartCooldownSeconds < 0 || restartCooldownSeconds > 3600) return fail('The visitor restart cooldown must be a whole number from 0 to 3600 seconds.');
-  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, restart_cooldown_seconds = $10, auto_convert_to_ticket = $11, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays, restartCooldownSeconds, autoConvertToTicket]));
+  await withOrg(pool, orgId, c => c.query('insert into chat_settings (org_id, enabled, title, greeting, color, logo_url, max_concurrent, auto_resolve_hours, reuse_days, restart_cooldown_seconds, auto_convert_to_ticket, availability_enabled, availability_timezone, weekly_hours, availability_holidays, after_hours_mode, after_hours_message) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16,$17) on conflict (org_id) do update set enabled = $2, title = $3, greeting = $4, color = $5, logo_url = $6, max_concurrent = $7, auto_resolve_hours = $8, reuse_days = $9, restart_cooldown_seconds = $10, auto_convert_to_ticket = $11, availability_enabled = $12, availability_timezone = $13, weekly_hours = $14::jsonb, availability_holidays = $15::jsonb, after_hours_mode = $16, after_hours_message = $17, updated_at = now()', [orgId, enabled, title, greeting, color, logoUrl || null, maxConcurrent, autoResolveHours, reuseDays, restartCooldownSeconds, autoConvertToTicket, checkedHours.settings.availability_enabled, checkedHours.settings.availability_timezone, JSON.stringify(checkedHours.settings.weekly_hours), JSON.stringify(checkedHours.settings.availability_holidays), checkedHours.settings.after_hours_mode, checkedHours.settings.after_hours_message]));
   invalidateLiveOrgCache(orgId);
-  return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays, restart_cooldown_seconds: restartCooldownSeconds, auto_convert_to_ticket: autoConvertToTicket } };
+  return { ok: true, settings: { enabled, title, greeting, color, logo_url: logoUrl || null, max_concurrent: maxConcurrent, auto_resolve_hours: autoResolveHours, reuse_days: reuseDays, restart_cooldown_seconds: restartCooldownSeconds, auto_convert_to_ticket: autoConvertToTicket, ...checkedHours.settings } };
 }
 async function orgOf(pool, slug) { return (await pool.query('select id, name, slug from "organization" where slug = $1', [String(slug || '').toLowerCase().slice(0, 60)])).rows[0] || null; }
 // Public widget configuration changes infrequently. A short per-instance cache avoids
@@ -94,9 +98,11 @@ async function liveOrg(pool, slug) {
   remember({ at: Date.now(), orgId: org.id, value });
   return value;
 }
-export async function publicConfig(pool, slug) {
+export async function publicConfig(pool, slug, nowMs = Date.now()) {
   const x = await liveOrg(pool, slug);
   if (!x) return { ok: true, enabled: false };
+  const hours = chatHoursStatus(x.settings, nowMs);
+  if (x.settings.availability_enabled === true && !hours.open && x.settings.after_hours_mode === 'hide') return { ok: true, enabled: false, scheduleOpen: false };
   // Report accepting only when at least one explicitly enabled agent has room for another chat.
   // The visitor can still leave a message when everyone is away or at capacity.
   const online = await withOrg(pool, x.org.id, async c => {
@@ -110,7 +116,7 @@ export async function publicConfig(pool, slug) {
     ) as accepting`, [x.org.id, x.settings.max_concurrent || DEFAULTS.max_concurrent]);
     return r.rows[0]?.accepting === true;
   });
-  return { ok: true, enabled: true, accepting: online, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null, restartCooldownSeconds: Number(x.settings.restart_cooldown_seconds ?? DEFAULTS.restart_cooldown_seconds) };
+  return { ok: true, enabled: true, accepting: online && hours.open, scheduleOpen: hours.open, scheduleEnabled: x.settings.availability_enabled === true, afterHoursMode: x.settings.after_hours_mode || 'contact_form', afterHoursMessage: x.settings.after_hours_message || DEFAULT_CHAT_HOURS.after_hours_message, name: x.org.name, title: x.settings.title, greeting: x.settings.greeting, color: x.settings.color, logo: x.settings.logo_url || null, restartCooldownSeconds: Number(x.settings.restart_cooldown_seconds ?? DEFAULTS.restart_cooldown_seconds) };
 }
 
 // Independent, tenant-scoped Live Chat inbox. Conversation ids are stable chat numbers.
@@ -306,6 +312,8 @@ export async function agentReplyChat(pool,orgId,actor,number,input={}){
 
 export async function startChat(pool,env,slug,input,mailer,provenance={}){
  const x=await liveOrg(pool,slug);if(!x)return fail('Chat is not available.',404);
+ const hours = chatHoursStatus(x.settings, provenance.nowMs || Date.now()), contactRequest = x.settings.availability_enabled === true && !hours.open;
+ if (contactRequest && x.settings.after_hours_mode === 'hide') return fail('Live Chat is currently closed. Please contact the team during business hours.', 403);
  const name=clean(input.name,100),email=clean(input.email,254).toLowerCase(),body=clean(input.message,2000);
  if(!isEmail(email))return fail('Enter your email address so we can reach you if you leave.');if(!body)return fail('Write your message.');
  const visitorId=clean(input.visitorId,64),visitorKey=/^[a-f0-9]{64}$/i.test(visitorId)?crypto.createHash('sha256').update(x.org.id+':'+visitorId.toLowerCase()).digest('hex'):null;
@@ -313,21 +321,21 @@ export async function startChat(pool,env,slug,input,mailer,provenance={}){
  const result=await withOrg(pool,x.org.id,async c=>{
   if(visitorKey)await c.query('select pg_advisory_xact_lock(hashtext($1),hashtext($2))',[x.org.id,visitorKey]);
   if(cooldown>0){const ended=(await c.query("select greatest(1,ceil(extract(epoch from (e.created_at+($4::int*interval '1 second')-now())))::int) retry_after from chat_events e join chat_conversations cc on cc.org_id=e.org_id and cc.id=e.conversation_id where e.org_id=$1 and e.kind='visitor_ended' and lower(cc.requester_email)=lower($3) and e.created_at>now()-($4::int*interval '1 second') and ($2::text is null or cc.visitor_key=$2) order by e.created_at desc limit 1",[x.org.id,visitorKey,email,cooldown])).rows[0];if(ended)return{ok:false,status:429,error:'Please wait '+ended.retry_after+' seconds before starting another chat.',retryAfterSeconds:Number(ended.retry_after)};}
-  let existing=null;if(visitorKey&&reuseDays>0)existing=(await c.query("select id,chat_number,status from chat_conversations where org_id=$1 and visitor_key=$2 and lower(requester_email)=lower($3) and ((status in ('open','pending','on_hold') and updated_at>=now()-($4::int*interval '1 day')) or (status='solved' and solved_at>=now()-($4::int*interval '1 day'))) order by updated_at desc,id desc limit 1 for update",[x.org.id,visitorKey,email,reuseDays])).rows[0]||null;
+  let existing=null;if(!contactRequest&&visitorKey&&reuseDays>0)existing=(await c.query("select id,chat_number,status from chat_conversations where org_id=$1 and visitor_key=$2 and lower(requester_email)=lower($3) and ((status in ('open','pending','on_hold') and updated_at>=now()-($4::int*interval '1 day')) or (status='solved' and solved_at>=now()-($4::int*interval '1 day'))) order by updated_at desc,id desc limit 1 for update",[x.org.id,visitorKey,email,reuseDays])).rows[0]||null;
   let id,chatNumber;if(existing){id=existing.id;chatNumber=existing.chat_number;await c.query("update chat_conversations set status='open',closed_at=null,solved_at=null,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id]);if(existing.status==='solved')await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,'visitor_returned','Visitor reopened the recently resolved conversation')",[x.org.id,id,name||email]);}
-  else{const created=(await c.query(`insert into chat_conversations(org_id,subject,requester_name,requester_email,visitor_key,priority,page_url,page_title,referrer,user_agent,ip_address,source,last_visitor_seen_at)
-    values($1,$2,$3,$4,$5,'normal',$6,$7,$8,$9,$10,'widget',now()) returning id,chat_number`,
-    [x.org.id,'Chat: '+body.replace(/\s+/g,' ').slice(0,60),name,email,visitorKey,safePageUrl(provenance.pageUrl),clean(provenance.pageTitle,200)||null,safePageUrl(provenance.referrer),clean(provenance.userAgent,500)||null,safeIp(provenance.ip)])).rows[0];id=created.id;chatNumber=created.chat_number;}
+  else{const created=(await c.query(`insert into chat_conversations(org_id,subject,requester_name,requester_email,visitor_key,priority,page_url,page_title,referrer,user_agent,ip_address,source,status,last_visitor_seen_at)
+    values($1,$2,$3,$4,$5,'normal',$6,$7,$8,$9,$10,$11,$12,now()) returning id,chat_number`,
+    [x.org.id,(contactRequest?'Contact request: ':'Chat: ')+body.replace(/\s+/g,' ').slice(0,60),name,email,visitorKey,safePageUrl(provenance.pageUrl),clean(provenance.pageTitle,200)||null,safePageUrl(provenance.referrer),clean(provenance.userAgent,500)||null,safeIp(provenance.ip),contactRequest?'widget_contact':'widget',contactRequest?'pending':'open'])).rows[0];id=created.id;chatNumber=created.chat_number;}
   await c.query("insert into chat_messages(org_id,conversation_id,kind,author_name,body) values($1,$2,'requester',$3,$4)",[x.org.id,id,name||email,body]);
   await c.query("update chat_conversations set visitor_token_hash=$3,updated_at=now(),last_visitor_seen_at=now() where org_id=$1 and id=$2",[x.org.id,id,crypto.createHash('sha256').update(chatToken(env,x.org.id,chatNumber)).digest('hex')]);
-  await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)",[x.org.id,id,name||email,existing?'visitor_returned':'visitor_started',existing?'Visitor returned to the conversation':'Visitor started a Live Chat conversation']);
+  await c.query("insert into chat_events(org_id,conversation_id,actor_name,kind,detail) values($1,$2,$3,$4,$5)",[x.org.id,id,name||email,contactRequest?'after_hours_contact_request':(existing?'visitor_returned':'visitor_started'),contactRequest?'Visitor submitted an after-hours contact request':(existing?'Visitor returned to the conversation':'Visitor started a Live Chat conversation')]);
   const current=(await c.query('select assignee_id from chat_conversations where org_id=$1 and id=$2',[x.org.id,id])).rows[0];
-  if(!current?.assignee_id)await autoAssignChat(c,x.org.id,id);
+  if(!current?.assignee_id && !contactRequest)await autoAssignChat(c,x.org.id,id);
   return{ok:true,number:Number(chatNumber),reused:!!existing};
  });
  if(!result.ok)return result;
  await emit(pool,x.org.id,'message.customer',result.number,{message:{body}});
- if(x.settings.auto_convert_to_ticket===true){try{const converted=await convertChatToTicket(pool,x.org.id,null,result.number);if(converted.ok)result.ticketNumber=converted.number;else logWarn('live_chat.auto_conversion_failed',{org:x.org.id,conversation:result.number,error:converted.error});}catch(error){logError('live_chat.auto_conversion_exception',{org:x.org.id,conversation:result.number,error});}}
+ if(x.settings.auto_convert_to_ticket===true && !contactRequest){try{const converted=await convertChatToTicket(pool,x.org.id,null,result.number);if(converted.ok)result.ticketNumber=converted.number;else logWarn('live_chat.auto_conversion_failed',{org:x.org.id,conversation:result.number,error:converted.error});}catch(error){logError('live_chat.auto_conversion_exception',{org:x.org.id,conversation:result.number,error});}}
  return{ok:true,number:result.number,token:chatToken(env,x.org.id,result.number),reused:result.reused===true,orgId:x.org.id,...(result.ticketNumber?{ticketNumber:result.ticketNumber}:{})};
 }
 
@@ -499,7 +507,7 @@ export async function chatApi(req, { pool, mailer, store, env = process.env, now
   const slug = u.searchParams.get('org') || '';
   try {
     // This endpoint exposes only public widget presentation/availability settings. The embed script calls it from the customer's site, so it must be readable cross-origin.
-    if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
+    if (act === 'config' && req.method === 'GET') { const config = await publicConfig(pool, slug, now); if (config.logo && config.logo.startsWith('/')) config.logo = new URL(config.logo, u.origin).href; return json(200, config, { 'Access-Control-Allow-Origin': '*' }); }
     if (act === 'poll' && req.method === 'GET') { const tokenKey=crypto.createHash('sha256').update(String(u.searchParams.get('t')||'')).digest('hex').slice(0,32); if (await tooMany(pool, 'p' + tokenKey, now, 60) || await tooMany(pool, 'pip' + ip, now, 1200)) return json(429, { error: 'Slow down.' }); const r = await pollChat(pool, env, slug, u.searchParams.get('n'), u.searchParams.get('t'), u.searchParams.get('after')); return json(r.ok ? 200 : r.status, r); }
     if (act === 'file' && req.method === 'GET') {
       const x=await liveOrg(pool,slug),number=Number(u.searchParams.get('n'))||0,token=u.searchParams.get('t')||'',id=u.searchParams.get('id')||'';
@@ -523,7 +531,7 @@ export async function chatApi(req, { pool, mailer, store, env = process.env, now
     }
     const text = await req.text(); if (text.length > 10000) return json(413, { error: 'Too long.' });
     let b; try { b = JSON.parse(text || '{}'); } catch { return json(400, { error: 'Bad request.' }); }
-    if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor'}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
+    if (act === 'start') { if (await tooMany(pool, 's' + ip, now, 6)) return json(429, { error: 'Too many chats started. Wait a minute.' }); const r = await startChat(pool, env, slug, b, mailer, {ip,pageUrl:b.pageUrl,pageTitle:b.pageTitle,referrer:req.headers.get('referer'),userAgent:req.headers.get('user-agent'),identityType:'visitor',nowMs:now}); if (r.ok) delete r.orgId; return json(r.ok ? 200 : r.status, r); }
     if (act === 'context') { if (await tooMany(pool, 'cx' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await updateChatContext(pool, env, slug, b); return json(r.ok ? 200 : r.status, r); }
     if (act === 'typing') { const typingKey=crypto.createHash('sha256').update(String(b.token||'')).digest('hex').slice(0,32); if (await tooMany(pool, 'ty' + typingKey, now, 30) || await tooMany(pool, 'tyip' + ip, now, 600)) return json(429, { error: 'Slow down.' }); const x = await liveOrg(pool, slug); if (!x) return json(404, { error: 'Chat is not available.' }); const number = Number(b.number) || 0; if (!tokenOk(env, x.org.id, number, b.token)) return json(403, { error: 'This chat is not yours.' }); const visitorId = 'visitor:' + crypto.createHash('sha256').update(String(b.token)).digest('hex').slice(0, 32); const result = await withOrg(pool, x.org.id, async c => { const conversation = await conversationForNumber(c, x.org.id, number); if (!conversation || ['closed','solved'].includes(conversation.status)) return fail('This chat has ended.', 409); await c.query("insert into chat_presence(org_id,conversation_id,user_id,name,typing,seen_at) values($1,$2,$3,'Website visitor',$4,now()) on conflict(org_id,conversation_id,user_id) do update set typing=excluded.typing,seen_at=now()", [x.org.id, conversation.id, visitorId, b.typing === true]); return { ok: true }; }); return json(result.ok ? 200 : result.status, result); }
     if (act === 'send') { if (await tooMany(pool, 'm' + ip, now, 30)) return json(429, { error: 'Slow down.' }); const r = await sendChat(pool, env, slug, b, mailer); return json(r.ok ? 200 : r.status, r); }

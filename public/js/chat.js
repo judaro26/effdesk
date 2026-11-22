@@ -51,8 +51,9 @@
   function start() {
     clear(main); stop();
     var name = el('input', { 'aria-label': 'Your name', placeholder: 'Your name', maxlength: '100', autocomplete: 'name' }), email = el('input', { 'aria-label': 'Your email', placeholder: 'you@example.com', type: 'email', maxlength: '254', autocomplete: 'email' });
-    var msg = el('textarea', { 'aria-label': 'Your message', placeholder: 'How can we help?', maxlength: '2000', rows: '3' }), err = el('div', { class: 'err', role: 'alert' }), go = el('button', { type: 'submit', text: cfg.accepting ? 'Start chat' : 'Send message' });
-    var form = el('form', {}, el('div', { class: 'note' + (cfg.accepting ? '' : ' offline'), text: cfg.accepting ? cfg.greeting : 'We’re not accepting live chats right now. Leave a message and we’ll reply here, or by email if you leave.' }), name, email, msg, err, go);
+    var afterHours = cfg.scheduleEnabled === true && cfg.scheduleOpen === false, msg = el('textarea', { 'aria-label': 'Your message', placeholder: afterHours ? 'How can we help? Leave a message for our team.' : 'How can we help?', maxlength: '2000', rows: '3' }), err = el('div', { class: 'err', role: 'alert' }), go = el('button', { type: 'submit', text: afterHours ? 'Send contact request' : (cfg.accepting ? 'Start chat' : 'Send message') });
+    var intro = afterHours ? (cfg.afterHoursMessage || 'We are currently closed. Leave a message and our team will get back to you.') : (cfg.accepting ? cfg.greeting : 'We’re not accepting live chats right now. Leave a message and we’ll reply here, or by email if you leave.');
+    var form = el('form', {}, el('div', { class: 'note' + (cfg.accepting ? '' : ' offline'), text: intro }), afterHours ? el('strong', { class:'chat-contact-heading', text:'After-hours contact form' }) : null, name, email, msg, err, go);
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.textContent = ''; go.disabled = true;
       api('start?org=' + encodeURIComponent(org), { name: name.value, email: email.value, message: msg.value, visitorId: visitorId(), pageUrl: PAGE_URL, pageTitle: PAGE_TITLE || doc.title || '' }).then(function (r) {

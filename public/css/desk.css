@@ -1452,3 +1452,9 @@ html[data-chat-theme="champagne"] .chat-agent-conversation .msg.out{background:l
 @container desk-content (max-width:560px){
   .deskapp .chat-agent-workspace{padding:6px;gap:8px}
 }
+
+/* Live Chat business-hours controls in workspace settings. */
+.deskapp .chat-hours-grid{display:grid;gap:7px;max-width:720px;margin:10px 0 16px}
+.deskapp .chat-hours-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(110px,150px) minmax(110px,150px);align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.deskapp .chat-hours-row input[type=time]{width:100%;min-width:0}
+@media(max-width:600px){.deskapp .chat-hours-row{grid-template-columns:minmax(0,1fr) minmax(95px,1fr) minmax(95px,1fr);gap:6px;padding:7px}.deskapp .chat-hours-row .chk{font-size:12px}}
