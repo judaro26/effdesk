@@ -2,6 +2,7 @@
 // Netlify invokes this scheduled worker every minute. Jobs are claimed with
 // PostgreSQL SKIP LOCKED leases, so overlapping invocations cannot own the same job.
 import { context } from '../../src/context.js';
+import { info as logInfo, warn as logWarn } from '../../src/log.js';
 import { runJobs } from '../../src/jobs.js';
 import { deliverWebhook } from '../../src/webhooks.js';
 import { deliverTicketEmailJob } from '../../src/ticket-mail-jobs.js';
@@ -17,6 +18,9 @@ export default async function backgroundJobs() {
     'email.agent_notice': (orgId, payload, job) => deliverAgentNoticeJob(pool, mailer, orgId, payload, job),
     'email.csat_survey': (orgId, payload, job) => deliverCsatSurveyJob(pool, mailer, process.env, orgId, payload, job)
   }, { batchSize: Math.max(1, Math.min(50, Number(process.env.BACKGROUND_JOB_BATCH_SIZE) || 10)), leaseMs: 120000 });
+  const telemetry = { worker: 'scheduled', ...summary };
+  if (summary.failed > 0) logWarn('background_jobs_run', telemetry);
+  else logInfo('background_jobs_run', telemetry);
   return new Response(JSON.stringify({ ok: true, ...summary }), {
     status: 200,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
