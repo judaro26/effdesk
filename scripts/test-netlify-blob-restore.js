@@ -33,7 +33,7 @@ export async function restoreAndVerifySnapshot(store, directory) {
     // The destination must be a disposable, dedicated test site. Remove only keys
     // represented by this snapshot, including after a partial restore failure.
     const cleanupErrors = [];
-    for (const key of restoredKeys) {
+    for (const key of [...new Set(manifest.entries.map(entry => entry.key))]) {
       try { await store.delete(key); }
       catch (error) { cleanupErrors.push(error); }
     }
