@@ -3,14 +3,15 @@
 create table if not exists ticket_views (
   id bigserial primary key,
   org_id text not null references "organization"(id) on delete cascade,
-  ticket_id bigint not null references tickets(id) on delete cascade,
+  ticket_id bigint not null,
   user_id text not null,
   agent_name text not null default '',
   agent_email text not null default '',
   first_viewed_at timestamptz not null default now(),
   last_viewed_at timestamptz not null default now(),
   view_count integer not null default 1 check (view_count > 0),
-  unique (org_id, ticket_id, user_id)
+  unique (org_id, ticket_id, user_id),
+  foreign key (org_id, ticket_id) references tickets (org_id, id) on delete cascade
 );
 create index if not exists ticket_views_org_ticket_last
   on ticket_views (org_id, ticket_id, last_viewed_at desc);
