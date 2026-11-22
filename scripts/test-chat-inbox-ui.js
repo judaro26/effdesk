@@ -40,6 +40,14 @@ check('the multi-chat workspace keeps visitor context visible beside the live co
 check('the Live Chat workspace adapts its conversation and visitor panels for tablet and mobile widths', css.includes('@media(max-width:900px)') && css.includes('@media(max-width:760px)'));
 
 
+
+check('Live Chat activity timestamps are formatted in the signed-in agent browser time zone and include its abbreviation',js.includes("Intl.DateTimeFormat().resolvedOptions().timeZone")&&js.includes("timeZoneName: 'short'")&&js.includes('var chatWhen ='));
+check('Live Chat inbox cards show absolute local activity times instead of ambiguous relative-only dates',js.includes("var fmt = function (value) { return chatWhen(value); }")&&js.includes("class: 'chat-inbox-time', title: chatWhenTitle(activityAt)"));
+check('agent conversation headers show local conversation start and last-update timestamps',js.includes("'Started '+chatWhen(t.created_at)+' · Updated '+chatWhen(t.updated_at)"));
+check('agent message bubbles and conversation timeline show local send timestamps',js.includes("(m.kind === 'note' ? ' · Internal note · ' : ' · ') + chatWhen(m.created_at)")&&js.includes("' · ' + chatWhen(e.created_at)"));
+check('each chat attachment displays the local timestamp of the message that sent it',js.includes("class:'file-sent-at',title:chatWhenTitle(m.created_at)")&&js.includes("'Sent '+chatWhen(m.created_at)"));
+check('supervisor and operations landing views show local conversation activity timestamps',js.includes('chat-supervisor-timestamp')&&js.includes('chat-landing-timestamp')&&js.includes("var fmt = function(v) { return chatWhen(v); }"));
+
 done();
 
 check('accepted Live Chat conversations stay in the dedicated Live Chat navigation context', js.includes("chatConversationOpen = r.body.ticket.channel === 'chat'") && js.includes("(chatInboxOpen || chatConversationOpen) ? 'chat'"));
@@ -133,7 +141,7 @@ check('agent typing presence and visitor widget status are independent of ticket
 check('chat conversations retain a dedicated deep link and use chat-scoped attachments rather than ticket attachment links', js.includes("addr(n, isChat === true)") && js.includes("if (chatNo > 0) return open(chatNo, true)") && js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number") && js.includes('picker(t, permanentlyClosed') && fs.readFileSync(new URL('../src/chat.js', import.meta.url), 'utf8').includes('chat_message_id'));
 
 check('the Live Chat landing page opens the agent workspace directly instead of another inbox landing page', js.includes('openNextLiveChat') && js.includes('Open my next chat'));
-check('visitor and agent typing indicators are connected end-to-end and use refreshed client scripts',widget.includes("api('typing?org=")&&widget.includes('r.body.agentTyping')&&js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'")&&js.includes('is typing…')&&chatPage.includes('chat.js?v=live-chat-attachments-typing-20261117')&&deskPage.includes('desk.js?v=live-chat-attachments-typing-20261117'));
+check('visitor and agent typing indicators are connected end-to-end and use refreshed client scripts',widget.includes("api('typing?org=")&&widget.includes('r.body.agentTyping')&&js.includes("api(chatConversationOpen ? 'chat-presence' : 'presence'")&&js.includes('is typing…')&&chatPage.includes('chat.js?v=live-chat-attachments-typing-20261117')&&deskPage.includes('desk.js?v=chat-local-timestamps-20261122'));
 check('visitor chat attachments upload before sending and render secure token-scoped downloads',widget.includes('/api/chat/upload?org=')&&widget.includes('attachmentIds: ids')&&widget.includes('/api/chat/file?org=')&&js.includes("chatConversationOpen ? '&chat=' + t.number : '&ticket=' + t.number"));
 
 
