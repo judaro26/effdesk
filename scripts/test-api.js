@@ -9,6 +9,7 @@ import { makeMailer } from '../src/email.js';
 import { tickets, inboundEmail, me } from '../src/handlers.js';
 import { grantLicense } from '../src/license.js';
 import { ticketToken } from '../src/ticket-mail.js';
+import { deliverTicketEmailJob } from '../src/ticket-mail-jobs.js';
 import { apiV1 } from '../src/handlers.js';
 import { withOrg } from '../src/db.js';
 
@@ -52,7 +53,18 @@ const l = await api(T, 'GET', '/tickets?status=open'); check('tickets can be lis
 const g = await api(T, 'GET', '/tickets/1'); check('one ticket comes back with its public messages', g.status === 200 && g.body.messages.length === 1 && g.body.messages[0].body === 'hello' && (await api(T, 'GET', '/tickets/99')).status === 404);
 outbox.length = 0;
 const cm = await api(T, 'POST', '/tickets/1/comments', { body: 'Fixed!', status: 'solved' });
-check('a public comment is emailed to the customer and can solve the ticket', cm.status === 201 && outbox.some(m => /Fixed!/.test(m.text || '')) && (await api(T, 'GET', '/tickets/1')).body.ticket.status === 'solved');
+check('a public comment queues customer email and can solve the ticket', cm.status === 201 && cm.body.email === 'queued' && (await api(T, 'GET', '/tickets/1')).body.ticket.status === 'solved');
+const apiMessage = await withOrg(pool, acme.id, async c => (await c.query(
+  "select id from ticket_messages where org_id=$1 and ticket_id=(select id from tickets where org_id=$1 and number=1) and kind='agent' and body='Fixed!' order by id desc limit 1",
+  [acme.id]
+)).rows[0]);
+const apiJob = apiMessage && await withOrg(pool, acme.id, async c => (await c.query(
+  "select payload,attempts,max_attempts from background_jobs where org_id=$1 and job_type='ticket.email.deliver' and idempotency_key=$2",
+  [acme.id, 'ticket-message:' + apiMessage.id]
+)).rows[0]);
+check('the API comment creates its durable delivery job', !!apiMessage && !!apiJob);
+if (apiMessage && apiJob) await deliverTicketEmailJob(pool, mailer, null, ENV, acme.id, apiJob.payload, apiJob);
+check('the API public comment is sent to the customer by the background worker', outbox.some(m => /Fixed!/.test(m.text || '')));
 await api(T, 'POST', '/tickets/1/comments', { body: 'private', public: false });
 check('a private note is not shown in the API listing of messages', !(await api(T, 'GET', '/tickets/1')).body.messages.some(m => m.body === 'private'));
 const p = await api(T, 'PATCH', '/tickets/1', { priority: 'high', tags: ['vip'], status: 'open' });
