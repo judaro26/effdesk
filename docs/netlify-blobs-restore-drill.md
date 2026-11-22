@@ -20,11 +20,12 @@ Never use the production Netlify Site ID for these test-only secrets. Never past
 3. Validates the snapshot manifest and every source object's byte count and SHA-256 before writing.
 4. Writes the original object keys into the disposable site's `attachments` store.
 5. Reads every restored object back from Netlify Blobs and verifies its byte count and SHA-256.
-6. Deletes only the snapshot's object keys from the disposable test store, including after a partial restore failure.
-7. Removes decrypted archive material from the GitHub runner.
+6. Creates a short-lived test workspace and attachment metadata in an isolated PostgreSQL database, then retrieves a copy of one restored object's bytes through EffDesk's real authenticated attachment download handler. It also checks anonymous and non-member requests are rejected.
+7. Deletes the temporary application canary and only the snapshot's object keys from the disposable test store, including after a partial restore or application verification failure.
+8. Removes decrypted archive material from the GitHub runner.
 
 The workflow is manual by design. Run it after a successful backup restore verification, and periodically thereafter.
 
 ## Run it
 
-Open **Actions → Isolated Netlify Blobs restore drill → Run workflow**. A successful run proves that the backup's objects can be written to and read back from a real Netlify Blobs store. It does not validate application-level attachment authorization or production-site configuration; those require a separate isolated application smoke test.
+Open **Actions → Isolated Netlify Blobs restore drill → Run workflow**. A successful run proves that the backup's objects can be written to and read back from a real Netlify Blobs store and that restored bytes can be retrieved through EffDesk's attachment storage/read path with tenant authorization and safe download headers. The application smoke test uses an isolated temporary PostgreSQL database and disposable Netlify site; it does not connect to production.
