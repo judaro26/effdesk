@@ -113,6 +113,13 @@ check('the reply editor can fully collapse to zero pixels using its accessible r
 }
 for (let i = 0; i < 10; i++) $('.editor-resize-handle').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 check('the editor resize limit is enforced at zero pixels', $('.ed-area').style.height === '0px');
+{ const htmlEmail = $$('.msg-b').find(message => message.querySelector('h2')); check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!htmlEmail && htmlEmail.querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test(htmlEmail.textContent)); }
+{ const rb = $$('.msg-b').find(message => message.querySelector('table[data-table]')); check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb && !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
+  check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb && !!rb.querySelector('hr[data-rule]') && !!rb.querySelector('pre[data-code] code') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
+  check('inline code, bold and links are formatted, and links open safely in a new tab', !!rb && !!rb.querySelector('p code') && !!rb.querySelector('p strong') && rb.querySelector('p a')?.getAttribute('rel') === 'noopener noreferrer' && rb.querySelector('p a')?.getAttribute('href') === 'https://ex.org/a');
+  check('a message with markup in it is still shown as text, never run', !$$('.msg-b')[0]?.querySelector('img')); }
+check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b')?.textContent || '') && /<b>broken<\\/b>/.test($('h2')?.textContent || ''));
+check('a message shows its files as download links for this organization', $$('.msg-b')[0]?.querySelector('a[data-file=f1]')?.getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\\.jpg \\(2 KB\\)/.test($('a[data-file=f1]')?.textContent || ''));
 {
   const thread = $('.thread');
   thread.scrollTop = 800;
@@ -120,13 +127,6 @@ check('the editor resize limit is enforced at zero pixels', $('.ed-area').style.
   $('[data-refresh]').click(); await tick(); await tick();
   check('refresh preserves the current position in a long conversation', $('.thread').scrollTop === 800);
 }
-{ const htmlEmail = $$('.msg-b').find(message => message.querySelector('h2')); check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!htmlEmail && htmlEmail.querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test(htmlEmail.textContent)); }
-{ const rb = $$('.msg-b')[2]; check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
-  check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb.querySelector('hr[data-rule]') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
-  check('inline code, bold and links are formatted, and links open safely in a new tab', !!rb.querySelector('p code') && !!rb.querySelector('p strong') && rb.querySelector('p a').getAttribute('rel') === 'noopener noreferrer' && rb.querySelector('p a').getAttribute('href') === 'https://ex.org/a');
-  check('a message with markup in it is still shown as text, never run', !$$('.msg-b')[0].querySelector('img')); }
-check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b').textContent) && /<b>broken<\/b>/.test($('h2').textContent));
-check('a message shows its files as download links for this organization', $$('.msg-b')[0].querySelector('a[data-file=f1]').getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\.jpg \(2 KB\)/.test($('a[data-file=f1]').textContent));
 check('the opened ticket has its own tab beside Views, three columns, and the rail marks Tickets', !!$('[data-tab="7"]') && /#7 Heater/.test($('[data-tab="7"]').textContent) && !!$('.ticket .props') && !!$('.ticket .conv') && !!$('.ticket .info') && $('[data-nav]').getAttribute('aria-current') === 'true');
 $('.ed-area').textContent = 'half a thought'; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true })); $('[data-mode=note]').click(); await tick(); $('[data-mode=reply]').click(); await tick();
 check('switching between Public reply and Internal note keeps what was typed', $('.ed-area').textContent === 'half a thought'); $('.ed-area').textContent = ''; $('.ed-area').dispatchEvent(new w.Event('input', { bubbles: true }));
