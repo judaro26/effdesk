@@ -118,8 +118,8 @@ check('the editor resize limit is enforced at zero pixels', $('.ed-area').style.
   check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb && !!rb.querySelector('hr[data-rule]') && !!rb.querySelector('pre[data-code] code') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
   check('inline code, bold and links are formatted, and links open safely in a new tab', !!rb && !!rb.querySelector('p code') && !!rb.querySelector('p strong') && rb.querySelector('p a')?.getAttribute('rel') === 'noopener noreferrer' && rb.querySelector('p a')?.getAttribute('href') === 'https://ex.org/a');
   check('a message with markup in it is still shown as text, never run', !$$('.msg-b')[0]?.querySelector('img')); }
-check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b')?.textContent || '') && /<b>broken<\\/b>/.test($('h2')?.textContent || ''));
-check('a message shows its files as download links for this organization', $$('.msg-b')[0]?.querySelector('a[data-file=f1]')?.getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\\.jpg \\(2 KB\\)/.test($('a[data-file=f1]')?.textContent || ''));
+check('message text and subjects are drawn as text, never as HTML', !$('.desk img') && $$('.desk b').every(b => b.children.length === 0) && /<img src=x/.test($('.msg-b')?.textContent || '') && /<b>broken<\/b>/.test($('h2')?.textContent || ''));
+check('a message shows its files as download links for this organization', $$('.msg-b')[0]?.querySelector('a[data-file=f1]')?.getAttribute('href') === '/api/attachments/f1?org=o1' && /leak\.jpg \(2 KB\)/.test($('a[data-file=f1]')?.textContent || ''));
 {
   const thread = $('.thread');
   thread.scrollTop = 800;
