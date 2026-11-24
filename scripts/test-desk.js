@@ -120,7 +120,7 @@ check('the editor resize limit is enforced at zero pixels', $('.ed-area').style.
   $('[data-refresh]').click(); await tick(); await tick();
   check('refresh preserves the current position in a long conversation', $('.thread').scrollTop === 800);
 }
-check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!$$('.msg-b')[3].querySelector('h2') && $$('.msg-b')[3].querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test($$('.msg-b')[3].textContent));
+{ const htmlEmail = $$('.msg-b').find(message => message.querySelector('h2')); check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!htmlEmail && htmlEmail.querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test(htmlEmail.textContent)); }
 { const rb = $$('.msg-b')[2]; check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
   check('--- becomes a line, and ``` becomes a code block that shows markup as text', !!rb.querySelector('hr[data-rule]') && rb.querySelector('pre[data-code] code').textContent === 'npm test <b>' && !rb.querySelector('pre b'));
   check('inline code, bold and links are formatted, and links open safely in a new tab', !!rb.querySelector('p code') && !!rb.querySelector('p strong') && rb.querySelector('p a').getAttribute('rel') === 'noopener noreferrer' && rb.querySelector('p a').getAttribute('href') === 'https://ex.org/a');
