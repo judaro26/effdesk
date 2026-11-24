@@ -1415,7 +1415,7 @@
         var on = !!current && current.ticket.number === t.number;
         tabsEl.appendChild(el('span', { class: 'tab has-x', 'aria-selected': String(on) },
           el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number, t.isChat === true); } }, 'Conversation #' + t.number + ' ' + t.subject),
-          el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (current && current.ticket.number === t.number) current = null; draw(); } }, '×')));
+          el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { var closingCurrent = !!current && current.ticket.number === t.number; openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (closingCurrent) { addr(0); closePanes(); } draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
       if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; sandboxInfo = null; sandboxLoading = false; closePanes(); openTabs = []; ticketTasks = {}; ticketApprovals = {}; approvalRows = null; rules = null; rulesLoading = false; lifecyclePolicy = null; lifecyclePolicyLoading = false; rd = null; loadInit().then(refresh); }));
@@ -1457,7 +1457,7 @@
       var columnDefs = {
         status: { label: 'Status', cls: 'c-status', cell: function (t) { return el('span', { class: 'badge s-' + t.status, title: t.custom_status_id ? 'Counts as ' + t.status : null }, statusName(t)); } },
         number: { label: 'Ticket', cls: 'num', cell: function (t) { return '#' + t.number; } },
-        subject: { label: 'Subject', cls: 'subj', cell: function (t) { var tags = (t.tags || []).map(function (g) { return el('button', { type: 'button', class: 'tag', 'data-tag': g, onclick: function (e) { e.stopPropagation(); filter = { status: '', assignee: '', q: '', tag: g, columnFilters: Object.assign({}, filter.columnFilters || {}) }; refresh(); } }, g); }); return [t.subject, tags.length ? el('span', { class: 'tagline' }, tags) : null]; } },
+        subject: { label: 'Subject', cls: 'subj', cell: function (t) { var tags = (t.tags || []).map(function (g) { return el('button', { type: 'button', class: 'tag', 'data-tag': g, onclick: function (e) { e.stopPropagation(); filter = { status: '', assignee: '', q: '', tag: g, columnFilters: Object.assign({}, filter.columnFilters || {}) }; refresh(); } }, g); }); var subject = t.has_been_viewed === false ? el('strong', { class: 'ticket-unopened-subject' }, t.subject) : t.subject; return [subject, tags.length ? el('span', { class: 'tagline' }, tags) : null]; } },
         requester: { label: 'Requester', cls: 'c-req', cell: function (t) { return t.requester_name || t.requester_email; } },
         priority: { label: 'Priority', cls: 'c-pri', cell: function (t) { return cap(t.priority); } },
         assignee: { label: 'Assignee', cls: 'c-asg', cell: function (t) { return name(t.assignee_id) || '—'; } },
