@@ -5,6 +5,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'), pub 
 const T = { id: 1, number: 7, subject: 'Heater <b>broken</b>', status: 'open', priority: 'normal', requester_name: 'Tina', requester_email: 't@x.co', assignee_id: null, tags: ['heat'], created_at: '2026-11-01T10:00:00Z', sla: { first: { due: Date.now() - 3 * 3600e3, state: 'breached' }, resolve: { due: Date.now() + 5 * 3600e3, state: 'ok' }, worst: 'breached' } };
 const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', kind: 'status', detail: 'Status open → pending', created_at: '2026-11-01T11:00:00Z' }, { actor_name: 'Ann', kind: 'viewed', detail: 'Opened ticket · view 1', created_at: '2026-11-01T11:01:00Z' }], sides: [{ id: 4, to_email: 'plumber@pipes.co', subject: 'Visit', status: 'open', messages: [{ direction: 'out', author_name: 'Ann', body: 'Tuesday?' }, { direction: 'in', author_name: 'P', body: 'Fine' }] }], client: { id: 9, name: 'Initech', domain: 'initech.com', notes: 'Pays late', share_tickets: false, stats: { total: 3, open: 2, solved: 1 }, people: [{ email: 'bill@initech.com', name: 'Bill', tickets: 2 }] }, problem: null, incidents: [], merged: [] };
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }, { id: 99, kind: 'requester', author_name: 'Tina', body: 'Takeoff\t\t\nCategory\tItem\tQty\nLighting\t\t\nLighting\tLED strip\t12\n---\n```\nnpm test <b>\n```\nAlso `x` and **bold** at https://ex.org/a', created_at: '2026-11-01T12:00:00Z', attachments: [] }, { id: 100, kind: 'requester', author_name: 'Automation', body: '<!DOCTYPE html><html><body><h2>Automation update</h2><p>Done</p></body></html>', html_body: '<h2>Automation update</h2><p>Done</p>', created_at: '2026-11-01T13:00:00Z', attachments: [] }];
+let simulateTicketClosure = false;
 const calls = []; const ALLF = ['whatsapp', 'custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents', 'custom_roles', 'audit_log', 'data_export', 'request_forms', 'routing']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
   const ok = body => ({ ok: true, status: 200, json: async () => body });
@@ -72,7 +73,7 @@ const fetchFn = async (url, opts) => {
   if (b.action === 'prefs-save') return (b.theme === undefined || /^(classic|midnight|mint|aurora)$/.test(b.theme)) ? ok({ ok: true, theme: b.theme }) : { ok: false, status: 402, json: async () => ({ error: 'Upgrade' }) };
   if (b.action === 'global-search') return ok({ tickets: [{ number: 7, subject: 'Heater', status: 'open', requester_name: 'Tina', requester_email: 't@x.co' }], contacts: [], companies: [], agents: [] });
   if (b.action === 'agents') return ok({ agents: [{ id: 'u1', name: 'Ann', email: 'ann@acme.test' }] });
-  if (b.action === 'list') return ok({ tickets: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? [] : [{ ...T, has_been_viewed: false }], counts: { open: b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket' ? 0 : 1, pending: 0, solved: 0, closed: 0 } });
+  if (b.action === 'list') return ok({ tickets: simulateTicketClosure || (b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket') ? [] : [{ ...T, has_been_viewed: false }], counts: { open: simulateTicketClosure || (b.columnFilters && b.columnFilters.subject === 'nonexistent-ticket') ? 0 : 1, pending: 0, solved: 0, closed: 0 } });
   if (b.action === 'get') return ok({ ticket: { ...T, number: b.number, type: 'question', queue_id: null, client_id: 9, cc: ['bob@corp.com'] }, messages: msgs, extras: EXTRAS });
   if (b.action === 'create' && !/@/.test(b.requesterEmail)) return { ok: false, status: 400, json: async () => ({ error: 'Enter the requester\'s email address.' }) };
   if (b.action === 'create') return ok({ ticket: { ...T, number: 8, subject: b.subject } });
@@ -428,5 +429,18 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   if (ticketRow) ticketRow.click();
   await tick(40);
   check('the ticket can be reopened after closing its tab', !!C('.thread') && closeNav.replaced.some(u => u.endsWith('/agent/10003/tickets/7')));
+}
+// A ticket closed from its detail view must leave the active queue cleanly.
+{ const sd = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), sw = sd.window;
+  sw.__EFFDESK_TEST__ = true; sw.eval(pub('js/desk.js')); simulateTicketClosure = true;
+  const statusNav = { search: '?org=o1&ticket=7', path: '/w/acme/agent/10003/tickets/7', host: 'app.test', went: [], replaced: [], go(u) { this.went.push(u); }, replace(u) { this.replaced.push(u); } };
+  await sw.EffDeskDesk.start(sw.document, fetchFn, statusNav); await tick(40);
+  const S = s => sw.document.querySelector(s), statusControl = S('select[aria-label="Status"]');
+  check('a directly opened ticket renders before its status is changed', !!S('.conv') && !!statusControl);
+  if (statusControl) { statusControl.value = 'closed'; statusControl.dispatchEvent(new sw.Event('change', { bubbles: true })); }
+  await tick(50);
+  check('closing a ticket from its detail pane clears the detail and resets the URL to the ticket list', !S('.conv') && statusNav.replaced.some(u => u.endsWith('/agent/10003/tickets')));
+  check('the active queue renders its empty state instead of retaining the closed ticket pane', !S('tr.row') && !!S('.ticket-empty'));
+  simulateTicketClosure = false;
 }
 done();
