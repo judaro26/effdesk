@@ -1719,7 +1719,22 @@
         }).catch(function () { ticketHistoryLoading = false; say('Connection interrupted. Try loading older messages again.', true); draw(); });
       };
       var after = function () { return Promise.all([open(t.number, chatConversationOpen), refresh()]); };
-      var update = function (patch) { if (chatConversationOpen) return api(patch.status === 'closed' ? 'chat-end-agent' : 'chat-update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); return api('update', { number: t.number, patch: patch }).then(function (r) { if (!r.ok) return say(r.body.error, true); return after(); }); };
+      var update = function (patch) {
+        var statusFilter = filter && filter.status || '', nextStatus = patch && patch.status;
+        var leavesCurrentList = !chatConversationOpen && nextStatus && (statusFilter === 'active'
+          ? ['solved', 'closed'].indexOf(nextStatus) >= 0
+          : ['open', 'pending', 'on_hold', 'solved', 'closed'].indexOf(statusFilter) >= 0 && statusFilter !== nextStatus);
+        var action = chatConversationOpen ? (patch.status === 'closed' ? 'chat-end-agent' : 'chat-update') : 'update';
+        return api(action, { number: t.number, patch: patch }).then(function (r) {
+          if (!r.ok) return say(r.body.error, true);
+          if (leavesCurrentList) {
+            openTabs = openTabs.filter(function (tab) { return Number(tab.number) !== Number(t.number); });
+            addr(0); closePanes();
+            return refresh();
+          }
+          return after();
+        });
+      };
       var fieldInput = function (f, v) {
         var put = function (val) { var c = {}; c[f.key] = val; update({ custom: c }); };
         if (f.type === 'dropdown') return sel(f.label, v === undefined ? '' : String(v), [['', '—']].concat(f.options.map(function (o) { return [o, o]; })), function (x) { put(x); });
