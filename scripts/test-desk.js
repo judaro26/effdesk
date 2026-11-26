@@ -394,5 +394,21 @@ check('the account page links to the desk', /Open the desk/.test(pub('js/app.js'
   check('the Integrations tab lists the webhooks with their last delivery', /hooks\.example\.org/.test(X('[data-hook]').textContent) && /200/.test(X('[data-hook]').textContent));
   X('input[aria-label="Webhook address"]').value = 'http://bad.example.org'; X('[data-hook-save]').click(); await tick(); check('a bad address is explained and no secret is shown', /public https/.test(X('.msg').textContent) && !X('[data-secret]'));
   X('input[aria-label="Webhook address"]').value = 'https://hooks.example.org/y'; X('[data-hook-save]').click(); await tick(20); check('a good address is saved and the secret is shown once', calls.some(c => c[1] && c[1].action === 'webhook-save' && c[1].events.includes('ticket.created')) && /whsec_abc/.test(X('[data-secret]').textContent)); }
-$('[data-close="7"]').click(); check('closing the selected ticket tab returns to the ticket list and resets the URL', !$('.thread') && nav.replaced[nav.replaced.length - 1].endsWith('/agent/10003/tickets')); check('the ticket list remains available after closing its tab', !!$('tr.row')); $('tr.row').click(); await tick(); check('the ticket can be reopened after closing its tab', !!$('.thread') && nav.replaced[nav.replaced.length - 1].endsWith('/agent/10003/tickets/7'));
+// Keep close-tab navigation independent from the long-running desk UI tests above.
+{ const cd = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), cw = cd.window;
+  cw.__EFFDESK_TEST__ = true; cw.eval(pub('js/desk.js'));
+  const closeNav = { search: '?org=o1&ticket=7', path: '/w/acme/agent/10003/tickets/7', host: 'app.test', went: [], replaced: [], go(u) { this.went.push(u); }, replace(u) { this.replaced.push(u); } };
+  await cw.EffDeskDesk.start(cw.document, fetchFn, closeNav); await tick(40);
+  const C = s => cw.document.querySelector(s);
+  const closeButton = C('[data-close="7"]');
+  check('a selected ticket has a close-tab control', !!closeButton);
+  if (closeButton) closeButton.click();
+  await tick(20);
+  check('closing the selected ticket tab returns to the ticket list and resets the URL', !C('.thread') && closeNav.replaced.some(u => u.endsWith('/agent/10003/tickets')));
+  check('the ticket list remains available after closing its tab', !!C('tr.row'));
+  const ticketRow = C('tr.row');
+  if (ticketRow) ticketRow.click();
+  await tick(40);
+  check('the ticket can be reopened after closing its tab', !!C('.thread') && closeNav.replaced.some(u => u.endsWith('/agent/10003/tickets/7')));
+}
 done();
