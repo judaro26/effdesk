@@ -103,13 +103,13 @@ check('the first load asks for active tickets in the right organization', calls.
 { const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && $$('tr.row').length === 0 && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $$('tr.row').length === 1); }
 $('.row').click(); await tick(); await tick(100); check('opening a ticket removes its unopened bold state', !$('tr.row.ticket-unopened')); check('opening a ticket removes its explicit unopened subject emphasis', !$('.ticket-unopened-subject')); check('external issue context loads once without retrying or redrawing continuously', calls.filter(c => typeof c[0] === 'string' && c[0].indexOf('/api/integrations/ticket-context') >= 0).length === 1);
 {
-  const createButton = $('.external-issue-actions button').find(b => /Create new/.test(b.textContent));
+  const createButton = $$('.external-issue-actions button').find(b => /Create new/.test(b.textContent));
   createButton.click(); await tick(60);
   const linearTeam = $('select[aria-label="Linear team"]');
   check('Linear team selector is enabled and can be opened', !!linearTeam && !linearTeam.disabled && !linearTeam.hasAttribute('disabled'));
   if (linearTeam) { linearTeam.value = 'team-1'; linearTeam.dispatchEvent(new w.Event('change', { bubbles: true })); await tick(40); }
   const jiraTab = $('button[aria-label="Jira"]'); jiraTab.click(); await tick(20);
-  const jiraCreate = $('.external-issue-actions button').find(b => /Create new/.test(b.textContent)); jiraCreate.click(); await tick(60);
+  const jiraCreate = $$('.external-issue-actions button').find(b => /Create new/.test(b.textContent)); jiraCreate.click(); await tick(60);
   const jiraProject = $('select[aria-label="Jira project"]');
   check('Jira project selector is enabled and can be opened', !!jiraProject && !jiraProject.disabled && !jiraProject.hasAttribute('disabled'));
   if (jiraProject) { jiraProject.value = 'project-1'; jiraProject.dispatchEvent(new w.Event('change', { bubbles: true })); await tick(40); }
