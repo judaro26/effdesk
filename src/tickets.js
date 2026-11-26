@@ -99,7 +99,8 @@ export async function listTickets(pool, orgId, actor, q = {}) {
   }
   const offset = cursorMode ? 0 : Math.max(parseInt(q.offset, 10) || 0, 0);
   args.push(String(actor.id));
-  const viewerUserArg = '(pool, orgId, async c => {
+  const viewerUserArg = '$' + args.length;
+  return withOrg(pool, orgId, async c => {
     // Fetch the page and tenant-wide status totals in one database round trip.
     // The counts CTE always returns one row, including when the requested page is empty.
     const result = await c.query(`
@@ -107,7 +108,7 @@ export async function listTickets(pool, orgId, actor, q = {}) {
         select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) as by_status
         from (select status, count(*)::int as n from tickets where org_id = $1 group by status) totals
       ), ticket_page as (
-        select ${ticketCols}, (tickets.agent_viewed_at is not null or exists(select 1 from ticket_views tv where tv.org_id=tickets.org_id and tv.ticket_id=tickets.id and tv.user_id=' + viewerUserArg + ')) as has_been_viewed, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
+        select ${ticketCols}, (tickets.agent_viewed_at is not null or exists(select 1 from ticket_views tv where tv.org_id=tickets.org_id and tv.ticket_id=tickets.id and tv.user_id=${viewerUserArg})) as has_been_viewed, updated_at::text as cursor_updated_at, (select tm.kind from ticket_messages tm where tm.org_id = tickets.org_id and tm.ticket_id = tickets.id and tm.kind in ('requester','agent') order by tm.created_at desc, tm.id desc limit 1) as chat_last_public_message_kind from tickets
         where ${where.join(' and ')}
         order by updated_at desc, id desc
         limit ${cursorMode ? limit + 1 : limit} offset ${offset}
