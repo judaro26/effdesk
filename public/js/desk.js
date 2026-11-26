@@ -1415,7 +1415,7 @@
         var on = !!current && current.ticket.number === t.number;
         tabsEl.appendChild(el('span', { class: 'tab has-x', 'aria-selected': String(on) },
           el('button', { type: 'button', role: 'tab', 'data-tab': String(t.number), 'aria-selected': String(on), onclick: function () { open(t.number, t.isChat === true); } }, 'Conversation #' + t.number + ' ' + t.subject),
-          el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { var closingCurrent = !!current && current.ticket.number === t.number; openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (closingCurrent) { addr(0); closePanes(); } draw(); } }, '×')));
+          el('button', { type: 'button', class: 'x', 'data-close': String(t.number), 'aria-label': 'Close #' + t.number, onclick: function () { var closingCurrent = !!current && current.ticket.number === t.number; openTabs = openTabs.filter(function (x) { return x.number !== t.number; }); if (closingCurrent) { addr(0); closePanes(); refresh(); } else draw(); } }, '×')));
       });
       while (orgSlot.firstChild) orgSlot.removeChild(orgSlot.firstChild);
       if (orgs.length > 1) orgSlot.appendChild(sel('Organization', orgId, orgs.map(function (o) { return [o.id, o.name]; }), function (v) { orgId = v; sandboxInfo = null; sandboxLoading = false; closePanes(); openTabs = []; ticketTasks = {}; ticketApprovals = {}; approvalRows = null; rules = null; rulesLoading = false; lifecyclePolicy = null; lifecyclePolicyLoading = false; rd = null; loadInit().then(refresh); }));
