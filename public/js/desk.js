@@ -128,10 +128,10 @@
       if (filter.sla === 'risk') return { key: 'sla-risk', title: 'SLA at risk', description: 'Tickets approaching an SLA deadline.' };
       if (filter.sla === 'breached') return { key: 'sla-breached', title: 'SLA breached', description: 'Tickets that have missed an SLA target.' };
       if (filter.queue) { var q = queues.filter(function (x) { return String(x.id) === String(filter.queue); })[0]; return { key: 'queue-' + filter.queue, title: filter.queue === 'none' ? 'No queue' : (q ? q.name : 'Queue'), description: 'Tickets in this queue.' }; }
+      if (filter.status && statusLabels[filter.status]) return { key: filter.status, title: statusLabels[filter.status], description: filter.status === 'active' ? 'Tickets that are currently being worked on.' : 'Tickets with ' + statusLabels[filter.status].toLowerCase() + ' status.' };
       if (filter.assignee === 'me') return { key: 'assigned', title: 'Assigned to me', description: 'Tickets assigned to you.' };
       var saved = views.filter(function (v) { try { return JSON.stringify(v.filter || {}) === JSON.stringify(filter); } catch (e) { return false; } })[0];
       if (saved) return { key: 'saved-' + saved.id, title: saved.name, description: 'Saved ticket view.' };
-      if (filter.status && statusLabels[filter.status]) return { key: filter.status, title: statusLabels[filter.status], description: filter.status === 'active' ? 'Tickets that are currently being worked on.' : 'Tickets with ' + statusLabels[filter.status].toLowerCase() + ' status.' };
       return { key: 'all', title: 'All Tickets', description: 'Browse, filter and manage every ticket in this workspace.' };
     }
     function refresh() { persistTicketPrefs(); kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); syncListAddress(); draw(); }); }
