@@ -42,6 +42,8 @@ const unopenedBefore = (await call(olivia, { orgId: acme.id, action: 'list' })).
 check('new tickets are marked unopened until an agent views them', unopenedBefore && unopenedBefore.has_been_viewed === false);
 r = await call(olivia, { orgId: acme.id, action: 'get', number: 1 });
 check('opening a ticket records the agent in the Viewed by summary and ticket history timeline', r.status === 200 && r.body.messages.length === 1 && r.body.messages[0].kind === 'requester' && r.body.messages[0].author_name === 'Tina Tenant' && r.body.ticket.viewers.length === 1 && r.body.ticket.viewers[0].user_id === olivia.user.id && r.body.ticket.viewers[0].view_count === 1 && r.body.extras.events.some(e => e.kind === 'viewed' && e.actor_name === 'Olivia' && /Opened ticket/.test(e.detail)));
+const annBeforeView = (await call(ann, { orgId: acme.id, action: 'list' })).body.tickets.find(x => x.number === 1);
+check('a ticket remains unopened for another agent after Olivia opens it', annBeforeView && annBeforeView.has_been_viewed === false);
 check('rich HTML on a newly created ticket is sanitized server-side before storage', String(r.body.messages[0].html_body || '').indexOf('<strong>It is cold.</strong>') >= 0 && !/<script|onerror/i.test(r.body.messages[0].html_body || ''));
 r = await call(ann, { orgId: acme.id, action: 'get', number: 1 });
 check('the view log tracks additional agents and repeated opens without losing the first-view timestamp', r.status === 200 && r.body.ticket.viewers.length === 2 && r.body.ticket.viewers.some(v => v.user_id === ann.user.id && v.view_count === 1) && r.body.ticket.viewers.some(v => v.user_id === olivia.user.id && v.view_count === 1));
