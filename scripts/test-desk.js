@@ -181,6 +181,10 @@ var priorityFilter = $('select[aria-label="Filter priority"]'); priorityFilter.v
 check('changing a column filter reloads the list and saves the agent preference', calls.some(c => c[1] && c[1].action === 'list' && c[1].columnFilters && c[1].columnFilters.priority === 'urgent') && calls.some(c => c[1] && c[1].action === 'ticket-prefs-save' && c[1].filters && c[1].filters.columnFilters.priority === 'urgent'));
 $('[data-status=solved]').click(); await tick();
 check('a status tab reloads the list with that filter, and "Mine" filters by assignee', calls.some(c => c[1] && c[1].action === 'list' && c[1].status === 'solved') && ($('[data-mine]').click(), await tick(), calls.some(c => c[1] && c[1].action === 'list' && c[1].assignee === 'me')));
+$('[data-status=open]').click(); await tick();
+check('selecting a ticket status updates the page heading and its dedicated URL', $('[data-ticket-view-title]')?.textContent === 'Open' && nav.replaced.some(u => u.endsWith('/agent/10003/tickets?view=open')));
+$('[data-views]').click(); await tick();
+check('the All Tickets tab restores its own heading and route', $('[data-ticket-view-title]')?.textContent === 'All Tickets' && nav.replaced.some(u => u.endsWith('/agent/10003/tickets?view=all')));
 const q = $('input[type=search]'); q.value = 'heat'; q.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' })); await tick();
 check('searching sends the text', calls.some(c => c[1] && c[1].action === 'list' && c[1].q === 'heat'));
 { const before = calls.length; q.value = 'heat'; q.dispatchEvent(new w.Event('input')); await new Promise(r => setTimeout(r, 300)); await tick();
