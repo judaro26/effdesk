@@ -2036,7 +2036,7 @@
             box.appendChild(el('label',{class:'external-issue-field'},el('span',{},'Saved issue template'),templateSelect));
           }
 
-          var projectSelect=el('select',{'aria-label':projectLabel,disabled:ui.template?'disabled':null},[el('option',{value:''},'Choose '+projectLabel.toLowerCase()+'…')].concat(projectItems.map(function(x){return el('option',{value:x.id},x.name+(x.key?' ('+x.key+')':''));})));
+          var projectSelectProps={'aria-label':projectLabel};if(ui.template)projectSelectProps.disabled='disabled';var projectSelect=el('select',projectSelectProps,[el('option',{value:''},'Choose '+projectLabel.toLowerCase()+'…')].concat(projectItems.map(function(x){return el('option',{value:x.id},x.name+(x.key?' ('+x.key+')':''));})));
           projectSelect.value=ui.projectId||'';
           projectSelect.addEventListener('change',function(){ui.projectId=projectSelect.value;ui.options=null;ui.issueTypeId='';ui.fields={};if(ui.projectId)loadOptions(ui.projectId,'').then(function(d){if(ui.provider==='jira'&&d.issueTypes&&d.issueTypes.length===1){ui.issueTypeId=d.issueTypes[0].id;return loadOptions(ui.projectId,ui.issueTypeId);}}).then(redraw).catch(function(e){ui.error=e.message;redraw();});else redraw();});
           if(ui.template)box.appendChild(el('p',{class:'m'},'This template creates issues in '+(ui.template.project_name||ui.template.project_id)+(ui.template.issue_type_name?' · '+ui.template.issue_type_name:'' )+'.'));else box.appendChild(el('label',{class:'external-issue-field'},el('span',{},projectLabel),projectSelect));

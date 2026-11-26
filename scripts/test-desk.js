@@ -7,8 +7,14 @@ const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', 
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }, { id: 99, kind: 'requester', author_name: 'Tina', body: 'Takeoff\t\t\nCategory\tItem\tQty\nLighting\t\t\nLighting\tLED strip\t12\n---\n```\nnpm test <b>\n```\nAlso `x` and **bold** at https://ex.org/a', created_at: '2026-11-01T12:00:00Z', attachments: [] }, { id: 100, kind: 'requester', author_name: 'Automation', body: '<!DOCTYPE html><html><body><h2>Automation update</h2><p>Done</p></body></html>', html_body: '<h2>Automation update</h2><p>Done</p>', created_at: '2026-11-01T13:00:00Z', attachments: [] }];
 const calls = []; const ALLF = ['whatsapp', 'custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents', 'custom_roles', 'audit_log', 'data_export', 'request_forms', 'routing']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
-  const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : {}; calls.push([url, b]);
   const ok = body => ({ ok: true, status: 200, json: async () => body });
+  const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : {}; calls.push([url, b]);
+  if (typeof url === 'string' && url.indexOf('/api/integrations/') === 0) {
+    const parsed = new URL(url, 'https://app.test'), route = parsed.pathname.split('/').pop(), provider = parsed.searchParams.get('provider');
+    if (route === 'ticket-context') return ok({ connections: [{ provider: 'linear' }, { provider: 'jira' }], links: [] });
+    if (route === 'catalog') return ok({ items: provider === 'linear' ? [{ id: 'team-1', name: 'Engineering' }] : [{ id: 'project-1', key: 'OPS', name: 'Operations' }] });
+    if (route === 'issue-options') return ok(provider === 'linear' ? { team: { projects: { nodes: [] } } } : { issueTypes: [{ id: 'bug', name: 'Bug' }], fields: [] });
+  }
   if (/^\/api\/attachments\?/.test(url)) return /big/.test(url) ? { ok: false, status: 413, json: async () => ({ error: 'Files can be up to 5 MB each.' }) } : ok({ attachment: { id: 'up1', filename: decodeURIComponent(url.match(/name=([^&]*)/)[1]), size: 3 } });
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test', agentNumber: 10003 }, organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
@@ -96,6 +102,18 @@ check('the desk lists new tickets in bold as unopened', $$('tr.row').length === 
 check('the first load asks for active tickets in the right organization', calls.some(c => c[1] && c[1].action === 'list' && c[1].orgId === 'o1' && c[1].status === 'active'));
 { const subject = $('input[aria-label="Filter subject"]'); subject.value = 'nonexistent-ticket'; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('column headers and their filters remain visible when a search returns no tickets', !!$('thead th[data-column-key="subject"]') && !!$('input[aria-label="Filter subject"]') && $$('tr.row').length === 0 && /No tickets match these filters/.test($('.ticket-empty').textContent)); subject.value = ''; subject.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await tick(420); check('clearing an empty-result search restores the matching ticket without refreshing the page', $$('tr.row').length === 1); }
 $('.row').click(); await tick(); await tick(100); check('opening a ticket removes its unopened bold state', !$('tr.row.ticket-unopened')); check('opening a ticket removes its explicit unopened subject emphasis', !$('.ticket-unopened-subject')); check('external issue context loads once without retrying or redrawing continuously', calls.filter(c => typeof c[0] === 'string' && c[0].indexOf('/api/integrations/ticket-context') >= 0).length === 1);
+{
+  const createButton = $$('.external-issue-actions button').find(b => /Create new/.test(b.textContent));
+  createButton.click(); await tick(60);
+  const linearTeam = $('select[aria-label="Linear team"]');
+  check('Linear team selector is enabled and can be opened', !!linearTeam && !linearTeam.disabled && !linearTeam.hasAttribute('disabled'));
+  if (linearTeam) { linearTeam.value = 'team-1'; linearTeam.dispatchEvent(new w.Event('change', { bubbles: true })); await tick(40); }
+  const jiraTab = $('button[aria-label="Jira"]'); jiraTab.click(); await tick(20);
+  const jiraCreate = $$('.external-issue-actions button').find(b => /Create new/.test(b.textContent)); jiraCreate.click(); await tick(60);
+  const jiraProject = $('select[aria-label="Jira project"]');
+  check('Jira project selector is enabled and can be opened', !!jiraProject && !jiraProject.disabled && !jiraProject.hasAttribute('disabled'));
+  if (jiraProject) { jiraProject.value = 'project-1'; jiraProject.dispatchEvent(new w.Event('change', { bubbles: true })); await tick(40); }
+}
 { const messages = $$('.msg-b'); check('opening a ticket shows its messages in order, with the note marked', messages.length === 4 && messages[1]?.dataset.kind === 'note' && /Internal note/.test(messages[1]?.textContent || '')); }
 { const messages = $$('.msg-b'); const htmlEmail = messages.find(message => message.querySelector('h2')); check('a sanitized HTML email is rendered as formatted content rather than literal markup', !!htmlEmail && htmlEmail.querySelector('h2').textContent === 'Automation update' && !/<!DOCTYPE html>/.test(htmlEmail.textContent)); }
 { const messages = $$('.msg-b'); const rb = messages.find(message => message.querySelector('table[data-table]')); check('a pasted table shows as a table, with title rows spanning and the header marked', !!rb && !!rb.querySelector('table[data-table] thead th') && rb.querySelectorAll('tbody tr').length === 2 && !!rb.querySelector('th.span') && /LED strip/.test(rb.querySelector('tbody').textContent));
