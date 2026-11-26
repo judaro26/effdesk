@@ -7,6 +7,7 @@ const EXTRAS = { followers: [], following: false, events: [{ actor_name: 'Ann', 
 const msgs = [{ id: 1, kind: 'requester', author_name: 'Tina', body: '<img src=x onerror=alert(1)> cold', created_at: '2026-11-01T10:00:00Z', attachments: [{ id: 'f1', filename: 'leak.jpg', size: 2048 }] }, { id: 2, kind: 'note', author_name: 'Ann', body: 'old boiler', created_at: '2026-11-01T11:00:00Z' }, { id: 99, kind: 'requester', author_name: 'Tina', body: 'Takeoff\t\t\nCategory\tItem\tQty\nLighting\t\t\nLighting\tLED strip\t12\n---\n```\nnpm test <b>\n```\nAlso `x` and **bold** at https://ex.org/a', created_at: '2026-11-01T12:00:00Z', attachments: [] }, { id: 100, kind: 'requester', author_name: 'Automation', body: '<!DOCTYPE html><html><body><h2>Automation update</h2><p>Done</p></body></html>', html_body: '<h2>Automation update</h2><p>Done</p>', created_at: '2026-11-01T13:00:00Z', attachments: [] }];
 const calls = []; const ALLF = ['whatsapp', 'custom_fields', 'themes', 'queues', 'clients', 'linked_tickets', 'saved_views', 'side_conversations', 'sla', 'reports', 'translation', 'integrations', 'triggers', 'api', 'bulk_actions', 'light_agents', 'custom_roles', 'audit_log', 'data_export', 'request_forms', 'routing']; let FEATURES = ALLF.slice();
 const fetchFn = async (url, opts) => {
+  const ok = body => ({ ok: true, status: 200, json: async () => body });
   const isUp = /^\/api\/attachments\?/.test(url); const b = opts && opts.body && !isUp ? JSON.parse(opts.body) : {}; calls.push([url, b]);
   if (typeof url === 'string' && url.indexOf('/api/integrations/') === 0) {
     const parsed = new URL(url, 'https://app.test'), route = parsed.pathname.split('/').pop(), provider = parsed.searchParams.get('provider');
@@ -14,7 +15,6 @@ const fetchFn = async (url, opts) => {
     if (route === 'catalog') return ok({ items: provider === 'linear' ? [{ id: 'team-1', name: 'Engineering' }] : [{ id: 'project-1', key: 'OPS', name: 'Operations' }] });
     if (route === 'issue-options') return ok(provider === 'linear' ? { team: { projects: { nodes: [] } } } : { issueTypes: [{ id: 'bug', name: 'Bug' }], fields: [] });
   }
-  const ok = body => ({ ok: true, status: 200, json: async () => body });
   if (/^\/api\/attachments\?/.test(url)) return /big/.test(url) ? { ok: false, status: 413, json: async () => ({ error: 'Files can be up to 5 MB each.' }) } : ok({ attachment: { id: 'up1', filename: decodeURIComponent(url.match(/name=([^&]*)/)[1]), size: 3 } });
   if (url === '/api/me') return ok({ user: { id: 'u1', email: 'ann@acme.test', agentNumber: 10003 }, organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] });
   if (b.action === 'mail-get') return ok({ domain: 'in.effdesk.test', inbox: '', suggestedInbox: 'acme', address: '', replyMode: 'ticket', replyTo: '', fromName: '', signature: '' });
