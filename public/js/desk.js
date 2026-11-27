@@ -1953,10 +1953,18 @@
           request('GET','ticket-context&ticketNumber='+t.number).then(function(d){ui.connections=d.connections||[];ui.links=d.links||[];ui.loaded=true;ui.loading=false;ui.loadFailed=false;if(!ui.connections.some(function(x){return x.provider===ui.provider;}))ui.provider=ui.connections[0]?.provider||'linear';redraw();}).catch(function(e){ui.loading=false;ui.loadFailed=true;ui.error=e.message;redraw();});
         };
         var connected=function(p){return ui.connections.some(function(x){return x.provider===p;});};
+        var reconcileTemplateState=function(){
+          var selected=ui.templateId?ui.templates.filter(function(x){return String(x.id)===String(ui.templateId);})[0]||null:null;
+          if(!selected){
+            if(ui.templateId||ui.template){ui.templateId='';ui.template=null;ui.fields={};ui.projectId='';ui.issueTypeId='';ui.options=null;}
+            return;
+          }
+          ui.template=selected;
+        };
         var loadTemplates=function(){
-          if(ui.provider==='github'||ui.provider==='gitlab'){ui.templates=[];ui.templatesLoadedProvider=ui.provider;return Promise.resolve(ui.templates);}
-          if(ui.templatesLoadedProvider===ui.provider)return Promise.resolve(ui.templates);
-          return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;if(ui.templateId&&!ui.templates.some(function(x){return String(x.id)===String(ui.templateId);})){ui.templateId='';ui.template=null;ui.fields={};ui.projectId='';ui.issueTypeId='';ui.options=null;}return ui.templates;});
+          if(ui.provider==='github'||ui.provider==='gitlab'){ui.templates=[];ui.templatesLoadedProvider=ui.provider;reconcileTemplateState();return Promise.resolve(ui.templates);}
+          if(ui.templatesLoadedProvider===ui.provider){reconcileTemplateState();return Promise.resolve(ui.templates);}
+          return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;reconcileTemplateState();return ui.templates;});
         };
         var chooseTemplate=function(id){
           ui.templateId=id||'';ui.template=null;ui.fields={};ui.title='[EffDesk #'+t.number+'] '+t.subject;ui.description='EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email);
