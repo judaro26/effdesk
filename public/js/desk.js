@@ -1956,7 +1956,7 @@
         var loadTemplates=function(){
           if(ui.provider==='github'||ui.provider==='gitlab'){ui.templates=[];ui.templatesLoadedProvider=ui.provider;return Promise.resolve(ui.templates);}
           if(ui.templatesLoadedProvider===ui.provider)return Promise.resolve(ui.templates);
-          return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;return ui.templates;});
+          return request('GET','templates&provider='+ui.provider).then(function(d){ui.templates=d.templates||[];ui.templatesLoadedProvider=ui.provider;if(ui.templateId&&!ui.templates.some(function(x){return String(x.id)===String(ui.templateId);})){ui.templateId='';ui.template=null;ui.fields={};ui.projectId='';ui.issueTypeId='';ui.options=null;}return ui.templates;});
         };
         var chooseTemplate=function(id){
           ui.templateId=id||'';ui.template=null;ui.fields={};ui.title='[EffDesk #'+t.number+'] '+t.subject;ui.description='EffDesk ticket #'+t.number+'\\nRequester: '+(t.requester_name||t.requester_email);
