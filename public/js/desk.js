@@ -56,7 +56,7 @@
     function clearTicketDraft(number) { try { root.localStorage.removeItem(draftStorageKey(number)); } catch (e) { /* storage may be unavailable */ } draft = ''; draftHtml = ''; draftRequestId = ''; }
     var replyEditorHeight = 160;
     var conversationSearch = '', conversationDateFrom = '', conversationDateTo = '';
-    var threadScrollPositions = Object.create(null), threadScrollToBottom = 0;
+    var threadScrollPositions = Object.create(null), threadScrollToBottom = 0, infoScrollPositions = Object.create(null), ticketPrefsSavePromise = Promise.resolve();
     var el = function (tag, props) { var e = doc.createElement(tag); Object.keys(props || {}).forEach(function (k) { var v = props[k]; if (k === 'class') e.className = v; else if (k.indexOf('on') === 0) e.addEventListener(k.slice(2), v); else if (k === 'value') e.value = v; else e.setAttribute(k, v); }); var appendChild = function (c) { if (c == null || typeof c === 'boolean') return; if (Array.isArray(c)) { c.forEach(appendChild); return; } if (typeof c === 'string' || typeof c === 'number') { e.appendChild(doc.createTextNode(String(c))); return; } if (c && typeof c.nodeType === 'number') e.appendChild(c); }; [].slice.call(arguments, 2).forEach(appendChild); return e; };
     var icon = function (name) { var ns = 'http://www.w3.org/2000/svg', s = doc.createElementNS(ns, 'svg'), p = doc.createElementNS(ns, 'path'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name]); s.appendChild(p); return s; };
     var post = function (path, body) { return fetchFn(path, { method: path === '/api/me' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: path === '/api/me' ? undefined : JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); }); };
@@ -111,16 +111,24 @@
       if (!supportEntered) { supportEntered = true; api('support-enter'); }
     }
     function loadInit() { api('availability-get').then(function (r) { if (r.ok) myAvail = r.body.available !== false; }); return api('init').then(function (r) { if (!r.ok) return; var b = r.body; agents = b.agents || []; myAvatar = b.avatar || null; paintMe(); features = b.features || []; queues = b.queues || []; statuses = b.statuses || []; clients = b.clients || []; macros = b.macros || []; fields = b.fields || []; support = !!b.support; chatAccess = b.chatAccess === true; chatAvailable = b.chatAvailable === true; canSuperviseChat = b.canSuperviseChat === true; if (chatAccess) startChatReplyMonitor(); if (support) supportBar(); views = b.views || []; if (b.ticketPrefs) { filter = Object.assign({ status: 'active', assignee: '', q: '', columnFilters: {} }, b.ticketPrefs.filters || {}); ticketColumns = Array.isArray(b.ticketPrefs.columns) && b.ticketPrefs.columns.length ? b.ticketPrefs.columns.slice() : ticketColumns; qBox.value = filter.q || ''; if (b.ticketPrefs.locale === 'es' || b.ticketPrefs.locale === 'en') locale = b.ticketPrefs.locale; else if (root.EffI18n) locale = root.EffI18n.getLocale(); if (root.EffI18n) root.EffI18n.setLocale(locale, { persist: false }); ticketPrefsSig = JSON.stringify({ filters: filter, columns: ticketColumns, locale: locale }); } labels = b.labels || []; isAdmin = !!b.admin; notify = b.notify !== false; sla = b.sla || null; if (b.theme) applyTheme(b.theme); applyChatTheme(b.chatTheme || 'classic'); }); }
-    function persistTicketPrefs() {
+    function persistTicketPrefs(force) {
       var snapshot = { filters: filter, columns: ticketColumns, locale: locale }, signature = JSON.stringify(snapshot);
-      if (signature === ticketPrefsSig) return;
+      if (signature === ticketPrefsSig) { root.clearTimeout(ticketPrefsTimer); ticketPrefsTimer = 0; return ticketPrefsSavePromise; }
       root.clearTimeout(ticketPrefsTimer);
-      ticketPrefsTimer = root.setTimeout(function () {
-        api('ticket-prefs-save', snapshot).then(function (r) {
-          if (r.ok) ticketPrefsSig = signature;
-          else if (r.status !== 401) console.warn('Could not save ticket filters:', r.body.error || r.status);
+      var save = function () {
+        ticketPrefsTimer = 0;
+        if (signature === ticketPrefsSig) return ticketPrefsSavePromise;
+        ticketPrefsSavePromise = ticketPrefsSavePromise.catch(function () {}).then(function () {
+          return api('ticket-prefs-save', snapshot).then(function (r) {
+            if (r.ok) ticketPrefsSig = signature;
+            else if (r.status !== 401) console.warn('Could not save ticket filters:', r.body.error || r.status);
+          });
         });
-      }, 350);
+        return ticketPrefsSavePromise;
+      };
+      if (force) return save();
+      ticketPrefsTimer = root.setTimeout(save, 350);
+      return ticketPrefsSavePromise;
     }
     function ticketViewMeta() {
       var statusLabels = { active: 'Active', open: 'Open', pending: 'Pending', on_hold: 'On Hold', solved: 'Solved', closed: 'Closed' };
@@ -134,13 +142,13 @@
       if (saved) return { key: 'saved-' + saved.id, title: saved.name, description: 'Saved ticket view.' };
       return { key: 'all', title: 'All Tickets', description: 'Browse, filter and manage every ticket in this workspace.' };
     }
-    function refresh() { persistTicketPrefs(); kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); syncListAddress(); draw(); }); }
+    function refresh() { persistTicketPrefs(true); kbIndex = -1; return api('list', filter).then(function (r) { if (r.ok) { list = r.body.tickets; counts = r.body.counts; } else say(r.body.error || 'That did not work.', true); syncListAddress(); draw(); }); }
     // The address bar represents both the selected ticket and the active ticket view.
     function addr(n, isChat, viewKey) { try { if (nav.replace && slug && myNo) nav.replace((hostSlug ? '' : '/w/' + slug) + '/agent/' + myNo + '/tickets' + (isChat ? '?chat=' + encodeURIComponent(n) : (n ? '/' + n : (viewKey ? '?view=' + encodeURIComponent(viewKey) : '')))); } catch (e) { /* address only */ } }
     function syncListAddress() { var meta = ticketViewMeta(); addr(0, false, meta.key); }
     function open(n, isChat) {
       if (current && current.ticket && current.ticket.number !== n) saveTicketDraft(current.ticket.number);
-      return api(isChat ? 'chat-get' : 'get', { number: n, messageLimit: isChat ? 500 : 50 }).then(function (r) {
+      return persistTicketPrefs(true).then(function () { return api(isChat ? 'chat-get' : 'get', { number: n, messageLimit: isChat ? 500 : 50 }); }).then(function (r) {
         if (!r.ok) return say(r.body.error, true); addr(n, isChat === true);
         var switchingTicket = !current || current.ticket.number !== n;
         closePanes();
@@ -2198,7 +2206,7 @@
         if (current.lifecycleLinks.parent) cards.push(el('button',{type:'button',class:'btn l sm',onclick:function(){open(current.lifecycleLinks.parent.number);}},'Parent ticket #'+current.lifecycleLinks.parent.number+' · '+current.lifecycleLinks.parent.subject));
         current.lifecycleLinks.followUps.forEach(function(link){cards.push(el('button',{type:'button',class:'btn l sm',onclick:function(){open(link.number);}},'Follow-up #'+link.number+' · '+link.subject+' · '+cap(link.status)));});
       }
-      return chatConversationOpen ? el('div',{class:'chat-agent-workspace'},chatWorkspaceSidebar(),el('div',{class:'ticket chat-agent-conversation'+(t.visitor_ended || t.status==='closed'?' is-ended':'')},props,center,el('aside',{class:'col info','aria-label':'Requester and context'},cards))) : el('div',{class:'ticket'},props,center,el('aside',{class:'col info','aria-label':'Requester and context'},cards));
+      return chatConversationOpen ? el('div',{class:'chat-agent-workspace'},chatWorkspaceSidebar(),el('div',{class:'ticket chat-agent-conversation'+(t.visitor_ended || t.status==='closed'?' is-ended':'')},props,center,el('aside',{class:'col info','aria-label':'Requester and context','data-ticket-number':String(t.number)},cards))) : el('div',{class:'ticket'},props,center,el('aside',{class:'col info','aria-label':'Requester and context','data-ticket-number':String(t.number)},cards));
     }
     // translation happens in the browser (Chrome's on-device translator): the text never goes to a server
     function translate(m) {
@@ -3011,6 +3019,8 @@
       drawChrome(); drawMenu();
       if (root.EffI18n) { root.EffI18n.setLocale(locale, { persist: false }); }
 
+      var oldInfo = main.querySelector('.ticket > .info[data-ticket-number]');
+      if (oldInfo) infoScrollPositions[oldInfo.getAttribute('data-ticket-number')] = oldInfo.scrollTop;
       var oldThread = main.querySelector('.thread');
       if (oldThread) {
         var oldNumber = oldThread.getAttribute('data-ticket-number');
@@ -3022,6 +3032,12 @@
       while (main.firstChild) main.removeChild(main.firstChild);
       if (note) main.appendChild(el('p', { class: 'msg toast' + (bad ? ' err' : ''), role: bad ? 'alert' : 'status' }, note, el('button', { type: 'button', class: 'toast-x', 'aria-label': 'Dismiss', onclick: function () { note = ''; draw(); } }, '×')));
       main.appendChild(el('div', { class: 'desk' }, supervisorOpen ? supervisorPane() : chatLandingOpen ? chatLandingPane() : chatInboxOpen ? chatInboxPane() : integrationsOpen ? integrationsPane() : ciOpen ? configurationItemsPane() : changesOpen ? changesPane() : problemsOpen ? problemsPane() : incidentsOpen ? itsmPane() : approvalInbox ? approvalsPane() : home ? homePane() : profile ? profilePane() : report ? reportPane() : articles ? articlesPane() : settings ? mailPane() : manage ? managePane() : creating ? newPane() : current ? ticketPane() : viewsPane()));
+      var nextInfo = main.querySelector('.ticket > .info[data-ticket-number]');
+      if (nextInfo) {
+        var infoNumber = nextInfo.getAttribute('data-ticket-number');
+        nextInfo.scrollTop = infoScrollPositions[infoNumber] || 0;
+        nextInfo.addEventListener('scroll', function () { infoScrollPositions[infoNumber] = nextInfo.scrollTop; });
+      }
       var nextThread = main.querySelector('.thread');
       if (nextThread) {
         var threadNumber = nextThread.getAttribute('data-ticket-number');
