@@ -9,6 +9,9 @@ import { pollChat, chatToken, agentInbox } from '../src/chat.js';
 const rawUrl = process.env.STAGING_DATABASE_URL;
 const orgIds = [...new Set(String(process.env.STAGING_ORG_IDS || '').split(',').map(x => x.trim()).filter(Boolean))];
 const profile = String(process.env.STAGING_BENCH_PROFILE || 'smoke').toLowerCase();
+// Each independent runner receives a stable fixture slot so concurrent instances never
+// heartbeat the same visitor conversations. Single-instance runs use slot 1.
+const benchInstance = Number(process.env.BENCH_INSTANCE || 1);
 const profiles = { smoke: { concurrency: 5, rounds: 2 }, standard: { concurrency: 15, rounds: 3 }, stress: { concurrency: 30, rounds: 3 } };
 const baseSettings = profiles[profile];
 const concurrencyOverride = process.env.STAGING_BENCH_CONCURRENCY == null ? null : Number(process.env.STAGING_BENCH_CONCURRENCY);
@@ -32,10 +35,10 @@ function validateTarget(value) {
   if (!/(^|[_-])(staging|stage|test)([_-]|$)/.test(dbName)) throw new Error('Refusing to run: database name must contain staging, stage, or test.');
   if (!settings || !Number.isInteger(settings.concurrency) || settings.concurrency < 1 || settings.concurrency > 30) throw new Error('STAGING_BENCH_PROFILE must be smoke, standard, or stress; concurrency override must be an integer from 1 to 30.');
   if (orgIds.length<2 || orgIds.length>30) throw new Error('STAGING_ORG_IDS must contain 2–30 synthetic staging workspace IDs.');
+  if (!Number.isInteger(benchInstance) || benchInstance < 1 || benchInstance > 3) throw new Error('BENCH_INSTANCE must be an integer from 1 to 3.');
   return { host, dbName };
 }
 const target=validateTarget(rawUrl);
-if(process.argv.includes('--check')) { console.log('Mixed Live Chat benchmark staging target is safe.'); process.exit(0); }
 // Use the same singleton pool factory and SQL instrumentation as deployed application requests.
 const pool=getPool(rawUrl);
 const connectWait=[], connectionLease=[], leaseStarted=new WeakMap(), querySamples=new Map(), telemetryWrites=[], connect=pool.connect.bind(pool);
@@ -106,9 +109,16 @@ try {
   for (const orgId of orgIds) {
     const org=(await pool.query('select slug from "organization" where id=$1',[orgId])).rows[0];
     if(!org?.slug) throw new Error('Missing seeded staging workspace slug for '+orgId);
-    const chat=await withOrg(pool,orgId,async c=>(await c.query("select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') and chat_number is not null order by id limit 1",[orgId])).rows[0]||null);
-    if(!chat?.chat_number) throw new Error('No active synthetic visitor conversation found for '+orgId+'; rerun the staging seeder.');
+    // Require one distinct active conversation per runner slot in every workspace.
+    // OFFSET is deterministic because the seed data is ordered by conversation id.
+    const chat=await withOrg(pool,orgId,async c=>(await c.query("select chat_number from chat_conversations where org_id=$1 and visitor_key like 'stg-visitor-%' and status in ('open','pending','on_hold') and chat_number is not null order by id offset $2 limit 1",[orgId,benchInstance-1])).rows[0]||null);
+    if(!chat?.chat_number) throw new Error(`No active synthetic visitor conversation for benchmark instance ${benchInstance} in ${orgId}; seed at least ${benchInstance} active synthetic chats per workspace.`);
     targets.push({orgId,slug:org.slug,number:Number(chat.chat_number),token:chatToken(syntheticEnv,orgId,chat.chat_number)});
+  }
+  if(process.argv.includes('--check')) {
+    console.log(JSON.stringify({message:'Mixed Live Chat benchmark staging target and fixtures are safe.',instance:benchInstance,workspaces:targets.length,distinct_fixture_slot:benchInstance}));
+    await pool.end();
+    process.exit(0);
   }
 
   const scenarios=[
@@ -195,7 +205,7 @@ try {
   console.log(JSON.stringify({
     target:{host:target.host,database:target.dbName},
     workload:'mixed visitor polls and agent inbox refreshes; visitor polls update last_visitor_seen_at at most once per 15 seconds',
-    profile,workspaces:targets.length,concurrency:settings.concurrency,
+    profile,benchmark_instance:benchInstance,distinct_fixture_slot:benchInstance,workspaces:targets.length,concurrency:settings.concurrency,
     warmup:{requests:warmupTasks.length,elapsed_ms:round(warmupElapsed),failures:warmupFailures},
     measured:{rounds:settings.rounds,requests:totalRequests,elapsed_ms:round(elapsed),requests_per_second:round(totalRequests/Math.max(elapsed,1)*1000),failures:totalFailures},
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait),connection_lease_ms:sortedStats(connectionLease)},
