@@ -95,7 +95,7 @@ await w.EffDeskDesk.start(w.document, fetchFn, nav); await tick();
   const rd = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/agent/10003/tickets?view=pending' }), rw = rd.window;
   rw.__EFFDESK_TEST__ = true; rw.eval(pub('js/desk.js'));
   const redirectFetch = async (url, opts) => url === '/api/me'
-    ? ok({ user: { id: 'u1', email: 'ann@acme.test', agentNumber: 10003 }, deskBase: 'test', organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] })
+    ? { ok: true, status: 200, json: async () => ({ user: { id: 'u1', email: 'ann@acme.test', agentNumber: 10003 }, deskBase: 'test', organizations: [{ id: 'o1', name: 'Acme', slug: 'acme', role: 'admin' }] }) }
     : fetchFn(url, opts);
   const redirectNav = { search: '?view=pending', path: '/agent/10003/tickets', host: 'app.test', went: [], go(u) { this.went.push(u); } };
   await rw.EffDeskDesk.start(rw.document, redirectFetch, redirectNav);
