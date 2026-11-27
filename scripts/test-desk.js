@@ -113,7 +113,9 @@ $('.row').click(); await tick(); await tick(100); check('opening a ticket remove
   const contextColumn = $('.ticket > .info'); contextColumn.scrollTop = 620; contextColumn.dispatchEvent(new w.Event('scroll'));
   jiraTab.click(); await tick(20);
   check('switching the external issue provider preserves the requester/context column scroll position', $('.ticket > .info').scrollTop === 620);
-  const jiraCreate = $('.external-issue-actions button').find(b => /Create new/.test(b.textContent)); jiraCreate.click(); await tick(60);
+  const jiraCreate = $('.external-issue-actions button').find(b => /Create new/.test(b.textContent));
+  jiraCreate.click(); await tick(60);
+  check('opening the Jira create-issue form preserves the requester/context column scroll position', $('.ticket > .info').scrollTop === 620);
   const jiraProject = $('select[aria-label="Jira project"]');
   check('Jira project selector is enabled and can be opened', !!jiraProject && !jiraProject.disabled && !jiraProject.hasAttribute('disabled'));
   if (jiraProject) { jiraProject.value = 'project-1'; jiraProject.dispatchEvent(new w.Event('change', { bubbles: true })); await tick(40); }
