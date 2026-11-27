@@ -388,6 +388,13 @@ check('the profile has the notification switch, on, and it saves when changed', 
 const deep = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), dw = deep.window; dw.__EFFDESK_TEST__ = true; dw.eval(pub('js/desk.js'));
 await dw.EffDeskDesk.start(dw.document, fetchFn, { search: '?org=o1&ticket=7', go() {} }); await tick(40);
 check('a link from a notification email opens that ticket straight away', !!dw.document.querySelector('[data-tab="7"]') && /#7 /.test(dw.document.querySelector('h2').textContent));
+{ const vd = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://mdv.test/agent/10003/tickets?view=pending' }), vw = vd.window; vw.__EFFDESK_TEST__ = true; vw.eval(pub('js/desk.js'));
+  const viewNav = { search: '?org=o1&view=pending', path: '/agent/10003/tickets', host: 'mdv.test', went: [], replaced: [], go(u) { this.went.push(u); }, replace(u) { this.replaced.push(u); } };
+  await vw.EffDeskDesk.start(vw.document, fetchFn, viewNav); await tick(40);
+  const V = s => vw.document.querySelector(s);
+  check('refreshing a direct pending-view URL opens the ticket list instead of leaving the workspace overview loading', !!V('.views') && !V('.dash-page') && !!V('[data-status="pending"]'));
+  check('a direct pending-view URL requests pending tickets and preserves its view in the address bar', calls.some(c => c[1] && c[1].action === 'list' && c[1].status === 'pending') && viewNav.replaced.some(u => u.endsWith('?view=pending')));
+}
 check('the account page links to the desk', /Open the desk/.test(pub('js/app.js')) && /desk\.html\?org=/.test(pub('js/app.js')));
 // avatars, mentions, integrations
 { const iw = new JSDOM(pub('desk.html'), { runScripts: 'outside-only', url: 'https://app.test/desk.html' }), xw = iw.window; xw.__EFFDESK_TEST__ = true; xw.eval(pub('js/desk.js')); const X = s => xw.document.querySelector(s);
