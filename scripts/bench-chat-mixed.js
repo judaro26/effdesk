@@ -117,6 +117,7 @@ try {
   }
   if(process.argv.includes('--check')) {
     console.log(JSON.stringify({message:'Mixed Live Chat benchmark staging target and fixtures are safe.',instance:benchInstance,workspaces:targets.length,distinct_fixture_slot:benchInstance}));
+    await pool.end();
     process.exit(0);
   }
 
@@ -204,7 +205,7 @@ try {
   console.log(JSON.stringify({
     target:{host:target.host,database:target.dbName},
     workload:'mixed visitor polls and agent inbox refreshes; visitor polls update last_visitor_seen_at at most once per 15 seconds',
-    profile,workspaces:targets.length,concurrency:settings.concurrency,
+    profile,benchmark_instance:benchInstance,distinct_fixture_slot:benchInstance,workspaces:targets.length,concurrency:settings.concurrency,
     warmup:{requests:warmupTasks.length,elapsed_ms:round(warmupElapsed),failures:warmupFailures},
     measured:{rounds:settings.rounds,requests:totalRequests,elapsed_ms:round(elapsed),requests_per_second:round(totalRequests/Math.max(elapsed,1)*1000),failures:totalFailures},
     pool:{max:pool.options.max,max_total_sampled:maxSamples.total,max_waiting_sampled:maxSamples.waiting,connection_acquire_ms:sortedStats(connectWait),connection_lease_ms:sortedStats(connectionLease)},
