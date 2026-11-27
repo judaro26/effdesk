@@ -126,6 +126,7 @@ jobs:
           STAGING_ORG_IDS: ${{ vars.STAGING_ORG_IDS }}
           STAGING_BENCH_PROFILE: ${{ inputs.profile }}
           STAGING_BENCH_CONCURRENCY: 10
+          BENCH_INSTANCE: ${{ matrix.instance }}
         run: node scripts/bench-chat-mixed.js --check
 
       - name: Align independent app instances on a shared start window
